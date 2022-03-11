@@ -27,5 +27,6 @@
     "typescript": "^4.5.5"
   },
   "dependencies": {
+    "@hensm/ddcci": "^0.1.0"
   }
 }
