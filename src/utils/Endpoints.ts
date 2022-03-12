@@ -1,3 +1,5 @@
+import DisplayUtils from './DisplayUtils';
+
 const electronEndpointHandlers: any[] = [];
 
 function addDataEndpoint(
@@ -24,27 +26,32 @@ export function getEndpointHandlers() {
 
 export function setUpDataEndpoints() {
   // query endpoints
-  addDataEndpoint('get', '/api/displays', async (req, res) => {
-    res.status(200).json('dummy displays...');
+  addDataEndpoint('get', '/api/monitors', async (req, res) => {
+    const monitors = await DisplayUtils.getMonitors();
+    res.status(200).json(monitors);
   });
 
-  addDataEndpoint('put', '/api/displays/:displayId', async (req, res) => {
-    const displayId = req.params?.displayId;
-    const displayProps = {
-      name: req.body?.name,
-      brightness: req.body?.brightness,
-    };
-    res.status(200).json({
-      displayId,
-      displayProps,
-    });
+  addDataEndpoint('put', '/api/monitors/:monitorId', async (req, res) => {
+    try {
+      res.status(200).json(
+        await DisplayUtils.updateMonitor({
+          id: req.params.monitorId,
+          name: req.body?.name,
+          brightness: req.body?.brightness,
+        }),
+      );
+    } catch (err) {
+      res.status(500).json({ error: `Failed to save monitor`, stack: err });
+    }
   });
 
   addDataEndpoint('put', '/api/darkMode', async (req, res) => {
-    const isDarkModeOn = req.body?.darkMode === true;
+    try {
+      const isDarkModeOn = req.body?.darkMode === true;
 
-    res.status(200).json({
-      isDarkModeOn,
-    });
+      res.status(200).json(await DisplayUtils.toggleDarkMode(isDarkModeOn));
+    } catch (err) {
+      res.status(500).json({ error: `Failed to update darkMode`, stack: err });
+    }
   });
 }

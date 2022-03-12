@@ -8,7 +8,6 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     height: 600,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: true,
       contextIsolation: false,
     },
@@ -51,7 +50,7 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
 
   const method = (options.method || 'get').toLowerCase();
 
-  const sessionId = options?.headers['api-call-session-id'];
+  const sessionId = options?.headers['api-call-session-id'] || 'display-dj-default-session';
 
   let body: any = {};
   try {

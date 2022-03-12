@@ -9,7 +9,8 @@
     "fix-import": "npx import-fixer --groupImport --aggressive",
     "preformat": "npm run fix-import",
     "format": "npx prettier --config ./.prettierrc --write **/*.{ts,tsx,js,jsx,scss,yml,html,json,md}",
-    "start": "npm run build && electron ./dist/main.js"
+    "prestart": "npm run build",
+    "start": "electron ./dist/main.js"
   },
   "repository": "https://github.com/synle/display-dj",
   "keywords": [
