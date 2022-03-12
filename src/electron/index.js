@@ -14,6 +14,7 @@ function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
     },
+    frame: false,
     show: false,
     autoHideMenuBar: true,
     icon: path.join(__dirname, '..', 'icon.ico'),
@@ -55,7 +56,7 @@ function createTray() {
       const monitors =await DisplayUtils.getMonitors();
       let monitorCount = Math.max(monitors.length, 1) + 1;
       let width = 300;
-      let height = 80 * monitorCount;
+      let height = 80 * monitorCount + 20;
       let x = Math.floor(iconPos.x - width + 50);
       let y = Math.floor(iconPos.y - height);
       mainWindow.show();
