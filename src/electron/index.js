@@ -2,18 +2,18 @@ import { BrowserWindow, Menu, Tray, app, ipcMain, systemPreferences } from 'elec
 import { matchPath } from 'react-router-dom';
 import * as path from 'path';
 import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
+import DisplayUtils from './utils/DisplayUtils';
+
 
 let mainWindow;
 
 function createWindow() {
   // Create the browser window.
   mainWindow = new BrowserWindow({
-    height: 500,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
     },
-    width: 400,
     show: false,
     autoHideMenuBar: true,
     icon: path.join(__dirname, '..', 'icon.ico'),
@@ -31,6 +31,11 @@ function createWindow() {
     return false;
   });
 
+  mainWindow.on('blur', function (event) {
+    event.preventDefault();
+    mainWindow.hide();
+  });
+
   // and load the index.html of the app.
   mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
 
@@ -43,30 +48,19 @@ function createTray() {
   // systemPreferences.isDarkMode()
   const tray = new Tray(path.join(__dirname, '..', 'icon.png'));
 
-  /*
-  [Arguments] {
-    '0': {
-      shiftKey: false,
-      ctrlKey: false,
-      altKey: false,
-      metaKey: false,
-      triggeredByAccelerator: true
-    },
-    '1': { x: 1793, y: 1104, width: 25, height: 48 },
-    '2': { x: 1800, y: 1129 }
-  }
-  */
-
-  tray.on('click', function (event, iconPos, mousePos) {
-    console.log(this);
-    console.log(arguments);
+  tray.on('click', async (event, iconPos, mousePos)  => {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
     } else {
-      let x = Math.floor(iconPos.x - mainWindow.getBounds().width + 50);
-      let y = Math.floor(iconPos.y - mainWindow.getBounds().height);
-      mainWindow.setPosition(x, y);
+      const monitors =await DisplayUtils.getMonitors();
+      let monitorCount = Math.max(monitors.length, 1) + 1;
+      let width = 300;
+      let height = 80 * monitorCount;
+      let x = Math.floor(iconPos.x - width + 50);
+      let y = Math.floor(iconPos.y - height);
       mainWindow.show();
+      mainWindow.setPosition(x, y);
+      mainWindow.setSize(width,height);
     }
   });
 
