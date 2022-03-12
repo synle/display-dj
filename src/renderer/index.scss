@@ -1,3 +1,10 @@
+html{
+  --color-main: #000;
+  --color-bg: #fff;
+  --color-light-bg: #ccc;
+  --color-link: blue;
+}
+
 html,
 body,
 h1,
@@ -15,6 +22,8 @@ body {
   font-size: 12px;
   font-family: Arial;
   margin: 1rem 1rem;
+  background: var(--color-bg);
+  color: var(--color-main);
 }
 
 * {
@@ -23,6 +32,14 @@ body {
 
 input[type='range'] {
   width: calc(100% - 10px);
+}
+
+button{
+  background: var(--color-light-bg);
+  color: var(--color-main);
+  border: none;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
 }
 
 .field {
@@ -47,7 +64,7 @@ input[type='range'] {
 
   &__value-toggle {
     cursor: pointer;
-    color: blue;
+    color: var(--color-link);
   }
 
   input,
@@ -67,4 +84,14 @@ input[type='range'] {
   &__label, &__value-readonly{
     font-weight: bold;
   }
+}
+
+@media (prefers-color-scheme: dark) {
+  html{
+    --color-main: #fff;
+    --color-bg: #000;
+    --color-light-bg: #333;
+    --color-link: #297AFE;
+  }
+
 }
