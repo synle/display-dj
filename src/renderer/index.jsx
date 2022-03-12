@@ -45,7 +45,17 @@ function Home(props) {
 };
 
 function DarkModeSettingForm(props){
-  return <div>DarkModeSettingForm</div>
+  const [darkMode, setDarkMode] = useState(false);
+
+  const onToggleDarkMode = () => {
+    setDarkMode(!darkMode)
+  }
+
+  return <div className='field' title='Monitor Name'>
+      <div className='field_value'>
+        <button onClick={onToggleDarkMode}>{darkMode ? 'Turn Dark Mode Off': 'Turn Dark Mode On'}</button>
+      </div>
+  </div>
 }
 
 function MonitorBrightnessSettingForm(props){
@@ -94,22 +104,24 @@ function AllMonitorBrightnessSettings(props){
   const {mutateAsync: updateMonitor} = useUpdateMonitor();
   const queryClient = useQueryClient();
 
-  const onChange = (value) => {
+  const onChange = async (value) => {
     setAllBrightness(value);
 
     for(const monitor of monitors){
       monitor.brightness = value;
-      updateMonitor(monitor);
+      await updateMonitor(monitor);
     }
+
+    queryClient.invalidateQueries(QUERY_KEY_MONITORS);
   }
 
   return <>
-      <div className='field'>
-        <div className='field' title='Monitor Name'>
-        <div className='field__value field__value-readonly field__value-toggle'>All Monitors</div>
+      <div className='field' title='Monitor Name'>
+        <div className='field__value field__value-readonly'>All Monitors</div>
       </div>
-      <input className='field__value' type='range' min='0' max='100' step='5' value={allBrightness} placeholder='brightness' onInput={(e) => onChange(parseInt(e.target.value) || 0)} />
-    </div>
+      <div className='field'>
+        <input className='field__value' type='range' min='0' max='100' step='5' value={allBrightness} placeholder='brightness' onInput={(e) => onChange(parseInt(e.target.value) || 0)} />
+      </div>
   </>
 }
 

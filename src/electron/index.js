@@ -1,4 +1,4 @@
-import { BrowserWindow, app, ipcMain, Tray , Menu,  systemPreferences, globalShortcut} from 'electron';
+import { BrowserWindow, Menu, Tray, app, ipcMain, systemPreferences } from 'electron';
 import { matchPath } from 'react-router-dom';
 import * as path from 'path';
 import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
@@ -16,10 +16,10 @@ function createWindow() {
     width: 400,
     show: false,
     autoHideMenuBar: true,
-    icon: path.join(__dirname, '..', 'icon.ico')
+    icon: path.join(__dirname, '..', 'icon.ico'),
   });
 
-  mainWindow.on('minimize',function(event){
+  mainWindow.on('minimize', function (event) {
     event.preventDefault();
     mainWindow.hide();
   });
@@ -38,7 +38,7 @@ function createWindow() {
   // mainWindow.webContents.openDevTools({ mode: 'detach' });
 }
 
-function createTray(){
+function createTray() {
   //https://livebook.manning.com/book/electron-in-action/chapter-9/1
   // systemPreferences.isDarkMode()
   const tray = new Tray(path.join(__dirname, '..', 'icon.png'));
@@ -57,10 +57,10 @@ function createTray(){
   }
   */
 
-  tray.on('click', function(event, iconPos, mousePos){
+  tray.on('click', function (event, iconPos, mousePos) {
     console.log(this);
     console.log(arguments);
-    if(mainWindow.isVisible()){
+    if (mainWindow.isVisible()) {
       mainWindow.hide();
     } else {
       let x = Math.floor(iconPos.x - mainWindow.getBounds().width + 50);
@@ -73,8 +73,10 @@ function createTray(){
   const menu = Menu.buildFromTemplate([
     {
       label: 'Quit',
-      click() { app.quit(); }
-    }
+      click() {
+        app.quit();
+      },
+    },
   ]);
 
   tray.setToolTip('Clipmaster');
