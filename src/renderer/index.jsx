@@ -46,9 +46,12 @@ function Home(props) {
 
 function DarkModeSettingForm(props){
   const [darkMode, setDarkMode] = useState(false);
+  const {mutateAsync: toggleDarkMode} = useToggleDarkMode();
 
   const onToggleDarkMode = () => {
-    setDarkMode(!darkMode)
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    toggleDarkMode(newDarkMode);
   }
 
   return <div className='field' title='Monitor Name'>
@@ -134,6 +137,10 @@ function useMonitors(){
 
 function useUpdateMonitor(){
   return useMutation(ApiUtils.updateMonitor);
+}
+
+function useToggleDarkMode(){
+  return useMutation(ApiUtils.toggleDarkMode);
 }
 
 

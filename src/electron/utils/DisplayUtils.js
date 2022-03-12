@@ -79,7 +79,14 @@ const DisplayUtils = {
       );
     shellToRun += isDarkModeOn ? '1' : '0';
 
+
+    shellToRun = `powershell.exe -Command "${shellToRun}"`;
+
     console.log(shellToRun);
+
+    var spawn = require("child_process").spawn;
+    var child = spawn("powershell.exe", ["-Command", shellToRun]);
+
 
     return shellToRun;
   },
