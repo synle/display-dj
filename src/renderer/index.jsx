@@ -97,7 +97,7 @@ function MonitorBrightnessSetting(props){
       }
     </div>
     <div className='field' title='Monitor Brightness'>
-      <input className='field__value' type='range' min='0' max='100' step='5' value={monitor.brightness} placeholder='brightness' onInput={(e) => onChange('brightness', parseInt(e.target.value) || 0)} />
+      <input className='field__value' type='range' min='0' max='100' step='5' value={monitor.brightness} placeholder='brightness' onChange={(e) => onChange('brightness', parseInt(e.target.value) || 0)} />
     </div>
   </>
 }
@@ -124,7 +124,7 @@ function AllMonitorBrightnessSettings(props){
         <div className='field__value field__value-readonly'>All Monitors</div>
       </div>
       <div className='field'>
-        <input className='field__value' type='range' min='0' max='100' step='5' value={allBrightness} placeholder='brightness' onInput={(e) => onChange(parseInt(e.target.value) || 0)} />
+        <input className='field__value' type='range' min='0' max='100' step='5' value={allBrightness} placeholder='brightness' onChange={(e) => onChange(parseInt(e.target.value) || 0)} />
       </div>
   </>
 }

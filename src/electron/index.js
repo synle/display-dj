@@ -45,9 +45,7 @@ function createWindow() {
 }
 
 function createTray() {
-  //https://livebook.manning.com/book/electron-in-action/chapter-9/1
-  // systemPreferences.isDarkMode()
-  const tray = new Tray(path.join(__dirname, '..', 'icon.png'));
+  const tray = new Tray(iconToUse);
 
   tray.on('click', async (event, iconPos, mousePos)  => {
     if (mainWindow.isVisible()) {
@@ -77,6 +75,15 @@ function createTray() {
   tray.setToolTip('Clipmaster');
   tray.setContextMenu(menu);
 }
+
+let iconToUse =path.join(__dirname, '..', 'icon-dark.png')
+ipcMain.handle('dark-mode:toggle', () => {
+  if (nativeTheme.shouldUseDarkColors) {
+    iconToUse = path.join(__dirname, '..', 'icon-dark.png')
+  } else {
+    iconToUse = path.join(__dirname, '..', 'icon.png')
+  }
+});
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
