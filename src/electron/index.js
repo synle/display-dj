@@ -50,16 +50,16 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
 
   const method = (options.method || 'get').toLowerCase();
 
-  const sessionId = options?.headers['api-call-session-id'] || 'display-dj-default-session';
+  const sessionId = options.headers['api-call-session-id'] || 'display-dj-default-session';
 
-  let body: any = {};
+  let body = {};
   try {
     body = JSON.parse(options.body);
   } catch (err) {}
 
   console.log('>> Request', method, url, sessionId, body);
-  let matchedUrlObject: any;
-  const matchCurrentUrlAgainst = (matchAgainstUrl: string) => {
+  let matchedUrlObject;
+  const matchCurrentUrlAgainst = (matchAgainstUrl) => {
     try {
       return matchPath(matchAgainstUrl, url);
     } catch (err) {
@@ -68,8 +68,8 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
   };
 
   try {
-    let returnedResponseHeaders: any = []; // array of [key, value]
-    const sendResponse = (responseData: any = '', status = 200) => {
+    let returnedResponseHeaders = []; // array of [key, value]
+    const sendResponse = (responseData = '', status = 200) => {
       let ok = true;
       if (status >= 300 || status < 200) {
         ok = false;
@@ -85,17 +85,17 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
 
     // polyfill for the express server interface
     const res = {
-      status: (code: number) => {
+      status: (code) => {
         return {
-          send: (msg: any) => {
+          send: (msg) => {
             sendResponse(msg, code);
           },
-          json: (returnedData: any) => {
+          json: (returnedData) => {
             sendResponse(returnedData, code);
           },
         };
       },
-      header: (key: string, value: string) => {
+      header: (key, value) => {
         returnedResponseHeaders.push([key, value]);
       },
     };
@@ -107,7 +107,7 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
       const matchedUrlObject = matchCurrentUrlAgainst(targetUrl);
       if (targetMethod === method && matchedUrlObject) {
         const apiCache = {
-          get(key: string) {
+          get(key) {
             try {
               //@ts-ignore
               return _apiCache[sessionId][key];
@@ -115,7 +115,7 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
               return undefined;
             }
           },
-          set(key: string, value: any) {
+          set(key, value) {
             try {
               //@ts-ignore
               _apiCache[sessionId] = _apiCache[sessionId] || {};
@@ -130,7 +130,7 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
         };
 
         const req = {
-          params: matchedUrlObject?.params,
+          params: matchedUrlObject.params,
           body: body,
           headers: {
             ['api-call-session-id']: sessionId,
