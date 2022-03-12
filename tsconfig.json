@@ -4,6 +4,8 @@
     "noImplicitAny": true,
     "outDir": "dist",
     "baseUrl": ".",
+    "moduleResolution": "node",
+    "allowJs": true,
     "paths": {
       "*": ["node_modules/*"]
     }

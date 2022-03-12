@@ -1,6 +1,9 @@
 //@ts-nocheck
 const ddcci = require('@hensm/ddcci');
+import StorageUtils from './StorageUtils';
 import { Monitor, MonitorUpdateInput } from '../index.d';
+
+const MONITOR_CONFIG_FILE_DIR = 'monitor-configs';
 
 const DisplayUtils = {
   getMonitors: async () => {
@@ -8,18 +11,25 @@ const DisplayUtils = {
 
     const monitorIds = ddcci.getMonitorList();
 
+    const monitorsFromStorage = StorageUtils.readJSON(MONITOR_CONFIG_FILE_DIR);
+
     for (const id of monitorIds) {
       monitors.push({
         id,
         // TODO: get the name of the monitor
-        name: id,
+        name: monitorsFromStorage[id].name || id,
         brightness: await ddcci.getBrightness(id),
       });
     }
 
+    // persist to storage
+    StorageUtils.writeJSON(MONITOR_CONFIG_FILE_DIR, monitors)
+
     return Promise.resolve(monitors);
   },
   updateMonitor: async (monitor: MonitorUpdateInput) => {
+    const monitorsFromStorage = StorageUtils.readJSON(MONITOR_CONFIG_FILE_DIR);
+
     if (!monitor.id) {
       throw `id is required.`;
     }
