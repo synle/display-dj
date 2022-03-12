@@ -10,28 +10,60 @@ h6{
   margin: 0;
 }
 
+body{
+  font-size: 12px;
+  font-family: Arial;
+  margin: 1rem 1rem;
+}
+
 *{
   box-sizing: border-box;
 }
 
-input{
-  padding:  0.5rem;
-  width:  100%;
-}
+
 
 input[type=range] {
   width: calc(100% - 10px)
 }
 
-.frow{
+.field{
+  display: flex;
+  flex-direction: row;
+  align-items: center;
 
+  &__label{
+    margin-bottom: 0.5rem;
+    font-weight: bold;
+    display: block;
+    width: 80px;
+    flex-shrink: 0;
+    text-align: right;
+    margin-right: 0.5rem;
+  }
+
+  &__value{
+    margin-bottom: 0.5rem;
+    display: block;
+    flex-grow: 1;
+  }
+
+  &__value-toggle{
+    cursor: pointer;
+    color: blue;
+  }
+
+  input, &__value-readonly{
+    padding:  0.25rem 0.5rem;
+    width:  100%;
+    height: 30px;
+  }
+
+
+  &__value-readonly{
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+  }
 }
 
-.flabel{
-  margin-bottom: 1rem;
-  font-weight: bold;
-}
 
-.fvalue{
-  margin-bottom: 1rem;
-}

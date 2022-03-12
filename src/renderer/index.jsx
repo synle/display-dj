@@ -28,8 +28,8 @@ const queryClient = new QueryClient()
 function Home(props) {
   return <>
   <QueryClientProvider client={queryClient}>
-    <DarkModeSettingForm />
     <MonitorBrightnessSettingForm />
+    <DarkModeSettingForm />
     </QueryClientProvider>
   </>;
 };
@@ -50,31 +50,42 @@ function MonitorBrightnessSettingForm(props){
     return null;
   }
 
-  return data.map(monitor => <MonitorBrightnessSetting key={monitor.id} monitor={monitor}/> );
+  return data.map((monitor, idx) => <MonitorBrightnessSetting key={monitor.id} monitor={monitor} idx={idx + 1} /> );
 }
 
 function MonitorBrightnessSetting(props){
+  const [editName, setEditName] = useState(true);
   const {monitor } = props;
   const {mutateAsync: updateMonitor} = useUpdateMonitor();
   const queryClient = useQueryClient();
 
-  const onChange = async (key, value) => {
+  const onChange = (key, value) => {
     monitor[key] = value;
-    await updateMonitor(monitor);
+    updateMonitor(monitor);
+  }
+
+  const onNameBlur = () => {
+    monitor.name = monitor.name.trim();
+
+    if(!monitor.name){
+      monitor.name = `Monitor #${props.idx}`
+    }
+
+    setEditName(false);
+    updateMonitor(monitor);
   }
 
   return <div>
-    <div className='frow'>
-      <div className='flabel'>ID:</div>
-      <div className='fvalue'>{monitor.id}</div>
+    <div className='field'>
+      <label className='field__label'>Name:</label>
+      {
+        editName ? <input className='field__value' value={monitor.name} placeholder='name' autoFocus={true} onInput={(e) => onChange('name', e.target.value)} onBlur={onNameBlur} />
+        :<div className='field__value field__value-readonly field__value-toggle' onClick={() => setEditName(true)}>{monitor.name}</div>
+      }
     </div>
-    <div className='frow'>
-      <div className='flabel'>Name:</div>
-      <input className='fvalue' value={monitor.name} placeholder='name' onInput={(e) => onChange('name', e.target.value)} />
-    </div>
-    <div className='frow'>
-      <div className='flabel'>Brightness:</div>
-      <input className='fvalue' type='range' min='0' max='100' step='5' value={monitor.brightness} placeholder='brightness' onInput={(e) => onChange('brightness', parseInt(e.target.value) || 0)} />
+    <div className='field'>
+      <label className='field__label'>Brightness:</label>
+      <input className='field__value' type='range' min='0' max='100' step='5' value={monitor.brightness} placeholder='brightness' onInput={(e) => onChange('brightness', parseInt(e.target.value) || 0)} />
     </div>
   </div>
 }

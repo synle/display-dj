@@ -6,6 +6,7 @@
     "build-electron": "webpack --config webpack-electron.js",
     "build-ui": "webpack --config webpack-ui.js",
     "build": "npm run build-ui && npm run build-electron",
+    "watch-ui": "webpack --watch --config webpack-ui.js",
     "lint": "eslint -c .eslintrc --ext .ts ./src",
     "fix-import": "npx import-fixer --groupImport --aggressive",
     "preformat": "npm run fix-import",
