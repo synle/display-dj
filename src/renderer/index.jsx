@@ -26,7 +26,6 @@ const queryClient = new QueryClient()
 function Home(props) {
   return <>
   <QueryClientProvider client={queryClient}>
-    <header><h1>Display DJ</h1></header>
     <DarkModeSettingForm />
     <MonitorBrightnessSettingForm />
     </QueryClientProvider>

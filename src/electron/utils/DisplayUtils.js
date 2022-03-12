@@ -1,4 +1,4 @@
-const ddcci = require('@hensm/ddcci');
+import * as ddcci from '@hensm/ddcci';
 import StorageUtils from './StorageUtils';
 
 const MONITOR_CONFIG_FILE_DIR = 'monitor-configs.json';
