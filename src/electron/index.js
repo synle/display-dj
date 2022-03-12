@@ -6,12 +6,12 @@ import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
 function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    height: 600,
+    height: 900,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
     },
-    width: 800,
+    width: 1600,
   });
 
   // and load the index.html of the app.

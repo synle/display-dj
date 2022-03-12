@@ -1,5 +1,6 @@
 import ReactDOM from 'react-dom';
 import React, {useState, useEffect} from 'react';
+import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from 'react-query';
 import ApiUtils from './utils/ApiUtils';
 
 // // TODO
@@ -16,27 +17,76 @@ import ApiUtils from './utils/ApiUtils';
 //   name: 'monitor #2222',
 // });
 
-// react
+
+
+// TODO: extract these things
+const queryClient = new QueryClient()
+
+// react components
 function Home(props) {
   return <>
+  <QueryClientProvider client={queryClient}>
     <header><h1>Display DJ</h1></header>
     <DarkModeSettingForm />
     <MonitorBrightnessSettingForm />
+    </QueryClientProvider>
   </>;
 };
 
 function DarkModeSettingForm(props){
-  return <>DarkModeSettingForm</>
+  return <div>DarkModeSettingForm</div>
 }
 
 function MonitorBrightnessSettingForm(props){
+  const {isLoading, data} = useMonitors();
 
+  if(isLoading){
+    return <>Loading...</>
+  }
 
-  return <>MonitorBrightnessSettingForm</>
+  if(!data || data.length === 0){
+    // TODO: add message for no data state
+    return null;
+  }
+
+  return data.map(monitor => <MonitorBrightnessSetting key={monitor.id} monitor={monitor}/> );
 }
 
 function MonitorBrightnessSetting(props){
-  return <>MonitorBrightnessSetting</>
+  const {monitor } = props;
+  const {mutateAsync: updateMonitor} = useUpdateMonitor();
+  const queryClient = useQueryClient();
+
+  const onChange = async (key, value) => {
+    monitor[key] = value;
+    await updateMonitor(monitor);
+  }
+
+  return <div>
+    <div className='frow'>
+      <div className='flabel'>ID:</div>
+      <div className='fvalue'>{monitor.id}</div>
+    </div>
+    <div className='frow'>
+      <div className='flabel'>Name:</div>
+      <input className='fvalue' value={monitor.name} placeholder='name' onInput={(e) => onChange('name', e.target.value)} />
+    </div>
+    <div className='frow'>
+      <div className='flabel'>Brightness:</div>
+      <input className='fvalue' type='range' min='0' max='100' step='5' value={monitor.brightness} placeholder='brightness' onInput={(e) => onChange('brightness', parseInt(e.target.value) || 0)} />
+    </div>
+  </div>
+}
+
+
+// react query store
+const QUERY_KEY_MONITORS = 'monitors';
+function useMonitors(){
+  return useQuery(QUERY_KEY_MONITORS, ApiUtils.getMonitors);
+}
+
+function useUpdateMonitor(){
+  return useMutation(ApiUtils.updateMonitor);
 }
 
 

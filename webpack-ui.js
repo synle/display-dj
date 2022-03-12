@@ -2,6 +2,7 @@ const path = require('path');
 
 module.exports = {
   entry: ["regenerator-runtime/runtime.js", './src/renderer/index.jsx'],
+  devtool: 'source-map',
   output: {
     filename: 'renderer.js',
     path: path.resolve(__dirname, 'dist'),
