@@ -1,5 +1,4 @@
 import { ipcRenderer } from 'electron';
-import ApiUtils from './utils/ApiUtils';
 
 const origFetch = window.fetch;
 window.fetch = (url, options) => {

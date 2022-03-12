@@ -33,16 +33,13 @@ export function setUpDataEndpoints() {
         id: req.body.id,
         name: (req.body.name || '').trim(),
         brightness: parseInt(req.body.brightness),
-      }
+      };
 
-      if(isNaN(monitor.brightness)){
+      if (isNaN(monitor.brightness)) {
         delete monitor.brightness;
       }
 
-
-      res.status(200).json(
-        await DisplayUtils.updateMonitor(monitor),
-      );
+      res.status(200).json(await DisplayUtils.updateMonitor(monitor));
     } catch (err) {
       res.status(500).json({ error: `Failed to save monitor`, stack: err.stack });
     }

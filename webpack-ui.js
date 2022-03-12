@@ -1,7 +1,7 @@
 const path = require('path');
 
 module.exports = {
-  entry: './src/renderer/index.js',
+  entry: ["regenerator-runtime/runtime.js", './src/renderer/index.jsx'],
   output: {
     filename: 'renderer.js',
     path: path.resolve(__dirname, 'dist'),
@@ -11,5 +11,20 @@ module.exports = {
     fs: 'commonjs fs',
     path: 'commonjs path',
     electron: 'commonjs electron',
+    react: 'commonjs react',
+    'react-dom': 'commonjs react-dom',
+  },
+  module: {
+    rules: [
+      {
+        test: /\.(js|jsx)$/,
+        exclude: /node_modules/,
+        use: ['babel-loader'],
+      },
+    ],
+  },
+  resolve: {
+    extensions: ['*', '.js', '.jsx'],
   },
 };
+

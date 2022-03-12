@@ -3,14 +3,14 @@ import StorageUtils from './StorageUtils';
 
 const MONITOR_CONFIG_FILE_DIR = 'monitor-configs.json';
 
-function _getMonitorConfigs(){
+function _getMonitorConfigs() {
   return StorageUtils.readJSON(MONITOR_CONFIG_FILE_DIR);
 }
 
-function _setMonitorConfigs(monitors){
+function _setMonitorConfigs(monitors) {
   // wrap it inside key => monitor
   const res = {};
-  for(const monitor of monitors){
+  for (const monitor of monitors) {
     res[monitor.id] = monitor;
   }
   StorageUtils.writeJSON(MONITOR_CONFIG_FILE_DIR, res);
@@ -30,9 +30,9 @@ const DisplayUtils = {
     for (const id of monitorIds) {
       let name = `Monitor #${++monitorCount}`;
 
-      try{
-        name = monitorsFromStorage[id].name
-      } catch(err){}
+      try {
+        name = monitorsFromStorage[id].name;
+      } catch (err) {}
 
       monitors.push({
         id,
@@ -53,21 +53,20 @@ const DisplayUtils = {
       throw `id is required.`;
     }
 
-    if(!monitorsFromStorage[monitor.id]){
+    if (!monitorsFromStorage[monitor.id]) {
       throw `id not found.`;
     }
 
     monitor = {
       ...monitorsFromStorage[monitor.id],
-      ...monitor
-    }
+      ...monitor,
+    };
 
-    monitorsFromStorage[monitor.id] = monitor
+    monitorsFromStorage[monitor.id] = monitor;
 
     await ddcci.setBrightness(monitor.id, monitor.brightness);
 
-
-    console.log('>>> save this', monitorsFromStorage[monitor.id])
+    console.log('>>> save this', monitorsFromStorage[monitor.id]);
 
     // persist to storage
     _setMonitorConfigs(Object.values(monitorsFromStorage));
