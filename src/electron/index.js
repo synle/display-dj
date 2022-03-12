@@ -16,6 +16,7 @@ function createWindow() {
     width: 400,
     show: false,
     autoHideMenuBar: true,
+    icon: path.join(__dirname, '..', 'icon.ico')
   });
 
   mainWindow.on('minimize',function(event){
@@ -31,7 +32,7 @@ function createWindow() {
   });
 
   // and load the index.html of the app.
-  mainWindow.loadFile(path.join(__dirname, '../index.html'));
+  mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
 
   // Open the DevTools.
   // mainWindow.webContents.openDevTools({ mode: 'detach' });
