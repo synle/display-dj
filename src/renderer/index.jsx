@@ -2,6 +2,8 @@ import ReactDOM from 'react-dom';
 import React, {useState, useEffect} from 'react';
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from 'react-query';
 import ApiUtils from './utils/ApiUtils';
+import "./index.scss";
+
 
 // // TODO
 // ApiUtils.getMonitors().then(console.log);
