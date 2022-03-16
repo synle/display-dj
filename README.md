@@ -1,6 +1,16 @@
-# display-dj
+# [display-dj](https://synle.github.io/display-dj/)
 
 A windows application that allows quick toggle of dark mode and manages display brightness of individual display quickly
+
+## Problems
+
+Back in the old days, it requires physical controls to change the brightness of external monitors. It is very time consuming and quirky to get it just right.
+
+As of right now, there is standard called DDC/CI that can be used to update information related to brightness, etc...
+
+## Solutions
+
+This application is at the moment for windows only and can be used to adjust external monitors brightness individually or all at once using software instead of you tinkering around with physical controls on your external monitors.
 
 ## Screenshots
 
