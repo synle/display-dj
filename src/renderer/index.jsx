@@ -6,7 +6,7 @@ import {
   useQuery,
   useQueryClient,
 } from 'react-query';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import ApiUtils from './utils/ApiUtils';
 import './index.scss';
 // // TODO

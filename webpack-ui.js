@@ -20,7 +20,19 @@ module.exports = {
       {
         test: /\.(js|jsx)$/,
         exclude: /node_modules/,
-        use: ['babel-loader'],
+        use: {
+          loader: 'babel-loader',
+          options: {
+            plugins: [
+              [
+                '@babel/plugin-transform-react-jsx',
+                {
+                  runtime: 'automatic',
+                },
+              ],
+            ],
+          },
+        },
       },
       {
         test: /\.s[ac]ss$/i,
