@@ -21,7 +21,16 @@ export function getEndpointHandlers() {
 }
 
 export function setUpDataEndpoints() {
-  // query endpoints
+  addDataEndpoint('get', '/api/configs', async (req, res) => {
+    try {
+      res.status(200).json({
+        darkMode: (await DisplayUtils.getDarkMode()) === true,
+      });
+    } catch (err) {
+      res.status(500).json({ error: `Failed to get configs`, stack: err.stack });
+    }
+  });
+
   addDataEndpoint('get', '/api/monitors', async (req, res) => {
     const monitors = await DisplayUtils.getMonitors();
     res.status(200).json(monitors);

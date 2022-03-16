@@ -38,6 +38,7 @@ const ApiUtils = {
       method: 'put',
       body: JSON.stringify(monitor),
     }),
+  getConfigs: () => _fetch(`/api/configs`),
   toggleDarkMode: (darkMode) =>
     _fetch(`/api/darkMode`, {
       method: 'put',

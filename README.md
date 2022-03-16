@@ -12,6 +12,10 @@ As of right now, there is standard called DDC/CI that can be used to update info
 
 This application is at the moment for windows only and can be used to adjust external monitors brightness individually or all at once using software instead of you tinkering around with physical controls on your external monitors.
 
+## Supported Platforms
+
+- Windows 11
+
 ## Screenshots
 
 ![image](https://user-images.githubusercontent.com/3792401/158028380-e2347d2e-129a-456e-a49c-fe1350ab4fca.png)

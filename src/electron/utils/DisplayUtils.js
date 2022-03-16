@@ -20,6 +20,23 @@ function _setMonitorConfigs(monitors) {
   StorageUtils.writeJSON(MONITOR_CONFIG_FILE_DIR, res);
 }
 
+function _executePowershell(shellToRun) {
+  const spawn = require('child_process').spawn;
+  const child = spawn('powershell.exe', ['-Command', shellToRun]);
+
+  return new Promise((resolve) => {
+    // TODO: add a handler for error case
+    let data;
+    child.stdout.on('data', function (msg) {
+      data = msg.toString();
+    });
+
+    child.stdout.on('end', function () {
+      resolve(data);
+    });
+  });
+}
+
 const DisplayUtils = {
   getMonitors: async () => {
     const monitors = [];
@@ -107,18 +124,48 @@ const DisplayUtils = {
 
     return newBrightness;
   },
-  toggleDarkMode: async (isDarkModeOn) => {
+  getDarkMode: async () => {
     let shellToRun =
-      `Set-ItemProperty -Path HKCU:/SOFTWARE/Microsoft/Windows/CurrentVersion/Themes/Personalize -Name AppsUseLightTheme -Value `.replace(
+      `Get-ItemProperty -Path HKCU:/SOFTWARE/Microsoft/Windows/CurrentVersion/Themes/Personalize -Name AppsUseLightTheme`.replace(
         /\//g,
         '\\',
       );
-    shellToRun += isDarkModeOn ? '1' : '0';
     shellToRun = `powershell.exe -Command "${shellToRun}"`;
 
-    var spawn = require('child_process').spawn;
-    var child = spawn('powershell.exe', ['-Command', shellToRun]);
-    return shellToRun;
+    return new Promise(async (resolve) => {
+      const msg = await _executePowershell(shellToRun);
+      const lines = msg
+        .toString()
+        .split('\n')
+        .map((s) => s.trim());
+
+      for (const line of lines) {
+        if (line.includes('AppsUseLightTheme')) {
+          return resolve(line.includes('0'));
+        }
+      }
+
+      resolve(false);
+    });
+  },
+  toggleDarkMode: async (isDarkModeOn) => {
+    const baseShellToRun = `Set-ItemProperty -Path HKCU:/SOFTWARE/Microsoft/Windows/CurrentVersion/Themes/Personalize -Name `;
+
+    let shellToRun;
+
+    // change the app theme
+    shellToRun = `${baseShellToRun} AppsUseLightTheme -Value ${isDarkModeOn ? '1' : '0'}`.replace(
+      /\//g,
+      '\\',
+    );
+    shellToRun = `powershell.exe -Command "${shellToRun}"`;
+    await _executePowershell(shellToRun);
+    // change the system theme
+    shellToRun = `${baseShellToRun} SystemUsesLightTheme -Value ${
+      isDarkModeOn ? '1' : '0'
+    }`.replace(/\//g, '\\');
+    shellToRun = `powershell.exe -Command "${shellToRun}"`;
+    await _executePowershell(shellToRun);
   },
 };
 

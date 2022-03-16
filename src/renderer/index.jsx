@@ -6,28 +6,19 @@ import {
   useQuery,
   useQueryClient,
 } from 'react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import ApiUtils from './utils/ApiUtils';
 import './index.scss';
-// // TODO
-// ApiUtils.getMonitors().then(console.log);
-// ApiUtils.toggleDarkMode().then(console.log);
-// ApiUtils.toggleDarkMode(true).then(console.log);
-// ApiUtils.updateMonitor({
-//   id: '\\\\?\\DISPLAY#VSCB73A#5&21f33940&0&UID4352#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}',
-//   brightness: 100,
-// });
 
-// ApiUtils.updateMonitor({
-//   id: '\\\\?\\DISPLAY#VSCB73A#5&23c70c64&0&UID257#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}',
-//   name: 'monitor #2222',
-// });
 // TODO: extract these things
 const queryClient = new QueryClient();
 
 // react components
 function Home(props) {
-  const { isLoading, data: monitors } = useMonitors();
+  const { isLoading: loadingMonitors, data: monitors } = useMonitors();
+  const { isLoading: loadingConfigs, data: configs } = useConfigs();
+
+  const isLoading = loadingMonitors || loadingConfigs;
 
   if (isLoading) {
     return <>Loading...</>;
@@ -45,26 +36,30 @@ function Home(props) {
       </header>
       <MonitorBrightnessSettingForm monitors={monitors} />
       <AllMonitorBrightnessSettings monitors={monitors} />
-      <DarkModeSettingForm />
+      <DarkModeSettingForm configs={configs} />
     </>
   );
 }
 
 function DarkModeSettingForm(props) {
-  const [darkMode, setDarkMode] = useState(false);
+  const darkModeFromProps = props.configs.darkMode === true;
+  const [darkMode, setDarkMode] = useState(darkModeFromProps);
   const { mutateAsync: toggleDarkMode } = useToggleDarkMode();
 
-  const onToggleDarkMode = () => {
+  const onToggleDarkMode = async () => {
     const newDarkMode = !darkMode;
     setDarkMode(newDarkMode);
-    toggleDarkMode(newDarkMode);
+    await toggleDarkMode(newDarkMode);
+    queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
   };
 
+  useEffect(() => {
+    setDarkMode(darkModeFromProps);
+  }, [darkModeFromProps]);
+
   return (
-    <div className='field field__darkmode' title='Dark Mode'>
-      <button onClick={onToggleDarkMode}>
-        {darkMode ? 'Turn Dark Mode Off' : 'Turn Dark Mode On'}
-      </button>
+    <div className='field field__darkmode'>
+      <button onClick={onToggleDarkMode} title='Toggle Dark Mode'>{darkMode ? 'Mode: Light' : 'Mode: Dark'}</button>
     </div>
   );
 }
@@ -175,12 +170,19 @@ function AllMonitorBrightnessSettings(props) {
 }
 // react query store
 const QUERY_KEY_MONITORS = 'monitors';
+
+const QUERY_KEY_CONFIGS = 'configs';
+
 function useMonitors() {
   return useQuery(QUERY_KEY_MONITORS, ApiUtils.getMonitors);
 }
 
 function useUpdateMonitor() {
   return useMutation(ApiUtils.updateMonitor);
+}
+
+function useConfigs() {
+  return useQuery(QUERY_KEY_CONFIGS, ApiUtils.getConfigs);
 }
 
 function useToggleDarkMode() {
