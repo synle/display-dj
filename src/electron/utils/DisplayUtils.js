@@ -1,6 +1,6 @@
 import * as ddcci from '@hensm/ddcci';
 import StorageUtils from './StorageUtils';
-const spawn = require('child_process').spawn;
+import { spawn } from 'child_process';
 
 const MONITOR_CONFIG_FILE_DIR = 'monitor-configs.json';
 
@@ -26,9 +26,9 @@ function _executePowershell(shellToRun) {
 
   return new Promise((resolve, reject) => {
     // TODO: add a handler for error case
-    let data;
+    let data = '';
     child.stdout.on('data', function (msg) {
-      data = msg.toString();
+      data += msg.toString();
     });
 
     child.on('exit', function (exitCode) {

@@ -28,6 +28,7 @@ This application is at the moment for windows only and can be used to adjust ext
 
 - [x] Basic MVP
 - [x] Create a basic build pipeline
+- [ ] Support laptop brightness (needs to add wmi-bridge c binding code)
 - [ ] Support for windows 10
 - [ ] Support for vertical task bar or top placement taskbar
 - [ ] Properly run the app on startup
