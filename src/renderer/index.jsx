@@ -29,7 +29,7 @@ function Home(props) {
   return (
     <>
       <header>
-        <h1>Display-DJ</h1>
+        <h1><b>Display-DJ 1.0.0</a></h1>
       </header>
       <MonitorBrightnessSettingForm monitors={configs.monitors} />
       <AllMonitorBrightnessSettings monitors={configs.monitors} />
