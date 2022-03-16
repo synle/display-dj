@@ -24,15 +24,20 @@ function _executePowershell(shellToRun) {
   const spawn = require('child_process').spawn;
   const child = spawn('powershell.exe', ['-Command', shellToRun]);
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     // TODO: add a handler for error case
     let data;
     child.stdout.on('data', function (msg) {
       data = msg.toString();
     });
 
-    child.stdout.on('end', function () {
-      resolve(data);
+    child.on('exit', function (exitCode) {
+      if (parseInt(exitCode) !== 0) {
+          //Handle non-zero exit
+          reject(exitCode)
+      } else {
+        resolve(data);
+      }
     });
   });
 }
@@ -150,7 +155,6 @@ const DisplayUtils = {
   },
   toggleDarkMode: async (isDarkModeOn) => {
     const baseShellToRun = `Set-ItemProperty -Path HKCU:/SOFTWARE/Microsoft/Windows/CurrentVersion/Themes/Personalize -Name `;
-    const promisesExec = [];
 
     let shellToRun;
 
@@ -160,14 +164,24 @@ const DisplayUtils = {
       '\\',
     );
     shellToRun = `powershell.exe -Command "${shellToRun}"`;
-    promisesExec.push(_executePowershell(shellToRun));
+    while(true){
+      try{
+        await _executePowershell(shellToRun)
+        break;
+      } catch(err){}
+    }
 
     // change the system theme
     shellToRun = `${baseShellToRun} SystemUsesLightTheme -Value ${
       isDarkModeOn ? '1' : '0'
     }`.replace(/\//g, '\\');
     shellToRun = `powershell.exe -Command "${shellToRun}"`;
-    promisesExec.push(_executePowershell(shellToRun));
+    while(true){
+      try{
+        await _executePowershell(shellToRun)
+        break;
+      } catch(err){}
+    }
     await Promise.all(promisesExec);
   },
 };
