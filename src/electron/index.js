@@ -39,12 +39,12 @@ function createWindow() {
     mainWindow.hide();
   });
 
-  mainWindow.on('close', function (event) {
-    event.preventDefault();
-    mainWindow.hide();
+  // mainWindow.on('close', function (event) {
+  //   event.preventDefault();
+  //   mainWindow.hide();
 
-    return false;
-  });
+  //   return false;
+  // });
 
   mainWindow.on('blur', function (event) {
     event.preventDefault();
@@ -98,7 +98,7 @@ function createTray() {
       type: 'separator',
     },
     {
-      label: 'Quit',
+      label: 'Exit',
       click: () => app.quit(),
     },
   ]);
