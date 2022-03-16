@@ -5,6 +5,8 @@ import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
 import DisplayUtils from './utils/DisplayUtils';
 let mainWindow;
 
+const appBaseDir = __dirname;
+
 function createWindow() {
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -15,7 +17,7 @@ function createWindow() {
     frame: false,
     show: false,
     autoHideMenuBar: true,
-    icon: path.join(__dirname, '..', 'icon.ico'),
+    icon: path.join(appBaseDir, 'icon.ico'),
   });
 
   mainWindow.on('minimize', function (event) {
@@ -36,7 +38,7 @@ function createWindow() {
   });
 
   // and load the index.html of the app.
-  mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
+  mainWindow.loadFile(path.join(appBaseDir, 'index.html'));
 
   // Open the DevTools.
   // mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -119,12 +121,12 @@ async function setUpShortcuts() {
   }
 }
 
-let iconToUse = path.join(__dirname, '..', 'icon-dark.png');
+let iconToUse = path.join(appBaseDir, 'icon-dark.png');
 ipcMain.handle('dark-mode:toggle', () => {
   if (nativeTheme.shouldUseDarkColors) {
-    iconToUse = path.join(__dirname, '..', 'icon-dark.png');
+    iconToUse = path.join(appBaseDir, 'icon-dark.png');
   } else {
-    iconToUse = path.join(__dirname, '..', 'icon.png');
+    iconToUse = path.join(appBaseDir, 'icon.png');
   }
 });
 
