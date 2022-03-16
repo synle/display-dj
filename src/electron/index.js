@@ -78,7 +78,7 @@ async function setUpShortcuts() {
   // TODO: move this into a config
   const keyBrightnessDown = `Shift+F1`;
   const keyBrightnessUp = `Shift+F2`;
-  const delta = 25;
+  const delta = 50;
   let isChangingAllMonitorBrightness = false;
   let allMonitorBrightness = await DisplayUtils.getAllMonitorsBrightness();
   const keybindingSuccess = [];
