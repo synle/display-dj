@@ -1,4 +1,4 @@
-import { BrowserWindow, Tray, app, globalShortcut, ipcMain } from 'electron';
+import { BrowserWindow, Tray, app, globalShortcut, ipcMain, nativeTheme } from 'electron';
 import { matchPath } from 'react-router-dom';
 import * as path from 'path';
 import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
@@ -6,6 +6,9 @@ import DisplayUtils from './utils/DisplayUtils';
 let mainWindow;
 
 const appBaseDir = __dirname;
+
+const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
+const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
 
 function createWindow() {
   // Create the browser window.
@@ -45,7 +48,15 @@ function createWindow() {
 }
 
 function createTray() {
-  const tray = new Tray(iconToUse);
+  let tray = new Tray(DARK_ICON);
+
+  let iconToUse = _getTrayIcon();
+  nativeTheme.on("updated", () => {
+
+    console.log('>> color change',nativeTheme.shouldUseDarkColors, _getTrayIcon())
+    tray.setImage(_getTrayIcon())
+  });
+
 
   tray.on('click', async (event, iconPos, mousePos) => {
     if (mainWindow.isVisible()) {
@@ -109,14 +120,9 @@ async function setUpShortcuts() {
   }
 }
 
-let iconToUse = path.join(appBaseDir, 'icon-dark.png');
-ipcMain.handle('dark-mode:toggle', () => {
-  if (nativeTheme.shouldUseDarkColors) {
-    iconToUse = path.join(appBaseDir, 'icon-dark.png');
-  } else {
-    iconToUse = path.join(appBaseDir, 'icon.png');
-  }
-});
+function _getTrayIcon(){
+  return nativeTheme.shouldUseDarkColors ? DARK_ICON : LIGHT_ICON;
+}
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
