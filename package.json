@@ -14,9 +14,10 @@
     "preformat": "npm run fix-import",
     "format": "npx prettier --config ./.prettierrc --write **/*.{ts,tsx,js,jsx,scss,yml,html,json,md}",
     "test-ci": "",
-    "dist": "npx electron-packager \"./\" --platform=win32 --out=\"dist\" --overwrite",
     "start": "npm run build",
-    "poststart": "electron ./build/main.js"
+    "poststart": "electron ./build/main.js",
+    "dist": "npx electron-packager \"./\" --platform=win32 --out=\"dist\" --override",
+    "postdist": "node dist.js"
   },
   "repository": "https://github.com/synle/display-dj",
   "keywords": [
@@ -33,12 +34,6 @@
   },
   "license": "MIT",
   "main": "build/main.js",
-  "build": {
-    "appId": "io.synle.github.display-dj",
-    "win": {
-      "icon": "build/logo512.png"
-    }
-  },
   "dependencies": {
     "@hensm/ddcci": "^0.1.0",
     "react": "^17.0.2",
@@ -51,6 +46,7 @@
     "@babel/plugin-transform-react-jsx": "^7.17.3",
     "@babel/preset-env": "^7.16.11",
     "@babel/preset-react": "^7.16.7",
+    "archiver": "^5.3.0",
     "babel-loader": "^8.2.3",
     "concurrently": "^7.0.0",
     "cpx": "^1.5.0",

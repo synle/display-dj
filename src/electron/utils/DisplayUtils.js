@@ -4,9 +4,9 @@ import StorageUtils from './StorageUtils';
 const MONITOR_CONFIG_FILE_DIR = 'monitor-configs.json';
 
 function _getMonitorConfigs() {
-  try{
+  try {
     return StorageUtils.readJSON(MONITOR_CONFIG_FILE_DIR);
-  } catch(err){
+  } catch (err) {
     return {};
   }
 }

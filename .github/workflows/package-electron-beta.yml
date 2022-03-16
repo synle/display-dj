@@ -46,15 +46,14 @@ jobs:
       - run: npm run test-ci
       - run: npm run build
       - run: npm run dist
-      - run: mv ./dist/display-dj*.exe ./dist/display-dj.exe
 
       - uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.release_upload_url }}
-          asset_path: ./dist/display-dj.exe
-          asset_name: display-dj-beta.exe
+          asset_path: ./dist/display-dj.zip
+          asset_name: display-dj.zip
           asset_content_type: application/octet-stream
 
   roll_back:

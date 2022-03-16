@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, Tray, app, globalShortcut, ipcMain } from 'electron';
+import { BrowserWindow, Tray, app, globalShortcut, ipcMain } from 'electron';
 import { matchPath } from 'react-router-dom';
 import * as path from 'path';
 import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
