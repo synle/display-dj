@@ -33,8 +33,8 @@ function _executePowershell(shellToRun) {
 
     child.on('exit', function (exitCode) {
       if (parseInt(exitCode) !== 0) {
-          //Handle non-zero exit
-          reject(exitCode)
+        //Handle non-zero exit
+        reject(exitCode);
       } else {
         resolve(data);
       }
@@ -135,7 +135,6 @@ const DisplayUtils = {
         /\//g,
         '\\',
       );
-    shellToRun = `powershell.exe -Command "${shellToRun}"`;
 
     return new Promise(async (resolve) => {
       const msg = await _executePowershell(shellToRun);
@@ -158,31 +157,20 @@ const DisplayUtils = {
 
     let shellToRun;
 
-    // change the app theme
-    shellToRun = `${baseShellToRun} AppsUseLightTheme -Value ${isDarkModeOn ? '1' : '0'}`.replace(
-      /\//g,
-      '\\',
-    );
-    shellToRun = `powershell.exe -Command "${shellToRun}"`;
-    while(true){
-      try{
-        await _executePowershell(shellToRun)
-        break;
-      } catch(err){}
-    }
+    const darkModeValue = isDarkModeOn ? '1' : '0';
 
-    // change the system theme
-    shellToRun = `${baseShellToRun} SystemUsesLightTheme -Value ${
-      isDarkModeOn ? '1' : '0'
-    }`.replace(/\//g, '\\');
-    shellToRun = `powershell.exe -Command "${shellToRun}"`;
-    while(true){
-      try{
-        await _executePowershell(shellToRun)
+    // change the app theme
+    shellToRun =
+      `${baseShellToRun} AppsUseLightTheme -Value ${darkModeValue}; ${baseShellToRun} SystemUsesLightTheme -Value ${darkModeValue}`.replace(
+        /\//g,
+        '\\',
+      );
+    while (true) {
+      try {
+        await _executePowershell(shellToRun);
         break;
-      } catch(err){}
+      } catch (err) {}
     }
-    await Promise.all(promisesExec);
   },
 };
 
