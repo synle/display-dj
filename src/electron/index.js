@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, Tray, app, ipcMain, systemPreferences } from 'electron';
+import { BrowserWindow, Menu, Tray, app, ipcMain, systemPreferences, globalShortcut } from 'electron';
 import { matchPath } from 'react-router-dom';
 import * as path from 'path';
 import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
@@ -76,6 +76,46 @@ function createTray() {
   tray.setContextMenu(menu);
 }
 
+async function setUpShortcuts(){
+  // TODO: move this into a config
+  const keyBrightnessDown = `Shift+F1`;
+  const keyBrightnessUp = `Shift+F2`;
+  const delta = 20;
+
+
+  let isChangingAllMonitorBrightness = false;
+  let allMonitorBrightness = await DisplayUtils.getAllMonitorsBrightness();
+  const keybindingSuccess = []
+  keybindingSuccess.push(globalShortcut.register(keyBrightnessDown, async () => {
+    if(isChangingAllMonitorBrightness){
+      return
+    }
+     isChangingAllMonitorBrightness = true;
+     try{
+       allMonitorBrightness = await DisplayUtils.adjustAllBrightness(allMonitorBrightness, -1 * delta);
+     } catch(err){}
+      isChangingAllMonitorBrightness = false;
+  }));
+
+  keybindingSuccess.push(globalShortcut.register(keyBrightnessUp, async () => {
+    if(isChangingAllMonitorBrightness){
+      return
+    }
+
+     isChangingAllMonitorBrightness = true;
+     try{
+       allMonitorBrightness = await DisplayUtils.adjustAllBrightness(allMonitorBrightness, delta);
+     } catch(err){}
+      isChangingAllMonitorBrightness = false;
+  }));
+
+  if (!keybindingSuccess.every(success => success)) {
+    console.log('>> globalShortcut keybinding failed');
+  } else {
+    console.log('>> globalShortcut keybinding success');
+  }
+}
+
 let iconToUse =path.join(__dirname, '..', 'icon-dark.png')
 ipcMain.handle('dark-mode:toggle', () => {
   if (nativeTheme.shouldUseDarkColors) {
@@ -92,6 +132,7 @@ app.on('ready', () => {
   setUpDataEndpoints();
   createWindow();
   createTray();
+  setUpShortcuts();
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
