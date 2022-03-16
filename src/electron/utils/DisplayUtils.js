@@ -150,6 +150,7 @@ const DisplayUtils = {
   },
   toggleDarkMode: async (isDarkModeOn) => {
     const baseShellToRun = `Set-ItemProperty -Path HKCU:/SOFTWARE/Microsoft/Windows/CurrentVersion/Themes/Personalize -Name `;
+    const promisesExec = [];
 
     let shellToRun;
 
@@ -159,13 +160,17 @@ const DisplayUtils = {
       '\\',
     );
     shellToRun = `powershell.exe -Command "${shellToRun}"`;
-    await _executePowershell(shellToRun);
+    promisesExec.push(_executePowershell(shellToRun));
+
     // change the system theme
     shellToRun = `${baseShellToRun} SystemUsesLightTheme -Value ${
       isDarkModeOn ? '1' : '0'
     }`.replace(/\//g, '\\');
     shellToRun = `powershell.exe -Command "${shellToRun}"`;
-    await _executePowershell(shellToRun);
+    promisesExec.push(_executePowershell(shellToRun));
+
+
+    await Promise.all(promisesExec)
   },
 };
 

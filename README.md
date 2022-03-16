@@ -23,3 +23,12 @@ This application is at the moment for windows only and can be used to adjust ext
 ![image](https://user-images.githubusercontent.com/3792401/158028372-d3fadbf7-d6c6-421c-8598-538f0c3c9bcd.png)
 
 ![image](https://user-images.githubusercontent.com/3792401/158028393-1db3c6ef-6d09-447d-bd24-0ed3697b5c9b.png)
+
+
+## TODO
+- [X] Basic MVP
+- [X] Create a basic build pipeline
+- [ ] Properly run the app on startup
+- [ ] Change brightness based on time of day
+- [ ] Change dark mode based on time of day
+- [ ] Shortcut key for dark mode change
