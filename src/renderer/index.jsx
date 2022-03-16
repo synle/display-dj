@@ -1,10 +1,14 @@
 import ReactDOM from 'react-dom';
-import React, {useState, useEffect} from 'react';
-import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from 'react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from 'react-query';
+import React, { useState } from 'react';
 import ApiUtils from './utils/ApiUtils';
-import "./index.scss";
-
-
+import './index.scss';
 // // TODO
 // ApiUtils.getMonitors().then(console.log);
 // ApiUtils.toggleDarkMode().then(console.log);
@@ -18,129 +22,173 @@ import "./index.scss";
 //   id: '\\\\?\\DISPLAY#VSCB73A#5&23c70c64&0&UID257#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}',
 //   name: 'monitor #2222',
 // });
-
-
-
 // TODO: extract these things
-const queryClient = new QueryClient()
+const queryClient = new QueryClient();
 
 // react components
 function Home(props) {
-  const {isLoading, data: monitors} = useMonitors();
+  const { isLoading, data: monitors } = useMonitors();
 
-  if(isLoading){
-    return <>Loading...</>
+  if (isLoading) {
+    return <>Loading...</>;
   }
 
-  if(!monitors || monitors.length === 0){
+  if (!monitors || monitors.length === 0) {
     // TODO: add message for no data state
     return null;
   }
 
-  return <>
-    <header><h1>Display-DJ</h1></header>
+  return (
+    <>
+      <header>
+        <h1>Display-DJ</h1>
+      </header>
       <MonitorBrightnessSettingForm monitors={monitors} />
       <AllMonitorBrightnessSettings monitors={monitors} />
       <DarkModeSettingForm />
-  </>;
-};
+    </>
+  );
+}
 
-function DarkModeSettingForm(props){
+function DarkModeSettingForm(props) {
   const [darkMode, setDarkMode] = useState(false);
-  const {mutateAsync: toggleDarkMode} = useToggleDarkMode();
+  const { mutateAsync: toggleDarkMode } = useToggleDarkMode();
 
   const onToggleDarkMode = () => {
     const newDarkMode = !darkMode;
     setDarkMode(newDarkMode);
     toggleDarkMode(newDarkMode);
-  }
+  };
 
-  return <div className='field field__darkmode' title='Dark Mode'>
-      <button onClick={onToggleDarkMode}>{darkMode ? 'Turn Dark Mode Off': 'Turn Dark Mode On'}</button>
-  </div>
+  return (
+    <div className='field field__darkmode' title='Dark Mode'>
+      <button onClick={onToggleDarkMode}>
+        {darkMode ? 'Turn Dark Mode Off' : 'Turn Dark Mode On'}
+      </button>
+    </div>
+  );
 }
 
-function MonitorBrightnessSettingForm(props){
-  const {monitors} = props;
-  return monitors.map((monitor, idx) => <MonitorBrightnessSetting key={monitor.id} monitor={monitor} idx={idx + 1} /> );
+function MonitorBrightnessSettingForm(props) {
+  const { monitors } = props;
+  return monitors.map((monitor, idx) => (
+    <MonitorBrightnessSetting key={monitor.id} monitor={monitor} idx={idx + 1} />
+  ));
 }
 
-function MonitorBrightnessSetting(props){
+function MonitorBrightnessSetting(props) {
   const [editName, setEditName] = useState(false);
-  const {monitor } = props;
-  const {mutateAsync: updateMonitor} = useUpdateMonitor();
+  const { monitor } = props;
+  const { mutateAsync: updateMonitor } = useUpdateMonitor();
   const queryClient = useQueryClient();
 
   const onChange = (key, value) => {
     monitor[key] = value;
     updateMonitor(monitor);
-  }
+  };
 
   const onNameBlur = () => {
     monitor.name = monitor.name.trim();
 
-    if(!monitor.name){
-      monitor.name = `Monitor #${props.idx}`
+    if (!monitor.name) {
+      monitor.name = `Monitor #${props.idx}`;
     }
 
     setEditName(false);
     updateMonitor(monitor);
-  }
+  };
 
-  return <>
-    <div className='field'>
-      {
-        editName ? <input className='field__value' value={monitor.name} placeholder='name' autoFocus={true} onInput={(e) => onChange('name', e.target.value)} onBlur={onNameBlur} />
-        :<div className='field__value field__value-readonly'><a onClick={() => setEditName(true)} title='Monitor Name'>{monitor.name}</a></div>
-      }
-    </div>
-    <div className='field' title='Monitor Brightness'>
-      <input className='field__value' type='range' min='0' max='100' step='5' value={monitor.brightness} placeholder='brightness' onChange={(e) => onChange('brightness', parseInt(e.target.value) || 0)} />
-    </div>
-  </>
+  return (
+    <>
+      <div className='field'>
+        {editName ? (
+          <input
+            className='field__value'
+            value={monitor.name}
+            placeholder='name'
+            autoFocus={true}
+            onInput={(e) => onChange('name', e.target.value)}
+            onBlur={onNameBlur}
+          />
+        ) : (
+          <div className='field__value field__value-readonly'>
+            <a onClick={() => setEditName(true)} title='Monitor Name'>
+              {monitor.name}
+            </a>
+          </div>
+        )}
+      </div>
+      <div className='field' title='Monitor Brightness'>
+        <input
+          className='field__value'
+          type='range'
+          min='0'
+          max='100'
+          step='5'
+          value={monitor.brightness}
+          placeholder='brightness'
+          onChange={(e) => onChange('brightness', parseInt(e.target.value) || 0)}
+        />
+      </div>
+    </>
+  );
 }
 
-function AllMonitorBrightnessSettings(props){
+function AllMonitorBrightnessSettings(props) {
   const [allBrightness, setAllBrightness] = useState(50);
-  const {monitors } = props;
-  const {mutateAsync: updateMonitor} = useUpdateMonitor();
+  const { monitors } = props;
+  const { mutateAsync: updateMonitor } = useUpdateMonitor();
   const queryClient = useQueryClient();
 
   const onChange = async (value) => {
     setAllBrightness(value);
 
-    for(const monitor of monitors){
+    for (const monitor of monitors) {
       monitor.brightness = value;
       await updateMonitor(monitor);
     }
 
     queryClient.invalidateQueries(QUERY_KEY_MONITORS);
-  }
+  };
 
-  return <>
+  return (
+    <>
       <div className='field'>
-        <div className='field__value field__value-readonly' title='All Monitors'>All Monitors</div>
+        <div className='field__value field__value-readonly' title='All Monitors'>
+          All Monitors
+        </div>
       </div>
       <div className='field'>
-        <input className='field__value' type='range' min='0' max='100' step='5' value={allBrightness} placeholder='brightness' onChange={(e) => onChange(parseInt(e.target.value) || 0)} />
+        <input
+          className='field__value'
+          type='range'
+          min='0'
+          max='100'
+          step='5'
+          value={allBrightness}
+          placeholder='brightness'
+          onChange={(e) => onChange(parseInt(e.target.value) || 0)}
+        />
       </div>
-  </>
+    </>
+  );
 }
-
-
 // react query store
 const QUERY_KEY_MONITORS = 'monitors';
-function useMonitors(){
+function useMonitors() {
   return useQuery(QUERY_KEY_MONITORS, ApiUtils.getMonitors);
 }
 
-function useUpdateMonitor(){
+function useUpdateMonitor() {
   return useMutation(ApiUtils.updateMonitor);
 }
 
-function useToggleDarkMode(){
+function useToggleDarkMode() {
   return useMutation(ApiUtils.toggleDarkMode);
 }
-
-
-ReactDOM.render(<QueryClientProvider client={queryClient}><Home /></QueryClientProvider>, document.querySelector('#root'));
+ReactDOM.render(
+  <QueryClientProvider client={queryClient}>
+    <Home />
+  </QueryClientProvider>,
+  document.querySelector('#root'),
+);

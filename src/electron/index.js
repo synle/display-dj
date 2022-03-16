@@ -1,10 +1,8 @@
-import { BrowserWindow, Menu, Tray, app, ipcMain, systemPreferences, globalShortcut } from 'electron';
+import { BrowserWindow, Menu, Tray, app, globalShortcut, ipcMain } from 'electron';
 import { matchPath } from 'react-router-dom';
 import * as path from 'path';
 import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
 import DisplayUtils from './utils/DisplayUtils';
-
-
 let mainWindow;
 
 function createWindow() {
@@ -47,11 +45,11 @@ function createWindow() {
 function createTray() {
   const tray = new Tray(iconToUse);
 
-  tray.on('click', async (event, iconPos, mousePos)  => {
+  tray.on('click', async (event, iconPos, mousePos) => {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
     } else {
-      const monitors =await DisplayUtils.getMonitors();
+      const monitors = await DisplayUtils.getMonitors();
       let monitorCount = Math.max(monitors.length, 1) + 1;
       let width = 300;
       let height = 80 * monitorCount + 20;
@@ -59,7 +57,7 @@ function createTray() {
       let y = Math.floor(iconPos.y - height);
       mainWindow.show();
       mainWindow.setPosition(x, y);
-      mainWindow.setSize(width,height);
+      mainWindow.setSize(width, height);
     }
   });
 
@@ -76,52 +74,57 @@ function createTray() {
   tray.setContextMenu(menu);
 }
 
-async function setUpShortcuts(){
+async function setUpShortcuts() {
   // TODO: move this into a config
   const keyBrightnessDown = `Shift+F1`;
   const keyBrightnessUp = `Shift+F2`;
-  const delta = 20;
-
-
+  const delta = 25;
   let isChangingAllMonitorBrightness = false;
   let allMonitorBrightness = await DisplayUtils.getAllMonitorsBrightness();
-  const keybindingSuccess = []
-  keybindingSuccess.push(globalShortcut.register(keyBrightnessDown, async () => {
-    if(isChangingAllMonitorBrightness){
-      return
-    }
-     isChangingAllMonitorBrightness = true;
-     try{
-       allMonitorBrightness = await DisplayUtils.adjustAllBrightness(allMonitorBrightness, -1 * delta);
-     } catch(err){}
+  const keybindingSuccess = [];
+  keybindingSuccess.push(
+    globalShortcut.register(keyBrightnessDown, async () => {
+      if (isChangingAllMonitorBrightness) {
+        return;
+      }
+      isChangingAllMonitorBrightness = true;
+      try {
+        allMonitorBrightness = await DisplayUtils.adjustAllBrightness(
+          allMonitorBrightness,
+          -1 * delta,
+        );
+      } catch (err) {}
       isChangingAllMonitorBrightness = false;
-  }));
+    }),
+  );
 
-  keybindingSuccess.push(globalShortcut.register(keyBrightnessUp, async () => {
-    if(isChangingAllMonitorBrightness){
-      return
-    }
+  keybindingSuccess.push(
+    globalShortcut.register(keyBrightnessUp, async () => {
+      if (isChangingAllMonitorBrightness) {
+        return;
+      }
 
-     isChangingAllMonitorBrightness = true;
-     try{
-       allMonitorBrightness = await DisplayUtils.adjustAllBrightness(allMonitorBrightness, delta);
-     } catch(err){}
+      isChangingAllMonitorBrightness = true;
+      try {
+        allMonitorBrightness = await DisplayUtils.adjustAllBrightness(allMonitorBrightness, delta);
+      } catch (err) {}
       isChangingAllMonitorBrightness = false;
-  }));
+    }),
+  );
 
-  if (!keybindingSuccess.every(success => success)) {
+  if (!keybindingSuccess.every((success) => success)) {
     console.log('>> globalShortcut keybinding failed');
   } else {
     console.log('>> globalShortcut keybinding success');
   }
 }
 
-let iconToUse =path.join(__dirname, '..', 'icon-dark.png')
+let iconToUse = path.join(__dirname, '..', 'icon-dark.png');
 ipcMain.handle('dark-mode:toggle', () => {
   if (nativeTheme.shouldUseDarkColors) {
-    iconToUse = path.join(__dirname, '..', 'icon-dark.png')
+    iconToUse = path.join(__dirname, '..', 'icon-dark.png');
   } else {
-    iconToUse = path.join(__dirname, '..', 'icon.png')
+    iconToUse = path.join(__dirname, '..', 'icon.png');
   }
 });
 

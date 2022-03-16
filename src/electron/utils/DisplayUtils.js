@@ -68,33 +68,38 @@ const DisplayUtils = {
     _setMonitorConfigs(Object.values(monitorsFromStorage));
   },
   getAllMonitorsBrightness: async () => {
-    try{
+    try {
       const monitors = await DisplayUtils.getMonitors();
 
-    // get the min brightness of them all
-    return Math.min.apply( null, [...monitors.map(monitor => parseInt(monitor.brightness))]) || 0;
-  } catch(err){
-    return 0;
-  }
+      // get the min brightness of them all
+      return (
+        Math.min.apply(null, [...monitors.map((monitor) => parseInt(monitor.brightness))]) || 0
+      );
+    } catch (err) {
+      return 0;
+    }
   },
-  adjustAllBrightness: async(newBrightness, delta) => {
+  adjustAllBrightness: async (newBrightness, delta) => {
     newBrightness += delta;
 
     // making sure the range is 0 to 100
-    if(newBrightness < 0 || isNaN(newBrightness)){
-      newBrightness= 0;
-    } else if(newBrightness > 100){
+    if (newBrightness < 0 || isNaN(newBrightness)) {
+      newBrightness = 0;
+    } else if (newBrightness > 100) {
       newBrightness = 100;
     }
 
     const monitors = await DisplayUtils.getMonitors();
-    for(const monitor of monitors){
+    const promisesChangeBrightness = [];
+    for (const monitor of monitors) {
       monitor.brightness = newBrightness;
-      await ddcci.setBrightness(monitor.id, monitor.brightness);
+      promisesChangeBrightness.push(ddcci.setBrightness(monitor.id, monitor.brightness));
     }
 
     // persist to storage
     _setMonitorConfigs(monitors);
+
+    await Promise.all(promisesChangeBrightness);
 
     return newBrightness;
   },
@@ -105,14 +110,10 @@ const DisplayUtils = {
         '\\',
       );
     shellToRun += isDarkModeOn ? '1' : '0';
-
-
     shellToRun = `powershell.exe -Command "${shellToRun}"`;
 
-    var spawn = require("child_process").spawn;
-    var child = spawn("powershell.exe", ["-Command", shellToRun]);
-
-
+    var spawn = require('child_process').spawn;
+    var child = spawn('powershell.exe', ['-Command', shellToRun]);
     return shellToRun;
   },
 };
