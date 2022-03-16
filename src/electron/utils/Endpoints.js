@@ -25,18 +25,14 @@ export function setUpDataEndpoints() {
     try {
       res.status(200).json({
         darkMode: (await DisplayUtils.getDarkMode()) === true,
+        monitors: await DisplayUtils.getMonitors(),
       });
     } catch (err) {
       res.status(500).json({ error: `Failed to get configs`, stack: err.stack });
     }
   });
 
-  addDataEndpoint('get', '/api/monitors', async (req, res) => {
-    const monitors = await DisplayUtils.getMonitors();
-    res.status(200).json(monitors);
-  });
-
-  addDataEndpoint('put', '/api/monitors', async (req, res) => {
+  addDataEndpoint('put', '/api/configs/monitors', async (req, res) => {
     try {
       const monitor = {
         id: req.body.id,
@@ -54,7 +50,7 @@ export function setUpDataEndpoints() {
     }
   });
 
-  addDataEndpoint('put', '/api/darkMode', async (req, res) => {
+  addDataEndpoint('put', '/api/configs/darkMode', async (req, res) => {
     try {
       const isDarkModeOn = req.body.darkMode === true;
 

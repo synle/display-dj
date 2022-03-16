@@ -1,7 +1,7 @@
+import AutoLaunch from 'auto-launch';
 import { BrowserWindow, Tray, app, globalShortcut, ipcMain, nativeTheme } from 'electron';
 import { matchPath } from 'react-router-dom';
 import path from 'path';
-import AutoLaunch from 'auto-launch'
 import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
 import DisplayUtils from './utils/DisplayUtils';
 let mainWindow;
@@ -54,9 +54,9 @@ function createTray() {
 
   let iconToUse = _getTrayIcon();
   nativeTheme.on('updated', () => {
-    console.log('>> color change', nativeTheme.shouldUseDarkColors, _getTrayIcon());
     tray.setImage(_getTrayIcon());
   });
+
   tray.on('click', async (event, iconPos, mousePos) => {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
@@ -118,9 +118,7 @@ async function setUpShortcuts() {
     console.log('>> globalShortcut keybinding success');
   }
 }
-
-
-function setupAutolaunch(){
+function setupAutolaunch() {
   let autoLaunch = new AutoLaunch({
     name: 'display-dj',
     path: app.getPath('exe'),

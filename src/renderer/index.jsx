@@ -15,18 +15,15 @@ const queryClient = new QueryClient();
 
 // react components
 function Home(props) {
-  const { isLoading: loadingMonitors, data: monitors } = useMonitors();
-  const { isLoading: loadingConfigs, data: configs } = useConfigs();
-
-  const isLoading = loadingMonitors || loadingConfigs;
+  const { isLoading, data: configs } = useConfigs();
 
   if (isLoading) {
     return <>Loading...</>;
   }
 
-  if (!monitors || monitors.length === 0) {
+  if (!configs) {
     // TODO: add message for no data state
-    return null;
+    return <>Errors. Get configs failed...</>;
   }
 
   return (
@@ -34,15 +31,15 @@ function Home(props) {
       <header>
         <h1>Display-DJ</h1>
       </header>
-      <MonitorBrightnessSettingForm monitors={monitors} />
-      <AllMonitorBrightnessSettings monitors={monitors} />
-      <DarkModeSettingForm configs={configs} />
+      <MonitorBrightnessSettingForm monitors={configs.monitors} />
+      <AllMonitorBrightnessSettings monitors={configs.monitors} />
+      <DarkModeSettingForm darkmode={configs.darkmode} />
     </>
   );
 }
 
 function DarkModeSettingForm(props) {
-  const darkModeFromProps = props.configs.darkMode === true;
+  const darkModeFromProps = props.darkMode === true;
   const [darkMode, setDarkMode] = useState(darkModeFromProps);
   const { mutateAsync: toggleDarkMode } = useToggleDarkMode();
 
@@ -145,7 +142,7 @@ function AllMonitorBrightnessSettings(props) {
       await updateMonitor(monitor);
     }
 
-    queryClient.invalidateQueries(QUERY_KEY_MONITORS);
+    queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
   };
 
   return (
@@ -171,25 +168,21 @@ function AllMonitorBrightnessSettings(props) {
   );
 }
 // react query store
-const QUERY_KEY_MONITORS = 'monitors';
-
 const QUERY_KEY_CONFIGS = 'configs';
 
-function useMonitors() {
-  return useQuery(QUERY_KEY_MONITORS, ApiUtils.getMonitors);
+function useConfigs() {
+  return useQuery(QUERY_KEY_CONFIGS, ApiUtils.getConfigs);
 }
 
 function useUpdateMonitor() {
   return useMutation(ApiUtils.updateMonitor);
 }
 
-function useConfigs() {
-  return useQuery(QUERY_KEY_CONFIGS, ApiUtils.getConfigs);
-}
-
 function useToggleDarkMode() {
   return useMutation(ApiUtils.toggleDarkMode);
 }
+
+// render the main app
 ReactDOM.render(
   <QueryClientProvider client={queryClient}>
     <Home />

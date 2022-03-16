@@ -34,13 +34,13 @@ function _fetch(input, initOptions) {
 const ApiUtils = {
   getMonitors: () => _fetch(`/api/monitors`),
   updateMonitor: (monitor) =>
-    _fetch(`/api/monitors`, {
+    _fetch(`/api/configs/monitors`, {
       method: 'put',
       body: JSON.stringify(monitor),
     }),
   getConfigs: () => _fetch(`/api/configs`),
   toggleDarkMode: (darkMode) =>
-    _fetch(`/api/darkMode`, {
+    _fetch(`/api/configs/darkMode`, {
       method: 'put',
       body: JSON.stringify({
         darkMode,
