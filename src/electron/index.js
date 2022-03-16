@@ -1,6 +1,7 @@
 import { BrowserWindow, Tray, app, globalShortcut, ipcMain, nativeTheme } from 'electron';
 import { matchPath } from 'react-router-dom';
-import * as path from 'path';
+import path from 'path';
+import AutoLaunch from 'auto-launch'
 import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
 import DisplayUtils from './utils/DisplayUtils';
 let mainWindow;
@@ -118,6 +119,17 @@ async function setUpShortcuts() {
   }
 }
 
+
+function setupAutolaunch(){
+  let autoLaunch = new AutoLaunch({
+    name: 'display-dj',
+    path: app.getPath('exe'),
+  });
+  autoLaunch.isEnabled().then((isEnabled) => {
+    if (!isEnabled) autoLaunch.enable();
+  });
+}
+
 function _getTrayIcon() {
   return nativeTheme.shouldUseDarkColors ? DARK_ICON : LIGHT_ICON;
 }
@@ -130,12 +142,7 @@ app.on('ready', () => {
   createWindow();
   createTray();
   setUpShortcuts();
-
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+  setupAutolaunch();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
