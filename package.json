@@ -14,7 +14,7 @@
     "preformat": "npm run fix-import",
     "format": "npx prettier --config ./.prettierrc --write **/*.{ts,tsx,js,jsx,scss,yml,html,json,md}",
     "test-ci": "",
-    "dist": "npx electron-packager \"./\" --platform=win32 --out=\"dist\"",
+    "dist": "npx electron-packager \"./\" --platform=win32 --out=\"dist\" --overwrite",
     "start": "npm run build",
     "poststart": "electron ./build/main.js"
   },

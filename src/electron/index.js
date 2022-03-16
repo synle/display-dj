@@ -62,18 +62,6 @@ function createTray() {
       mainWindow.setSize(width, height);
     }
   });
-
-  const menu = Menu.buildFromTemplate([
-    {
-      label: 'Quit',
-      click() {
-        app.quit();
-      },
-    },
-  ]);
-
-  tray.setToolTip('Clipmaster');
-  tray.setContextMenu(menu);
 }
 
 async function setUpShortcuts() {
