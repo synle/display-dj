@@ -1,5 +1,14 @@
 import AutoLaunch from 'auto-launch';
-import { BrowserWindow, Tray, app, globalShortcut, ipcMain, nativeTheme } from 'electron';
+import {
+  BrowserWindow,
+  Menu,
+  Tray,
+  app,
+  globalShortcut,
+  ipcMain,
+  nativeTheme,
+  shell,
+} from 'electron';
 import { matchPath } from 'react-router-dom';
 import path from 'path';
 import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
@@ -72,6 +81,30 @@ function createTray() {
       mainWindow.setSize(width, height);
     }
   });
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'File a bug',
+      click: async () => {
+        await shell.openExternal('https://github.com/synle/display-dj/issues/new');
+      },
+    },
+    {
+      label: 'About display-dj',
+      click: async () => {
+        await shell.openExternal('https://github.com/synle/display-dj');
+      },
+    },
+    {
+      type: 'separator',
+    },
+    {
+      label: 'Quit',
+      click: () => app.quit(),
+    },
+  ]);
+
+  tray.setToolTip('display-dj (by Sy Le)');
+  tray.setContextMenu(menu);
 }
 
 async function setUpShortcuts() {
