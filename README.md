@@ -24,10 +24,12 @@ This application is at the moment for windows only and can be used to adjust ext
 
 ![image](https://user-images.githubusercontent.com/3792401/158028393-1db3c6ef-6d09-447d-bd24-0ed3697b5c9b.png)
 
-
 ## TODO
-- [X] Basic MVP
-- [X] Create a basic build pipeline
+
+- [x] Basic MVP
+- [x] Create a basic build pipeline
+- [ ] Support for windows 10
+- [ ] Support for vertical task bar or top placement taskbar
 - [ ] Properly run the app on startup
 - [ ] Change brightness based on time of day
 - [ ] Change dark mode based on time of day

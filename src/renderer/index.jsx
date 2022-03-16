@@ -59,7 +59,9 @@ function DarkModeSettingForm(props) {
 
   return (
     <div className='field field__darkmode'>
-      <button onClick={onToggleDarkMode} title='Toggle Dark Mode'>{darkMode ? 'Mode: Light' : 'Mode: Dark'}</button>
+      <button onClick={onToggleDarkMode} title='Toggle Dark Mode'>
+        {darkMode ? 'Mode: Light' : 'Mode: Dark'}
+      </button>
     </div>
   );
 }

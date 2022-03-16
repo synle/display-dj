@@ -8,6 +8,7 @@ let mainWindow;
 const appBaseDir = __dirname;
 
 const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
+
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
 
 function createWindow() {
@@ -51,13 +52,10 @@ function createTray() {
   let tray = new Tray(DARK_ICON);
 
   let iconToUse = _getTrayIcon();
-  nativeTheme.on("updated", () => {
-
-    console.log('>> color change',nativeTheme.shouldUseDarkColors, _getTrayIcon())
-    tray.setImage(_getTrayIcon())
+  nativeTheme.on('updated', () => {
+    console.log('>> color change', nativeTheme.shouldUseDarkColors, _getTrayIcon());
+    tray.setImage(_getTrayIcon());
   });
-
-
   tray.on('click', async (event, iconPos, mousePos) => {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
@@ -120,7 +118,7 @@ async function setUpShortcuts() {
   }
 }
 
-function _getTrayIcon(){
+function _getTrayIcon() {
   return nativeTheme.shouldUseDarkColors ? DARK_ICON : LIGHT_ICON;
 }
 

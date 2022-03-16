@@ -168,9 +168,7 @@ const DisplayUtils = {
     }`.replace(/\//g, '\\');
     shellToRun = `powershell.exe -Command "${shellToRun}"`;
     promisesExec.push(_executePowershell(shellToRun));
-
-
-    await Promise.all(promisesExec)
+    await Promise.all(promisesExec);
   },
 };
 
