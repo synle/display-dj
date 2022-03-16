@@ -58,8 +58,8 @@ function createWindow() {
   // mainWindow.webContents.openDevTools({ mode: 'detach' });
 }
 
-function createTray() {
-  let tray = new Tray(DARK_ICON);
+async function createTray() {
+  let tray = new Tray((await DisplayUtils.getDarkMode()) === true ? DARK_ICON : LIGHT_ICON);
 
   let iconToUse = _getTrayIcon();
   nativeTheme.on('updated', () => {

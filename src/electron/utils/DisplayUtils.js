@@ -1,5 +1,6 @@
 import * as ddcci from '@hensm/ddcci';
 import StorageUtils from './StorageUtils';
+const spawn = require('child_process').spawn;
 
 const MONITOR_CONFIG_FILE_DIR = 'monitor-configs.json';
 
@@ -21,7 +22,6 @@ function _setMonitorConfigs(monitors) {
 }
 
 function _executePowershell(shellToRun) {
-  const spawn = require('child_process').spawn;
   const child = spawn('powershell.exe', ['-Command', shellToRun]);
 
   return new Promise((resolve, reject) => {
@@ -161,16 +161,11 @@ const DisplayUtils = {
 
     // change the app theme
     shellToRun =
-      `${baseShellToRun} AppsUseLightTheme -Value ${darkModeValue}; ${baseShellToRun} SystemUsesLightTheme -Value ${darkModeValue}`.replace(
+      `${baseShellToRun} SystemUsesLightTheme -Value ${darkModeValue}; ${baseShellToRun} AppsUseLightTheme -Value ${darkModeValue}`.replace(
         /\//g,
         '\\',
       );
-    while (true) {
-      try {
-        await _executePowershell(shellToRun);
-        break;
-      } catch (err) {}
-    }
+    await _executePowershell(shellToRun);
   },
 };
 
