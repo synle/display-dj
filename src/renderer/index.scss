@@ -5,6 +5,15 @@ html{
   --color-link: blue;
 }
 
+@media (prefers-color-scheme: dark) {
+  html{
+    --color-main: #fff;
+    --color-bg: #000;
+    --color-light-bg: #333;
+    --color-link: #297AFE;
+  }
+}
+
 html,
 body,
 h1,
@@ -18,9 +27,12 @@ h6 {
   user-select: none;
 }
 
-body {
+html{
   font-size: 12px;
   font-family: Arial;
+}
+
+body {
   margin: 1rem 1rem;
   background: var(--color-bg);
   color: var(--color-main);
@@ -28,6 +40,16 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+a{
+  cursor: pointer;
+  color: var(--color-link);
+  font-weight: bold;
+}
+
+label{
+  font-weight: bold;
 }
 
 input[type='range'] {
@@ -40,16 +62,23 @@ button{
   border: none;
   padding: 0.5rem 1rem;
   cursor: pointer;
+  width: 100%;
+  display: block;
+  font-weight: bold;
+}
+
+input, button{
+  font-size: 1rem;
 }
 
 .field {
   display: flex;
   flex-direction: row;
   align-items: center;
+  margin-top: 0.5rem;
 
   &__label{
     margin-bottom: 0.5rem;
-    font-weight: bold;
     display: block;
     width: 80px;
     flex-shrink: 0;
@@ -62,14 +91,9 @@ button{
     flex-grow: 1;
   }
 
-  &__value-toggle {
-    cursor: pointer;
-    color: var(--color-link);
-  }
-
   input,
   &__value-readonly {
-    padding: 0.25rem 0.5rem;
+    padding-block: 0.25rem;
     width: 100%;
     border: none;
   }
@@ -78,20 +102,9 @@ button{
     display: inline-flex;
     flex-direction: row;
     align-items: center;
-
   }
 
   &__label, &__value-readonly{
     font-weight: bold;
   }
-}
-
-@media (prefers-color-scheme: dark) {
-  html{
-    --color-main: #fff;
-    --color-bg: #000;
-    --color-light-bg: #333;
-    --color-link: #297AFE;
-  }
-
 }

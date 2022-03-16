@@ -55,10 +55,8 @@ function DarkModeSettingForm(props){
     toggleDarkMode(newDarkMode);
   }
 
-  return <div className='field' title='Monitor Name'>
-      <div className='field_value'>
-        <button onClick={onToggleDarkMode}>{darkMode ? 'Turn Dark Mode Off': 'Turn Dark Mode On'}</button>
-      </div>
+  return <div className='field field__darkmode' title='Dark Mode'>
+      <button onClick={onToggleDarkMode}>{darkMode ? 'Turn Dark Mode Off': 'Turn Dark Mode On'}</button>
   </div>
 }
 
@@ -90,10 +88,10 @@ function MonitorBrightnessSetting(props){
   }
 
   return <>
-    <div className='field' title='Monitor Name'>
+    <div className='field'>
       {
         editName ? <input className='field__value' value={monitor.name} placeholder='name' autoFocus={true} onInput={(e) => onChange('name', e.target.value)} onBlur={onNameBlur} />
-        :<div className='field__value field__value-readonly field__value-toggle' onClick={() => setEditName(true)}>{monitor.name}</div>
+        :<div className='field__value field__value-readonly'><a onClick={() => setEditName(true)} title='Monitor Name'>{monitor.name}</a></div>
       }
     </div>
     <div className='field' title='Monitor Brightness'>
@@ -120,8 +118,8 @@ function AllMonitorBrightnessSettings(props){
   }
 
   return <>
-      <div className='field' title='Monitor Name'>
-        <div className='field__value field__value-readonly'>All Monitors</div>
+      <div className='field'>
+        <div className='field__value field__value-readonly' title='All Monitors'>All Monitors</div>
       </div>
       <div className='field'>
         <input className='field__value' type='range' min='0' max='100' step='5' value={allBrightness} placeholder='brightness' onChange={(e) => onChange(parseInt(e.target.value) || 0)} />
