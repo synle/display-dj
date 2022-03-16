@@ -1,0 +1,74 @@
+name: package-electron-beta
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    outputs:
+      package_version: ${{ steps.package-version.outputs.current-version }}
+      release_upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - uses: actions/checkout@v2
+      - run: npm version --no-git-tag-version patch
+      - id: package-version
+        uses: martinbeentjes/npm-get-version-action@master
+        with:
+          path: '.'
+      - uses: dev-drprasad/delete-tag-and-release@v0.2.0
+        with:
+          delete_release: true
+          tag_name: beta
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/create-release@v1
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: beta
+          release_name: beta
+          body: |
+            Version: ${{ steps.package-version.outputs.current-version }}
+          draft: false
+          prerelease: true
+
+  build_windows:
+    needs: [create_release]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v2
+      - run: npm version --no-git-tag-version patch
+      - run: npm install
+      - run: npm run test-ci
+      - run: npm run build
+      - run: npm run dist
+      - run: mv ./dist/display-dj*.exe ./dist/display-dj.exe
+
+      - uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.release_upload_url }}
+          asset_path: ./dist/display-dj.exe
+          asset_name: display-dj-beta.exe
+          asset_content_type: application/octet-stream
+
+  roll_back:
+    if: failure()
+    needs: [create_release, build_windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: dev-drprasad/delete-tag-and-release@v0.2.0
+        with:
+          delete_release: true
+          tag_name: 'beta'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

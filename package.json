@@ -5,12 +5,15 @@
   "scripts": {
     "build-electron": "webpack --config webpack-electron.js",
     "build-ui": "webpack --config webpack-ui.js",
-    "build": "npm run build-ui && npm run build-electron",
-    "watch-ui": "webpack --watch --config webpack-ui.js",
+    "build": "concurrently \"npm run build-ui\" \"npm run build-electron\"",
+    "dev-ui": "webpack --watch --config webpack-ui.js",
+    "dev": "concurrently \"npm run dev-ui\"",
     "lint": "eslint -c .eslintrc --ext .ts ./src",
     "fix-import": "npx import-fixer --groupImport --aggressive",
     "preformat": "npm run fix-import",
     "format": "npx prettier --config ./.prettierrc --write **/*.{ts,tsx,js,jsx,scss,yml,html,json,md}",
+    "test-ci": "",
+    "dist": "electron-builder build --publish=never",
     "start": "npm run build",
     "poststart": "electron ./dist/main.js"
   },
@@ -28,6 +31,13 @@
     "email": "le.nguyen.sy@gmail.com"
   },
   "license": "MIT",
+  "main": "dist/main.js",
+  "build": {
+    "appId": "io.synle.github.display-dj",
+    "win": {
+      "icon": "build/logo512.png"
+    }
+  },
   "dependencies": {
     "@hensm/ddcci": "^0.1.0",
     "react": "^17.0.2",
@@ -44,7 +54,9 @@
     "concurrently": "^7.0.0",
     "css-loader": "^6.7.1",
     "electron": "^17.1.2",
+    "electron-builder": "^22.14.13",
     "eslint": "^7.32.0",
+    "prettier": "^2.6.0",
     "sass": "^1.49.9",
     "sass-loader": "^12.6.0",
     "style-loader": "^3.3.1",
