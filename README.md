@@ -4,9 +4,9 @@ A windows application that allows quick toggle of dark mode and manages display 
 
 ## Problems
 
-Back in the old days, it requires physical controls to change the brightness of external monitors. It is very time consuming and quirky to get it just right.
-
-As of right now, there is standard called DDC/CI that can be used to update information related to brightness, etc...
+- Back in the old days, it requires physical controls to change the brightness of external monitors. It is very time consuming and quirky to get it just right.
+- As of right now, there is standard called DDC/CI that can be used to update information related to brightness, etc...
+- There are apps out there that does these 2 things: adjust brightness and darkmode toggle, but they are completely different apps and require more context switching.
 
 ## Solutions
 

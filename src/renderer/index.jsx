@@ -113,6 +113,7 @@ function MonitorBrightnessSetting(props) {
         )}
       </div>
       <div className='field' title='Monitor Brightness'>
+        <span>🔆</span>
         <input
           className='field__value'
           type='range'
@@ -153,6 +154,7 @@ function AllMonitorBrightnessSettings(props) {
         </div>
       </div>
       <div className='field'>
+        <span>🔆</span>
         <input
           className='field__value'
           type='range'
