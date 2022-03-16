@@ -13,9 +13,9 @@
     "preformat": "npm run fix-import",
     "format": "npx prettier --config ./.prettierrc --write **/*.{ts,tsx,js,jsx,scss,yml,html,json,md}",
     "test-ci": "",
-    "dist": "electron-builder build --publish=never",
+    "dist": "npx electron-packager \"./\" --platform=win32 --out=\"dist\"",
     "start": "npm run build",
-    "poststart": "electron ./dist/main.js"
+    "poststart": "electron ./build/main.js"
   },
   "repository": "https://github.com/synle/display-dj",
   "keywords": [
@@ -31,7 +31,7 @@
     "email": "le.nguyen.sy@gmail.com"
   },
   "license": "MIT",
-  "main": "dist/main.js",
+  "main": "build/main.js",
   "build": {
     "appId": "io.synle.github.display-dj",
     "win": {
@@ -54,7 +54,7 @@
     "concurrently": "^7.0.0",
     "css-loader": "^6.7.1",
     "electron": "^17.1.2",
-    "electron-builder": "^22.14.13",
+    "electron-packager": "^15.4.0",
     "eslint": "^7.32.0",
     "prettier": "^2.6.0",
     "sass": "^1.49.9",

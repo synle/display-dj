@@ -1,4 +1,4 @@
-const DisplayUtils = require('./dist/utils/DisplayUtils').default;
+const DisplayUtils = require('./build/utils/DisplayUtils').default;
 
 async function doWork() {
   const monitors = await DisplayUtils.getMonitors();

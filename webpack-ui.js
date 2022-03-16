@@ -5,7 +5,7 @@ module.exports = {
   devtool: 'source-map',
   output: {
     filename: 'renderer.js',
-    path: path.resolve(__dirname, 'dist'),
+    path: path.resolve(__dirname, 'build'),
   },
   mode: 'production',
   externals: {
