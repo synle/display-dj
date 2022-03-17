@@ -1,8 +1,9 @@
 :root {
-  --color-main: #000;
-  --color-bg: #fff;
-  --color-light-bg: #ccc;
-  --color-link: blue;
+  --color-fg-1: #000;
+  --color-bg-1: #fff;
+  --color-bg-2: #ccc;
+  --color-link: #3b49df;
+  --color-focus: #333;
 }
 
 svg {
@@ -11,10 +12,11 @@ svg {
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-main: #fff;
-    --color-bg: #000;
-    --color-light-bg: #333;
+    --color-fg-1: #fff;
+    --color-bg-1: #000;
+    --color-bg-2: #333;
     --color-link: #297afe;
+    --color-focus: #ccc;
   }
 
   svg {
@@ -37,6 +39,11 @@ h6 {
 
 * {
   box-sizing: border-box;
+
+  &:hover,
+  &:focus {
+    outline: none;
+  }
 }
 
 html {
@@ -45,8 +52,8 @@ html {
 }
 
 body {
-  background: var(--color-bg);
-  color: var(--color-main);
+  background: var(--color-bg-1);
+  color: var(--color-fg-1);
   margin-inline: 1rem;
 }
 
@@ -65,9 +72,23 @@ label {
   font-weight: bold;
 }
 
-form{
+form {
   display: block;
   width: 100%;
+}
+
+input[type='text'] {
+  background: transparent;
+  color: var(--color-fg-1);
+  padding: 0.5rem 0.25rem;
+  border: none;
+  width: 100%;
+  border: 2px solid transparent;
+
+  &:hover,
+  &:focus {
+    border-color: var(--color-focus);
+  }
 }
 
 input[type='range'] {
@@ -75,14 +96,20 @@ input[type='range'] {
 }
 
 button {
-  background: var(--color-light-bg);
-  color: var(--color-main);
+  background: var(--color-bg-2);
+  color: var(--color-fg-1);
   border: none;
   padding: 0.5rem 1rem;
   cursor: pointer;
   width: 100%;
   display: block;
   font-weight: bold;
+  border: 2px solid transparent;
+
+  &:hover,
+  &:focus {
+    border-color: var(--color-focus);
+  }
 }
 
 input,
@@ -110,14 +137,10 @@ button {
     flex-grow: 1;
   }
 
-  input,
   &__value-readonly {
-    padding-block: 0.25rem;
+    padding-block: 0.5rem;
     width: 100%;
     border: none;
-  }
-
-  &__value-readonly {
     display: inline-flex;
     flex-direction: row;
     align-items: center;
@@ -131,7 +154,7 @@ button {
   &__icon {
     width: 15px;
     height: 15px;
-    fill: color(--color-main);
+    fill: color(--color-fg-1);
     margin-right: 0.5rem;
   }
 }

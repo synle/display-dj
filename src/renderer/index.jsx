@@ -21,12 +21,14 @@ function Home(props) {
   const { isLoading, data: configs } = useConfigs();
 
   if (isLoading) {
-    return <>Loading...</>;
+    return <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>Loading...</div>;
   }
 
   if (!configs) {
     // TODO: add message for no data state
-    return <>Errors. Get configs failed...</>;
+    return (
+      <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>Errors. Get configs failed...</div>
+    );
   }
 
   return (
@@ -104,10 +106,9 @@ function MonitorBrightnessSetting(props) {
     updateMonitor(monitor);
   };
 
-  useEffect(
-    () => {
-      setName(monitor.name);
-    }, [monitor.name])
+  useEffect(() => {
+    setName(monitor.name);
+  }, [monitor.name]);
 
   return (
     <>
@@ -122,6 +123,7 @@ function MonitorBrightnessSetting(props) {
               onInput={(e) => setName(e.target.value)}
               onBlur={onNameBlur}
               required
+              type='text'
             />
           </form>
         ) : (
