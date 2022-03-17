@@ -37,14 +37,10 @@
   "dependencies": {
     "@hensm/ddcci": "^0.1.0",
     "auto-launch": "^5.0.5",
-    "brightness": "^3.0.0",
-    "nircmd": "^2.0.0",
-    "node-wmi": "^0.0.5",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "react-query": "^3.34.16",
-    "react-router-dom": "^6.2.2",
-    "wmi-client": "^0.5.0"
+    "react-router-dom": "^6.2.2"
   },
   "devDependencies": {
     "@babel/core": "^7.17.5",
