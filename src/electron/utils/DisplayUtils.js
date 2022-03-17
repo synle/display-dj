@@ -69,23 +69,33 @@ const DisplayUtils = {
 
     const monitorsFromStorage = _getMonitorConfigs();
 
+    let sortOrder = 0;
+    let sortOrderToUse;
+    let brightnessToUse;
+    let nameToUse;
+
     // getting the laptop monitor if there is any
-    let brightness;
-    let name = 'Laptop Built-In Display';
     try {
-      name = monitorsFromStorage[LAPTOP_BUILT_IN_DISPLAY_ID].name;
+      nameToUse = monitorsFromStorage[LAPTOP_BUILT_IN_DISPLAY_ID].name;
     } catch (err) {}
+    nameToUse = nameToUse || 'Laptop Built-In Display';
 
     try {
-      brightness = await _getBrightnessBuiltin();
+      sortOrderToUse = monitorsFromStorage[LAPTOP_BUILT_IN_DISPLAY_ID].sortOrder;
+    } catch (err) {}
+    sortOrderToUse = sortOrderToUse || (++sortOrder);
+
+    try {
+      brightnessToUse = await _getBrightnessBuiltin();
     } catch (err) {
       console.error('>> Failed to get the built-in monitor configs', err);
     }
 
     monitors.push({
       id: LAPTOP_BUILT_IN_DISPLAY_ID,
-      name,
-      brightness,
+      name: nameToUse,
+      brightness: brightnessToUse,
+      sortOrder: sortOrderToUse,
     });
 
     // getting the external monitors
@@ -93,15 +103,22 @@ const DisplayUtils = {
     const monitorIds = ddcci.getMonitorList();
     for (const id of monitorIds) {
       try {
-        let name = `Monitor #${++monitorCount}`;
         try {
-          name = monitorsFromStorage[id].name;
+          nameToUse = monitorsFromStorage[id].name;
+        } catch (err) {
+          nameToUse = `Monitor #${++monitorCount}`;
+        }
+
+        try {
+          sortOrderToUse = monitorsFromStorage[id].sortOrder;
         } catch (err) {}
+        sortOrderToUse = sortOrderToUse || (++sortOrder);
 
         monitors.push({
           id,
-          name,
+          name: nameToUse,
           brightness: await ddcci.getBrightness(id),
+          sortOrder: sortOrderToUse,
         });
       } catch (err) {
         console.error('>> Failed to get the external monitor configs', id, err);
