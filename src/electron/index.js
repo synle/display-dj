@@ -103,7 +103,12 @@ async function createTray() {
     },
     {
       label: 'Open Configs',
-      click: () => shell.openExternal(`file://${MONITOR_CONFIG_FILE_DIR}`),
+      click: () => {
+        try {
+          console.log(`file://${MONITOR_CONFIG_FILE_DIR}`);
+          shell.openExternal(`file://${MONITOR_CONFIG_FILE_DIR}`);
+        } catch (err) {}
+      },
     },
     {
       type: 'separator',
