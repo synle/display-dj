@@ -8,10 +8,27 @@ const MONITOR_CONFIG_FILE_DIR = 'monitor-configs.json';
 
 const LAPTOP_BUILT_IN_DISPLAY_ID = 'laptop-built-in';
 
+function _getBrightnessBuiltin(){
+  const wmi = require("node-wmi");
+
+  var queryOptions  = {
+    host: 'localhost',
+    namespace: 'root\\WMI',
+    class: "WmiMonitorBrightness",
+  };
+
+  return new Promise(function (resolve, reject) {
+    wmi.Query(queryOptions, function (err, res) {
+      resolve(res.CurrentBrightness)
+    });
+  });
+}
+
 function _getMonitorConfigs() {
   try {
     return StorageUtils.readJSON(MONITOR_CONFIG_FILE_DIR);
   } catch (err) {
+    console.error('>> Failed to get monitor configs from JSON', err);
     return {};
   }
 }
@@ -53,18 +70,17 @@ const DisplayUtils = {
     const monitorsFromStorage = _getMonitorConfigs();
 
     // getting the laptop monitor if there is any
-    // TODO: find a more reliable library to built in display
-    // let brightness;
-    // let name = 'Laptop Built-In Display';
-    // try {
-    //   name = monitorsFromStorage[id].name;
-    // } catch (err) {}
+    let brightness;
+    let name = 'Laptop Built-In Display';
+    try {
+      name = monitorsFromStorage[id].name;
+    } catch (err) {}
 
-    // try {
-    //   brightness = await Math.floor((await brightness.get()) * 100);
-    // } catch (err) {
-    //   console.log('>> Failed to get the built-in monitor configs', err);
-    // }
+    try {
+      brightness = await _getBrightnessBuiltin();3
+    } catch (err) {
+      console.error('>> Failed to get the built-in monitor configs', err);
+    }
 
     monitors.push({
       id: LAPTOP_BUILT_IN_DISPLAY_ID,
@@ -88,7 +104,7 @@ const DisplayUtils = {
           brightness: await ddcci.getBrightness(id),
         });
       } catch (err) {
-        console.log('>> Failed to get the external monitor configs', id, err);
+        console.error('>> Failed to get the external monitor configs', id, err);
       }
     }
 
@@ -135,17 +151,20 @@ const DisplayUtils = {
   updateBrightness: async (monitor) => {
     if (monitor.id === LAPTOP_BUILT_IN_DISPLAY_ID) {
       // monitor is a laptop
-      // TODO: find a more reliable library to built in display
-      // try {
-      //   await brightness.set(Math.floor(monitor.brightness / 100));
-      //   console.log('>> update laptop display brightness succeeds', monitor.brightness);
-      // } catch (err) {
-      //   console.log('>> update laptop display brightness failed', monitor.brightness, err);
-      // }
+      try {
+        await brightness.set(Math.floor(monitor.brightness / 100));
+        console.log('>> update laptop display brightness succeeded', monitor.brightness);
+      } catch (err) {
+        console.error('>> update laptop display brightness failed', monitor.brightness, err);
+      }
     } else {
       // monitor is an external (DCC/CI)
-      console.log('>> update external display brightness', monitor.name, monitor.brightness);
-      await ddcci.setBrightness(monitor.id, monitor.brightness);
+      try {
+        await ddcci.setBrightness(monitor.id, monitor.brightness);
+        console.log('>> update external display brightness succeeded', monitor.name, monitor.brightness);
+      } catch (err) {
+        console.error('>> update external display brightness failed', monitor.name, monitor.brightness, err);
+      }
     }
   },
   updateAllBrightness: async (newBrightness, delta) => {

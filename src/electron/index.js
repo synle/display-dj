@@ -21,6 +21,8 @@ const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
 
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
 
+console.error = console.log.bind(null, 'ERROR')
+
 function createWindow() {
   // Create the browser window.
   mainWindow = new BrowserWindow({
