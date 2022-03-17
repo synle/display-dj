@@ -73,15 +73,18 @@ const DisplayUtils = {
     let sortOrderToUse;
     let brightnessToUse;
     let nameToUse;
+    let disabledToUse;
+    let idToUse;
 
     // getting the laptop monitor if there is any
+    idToUse = LAPTOP_BUILT_IN_DISPLAY_ID;
     try {
-      nameToUse = monitorsFromStorage[LAPTOP_BUILT_IN_DISPLAY_ID].name;
+      nameToUse = monitorsFromStorage[idToUse].name;
     } catch (err) {}
     nameToUse = nameToUse || 'Laptop Built-In Display';
 
     try {
-      sortOrderToUse = monitorsFromStorage[LAPTOP_BUILT_IN_DISPLAY_ID].sortOrder;
+      sortOrderToUse = monitorsFromStorage[idToUse].sortOrder;
     } catch (err) {}
     sortOrderToUse = sortOrderToUse || ++sortOrder;
 
@@ -91,37 +94,48 @@ const DisplayUtils = {
       console.error('>> Failed to get the built-in monitor configs', err);
     }
 
+    try {
+      disabledToUse = !!monitorsFromStorage[idToUse].disabled;
+    } catch (err) {}
+    disabledToUse = disabledToUse || false;
     monitors.push({
-      id: LAPTOP_BUILT_IN_DISPLAY_ID,
+      id: idToUse,
       name: nameToUse,
       brightness: brightnessToUse,
       sortOrder: sortOrderToUse,
+      disabled: disabledToUse,
     });
 
     // getting the external monitors
     let monitorCount = 0;
     const monitorIds = ddcci.getMonitorList();
-    for (const id of monitorIds) {
+    for (const idToUse of monitorIds) {
       try {
         try {
-          nameToUse = monitorsFromStorage[id].name;
+          nameToUse = monitorsFromStorage[idToUse].name;
         } catch (err) {
           nameToUse = `Monitor #${++monitorCount}`;
         }
 
         try {
-          sortOrderToUse = monitorsFromStorage[id].sortOrder;
+          sortOrderToUse = monitorsFromStorage[idToUse].sortOrder;
         } catch (err) {}
         sortOrderToUse = sortOrderToUse || ++sortOrder;
 
+        try {
+          disabledToUse = !!monitorsFromStorage[idToUse].disabled;
+        } catch (err) {}
+        disabledToUse = disabledToUse || false;
+
         monitors.push({
-          id,
+          id: idToUse,
           name: nameToUse,
-          brightness: await ddcci.getBrightness(id),
+          brightness: await ddcci.getBrightness(idToUse),
           sortOrder: sortOrderToUse,
+          disabled: disabledToUse,
         });
       } catch (err) {
-        console.error('>> Failed to get the external monitor configs', id, err);
+        console.error('>> Failed to get the external monitor configs', idToUse, err);
       }
     }
 

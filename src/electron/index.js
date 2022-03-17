@@ -74,10 +74,14 @@ async function createTray() {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
     } else {
-      const monitors = await DisplayUtils.getMonitors();
+      let monitors = await DisplayUtils.getMonitors();
+
+      // filter out the disabled so we don't add extra spaces for it
+      monitors = monitors.filter((monitor) => !monitor.disabled);
+
       let monitorCount = Math.max(monitors.length, 1) + 1;
       let width = 300;
-      let height = 80 * monitorCount + 20;
+      let height = 80 * monitorCount + 10;
       let x = Math.floor(iconPos.x - width + 50);
       let y = Math.floor(iconPos.y - height);
       mainWindow.show();

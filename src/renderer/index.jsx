@@ -69,9 +69,11 @@ function DarkModeSettingForm(props) {
 
 function MonitorBrightnessSettingForm(props) {
   const { monitors } = props;
-  return monitors.map((monitor, idx) => (
-    <MonitorBrightnessSetting key={monitor.id} monitor={monitor} idx={idx + 1} />
-  ));
+  return monitors
+    .filter((monitor) => !monitor.disabled)
+    .map((monitor, idx) => (
+      <MonitorBrightnessSetting key={monitor.id} monitor={monitor} idx={idx + 1} />
+    ));
 }
 
 function MonitorBrightnessSetting(props) {

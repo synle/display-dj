@@ -24,6 +24,39 @@ This application is at the moment for windows only and can be used to adjust ext
 
 ![image](https://user-images.githubusercontent.com/3792401/158028393-1db3c6ef-6d09-447d-bd24-0ed3697b5c9b.png)
 
+## Monitor Configs
+
+At the moment, there is no UI to modify the configs, configs file are located at `%AppData%\display-dj\monitor-configs.json`
+
+- `disabled` flag can be used to hide a monitor off the list
+- `sortOrder` flag can be used to change which monitor showing up first
+
+```
+{
+  "\\\\?\\DISPLAY#VSCB73A#5&21f33940&0&UID4352#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}": {
+    "id": "\\\\?\\DISPLAY#VSCB73A#5&21f33940&0&UID4352#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}",
+    "name": "Left",
+    "brightness": 0,
+    "sortOrder": 1,
+    "disabled": false
+  },
+  "\\\\?\\DISPLAY#VSCB73A#5&23c70c64&0&UID257#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}": {
+    "id": "\\\\?\\DISPLAY#VSCB73A#5&23c70c64&0&UID257#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}",
+    "name": "Right",
+    "brightness": 0,
+    "sortOrder": 2,
+    "disabled": false
+  },
+  "laptop-built-in": {
+    "id": "laptop-built-in",
+    "name": "Laptop Built-In Display",
+    "brightness": 0,
+    "sortOrder": 3,
+    "disabled": true
+  }
+}
+```
+
 ## TODO
 
 - [x] Basic MVP
@@ -31,6 +64,8 @@ This application is at the moment for windows only and can be used to adjust ext
 - [x] Support external monitors brightness
 - [x] Support laptop brightness
 - [ ] Support for windows 10
+- [ ] Support for linux (is this possible?)
+- [ ] Support for mac (is this possible?)
 - [ ] Support for vertical task bar or top placement taskbar
 - [x] Properly run the app on startup
 - [ ] Change brightness based on time of day
