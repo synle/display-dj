@@ -1,16 +1,24 @@
-html {
+:root {
   --color-main: #000;
   --color-bg: #fff;
   --color-light-bg: #ccc;
   --color-link: blue;
 }
 
+svg {
+  fill: #000;
+}
+
 @media (prefers-color-scheme: dark) {
-  html {
+  :root {
     --color-main: #fff;
     --color-bg: #000;
     --color-light-bg: #333;
     --color-link: #297afe;
+  }
+
+  svg {
+    fill: #fff;
   }
 }
 
@@ -109,5 +117,12 @@ button {
   &__label,
   &__value-readonly {
     font-weight: bold;
+  }
+
+  &__icon {
+    width: 15px;
+    height: 15px;
+    fill: color(--color-main);
+    margin-right: 0.5rem;
   }
 }

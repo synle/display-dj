@@ -10,6 +10,8 @@ import { useEffect, useState } from 'react';
 import ApiUtils from './utils/ApiUtils';
 import './index.scss';
 import { LAPTOP_BUILT_IN_DISPLAY_ID } from '../constants';
+import MonitorSvg from './svg/monitor.svg';
+import LaptopSvg from './svg/laptop.svg';
 
 // TODO: extract these things
 const queryClient = new QueryClient();
@@ -122,9 +124,13 @@ function MonitorBrightnessSetting(props) {
       </div>
       <div className='field' title='Monitor Brightness'>
         {isLaptop ? (
-          <span title='Laptop Display'>💻</span>
+          <span title='Laptop Display'>
+            <LaptopSvg className='field__icon' />
+          </span>
         ) : (
-          <span title='Monitor Display'>🖥️</span>
+          <span title='Monitor Display'>
+            <MonitorSvg className='field__icon' />
+          </span>
         )}
         <input
           className='field__value'
@@ -170,7 +176,9 @@ function AllMonitorBrightnessSettings(props) {
         </div>
       </div>
       <div className='field'>
-        <span title='All Monitor Brightness'>🔆</span>
+        <span className='field__icon' title='All Monitor Brightness'>
+          🔆
+        </span>
         <input
           className='field__value'
           type='range'
