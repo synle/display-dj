@@ -70,23 +70,23 @@ const DisplayUtils = {
     const monitorsFromStorage = _getMonitorConfigs();
 
     // getting the laptop monitor if there is any
-    let brightness;
-    let name = 'Laptop Built-In Display';
-    try {
-      name = monitorsFromStorage[id].name;
-    } catch (err) {}
+    // let brightness;
+    // let name = 'Laptop Built-In Display';
+    // try {
+    //   name = monitorsFromStorage[id].name;
+    // } catch (err) {}
 
-    try {
-      brightness = await _getBrightnessBuiltin();3
-    } catch (err) {
-      console.error('>> Failed to get the built-in monitor configs', err);
-    }
+    // try {
+    //   brightness = await _getBrightnessBuiltin();3
+    // } catch (err) {
+    //   console.error('>> Failed to get the built-in monitor configs', err);
+    // }
 
-    monitors.push({
-      id: LAPTOP_BUILT_IN_DISPLAY_ID,
-      name,
-      brightness,
-    });
+    // monitors.push({
+    //   id: LAPTOP_BUILT_IN_DISPLAY_ID,
+    //   name,
+    //   brightness,
+    // });
 
     // getting the external monitors
     let monitorCount = 0;
@@ -152,15 +152,17 @@ const DisplayUtils = {
     if (monitor.id === LAPTOP_BUILT_IN_DISPLAY_ID) {
       // monitor is a laptop
       try {
-        await brightness.set(Math.floor(monitor.brightness / 100));
-        console.log('>> update laptop display brightness succeeded', monitor.brightness);
+        const newBrightness = monitor.brightness / 100;
+        await brightness.set(newBrightness);
+        console.log('>> update laptop display brightness succeeded', monitor.brightness, newBrightness);
       } catch (err) {
         console.error('>> update laptop display brightness failed', monitor.brightness, err);
       }
     } else {
       // monitor is an external (DCC/CI)
       try {
-        await ddcci.setBrightness(monitor.id, monitor.brightness);
+        const newBrightness = monitor.brightness;
+        await ddcci.setBrightness(monitor.id, newBrightness);
         console.log('>> update external display brightness succeeded', monitor.name, monitor.brightness);
       } catch (err) {
         console.error('>> update external display brightness failed', monitor.name, monitor.brightness, err);
