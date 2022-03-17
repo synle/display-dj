@@ -1,10 +1,8 @@
 import * as ddcci from '@hensm/ddcci';
 import StorageUtils from './StorageUtils';
 import { spawn } from 'child_process';
+import { MONITOR_CONFIG_FILE_DIR, LAPTOP_BUILT_IN_DISPLAY_ID } from '../../constants';
 
-const MONITOR_CONFIG_FILE_DIR = 'monitor-configs.json';
-
-const LAPTOP_BUILT_IN_DISPLAY_ID = 'laptop-built-in';
 /**
  * get current laptop brightness. more info here
  * https://docs.microsoft.com/en-us/windows/win32/wmicoreprov/wmimonitorbrightness

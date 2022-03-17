@@ -9,6 +9,7 @@ import {
 import { useEffect, useState } from 'react';
 import ApiUtils from './utils/ApiUtils';
 import './index.scss';
+import { LAPTOP_BUILT_IN_DISPLAY_ID } from '../constants';
 
 // TODO: extract these things
 const queryClient = new QueryClient();
@@ -95,6 +96,8 @@ function MonitorBrightnessSetting(props) {
     updateMonitor(monitor);
   };
 
+  const isLaptop = monitor.id === LAPTOP_BUILT_IN_DISPLAY_ID;
+
   return (
     <>
       <div className='field'>
@@ -116,7 +119,11 @@ function MonitorBrightnessSetting(props) {
         )}
       </div>
       <div className='field' title='Monitor Brightness'>
-        <span>🔆</span>
+        {isLaptop ? (
+          <span title='Laptop Display'>💻</span>
+        ) : (
+          <span title='Monitor Display'>🖥️</span>
+        )}
         <input
           className='field__value'
           type='range'
@@ -134,7 +141,10 @@ function MonitorBrightnessSetting(props) {
 
 function AllMonitorBrightnessSettings(props) {
   const { monitors } = props;
-  const allBrightnessValueFromProps = Math.min(...monitors.map(monitor => monitor.brightness), 100)
+  const allBrightnessValueFromProps = Math.min(
+    ...monitors.map((monitor) => monitor.brightness),
+    100,
+  );
   const [allBrightness, setAllBrightness] = useState(allBrightnessValueFromProps);
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
   const queryClient = useQueryClient();
@@ -158,7 +168,7 @@ function AllMonitorBrightnessSettings(props) {
         </div>
       </div>
       <div className='field'>
-        <span>🔆</span>
+        <span title='All Monitor Brightness'>🔆</span>
         <input
           className='field__value'
           type='range'
