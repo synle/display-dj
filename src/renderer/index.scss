@@ -35,19 +35,23 @@ h6 {
   user-select: none;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 html {
   font-size: 12px;
   font-family: Arial;
 }
 
 body {
-  margin: 1rem 1rem;
   background: var(--color-bg);
   color: var(--color-main);
+  margin-inline: 1rem;
 }
 
-* {
-  box-sizing: border-box;
+header{
+  margin-block: 1rem;
 }
 
 a {

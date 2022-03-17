@@ -111,32 +111,28 @@ const DisplayUtils = {
     const monitorIds = ddcci.getMonitorList();
     for (const idToUse of monitorIds) {
       try {
-        try {
-          nameToUse = monitorsFromStorage[idToUse].name;
-        } catch (err) {
-          nameToUse = `Monitor #${++monitorCount}`;
-        }
-
-        try {
-          sortOrderToUse = monitorsFromStorage[idToUse].sortOrder;
-        } catch (err) {}
-        sortOrderToUse = sortOrderToUse || ++sortOrder;
-
-        try {
-          disabledToUse = !!monitorsFromStorage[idToUse].disabled;
-        } catch (err) {}
-        disabledToUse = disabledToUse || false;
-
-        monitors.push({
-          id: idToUse,
-          name: nameToUse,
-          brightness: await ddcci.getBrightness(idToUse),
-          sortOrder: sortOrderToUse,
-          disabled: disabledToUse,
-        });
+        nameToUse = monitorsFromStorage[idToUse].name;
       } catch (err) {
-        console.error('>> Failed to get the external monitor configs', idToUse, err);
+        nameToUse = `Monitor #${++monitorCount}`;
       }
+
+      try {
+        sortOrderToUse = monitorsFromStorage[idToUse].sortOrder;
+      } catch (err) {}
+      sortOrderToUse = sortOrderToUse || ++sortOrder;
+
+      try {
+        disabledToUse = !!monitorsFromStorage[idToUse].disabled;
+      } catch (err) {}
+      disabledToUse = disabledToUse || false;
+
+      monitors.push({
+        id: idToUse,
+        name: nameToUse,
+        brightness: await ddcci.getBrightness(idToUse),
+        sortOrder: sortOrderToUse,
+        disabled: disabledToUse,
+      });
     }
 
     // handling the sorting based on sortOrder

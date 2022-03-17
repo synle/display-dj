@@ -81,7 +81,7 @@ async function createTray() {
 
       let monitorCount = Math.max(monitors.length, 1) + 1;
       let width = 300;
-      let height = 80 * monitorCount + 10;
+      let height = 83 * monitorCount;
       let x = Math.floor(iconPos.x - width + 50);
       let y = Math.floor(iconPos.y - height);
       mainWindow.show();
