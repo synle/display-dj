@@ -1,7 +1,7 @@
 import * as ddcci from '@hensm/ddcci';
 import StorageUtils from './StorageUtils';
 import { spawn } from 'child_process';
-import { MONITOR_CONFIG_FILE_DIR, LAPTOP_BUILT_IN_DISPLAY_ID } from '../../constants';
+import { MONITOR_CONFIG_FILE_DIR, DISPLAY_TYPE } from '../../constants';
 
 /**
  * get current laptop brightness. more info here
@@ -23,24 +23,26 @@ async function _setBrightnessBuiltin(newBrightness) {
   let shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1,${newBrightness})`;
   await _executePowershell(shellToRun);
 }
-
-
 function _getBrightnessDccCi(idToUse) {
   return new Promise(async (resolve, reject) => {
     let retry = 3;
     let error;
 
-    while(--retry > 0){
-      try{
+    while (--retry > 0) {
+      try {
         const res = await ddcci.getBrightness(idToUse);
         resolve(res);
-      } catch(err){
+      } catch (err) {
         error = err;
       }
     }
 
-    reject('Failed to get brightness: ' + error)
+    reject('Failed to get brightness: ' + error);
   });
+}
+
+async function _setBrightnessDccCi(idToUse, newBrightness) {
+  await ddcci.setBrightness(idToUse, newBrightness);
 }
 
 function _getMonitorConfigs() {
@@ -96,36 +98,6 @@ const DisplayUtils = {
     let disabledToUse;
     let idToUse;
 
-    // getting the laptop monitor if there is any
-    idToUse = LAPTOP_BUILT_IN_DISPLAY_ID;
-    try {
-      nameToUse = monitorsFromStorage[idToUse].name;
-    } catch (err) {}
-    nameToUse = nameToUse || 'Laptop Built-In Display';
-
-    try {
-      sortOrderToUse = monitorsFromStorage[idToUse].sortOrder;
-    } catch (err) {}
-    sortOrderToUse = sortOrderToUse || ++sortOrder;
-
-    try {
-      brightnessToUse = await _getBrightnessBuiltin();
-    } catch (err) {
-      console.error('>> Failed to get the built-in monitor configs', err);
-    }
-
-    try {
-      disabledToUse = !!monitorsFromStorage[idToUse].disabled;
-    } catch (err) {}
-    disabledToUse = disabledToUse || false;
-    monitors.push({
-      id: idToUse,
-      name: nameToUse,
-      brightness: brightnessToUse,
-      sortOrder: sortOrderToUse,
-      disabled: disabledToUse,
-    });
-
     // getting the external monitors
     let monitorCount = 0;
     const monitorIds = ddcci.getMonitorList();
@@ -147,9 +119,15 @@ const DisplayUtils = {
       disabledToUse = disabledToUse || false;
 
       brightnessToUse = 50;
+      let typeToUse = DISPLAY_TYPE.EXTERNAL;
       try {
         brightnessToUse = await _getBrightnessDccCi(idToUse);
-      } catch (err) {}
+      } catch (err) {
+        try {
+          brightnessToUse = await _getBrightnessBuiltin();
+          typeToUse = DISPLAY_TYPE.LAPTOP;
+        } catch (err) {}
+      }
 
       monitors.push({
         id: idToUse,
@@ -157,6 +135,7 @@ const DisplayUtils = {
         brightness: brightnessToUse,
         sortOrder: sortOrderToUse,
         disabled: disabledToUse,
+        type: typeToUse,
       });
     }
 
@@ -209,26 +188,15 @@ const DisplayUtils = {
     }
   },
   updateBrightness: async (monitor) => {
-    if (monitor.id === LAPTOP_BUILT_IN_DISPLAY_ID) {
+    // monitor is an external (DCC/CI)
+    try {
+      const newBrightness = monitor.brightness;
+      await _setBrightnessDccCi(monitor.id, newBrightness);
+    } catch (err) {
       // monitor is a laptop
       try {
         await _setBrightnessBuiltin(monitor.brightness);
-      } catch (err) {
-        console.error('>> update laptop display brightness failed', monitor.brightness, err);
-      }
-    } else {
-      // monitor is an external (DCC/CI)
-      try {
-        const newBrightness = monitor.brightness;
-        await ddcci.setBrightness(monitor.id, newBrightness);
-      } catch (err) {
-        console.error(
-          '>> update external display brightness failed',
-          monitor.name,
-          monitor.brightness,
-          err,
-        );
-      }
+      } catch (err) {}
     }
   },
   updateAllBrightness: async (newBrightness, delta = 0) => {

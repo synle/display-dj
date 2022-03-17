@@ -9,7 +9,7 @@ import {
 import { useEffect, useState } from 'react';
 import ApiUtils from './utils/ApiUtils';
 import './index.scss';
-import { LAPTOP_BUILT_IN_DISPLAY_ID } from '../constants';
+import { LAPTOP_BUILT_IN_DISPLAY_ID, DISPLAY_TYPE } from '../constants';
 import MonitorSvg from './svg/monitor.svg';
 import LaptopSvg from './svg/laptop.svg';
 
@@ -80,17 +80,21 @@ function MonitorBrightnessSettingForm(props) {
 
 function MonitorBrightnessSetting(props) {
   const [editName, setEditName] = useState(false);
+  const [name, setName] = useState('');
   const { monitor } = props;
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
   const queryClient = useQueryClient();
+  const isLaptop = monitor.type === DISPLAY_TYPE.LAPTOP;
 
   const onChange = (key, value) => {
     monitor[key] = value;
     updateMonitor(monitor);
   };
 
-  const onNameBlur = () => {
-    monitor.name = monitor.name.trim();
+  const onNameBlur = (e) => {
+    e.preventDefault();
+
+    monitor.name = name.trim();
 
     if (!monitor.name) {
       monitor.name = `Monitor #${props.idx}`;
@@ -100,23 +104,29 @@ function MonitorBrightnessSetting(props) {
     updateMonitor(monitor);
   };
 
-  const isLaptop = monitor.id === LAPTOP_BUILT_IN_DISPLAY_ID;
+  useEffect(
+    () => {
+      setName(monitor.name);
+    }, [monitor.name])
 
   return (
     <>
       <div className='field'>
         {editName ? (
-          <input
-            className='field__value'
-            value={monitor.name}
-            placeholder='name'
-            autoFocus={true}
-            onInput={(e) => onChange('name', e.target.value)}
-            onBlur={onNameBlur}
-          />
+          <form onSubmit={onNameBlur}>
+            <input
+              className='field__value'
+              value={name}
+              placeholder='Enter a display name'
+              autoFocus={true}
+              onInput={(e) => setName(e.target.value)}
+              onBlur={onNameBlur}
+              required
+            />
+          </form>
         ) : (
           <div className='field__value field__value-readonly'>
-            <a onClick={() => setEditName(true)} title='Monitor Name'>
+            <a onClick={() => setEditName(true)} title='Monitor Name' href='#'>
               {monitor.name}
             </a>
           </div>

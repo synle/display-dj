@@ -50,7 +50,7 @@ body {
   margin-inline: 1rem;
 }
 
-header{
+header {
   margin-block: 1rem;
 }
 
@@ -63,6 +63,11 @@ a {
 
 label {
   font-weight: bold;
+}
+
+form{
+  display: block;
+  width: 100%;
 }
 
 input[type='range'] {

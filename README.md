@@ -22,7 +22,6 @@ This application is at the moment for windows only and can be used to adjust ext
 
 ![image](https://user-images.githubusercontent.com/3792401/158890188-6074254d-87df-4d74-92be-7ad8f825e25e.png)
 
-
 ## Monitor Configs
 
 At the moment, there is no UI to modify the configs, configs file are located at `%AppData%\display-dj\monitor-configs.json`
