@@ -13,6 +13,8 @@ import { matchPath } from 'react-router-dom';
 import path from 'path';
 import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
 import DisplayUtils from './utils/DisplayUtils';
+import { MONITOR_CONFIG_FILE_DIR } from '../constants';
+
 let mainWindow;
 
 const appBaseDir = __dirname;
@@ -95,6 +97,13 @@ async function createTray() {
     {
       label: 'Change brightness to 100%',
       click: () => DisplayUtils.updateAllBrightness(100),
+    },
+    {
+      type: 'separator',
+    },
+    {
+      label: 'Open Configs',
+      click: () => shell.openExternal(`file://${MONITOR_CONFIG_FILE_DIR}`),
     },
     {
       type: 'separator',
