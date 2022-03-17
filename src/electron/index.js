@@ -85,6 +85,21 @@ async function createTray() {
   });
   const menu = Menu.buildFromTemplate([
     {
+      label: 'Change brightness to 0%',
+      click: () => DisplayUtils.updateAllBrightness(0),
+    },
+    {
+      label: 'Change brightness to 50%',
+      click: () => DisplayUtils.updateAllBrightness(50),
+    },
+    {
+      label: 'Change brightness to 100%',
+      click: () => DisplayUtils.updateAllBrightness(100),
+    },
+    {
+      type: 'separator',
+    },
+    {
       label: 'File a bug',
       click: async () => {
         await shell.openExternal('https://github.com/synle/display-dj/issues/new');

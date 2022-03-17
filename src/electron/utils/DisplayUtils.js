@@ -171,7 +171,7 @@ const DisplayUtils = {
       }
     }
   },
-  updateAllBrightness: async (newBrightness, delta) => {
+  updateAllBrightness: async (newBrightness, delta = 0) => {
     newBrightness += delta;
 
     // making sure the range is 0 to 100
