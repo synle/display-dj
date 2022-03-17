@@ -14,6 +14,7 @@ function _getBrightnessBuiltin() {
     resolve(brightness);
   });
 }
+
 /**
  * set current laptop brightness. more info here
  * https://docs.microsoft.com/en-us/windows/win32/wmicoreprov/wmisetbrightness-method-in-class-wmimonitorbrightnessmethods
@@ -21,6 +22,25 @@ function _getBrightnessBuiltin() {
 async function _setBrightnessBuiltin(newBrightness) {
   let shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1,${newBrightness})`;
   await _executePowershell(shellToRun);
+}
+
+
+function _getBrightnessDccCi(idToUse) {
+  return new Promise(async (resolve, reject) => {
+    let retry = 3;
+    let error;
+
+    while(--retry > 0){
+      try{
+        const res = await ddcci.getBrightness(idToUse);
+        resolve(res);
+      } catch(err){
+        error = err;
+      }
+    }
+
+    reject('Failed to get brightness: ' + error)
+  });
 }
 
 function _getMonitorConfigs() {
@@ -126,10 +146,15 @@ const DisplayUtils = {
       } catch (err) {}
       disabledToUse = disabledToUse || false;
 
+      brightnessToUse = 50;
+      try {
+        brightnessToUse = await _getBrightnessDccCi(idToUse);
+      } catch (err) {}
+
       monitors.push({
         id: idToUse,
         name: nameToUse,
-        brightness: await ddcci.getBrightness(idToUse),
+        brightness: brightnessToUse,
         sortOrder: sortOrderToUse,
         disabled: disabledToUse,
       });
