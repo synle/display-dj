@@ -65,7 +65,7 @@ function _executePowershell(shellToRun, delay = 100) {
 
 const DisplayUtils = {
   getMonitors: async () => {
-    const monitors = [];
+    let monitors = [];
 
     const monitorsFromStorage = _getMonitorConfigs();
 
@@ -83,7 +83,7 @@ const DisplayUtils = {
     try {
       sortOrderToUse = monitorsFromStorage[LAPTOP_BUILT_IN_DISPLAY_ID].sortOrder;
     } catch (err) {}
-    sortOrderToUse = sortOrderToUse || (++sortOrder);
+    sortOrderToUse = sortOrderToUse || ++sortOrder;
 
     try {
       brightnessToUse = await _getBrightnessBuiltin();
@@ -112,7 +112,7 @@ const DisplayUtils = {
         try {
           sortOrderToUse = monitorsFromStorage[id].sortOrder;
         } catch (err) {}
-        sortOrderToUse = sortOrderToUse || (++sortOrder);
+        sortOrderToUse = sortOrderToUse || ++sortOrder;
 
         monitors.push({
           id,
@@ -124,6 +124,14 @@ const DisplayUtils = {
         console.error('>> Failed to get the external monitor configs', id, err);
       }
     }
+
+    // handling the sorting based on sortOrder
+    monitors = monitors.sort((a, b) => {
+      a = `${(a.sortOrder || 0).toString().padStart(3, '0')}`;
+      b = `${(b.sortOrder || 0).toString().padStart(3, '0')}`;
+
+      return a.localeCompare(b);
+    });
 
     // persist to storage
     _setMonitorConfigs(monitors);

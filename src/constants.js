@@ -1,16 +1,15 @@
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
-
 function _getPath(fileName) {
-  try{
+  try {
     const baseDir = path.join(app.getPath('appData'), 'display-dj');
 
     try {
       fs.mkdirSync(baseDir);
     } catch (err) {}
     return path.join(baseDir, fileName);
-  } catch(err){
+  } catch (err) {
     return undefined;
   }
 }
