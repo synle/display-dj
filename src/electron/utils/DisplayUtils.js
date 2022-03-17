@@ -2,26 +2,27 @@ import * as ddcci from '@hensm/ddcci';
 import StorageUtils from './StorageUtils';
 import { spawn } from 'child_process';
 
-const brightness = require('brightness');
-
 const MONITOR_CONFIG_FILE_DIR = 'monitor-configs.json';
 
 const LAPTOP_BUILT_IN_DISPLAY_ID = 'laptop-built-in';
-
-function _getBrightnessBuiltin(){
-  const wmi = require("node-wmi");
-
-  var queryOptions  = {
-    host: 'localhost',
-    namespace: 'root\\WMI',
-    class: "WmiMonitorBrightness",
-  };
-
-  return new Promise(function (resolve, reject) {
-    wmi.Query(queryOptions, function (err, res) {
-      resolve(res.CurrentBrightness)
-    });
+/**
+ * get current laptop brightness. more info here
+ * https://docs.microsoft.com/en-us/windows/win32/wmicoreprov/wmimonitorbrightness
+ */
+function _getBrightnessBuiltin() {
+  return new Promise(async (resolve, reject) => {
+    let shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness).CurrentBrightness`;
+    const brightness = parseInt(await _executePowershell(shellToRun));
+    resolve(brightness);
   });
+}
+/**
+ * set current laptop brightness. more info here
+ * https://docs.microsoft.com/en-us/windows/win32/wmicoreprov/wmisetbrightness-method-in-class-wmimonitorbrightnessmethods
+ */
+async function _setBrightnessBuiltin(newBrightness) {
+  let shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1,${newBrightness})`;
+  await _executePowershell(shellToRun);
 }
 
 function _getMonitorConfigs() {
@@ -42,24 +43,25 @@ function _setMonitorConfigs(monitors) {
   StorageUtils.writeJSON(MONITOR_CONFIG_FILE_DIR, res);
 }
 
-function _executePowershell(shellToRun) {
-  const child = spawn('powershell.exe', ['-Command', shellToRun]);
-
+function _executePowershell(shellToRun, delay = 100) {
   return new Promise((resolve, reject) => {
-    // TODO: add a handler for error case
-    let data = '';
-    child.stdout.on('data', function (msg) {
-      data += msg.toString();
-    });
+    setTimeout(() => {
+      const child = spawn('powershell.exe', ['-Command', shellToRun]);
 
-    child.on('exit', function (exitCode) {
-      if (parseInt(exitCode) !== 0) {
-        //Handle non-zero exit
-        reject(exitCode);
-      } else {
-        resolve(data);
-      }
-    });
+      let data = '';
+      child.stdout.on('data', function (msg) {
+        data += msg.toString();
+      });
+
+      child.on('exit', function (exitCode) {
+        if (parseInt(exitCode) !== 0) {
+          //Handle non-zero exit
+          reject(exitCode);
+        } else {
+          resolve(data);
+        }
+      });
+    }, delay);
   });
 }
 
@@ -70,23 +72,23 @@ const DisplayUtils = {
     const monitorsFromStorage = _getMonitorConfigs();
 
     // getting the laptop monitor if there is any
-    // let brightness;
-    // let name = 'Laptop Built-In Display';
-    // try {
-    //   name = monitorsFromStorage[id].name;
-    // } catch (err) {}
+    let brightness;
+    let name = 'Laptop Built-In Display';
+    try {
+      name = monitorsFromStorage[LAPTOP_BUILT_IN_DISPLAY_ID].name;
+    } catch (err) {}
 
-    // try {
-    //   brightness = await _getBrightnessBuiltin();3
-    // } catch (err) {
-    //   console.error('>> Failed to get the built-in monitor configs', err);
-    // }
+    try {
+      brightness = await _getBrightnessBuiltin();
+    } catch (err) {
+      console.error('>> Failed to get the built-in monitor configs', err);
+    }
 
-    // monitors.push({
-    //   id: LAPTOP_BUILT_IN_DISPLAY_ID,
-    //   name,
-    //   brightness,
-    // });
+    monitors.push({
+      id: LAPTOP_BUILT_IN_DISPLAY_ID,
+      name,
+      brightness,
+    });
 
     // getting the external monitors
     let monitorCount = 0;
@@ -152,9 +154,7 @@ const DisplayUtils = {
     if (monitor.id === LAPTOP_BUILT_IN_DISPLAY_ID) {
       // monitor is a laptop
       try {
-        const newBrightness = monitor.brightness / 100;
-        await brightness.set(newBrightness);
-        console.log('>> update laptop display brightness succeeded', monitor.brightness, newBrightness);
+        await _setBrightnessBuiltin(monitor.brightness);
       } catch (err) {
         console.error('>> update laptop display brightness failed', monitor.brightness, err);
       }
@@ -163,9 +163,13 @@ const DisplayUtils = {
       try {
         const newBrightness = monitor.brightness;
         await ddcci.setBrightness(monitor.id, newBrightness);
-        console.log('>> update external display brightness succeeded', monitor.name, monitor.brightness);
       } catch (err) {
-        console.error('>> update external display brightness failed', monitor.name, monitor.brightness, err);
+        console.error(
+          '>> update external display brightness failed',
+          monitor.name,
+          monitor.brightness,
+          err,
+        );
       }
     }
   },

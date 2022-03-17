@@ -28,10 +28,11 @@ This application is at the moment for windows only and can be used to adjust ext
 
 - [x] Basic MVP
 - [x] Create a basic build pipeline
-- [ ] Support laptop brightness (needs to add wmi-bridge c binding code)
+- [X] Support external monitors brightness
+- [X] Support laptop brightness
 - [ ] Support for windows 10
 - [ ] Support for vertical task bar or top placement taskbar
-- [ ] Properly run the app on startup
+- [X] Properly run the app on startup
 - [ ] Change brightness based on time of day
 - [ ] Change dark mode based on time of day
 - [ ] Shortcut key for dark mode change

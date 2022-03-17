@@ -45,8 +45,11 @@ function DarkModeSettingForm(props) {
 
   const onToggleDarkMode = async () => {
     const newDarkMode = !darkMode;
+
     setDarkMode(newDarkMode);
+
     await toggleDarkMode(newDarkMode);
+
     queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
   };
 
@@ -130,8 +133,9 @@ function MonitorBrightnessSetting(props) {
 }
 
 function AllMonitorBrightnessSettings(props) {
-  const [allBrightness, setAllBrightness] = useState(50);
   const { monitors } = props;
+  const allBrightnessValueFromProps = Math.min(...monitors.map(monitor => monitor.brightness), 100)
+  const [allBrightness, setAllBrightness] = useState(allBrightnessValueFromProps);
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
   const queryClient = useQueryClient();
 
