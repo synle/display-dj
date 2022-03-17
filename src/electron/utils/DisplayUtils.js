@@ -2,7 +2,11 @@ import * as ddcci from '@hensm/ddcci';
 import StorageUtils from './StorageUtils';
 import { spawn } from 'child_process';
 
+const brightness = require('brightness');
+
 const MONITOR_CONFIG_FILE_DIR = 'monitor-configs.json';
+
+const LAPTOP_BUILT_IN_DISPLAY_ID = 'laptop-built-in';
 
 function _getMonitorConfigs() {
   try {
@@ -46,23 +50,45 @@ const DisplayUtils = {
   getMonitors: async () => {
     const monitors = [];
 
-    const monitorIds = ddcci.getMonitorList();
-
     const monitorsFromStorage = _getMonitorConfigs();
 
+    // getting the laptop monitor if there is any
+    let brightness;
+    let name = 'Laptop Built-In Display';
+    try {
+      name = monitorsFromStorage[id].name;
+    } catch (err) {}
+
+    try {
+      brightness = await Math.floor((await brightness.get()) * 100);
+    } catch (err) {
+      console.log('>> Failed to get the built-in monitor configs', err);
+    }
+
+    monitors.push({
+      id: LAPTOP_BUILT_IN_DISPLAY_ID,
+      name,
+      brightness,
+    });
+
+    // getting the external monitors
     let monitorCount = 0;
+    const monitorIds = ddcci.getMonitorList();
     for (const id of monitorIds) {
-      let name = `Monitor #${++monitorCount}`;
-
       try {
-        name = monitorsFromStorage[id].name;
-      } catch (err) {}
+        let name = `Monitor #${++monitorCount}`;
+        try {
+          name = monitorsFromStorage[id].name;
+        } catch (err) {}
 
-      monitors.push({
-        id,
-        name,
-        brightness: await ddcci.getBrightness(id),
-      });
+        monitors.push({
+          id,
+          name,
+          brightness: await ddcci.getBrightness(id),
+        });
+      } catch (err) {
+        console.log('>> Failed to get the external monitor configs', id, err);
+      }
     }
 
     // persist to storage
@@ -88,7 +114,7 @@ const DisplayUtils = {
 
     monitorsFromStorage[monitor.id] = monitor;
 
-    await ddcci.setBrightness(monitor.id, monitor.brightness);
+    await DisplayUtils.updateBrightness(monitor);
 
     // persist to storage
     _setMonitorConfigs(Object.values(monitorsFromStorage));
@@ -105,7 +131,22 @@ const DisplayUtils = {
       return 0;
     }
   },
-  adjustAllBrightness: async (newBrightness, delta) => {
+  updateBrightness: async (monitor) => {
+    if (monitor.id === LAPTOP_BUILT_IN_DISPLAY_ID) {
+      // monitor is a laptop
+      try {
+        await brightness.set(Math.floor(monitor.brightness / 100));
+        console.log('>> update laptop display brightness succeeds', monitor.brightness);
+      } catch (err) {
+        console.log('>> update laptop display brightness failed', monitor.brightness, err);
+      }
+    } else {
+      // monitor is an external (DCC/CI)
+      console.log('>> update external display brightness', monitor.name, monitor.brightness);
+      await ddcci.setBrightness(monitor.id, monitor.brightness);
+    }
+  },
+  updateAllBrightness: async (newBrightness, delta) => {
     newBrightness += delta;
 
     // making sure the range is 0 to 100
@@ -119,7 +160,7 @@ const DisplayUtils = {
     const promisesChangeBrightness = [];
     for (const monitor of monitors) {
       monitor.brightness = newBrightness;
-      promisesChangeBrightness.push(ddcci.setBrightness(monitor.id, monitor.brightness));
+      promisesChangeBrightness.push(DisplayUtils.updateBrightness(monitor));
     }
 
     // persist to storage

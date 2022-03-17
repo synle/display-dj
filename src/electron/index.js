@@ -122,7 +122,7 @@ async function setUpShortcuts() {
       }
       isChangingAllMonitorBrightness = true;
       try {
-        allMonitorBrightness = await DisplayUtils.adjustAllBrightness(
+        allMonitorBrightness = await DisplayUtils.updateAllBrightness(
           allMonitorBrightness,
           -1 * delta,
         );
@@ -139,7 +139,7 @@ async function setUpShortcuts() {
 
       isChangingAllMonitorBrightness = true;
       try {
-        allMonitorBrightness = await DisplayUtils.adjustAllBrightness(allMonitorBrightness, delta);
+        allMonitorBrightness = await DisplayUtils.updateAllBrightness(allMonitorBrightness, delta);
       } catch (err) {}
       isChangingAllMonitorBrightness = false;
     }),
