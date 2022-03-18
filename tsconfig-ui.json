@@ -10,7 +10,6 @@
     "lib": ["dom", "dom.iterable", "esnext"],
     "module": "esNext",
     "moduleResolution": "node",
-    "noEmit": true,
     "noFallthroughCasesInSwitch": false,
     "resolveJsonModule": true,
     "skipLibCheck": true,

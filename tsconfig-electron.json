@@ -5,7 +5,9 @@
     "baseUrl": "./",
     "module": "es6",
     "moduleResolution": "node",
+    "noFallthroughCasesInSwitch": false,
     "resolveJsonModule": true,
+    "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
     "target": "es5"
