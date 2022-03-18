@@ -13,7 +13,7 @@ import DisplayUtils from 'src/electron/utils/DisplayUtils';
 import { getEndpointHandlers, setUpDataEndpoints } from 'src/electron/utils/Endpoints';
 import { matchPath } from 'react-router-dom';
 import path from 'path';
-import { MONITOR_CONFIG_FILE_DIR } from 'src/constants';
+import StorageUtils, { MONITOR_CONFIG_FILE_DIR } from 'src/electron/utils/StorageUtils';
 
 let mainWindow;
 
@@ -126,11 +126,14 @@ async function createTray() {
     },
     {
       label: 'Exit',
-      click: () => app.quit(),
+      click: () => {
+        app.quit();
+        process.exit();
+      },
     },
   ]);
 
-  tray.setToolTip('display-dj (by Sy Le)');
+  tray.setToolTip(`display-dj (by Sy Le)`);
   tray.setContextMenu(menu);
 }
 
@@ -200,11 +203,11 @@ function _getTrayIcon() {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
-  setUpDataEndpoints();
   createWindow();
   createTray();
   setUpShortcuts();
   setupAutolaunch();
+  setUpDataEndpoints();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common

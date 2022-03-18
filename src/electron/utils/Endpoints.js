@@ -40,6 +40,13 @@ export function setUpDataEndpoints() {
 
   addDataEndpoint('put', '/api/configs/positionWindow', async (req, res) => {
     try {
+      const tray = global.tray;
+      const mainWindow = global.mainWindow;
+
+      if(!tray){
+        return res.status(500).send('App not ready yet');
+      }
+
       const width = 300;
       const height = req.body.height;
 

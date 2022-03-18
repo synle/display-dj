@@ -1,7 +1,7 @@
 import * as ddcci from '@hensm/ddcci';
-import StorageUtils from 'src/electron/utils/StorageUtils';
+import StorageUtils, { MONITOR_CONFIG_FILE_DIR } from 'src/electron/utils/StorageUtils';
 import { spawn } from 'child_process';
-import { MONITOR_CONFIG_FILE_DIR, DISPLAY_TYPE } from 'src/constants';
+import { DISPLAY_TYPE } from 'src/constants';
 import { Monitor, MonitorUpdateInput } from 'src/types.d';
 
 /**

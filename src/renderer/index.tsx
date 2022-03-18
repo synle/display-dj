@@ -1,4 +1,3 @@
-import React from 'react';
 import ReactDOM from 'react-dom';
 import {
   QueryClient,
@@ -7,7 +6,7 @@ import {
   useQuery,
   useQueryClient,
 } from 'react-query';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ApiUtils from 'src/renderer/utils/ApiUtils';
 import { LAPTOP_BUILT_IN_DISPLAY_ID, DISPLAY_TYPE } from 'src/constants';
 import MonitorSvg from 'src/renderer/svg/monitor.svg';
@@ -34,7 +33,7 @@ function Home(props: HomeProps) {
 
   useEffect(() => {
     document.addEventListener('visibilitychange', () => {
-      updateAppHeight()
+      updateAppHeight();
     });
   }, []);
 

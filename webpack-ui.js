@@ -1,7 +1,7 @@
 const path = require('path');
 
 module.exports = {
-  entry: ['regenerator-runtime/runtime.js', './src/renderer/index.tsx'],
+  entry: ['./src/renderer/index.tsx'],
   devtool: 'source-map',
   output: {
     filename: 'renderer.js',
@@ -18,7 +18,7 @@ module.exports = {
   module: {
     rules: [
       {
-        test: /\.tsx?$/,
+        test: /\.(js|jsx|ts|tsx)$/,
         use: [
           {
             loader: 'ts-loader',
@@ -28,23 +28,6 @@ module.exports = {
           },
         ],
         exclude: /node_modules/,
-      },
-      {
-        test: /\.(js|jsx)$/,
-        exclude: /node_modules/,
-        use: {
-          loader: 'babel-loader',
-          options: {
-            plugins: [
-              [
-                '@babel/plugin-transform-react-jsx',
-                {
-                  runtime: 'automatic',
-                },
-              ],
-            ],
-          },
-        },
       },
       {
         test: /\.s[ac]ss$/i,
