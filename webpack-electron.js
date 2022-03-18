@@ -13,7 +13,17 @@ module.exports = {
     'react-router-dom': 'commonjs react-router-dom',
     '@hensm/ddcci': 'commonjs @hensm/ddcci',
   },
+  module: {
+    rules: [
+      {
+        test: /\.tsx?$/,
+        use: 'ts-loader',
+        exclude: /node_modules/,
+      }
+    ],
+  },
   resolve: {
+    extensions: ['.tsx', '.ts', '.js', '.jsx'],
     alias: {
       src: path.resolve(__dirname, 'src'),
     },
