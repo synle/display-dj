@@ -1,6 +1,8 @@
 import 'src/renderer/utils/fetchPolyfill';
+import { Monitor, MonitorUpdateInput } from 'src/types.d';
 
-function _fetch(input, initOptions) {
+
+function _fetch<T>(input: RequestInfo, initOptions?: RequestInit) {
   let { headers, ...restInput } = initOptions || {};
 
   headers = headers || {};
@@ -28,17 +30,21 @@ function _fetch(input, initOptions) {
     }
 
     return r.ok ? responseToUse : Promise.reject(responseToUse);
-  });
+  })
+   .then((r) => {
+      const res: T = r;
+      return res;
+    });
 }
 
 const ApiUtils = {
-  getConfigs: () => _fetch(`/api/configs`),
-  updateMonitor: (monitor) =>
+  getConfigs: () => _fetch<Monitor[]>(`/api/configs`),
+  updateMonitor: (monitor: MonitorUpdateInput) =>
     _fetch(`/api/configs/monitors`, {
       method: 'put',
       body: JSON.stringify(monitor),
     }),
-  updateDarkMode: (darkMode) =>
+  updateDarkMode: (darkMode: boolean) =>
     _fetch(`/api/configs/darkMode`, {
       method: 'put',
       body: JSON.stringify({
