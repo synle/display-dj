@@ -1,5 +1,5 @@
 import { screen } from 'electron';
-import DisplayUtils from './DisplayUtils';
+import DisplayUtils from 'src/electron/utils/DisplayUtils';
 
 const electronEndpointHandlers = [];
 

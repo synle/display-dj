@@ -9,11 +9,11 @@ import {
   nativeTheme,
   shell,
 } from 'electron';
+import DisplayUtils from 'src/electron/utils/DisplayUtils';
+import { getEndpointHandlers, setUpDataEndpoints } from 'src/electron/utils/Endpoints';
 import { matchPath } from 'react-router-dom';
 import path from 'path';
-import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
-import DisplayUtils from './utils/DisplayUtils';
-import { MONITOR_CONFIG_FILE_DIR } from '../constants';
+import { MONITOR_CONFIG_FILE_DIR } from 'src/constants';
 
 let mainWindow;
 

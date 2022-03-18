@@ -7,11 +7,11 @@ import {
   useQueryClient,
 } from 'react-query';
 import { useEffect, useState } from 'react';
-import ApiUtils from './utils/ApiUtils';
+import ApiUtils from 'src/renderer/utils/ApiUtils';
+import { LAPTOP_BUILT_IN_DISPLAY_ID, DISPLAY_TYPE } from 'src/constants';
+import MonitorSvg from 'src/renderer/svg/monitor.svg';
+import LaptopSvg from 'src/renderer/svg/laptop.svg';
 import './index.scss';
-import { LAPTOP_BUILT_IN_DISPLAY_ID, DISPLAY_TYPE } from '../constants';
-import MonitorSvg from './svg/monitor.svg';
-import LaptopSvg from './svg/laptop.svg';
 
 // TODO: extract these things
 const queryClient = new QueryClient();

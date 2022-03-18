@@ -13,4 +13,9 @@ module.exports = {
     'react-router-dom': 'commonjs react-router-dom',
     '@hensm/ddcci': 'commonjs @hensm/ddcci',
   },
+  resolve: {
+    alias: {
+      src: path.resolve(__dirname, 'src'),
+    },
+  },
 };

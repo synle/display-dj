@@ -12,7 +12,7 @@
     "lint": "eslint -c .eslintrc --ext .ts ./src",
     "fix-import": "npx import-fixer --groupImport --aggressive",
     "preformat": "npm run fix-import",
-    "format": "npx prettier --config ./.prettierrc --write **/*.{ts,tsx,js,jsx,scss,yml,html,json,md}",
+    "format": "npx prettier --config ./.prettierrc --write **/*.{ts,tsx,js,jsx,scss,yml,html,json,md} && npx prettier --config ./.prettierrc --parser html --write **/*.svg",
     "test-ci": "",
     "prestart": "npm run build",
     "start": "concurrently \"cross-env APPLICATION_MODE='dev' electron ./build/main.js\" \"npm run dev\"",

@@ -1,4 +1,4 @@
-import './fetchPolyfill';
+import 'src/renderer/utils/fetchPolyfill';
 
 function _fetch(input, initOptions) {
   let { headers, ...restInput } = initOptions || {};

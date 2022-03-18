@@ -1,7 +1,7 @@
 import * as ddcci from '@hensm/ddcci';
-import StorageUtils from './StorageUtils';
+import StorageUtils from 'src/electron/utils/StorageUtils';
 import { spawn } from 'child_process';
-import { MONITOR_CONFIG_FILE_DIR, DISPLAY_TYPE } from '../../constants';
+import { MONITOR_CONFIG_FILE_DIR, DISPLAY_TYPE } from 'src/constants';
 
 /**
  * get current laptop brightness. more info here
