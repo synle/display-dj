@@ -1,4 +1,3 @@
-import { executePowershell } from 'src/electron/utils/ShellUtils';
 import StorageUtils, { MONITOR_CONFIG_FILE_DIR } from 'src/electron/utils/StorageUtils';
 import DisplayAdapterWin32 from 'src/electron/utils/DisplayAdapter.Win32';
 import DisplayAdapterDarwin from 'src/electron/utils/DisplayAdapter.Darwin';
@@ -25,7 +24,7 @@ function _setMonitorConfigs(monitors: Monitor[]) {
 let DisplayAdapterToUse: DisplayAdapter;
 console.log('>>>>>>>>>>>>', process.platform, process);
 
-switch(process.platform){
+switch (process.platform) {
   case 'win32':
     DisplayAdapterToUse = DisplayAdapterWin32;
     break;
@@ -75,7 +74,7 @@ const DisplayUtils = {
         id: idToUse,
         name: nameToUse,
         type: await DisplayAdapterToUse.getMonitorType(idToUse),
-        brightness: await DisplayAdapterToUse.getMonitorBrightness(idToUse) ,
+        brightness: await DisplayAdapterToUse.getMonitorBrightness(idToUse),
         sortOrder: sortOrderToUse,
         disabled: disabledToUse,
       });
@@ -142,7 +141,9 @@ const DisplayUtils = {
     const promisesChangeBrightness = [];
     for (const monitor of monitors) {
       monitor.brightness = newBrightness;
-      promisesChangeBrightness.push(DisplayAdapterToUse.updateMonitorBrightness(monitor.id, monitor.brightness));
+      promisesChangeBrightness.push(
+        DisplayAdapterToUse.updateMonitorBrightness(monitor.id, monitor.brightness),
+      );
     }
 
     // persist to storage
@@ -153,7 +154,7 @@ const DisplayUtils = {
     return newBrightness;
   },
   getDarkMode: DisplayAdapterToUse.getDarkMode,
-  updateDarkMode:  DisplayAdapterToUse.updateDarkMode
+  updateDarkMode: DisplayAdapterToUse.updateDarkMode,
 };
 
 export default DisplayUtils;

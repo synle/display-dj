@@ -46,9 +46,9 @@ async function _setBrightnessDccCi(idToUse: string, newBrightness: number): Prom
   await ddcci.setBrightness(idToUse, newBrightness);
 }
 
-const DisplayUtils : DisplayAdapter= {
-  getMonitorList: async() => {
-    return ddcci.getMonitorList()
+const DisplayUtils: DisplayAdapter = {
+  getMonitorList: async () => {
+    return ddcci.getMonitorList();
   },
   getMonitorType: async (idToUse: string) => {
     try {
