@@ -1,3 +1,4 @@
+import { screen } from 'electron';
 import DisplayUtils from './DisplayUtils';
 
 const electronEndpointHandlers = [];
@@ -37,14 +38,32 @@ export function setUpDataEndpoints() {
     }
   });
 
-  addDataEndpoint('put', '/api/configs/appHeight', async (req, res) => {
+  addDataEndpoint('put', '/api/configs/positionWindow', async (req, res) => {
     try {
       const width = 300;
       const height = req.body.height;
 
       const trayBound = tray.getBounds();
-      let x = Math.floor(trayBound.x - width + 50);
-      let y = Math.floor(trayBound.y - height - 20);
+
+      var mainScreen = screen.getPrimaryDisplay();
+      const mainScreenSize = mainScreen.size;
+      let x = trayBound.x, y = trayBound.y;
+
+      if (x > mainScreenSize.width / 2) {
+        // right
+        x = Math.floor(trayBound.x - width + 50);
+      } else {
+        // left
+        x = Math.floor(trayBound.x + 50);
+      }
+
+      if (y > mainScreenSize.height / 2) {
+        // bottom
+        y = Math.floor(trayBound.y - height - 20);
+      } else {
+        // top
+        y = Math.floor(trayBound.y - height + 20);
+      }
       mainWindow.setPosition(x, y);
 
       res.status(200).json({ height });

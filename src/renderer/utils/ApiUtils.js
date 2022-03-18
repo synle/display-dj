@@ -46,7 +46,7 @@ const ApiUtils = {
       }),
     }),
   updateAppHeight: () =>
-    _fetch(`/api/configs/appHeight`, {
+    _fetch(`/api/configs/positionWindow`, {
       method: 'put',
       body: JSON.stringify({
         height: document.body.clientHeight,
