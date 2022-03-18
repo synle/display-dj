@@ -1,3 +1,4 @@
+import React from 'react';
 import ReactDOM from 'react-dom';
 import {
   QueryClient,
@@ -12,17 +13,18 @@ import { LAPTOP_BUILT_IN_DISPLAY_ID, DISPLAY_TYPE } from 'src/constants';
 import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import LaptopSvg from 'src/renderer/svg/laptop.svg';
 import './index.scss';
-
+import { Monitor, MonitorUpdateInput } from 'src/types.d';
 // TODO: extract these things
 const queryClient = new QueryClient();
 
 // react components
-function Home(props) {
+type HomeProps = {};
+function Home(props: HomeProps) {
   const { isLoading, data: configs } = useConfigs();
   const { mutateAsync: updateAppHeight } = useUpdateAppHeight();
 
   // this routine will update the app height according to the content
-  const visibleMonitorsCount = ((configs && configs.monitors) || []).filter(
+  const visibleMonitorsCount = (configs?.monitors || []).filter(
     (monitor) => !monitor.disabled,
   ).length;
 
@@ -31,7 +33,9 @@ function Home(props) {
   }, [visibleMonitorsCount]);
 
   useEffect(() => {
-    document.addEventListener('visibilitychange', updateAppHeight, false);
+    document.addEventListener('visibilitychange', () => {
+      updateAppHeight()
+    });
   }, []);
 
   if (isLoading) {
@@ -54,14 +58,17 @@ function Home(props) {
       </header>
       <MonitorBrightnessSettingForm monitors={configs.monitors} />
       <AllMonitorBrightnessSettings monitors={configs.monitors} />
-      <DarkModeSettingForm darkmode={configs.darkmode} />
+      <DarkModeSettingForm darkMode={configs.darkMode} />
     </>
   );
 }
 
-function DarkModeSettingForm(props) {
+type DarkModeSettingFormProps = {
+  darkMode: boolean;
+};
+function DarkModeSettingForm(props: DarkModeSettingFormProps) {
   const darkModeFromProps = props.darkMode === true;
-  const [darkMode, setDarkMode] = useState(darkModeFromProps);
+  const [darkMode, setDarkMode] = useState<boolean>(darkModeFromProps);
   const { mutateAsync: toggleDarkMode } = useToggleDarkMode();
 
   const onToggleDarkMode = async () => {
@@ -87,16 +94,27 @@ function DarkModeSettingForm(props) {
   );
 }
 
-function MonitorBrightnessSettingForm(props) {
+type MonitorBrightnessSettingFormProps = {
+  monitors: Monitor[];
+};
+function MonitorBrightnessSettingForm(props: MonitorBrightnessSettingFormProps) {
   const { monitors } = props;
-  return monitors
-    .filter((monitor) => !monitor.disabled)
-    .map((monitor, idx) => (
-      <MonitorBrightnessSetting key={monitor.id} monitor={monitor} idx={idx + 1} />
-    ));
+  return (
+    <>
+      {monitors
+        .filter((monitor) => !monitor.disabled)
+        .map((monitor, idx) => (
+          <MonitorBrightnessSetting key={monitor.id} monitor={monitor} idx={idx + 1} />
+        ))}
+    </>
+  );
 }
 
-function MonitorBrightnessSetting(props) {
+type MonitorBrightnessSettingProps = {
+  monitor: Monitor;
+  idx: number;
+};
+function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   const [editName, setEditName] = useState(false);
   const [name, setName] = useState('');
   const { monitor } = props;
@@ -104,12 +122,13 @@ function MonitorBrightnessSetting(props) {
   const queryClient = useQueryClient();
   const isLaptop = monitor.type === DISPLAY_TYPE.LAPTOP;
 
-  const onChange = (key, value) => {
+  const onChange = (key: string, value: any) => {
+    //@ts-ignore
     monitor[key] = value;
     updateMonitor(monitor);
   };
 
-  const onNameBlur = (e) => {
+  const onNameBlur = (e: React.SyntheticEvent) => {
     e.preventDefault();
 
     monitor.name = name.trim();
@@ -136,7 +155,7 @@ function MonitorBrightnessSetting(props) {
               value={name}
               placeholder='Enter a display name'
               autoFocus={true}
-              onInput={(e) => setName(e.target.value)}
+              onInput={(e) => setName((e.target as HTMLInputElement).value)}
               onBlur={onNameBlur}
               required
               type='text'
@@ -175,7 +194,10 @@ function MonitorBrightnessSetting(props) {
   );
 }
 
-function AllMonitorBrightnessSettings(props) {
+type AllMonitorBrightnessSettingsProps = {
+  monitors: Monitor[];
+};
+function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) {
   const { monitors } = props;
   const allBrightnessValueFromProps = Math.min(
     ...monitors.map((monitor) => monitor.brightness),
@@ -185,7 +207,7 @@ function AllMonitorBrightnessSettings(props) {
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
   const queryClient = useQueryClient();
 
-  const onChange = async (value) => {
+  const onChange = async (value: number) => {
     setAllBrightness(value);
 
     for (const monitor of monitors) {

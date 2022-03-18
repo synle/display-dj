@@ -10,3 +10,10 @@ export type MonitorUpdateInput = {
 };
 
 export type Monitor = Required<MonitorUpdateInput>;
+
+export type AppConfig = {
+  monitors: Monitor[];
+  darkMode: boolean;
+  env: string;
+  version: string;
+};

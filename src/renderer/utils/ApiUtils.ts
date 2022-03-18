@@ -1,8 +1,8 @@
 import { fetch } from 'src/renderer/utils/FetchUtils';
-import { Monitor, MonitorUpdateInput } from 'src/types.d';
+import { AppConfig, MonitorUpdateInput } from 'src/types.d';
 
 const ApiUtils = {
-  getConfigs: () => fetch<Monitor[]>(`/api/configs`),
+  getConfigs: () => fetch<AppConfig>(`/api/configs`),
   updateMonitor: (monitor: MonitorUpdateInput) =>
     fetch(`/api/configs/monitors`, {
       method: 'put',
