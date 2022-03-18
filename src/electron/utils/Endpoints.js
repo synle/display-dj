@@ -40,9 +40,13 @@ export function setUpDataEndpoints() {
   addDataEndpoint('put', '/api/configs/appHeight', async (req, res) => {
     try {
       const width = 300;
-      const height = req.body.height
-      // global.mainWindow.setSize(width, height);
-      // console.log(global.mainWindow.setSize)
+      const height = req.body.height;
+
+      const trayBound = tray.getBounds();
+      let x = Math.floor(trayBound.x - width + 50);
+      let y = Math.floor(trayBound.y - height - 20);
+      mainWindow.setPosition(x, y);
+
       res.status(200).json({ height });
     } catch (err) {
       res.status(500).json({ error: `Failed to save monitor`, stack: err.stack });

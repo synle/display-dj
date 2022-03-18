@@ -1,12 +1,19 @@
 import AutoLaunch from 'auto-launch';
-import electron, { Menu, Tray, app, globalShortcut, ipcMain, nativeTheme, shell } from 'electron';
+import {
+  BrowserWindow,
+  Menu,
+  Tray,
+  app,
+  globalShortcut,
+  ipcMain,
+  nativeTheme,
+  shell,
+} from 'electron';
 import { matchPath } from 'react-router-dom';
 import path from 'path';
 import { setUpDataEndpoints, getEndpointHandlers } from './utils/Endpoints';
 import DisplayUtils from './utils/DisplayUtils';
 import { MONITOR_CONFIG_FILE_DIR } from '../constants';
-
-const { menubar } = require('menubar');
 
 let mainWindow;
 
@@ -17,6 +24,115 @@ const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
 
 console.error = console.log.bind(null, 'ERROR');
+
+function createWindow() {
+  // Create the browser window.
+  mainWindow = new BrowserWindow({
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+    frame: false,
+    show: false,
+    autoHideMenuBar: true,
+    alwaysOnTop: true,
+    icon: path.join(appBaseDir, 'icon.ico'),
+    width: 300,
+    height: 200,
+  });
+
+  mainWindow.on('minimize', function (event) {
+    event.preventDefault();
+    mainWindow.hide();
+  });
+
+  // mainWindow.on('close', function (event) {
+  //   event.preventDefault();
+  //   mainWindow.hide();
+
+  //   return false;
+  // });
+
+  mainWindow.on('blur', function (event) {
+    event.preventDefault();
+    mainWindow.hide();
+  });
+
+  // and load the index.html of the app.
+  mainWindow.loadFile(path.join(appBaseDir, 'index.html'));
+
+  // Open the DevTools.
+  // mainWindow.webContents.openDevTools({ mode: 'detach' });
+  global.mainWindow = mainWindow;
+}
+
+async function createTray() {
+  let tray = new Tray((await DisplayUtils.getDarkMode()) === true ? DARK_ICON : LIGHT_ICON);
+  global.tray = tray;
+
+  nativeTheme.on('updated', () => {
+    tray.setImage(_getTrayIcon());
+  });
+
+  tray.on('click', async (event, iconPos, mousePos) => {
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow.show();
+    }
+  });
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Change brightness to 0%',
+      click: () => DisplayUtils.updateAllBrightness(0),
+    },
+    {
+      label: 'Change brightness to 50%',
+      click: () => DisplayUtils.updateAllBrightness(50),
+    },
+    {
+      label: 'Change brightness to 100%',
+      click: () => DisplayUtils.updateAllBrightness(100),
+    },
+    {
+      type: 'separator',
+    },
+    {
+      label: 'Open Configs',
+      click: () => {
+        try {
+          console.log(`file://${MONITOR_CONFIG_FILE_DIR}`);
+          shell.openExternal(`file://${MONITOR_CONFIG_FILE_DIR}`);
+        } catch (err) {}
+      },
+    },
+    {
+      type: 'separator',
+    },
+    {
+      label: 'File a bug',
+      click: async () => {
+        await shell.openExternal('https://github.com/synle/display-dj/issues/new');
+      },
+    },
+    {
+      label: 'About display-dj',
+      click: async () => {
+        await shell.openExternal('https://github.com/synle/display-dj');
+      },
+    },
+    {
+      type: 'separator',
+    },
+    {
+      label: 'Exit',
+      click: () => app.quit(),
+    },
+  ]);
+
+  tray.setToolTip('display-dj (by Sy Le)');
+  tray.setContextMenu(menu);
+}
 
 async function setUpShortcuts() {
   // TODO: move this into a config
@@ -76,86 +192,6 @@ function setupAutolaunch() {
   });
 }
 
-async function setupMenuBar() {
-  const mb = menubar({
-    browserWindow: {
-      webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false,
-      },
-      frame: false,
-      autoHideMenuBar: true,
-      width: 300,
-      height: 250,
-      alwaysOnTop: true,
-    },
-    icon: (await DisplayUtils.getDarkMode()) === true ? DARK_ICON : LIGHT_ICON,
-    tooltip: `display-dj (by Sy Le)`,
-    preloadWindow: true,
-  });
-
-  mb.on('ready', () => {
-    const { tray } = mb;
-
-
-    // setting up tray icon
-    nativeTheme.on('updated', () => {
-      tray.setImage(_getTrayIcon());
-    });
-
-    const menu = Menu.buildFromTemplate([
-      {
-        label: 'Change brightness to 0%',
-        click: () => DisplayUtils.updateAllBrightness(0),
-      },
-      {
-        label: 'Change brightness to 50%',
-        click: () => DisplayUtils.updateAllBrightness(50),
-      },
-      {
-        label: 'Change brightness to 100%',
-        click: () => DisplayUtils.updateAllBrightness(100),
-      },
-      {
-        type: 'separator',
-      },
-      {
-        label: 'Open Configs',
-        click: () => {
-          try {
-            console.log(`file://${MONITOR_CONFIG_FILE_DIR}`);
-            shell.openExternal(`file://${MONITOR_CONFIG_FILE_DIR}`);
-          } catch (err) {}
-        },
-      },
-      {
-        type: 'separator',
-      },
-      {
-        label: 'File a bug',
-        click: async () => {
-          await shell.openExternal('https://github.com/synle/display-dj/issues/new');
-        },
-      },
-      {
-        label: 'About display-dj',
-        click: async () => {
-          await shell.openExternal('https://github.com/synle/display-dj');
-        },
-      },
-      {
-        type: 'separator',
-      },
-      {
-        label: 'Exit',
-        click: () => app.quit(),
-      },
-    ]);
-
-    tray.setContextMenu(menu);
-  });
-}
-
 function _getTrayIcon() {
   return nativeTheme.shouldUseDarkColors ? DARK_ICON : LIGHT_ICON;
 }
@@ -165,7 +201,8 @@ function _getTrayIcon() {
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
   setUpDataEndpoints();
-  setupMenuBar();
+  createWindow();
+  createTray();
   setUpShortcuts();
   setupAutolaunch();
 });
