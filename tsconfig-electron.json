@@ -1,11 +1,14 @@
 {
   "compilerOptions": {
-    "baseUrl": "./",
-    "outDir": "./build/",
-    "module": "es6",
-    "target": "es5",
     "allowJs": true,
     "allowSyntheticDefaultImports": true,
-    "moduleResolution": "node"
+    "baseUrl": "./",
+    "module": "es6",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "strict": true,
+    "target": "es5"
   }
 }
