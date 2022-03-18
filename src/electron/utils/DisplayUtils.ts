@@ -58,7 +58,7 @@ function _getMonitorConfigs(): Record<string, Monitor> {
 
 function _setMonitorConfigs(monitors: Monitor[]) {
   // wrap it inside key => monitor
-  const res : Record<string, Monitor> = {};
+  const res: Record<string, Monitor> = {};
   for (const monitor of monitors) {
     res[monitor.id] = monitor;
   }

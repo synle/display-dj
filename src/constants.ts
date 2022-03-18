@@ -1,7 +1,6 @@
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
-
 function _getPath(fileName: string) {
   const baseDir = path.join(app.getPath('appData'), 'display-dj');
 
