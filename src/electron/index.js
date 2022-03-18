@@ -187,6 +187,10 @@ async function setUpShortcuts() {
   }
 }
 function setupAutolaunch() {
+  if(process.env.NODE_ENV !== 'production'){
+    return;
+  }
+
   let autoLaunch = new AutoLaunch({
     name: 'display-dj',
     path: app.getPath('exe'),

@@ -26,6 +26,7 @@ export function setUpDataEndpoints() {
       res.status(200).json({
         darkMode: (await DisplayUtils.getDarkMode()) === true,
         monitors: await DisplayUtils.getMonitors(),
+        env: process.env.NODE_ENV,
       });
     } catch (err) {
       res.status(500).json({ error: `Failed to get configs`, stack: err.stack });
