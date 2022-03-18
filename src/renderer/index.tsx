@@ -21,7 +21,7 @@ const queryClient = new QueryClient();
 type HomeProps = {};
 function Home(props: HomeProps) {
   const { isLoading: loadingConfigs, data: configs } = useConfigs();
-  const { isLoading: loadingAppState , data: appState  } = useAppState()
+  const { isLoading: loadingAppState, data: appState } = useAppState();
   const { mutateAsync: updateAppHeight } = useUpdateAppHeight();
 
   useEffect(() => {
@@ -33,10 +33,8 @@ function Home(props: HomeProps) {
 
     return () => {
       observer.disconnect();
-    }
+    };
   }, []);
-
-
   const isLoading = loadingConfigs || loadingAppState;
   if (isLoading) {
     return <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>Loading...</div>;
@@ -57,32 +55,37 @@ function Home(props: HomeProps) {
         </h2>
         <ToggleAllDisplay />
       </header>
-      {
-        appState.expanded
-        ? <MonitorBrightnessSettingForm monitors={configs.monitors} />
-        : <AllMonitorBrightnessSettings monitors={configs.monitors} />
-      }
+      {appState.expanded ? (
+        <MonitorBrightnessSettingForm monitors={configs.monitors} />
+      ) : (
+        <AllMonitorBrightnessSettings monitors={configs.monitors} />
+      )}
       <DarkModeSettingForm darkMode={configs.darkMode} />
     </>
   );
 }
 
-function ToggleAllDisplay(){
-  const { isLoading, data: appState  } = useAppState()
+function ToggleAllDisplay() {
+  const { isLoading, data: appState } = useAppState();
   const { mutateAsync: updateAppState } = useUpdateAppState();
 
-  if(isLoading || !appState){
+  if (isLoading || !appState) {
     return null;
   }
 
   const onToggleAll = () => {
     appState.expanded = !appState.expanded;
     updateAppState(appState);
-  }
+  };
 
-  return <span className='iconBtn' onClick={onToggleAll} title='Toggle brightness for individual display'>
-        <ToggleSvg />
-      </span>
+  return (
+    <span
+      className='iconBtn'
+      onClick={onToggleAll}
+      title='Toggle brightness for individual display'>
+      <ToggleSvg />
+    </span>
+  );
 }
 
 type DarkModeSettingFormProps = {
@@ -268,12 +271,13 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
 }
 // react query store
 const QUERY_KEY_CONFIGS = 'configs';
+
 const QUERY_KEY_APP_STATE = 'appState';
 
 type AppState = {
-  expanded: boolean,
-}
-let _appState: AppState = {expanded: false}
+  expanded: boolean;
+};
+let _appState: AppState = { expanded: false };
 function useAppState() {
   return useQuery(QUERY_KEY_APP_STATE, () => _appState);
 }
@@ -294,14 +298,17 @@ function useUpdateAppHeight() {
   return useMutation(ApiUtils.updateAppHeight);
 }
 
-function useUpdateAppState(){
-  return useMutation<void, void, AppState>(async (newAppState: AppState) => {
-    _appState = {..._appState, ...newAppState};
-  }, {
-    onSuccess:() => {
-      queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
-    }
-  });
+function useUpdateAppState() {
+  return useMutation<void, void, AppState>(
+    async (newAppState: AppState) => {
+      _appState = { ..._appState, ...newAppState };
+    },
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
+      },
+    },
+  );
 }
 
 // render the main app

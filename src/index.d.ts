@@ -5,7 +5,7 @@ declare module '@hensm/ddcci' {
 }
 
 // for the UI
-declare module "*.svg" {
+declare module '*.svg' {
   const content: any;
   export default content;
 }

@@ -43,7 +43,7 @@ export function setUpDataEndpoints() {
       const tray = global.tray;
       const mainWindow = global.mainWindow;
 
-      if(!tray){
+      if (!tray) {
         return res.status(500).send('App not ready yet');
       }
 
