@@ -11,6 +11,7 @@ import ApiUtils from 'src/renderer/utils/ApiUtils';
 import { LAPTOP_BUILT_IN_DISPLAY_ID, DISPLAY_TYPE } from 'src/constants';
 import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import LaptopSvg from 'src/renderer/svg/laptop.svg';
+import ToggleSvg from 'src/renderer/svg/toggle.svg';
 import './index.scss';
 import { Monitor, MonitorUpdateInput } from 'src/types.d';
 // TODO: extract these things
@@ -54,6 +55,7 @@ function Home(props: HomeProps) {
         <h2>
           Display-DJ {configs.version} {configs.env !== 'production' ? configs.env : ''}
         </h2>
+        <ToggleAllDisplay />
       </header>
       {
         appState.expanded
@@ -63,6 +65,24 @@ function Home(props: HomeProps) {
       <DarkModeSettingForm darkMode={configs.darkMode} />
     </>
   );
+}
+
+function ToggleAllDisplay(){
+  const { isLoading, data: appState  } = useAppState()
+  const { mutateAsync: updateAppState } = useUpdateAppState();
+
+  if(isLoading || !appState){
+    return null;
+  }
+
+  const onToggleAll = () => {
+    appState.expanded = !appState.expanded;
+    updateAppState(appState);
+  }
+
+  return <span className='iconBtn' onClick={onToggleAll} title='Toggle brightness for individual display'>
+        <ToggleSvg />
+      </span>
 }
 
 type DarkModeSettingFormProps = {
@@ -173,12 +193,12 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
       </div>
       <div className='field' title='Monitor Brightness'>
         {isLaptop ? (
-          <span title='Laptop Display'>
-            <LaptopSvg className='field__icon' />
+          <span title='Laptop Display' className='field__icon'>
+            <LaptopSvg />
           </span>
         ) : (
-          <span title='Monitor Display'>
-            <MonitorSvg className='field__icon' />
+          <span title='Monitor Display' className='field__icon'>
+            <MonitorSvg />
           </span>
         )}
         <input
@@ -198,10 +218,9 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
 
 type AllMonitorBrightnessSettingsProps = {
   monitors: Monitor[];
-  expanded: boolean;
 };
 function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) {
-  const { monitors, expanded } = props;
+  const { monitors } = props;
   const allBrightnessValueFromProps = Math.min(
     ...monitors.map((monitor) => monitor.brightness),
     100,
@@ -226,7 +245,7 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
     <>
       <div className='field'>
         <div className='field__value field__value-readonly' title='All Monitors'>
-          All Monitors
+          All Monitors ({monitors.length})
         </div>
       </div>
       <div className='field'>

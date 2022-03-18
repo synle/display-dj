@@ -6,10 +6,6 @@
   --color-focus: #333;
 }
 
-svg {
-  fill: #000;
-}
-
 @media (prefers-color-scheme: dark) {
   :root {
     --color-fg-1: #fff;
@@ -17,10 +13,6 @@ svg {
     --color-bg-2: #333;
     --color-link: #297afe;
     --color-focus: #ccc;
-  }
-
-  svg {
-    fill: #fff;
   }
 }
 
@@ -59,6 +51,11 @@ body {
 
 header {
   margin-block: 1rem;
+  display: flex;
+
+  > h2{
+    flex-grow: 1;
+  }
 }
 
 a {
@@ -66,6 +63,10 @@ a {
   color: var(--color-link);
   font-weight: bold;
   text-decoration: none;
+}
+
+.iconBtn{
+  cursor: pointer;
 }
 
 label {
