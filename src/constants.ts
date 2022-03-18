@@ -1,17 +1,15 @@
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
-function _getPath(fileName) {
-  try {
-    const baseDir = path.join(app.getPath('appData'), 'display-dj');
 
-    try {
-      fs.mkdirSync(baseDir);
-    } catch (err) {}
-    return path.join(baseDir, fileName);
-  } catch (err) {
-    return undefined;
-  }
+function _getPath(fileName: string) {
+  const baseDir = path.join(app.getPath('appData'), 'display-dj');
+
+  try {
+    fs.mkdirSync(baseDir);
+  } catch (err) {}
+
+  return path.join(baseDir, fileName);
 }
 
 export const LAPTOP_BUILT_IN_DISPLAY_ID = 'laptop-built-in';

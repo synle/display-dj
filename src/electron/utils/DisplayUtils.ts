@@ -58,14 +58,14 @@ function _getMonitorConfigs(): Record<string, Monitor> {
 
 function _setMonitorConfigs(monitors: Monitor[]) {
   // wrap it inside key => monitor
-  const res = {};
+  const res : Record<string, Monitor> = {};
   for (const monitor of monitors) {
     res[monitor.id] = monitor;
   }
   StorageUtils.writeJSON(MONITOR_CONFIG_FILE_DIR, res);
 }
 
-function _executePowershell(shellToRun, delay = 100): Promise<string> {
+function _executePowershell(shellToRun: string, delay = 100): Promise<string> {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const child = spawn('powershell.exe', ['-Command', shellToRun]);
@@ -93,15 +93,15 @@ const DisplayUtils = {
 
     const monitorsFromStorage = _getMonitorConfigs();
 
-    let sortOrderToUse: number;
+    let sortOrderToUse: number = 0;
     let brightnessToUse: number = 0;
-    let nameToUse: string;
+    let nameToUse: string = '';
     let disabledToUse: boolean = false;
-    let idToUse: string;
+    let idToUse: string = '';
 
     // getting the external monitors
     let monitorCount = 0;
-    const monitorIds = ddcci.getMonitorList() as string[];
+    const monitorIds = ddcci.getMonitorList();
     for (let idx = 0; idx < monitorIds.length; idx++) {
       const idToUse = monitorIds[idx];
 
