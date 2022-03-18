@@ -60,6 +60,9 @@ function createWindow() {
 
   // Open the DevTools.
   // mainWindow.webContents.openDevTools({ mode: 'detach' });
+
+
+  global.mainWindow = mainWindow;
 }
 
 async function createTray() {
@@ -81,7 +84,7 @@ async function createTray() {
 
       let monitorCount = Math.max(monitors.length, 1) + 1;
       let width = 300;
-      let height = 80 * monitorCount + 20;
+      let height = 90 * monitorCount + 25;
       let x = Math.floor(iconPos.x - width + 50);
       let y = Math.floor(iconPos.y - height);
       mainWindow.show();

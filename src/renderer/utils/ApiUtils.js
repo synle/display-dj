@@ -32,18 +32,24 @@ function _fetch(input, initOptions) {
 }
 
 const ApiUtils = {
-  getMonitors: () => _fetch(`/api/monitors`),
+  getConfigs: () => _fetch(`/api/configs`),
   updateMonitor: (monitor) =>
     _fetch(`/api/configs/monitors`, {
       method: 'put',
       body: JSON.stringify(monitor),
     }),
-  getConfigs: () => _fetch(`/api/configs`),
-  toggleDarkMode: (darkMode) =>
+  updateDarkMode: (darkMode) =>
     _fetch(`/api/configs/darkMode`, {
       method: 'put',
       body: JSON.stringify({
         darkMode,
+      }),
+    }),
+  updateAppHeight: () =>
+    _fetch(`/api/configs/appHeight`, {
+      method: 'put',
+      body: JSON.stringify({
+        height: document.body.clientHeight,
       }),
     }),
 };

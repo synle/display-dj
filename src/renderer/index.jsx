@@ -19,6 +19,15 @@ const queryClient = new QueryClient();
 // react components
 function Home(props) {
   const { isLoading, data: configs } = useConfigs();
+  const { mutateAsync: updateAppHeight } = useUpdateAppHeight();
+
+  // this routine will update the app height according to the content
+  const visibleMonitorsCount = ((configs && configs.monitors) || []).filter(
+    (monitor) => !monitor.disabled,
+  ).length;
+  useEffect(() => {
+    updateAppHeight();
+  }, [visibleMonitorsCount]);
 
   if (isLoading) {
     return <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>Loading...</div>;
@@ -31,12 +40,12 @@ function Home(props) {
     );
   }
 
-
-
   return (
     <>
       <header>
-        <h2>Display-DJ {configs.version} {configs.env !== 'production' ? configs.env : ''}</h2>
+        <h2>
+          Display-DJ {configs.version} {configs.env !== 'production' ? configs.env : ''}
+        </h2>
       </header>
       <MonitorBrightnessSettingForm monitors={configs.monitors} />
       <AllMonitorBrightnessSettings monitors={configs.monitors} />
@@ -219,7 +228,11 @@ function useUpdateMonitor() {
 }
 
 function useToggleDarkMode() {
-  return useMutation(ApiUtils.toggleDarkMode);
+  return useMutation(ApiUtils.updateDarkMode);
+}
+
+function useUpdateAppHeight() {
+  return useMutation(ApiUtils.updateAppHeight);
 }
 
 // render the main app

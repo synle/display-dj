@@ -37,6 +37,14 @@ export function setUpDataEndpoints() {
     }
   });
 
+  addDataEndpoint('put', '/api/configs/appHeight', async (req, res) => {
+    try {
+      res.status(200).json({height: req.body.height});
+    } catch (err) {
+      res.status(500).json({ error: `Failed to save monitor`, stack: err.stack });
+    }
+  });
+
   addDataEndpoint('put', '/api/configs/monitors', async (req, res) => {
     try {
       const monitor = {
