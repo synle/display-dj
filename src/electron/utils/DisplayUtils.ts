@@ -1,52 +1,8 @@
-import * as ddcci from '@hensm/ddcci';
-import StorageUtils, { MONITOR_CONFIG_FILE_DIR } from 'src/electron/utils/StorageUtils';
-import { spawn } from 'child_process';
-import { DISPLAY_TYPE } from 'src/constants';
-import { Monitor, MonitorUpdateInput } from 'src/types.d';
 import { executePowershell } from 'src/electron/utils/ShellUtils';
-
-/**
- * get current laptop brightness. more info here
- * https://docs.microsoft.com/en-us/windows/win32/wmicoreprov/wmimonitorbrightness
- */
-function _getBrightnessBuiltin(): Promise<number> {
-  return new Promise(async (resolve, reject) => {
-    let shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness).CurrentBrightness`;
-    const brightness = parseInt(await _executePowershell(shellToRun));
-    resolve(brightness);
-  });
-}
-
-/**
- * set current laptop brightness. more info here
- * https://docs.microsoft.com/en-us/windows/win32/wmicoreprov/wmisetbrightness-method-in-class-wmimonitorbrightnessmethods
- */
-async function _setBrightnessBuiltin(newBrightness: number): Promise<void> {
-  let shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1,${newBrightness})`;
-  await _executePowershell(shellToRun);
-}
-
-function _getBrightnessDccCi(idToUse: string): Promise<number> {
-  return new Promise(async (resolve, reject) => {
-    let retry = 3;
-    let error;
-
-    while (--retry > 0) {
-      try {
-        const res = await ddcci.getBrightness(idToUse);
-        resolve(res);
-      } catch (err) {
-        error = err;
-      }
-    }
-
-    reject('Failed to get brightness: ' + error);
-  });
-}
-
-async function _setBrightnessDccCi(idToUse: string, newBrightness: number): Promise<void> {
-  await ddcci.setBrightness(idToUse, newBrightness);
-}
+import StorageUtils, { MONITOR_CONFIG_FILE_DIR } from 'src/electron/utils/StorageUtils';
+import DisplayAdapterWin32 from 'src/electron/utils/DisplayAdapter.Win32';
+import DisplayAdapterDarwin from 'src/electron/utils/DisplayAdapter.Darwin';
+import { Monitor, MonitorUpdateInput } from 'src/types.d';
 
 function _getMonitorConfigs(): Record<string, Monitor> {
   try {
@@ -66,26 +22,18 @@ function _setMonitorConfigs(monitors: Monitor[]) {
   StorageUtils.writeJSON(MONITOR_CONFIG_FILE_DIR, res);
 }
 
-function _executePowershell(shellToRun: string, delay = 100): Promise<string> {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      const child = spawn('powershell.exe', ['-Command', shellToRun]);
-
-      let data = '';
-      child.stdout.on('data', function (msg) {
-        data += msg.toString();
-      });
-
-      child.on('exit', function (exitCode: string) {
-        if (parseInt(exitCode) !== 0) {
-          //Handle non-zero exit
-          reject(exitCode);
-        } else {
-          resolve(data);
-        }
-      });
-    }, delay);
-  });
+let DisplayAdapterToUse;
+switch(process.platform){
+  case 'win32':
+    DisplayAdapterToUse = DisplayAdapterWin32;
+    break;
+  case 'darwin':
+    DisplayAdapterToUse = DisplayAdapterDarwin;
+    break;
+  default:
+    console.error(`Application does not supported for this OS - ${process.platform}`);
+    process.exit(1);
+    break;
 }
 
 const DisplayUtils = {
@@ -95,14 +43,13 @@ const DisplayUtils = {
     const monitorsFromStorage = _getMonitorConfigs();
 
     let sortOrderToUse: number = 0;
-    let brightnessToUse: number = 0;
     let nameToUse: string = '';
     let disabledToUse: boolean = false;
     let idToUse: string = '';
 
     // getting the external monitors
     let monitorCount = 0;
-    const monitorIds = ddcci.getMonitorList();
+    const monitorIds = await DisplayAdapterToUse.getMonitorList();
     for (let idx = 0; idx < monitorIds.length; idx++) {
       const idToUse = monitorIds[idx];
 
@@ -122,24 +69,13 @@ const DisplayUtils = {
       } catch (err) {}
       disabledToUse = disabledToUse || false;
 
-      brightnessToUse = 50;
-      let typeToUse = DISPLAY_TYPE.EXTERNAL;
-      try {
-        brightnessToUse = await _getBrightnessDccCi(idToUse);
-      } catch (err) {
-        try {
-          brightnessToUse = await _getBrightnessBuiltin();
-          typeToUse = DISPLAY_TYPE.LAPTOP;
-        } catch (err) {}
-      }
-
       monitors.push({
         id: idToUse,
         name: nameToUse,
-        brightness: brightnessToUse,
+        type: await DisplayAdapterToUse.getMonitorType(idToUse),
+        brightness: await DisplayAdapterToUse.getMonitorBrightness(idToUse) ,
         sortOrder: sortOrderToUse,
         disabled: disabledToUse,
-        type: typeToUse,
       });
     }
 
@@ -172,7 +108,7 @@ const DisplayUtils = {
       ...monitor,
     };
 
-    await DisplayUtils.updateBrightness(
+    await DisplayAdapterToUse.updateMonitorBrightness(
       monitorsFromStorage[monitor.id].id,
       monitorsFromStorage[monitor.id].brightness,
     );
@@ -204,7 +140,7 @@ const DisplayUtils = {
     const promisesChangeBrightness = [];
     for (const monitor of monitors) {
       monitor.brightness = newBrightness;
-      promisesChangeBrightness.push(DisplayUtils.updateBrightness(monitor.id, monitor.brightness));
+      promisesChangeBrightness.push(DisplayAdapterToUse.updateMonitorBrightness(monitor.id, monitor.brightness));
     }
 
     // persist to storage
@@ -214,55 +150,8 @@ const DisplayUtils = {
 
     return newBrightness;
   },
-  updateBrightness: async (monitorId: string, newBrightness: number) => {
-    // monitor is an external (DCC/CI)
-    try {
-      await _setBrightnessDccCi(monitorId, newBrightness);
-    } catch (err) {
-      // monitor is a laptop
-      try {
-        await _setBrightnessBuiltin(newBrightness);
-      } catch (err) {}
-    }
-  },
-  getDarkMode: async (): Promise<boolean> => {
-    let shellToRun =
-      `Get-ItemProperty -Path HKCU:/SOFTWARE/Microsoft/Windows/CurrentVersion/Themes/Personalize -Name AppsUseLightTheme`.replace(
-        /\//g,
-        '\\',
-      );
-
-    return new Promise(async (resolve) => {
-      const msg = await _executePowershell(shellToRun);
-      const lines = msg
-        .toString()
-        .split('\n')
-        .map((s) => s.trim());
-
-      for (const line of lines) {
-        if (line.includes('AppsUseLightTheme')) {
-          return resolve(line.includes('0'));
-        }
-      }
-
-      resolve(false);
-    });
-  },
-  toggleDarkMode: async (isDarkModeOn: boolean): Promise<void> => {
-    const baseShellToRun = `Set-ItemProperty -Path HKCU:/SOFTWARE/Microsoft/Windows/CurrentVersion/Themes/Personalize -Name `;
-
-    let shellToRun;
-
-    const darkModeValue = isDarkModeOn ? '1' : '0';
-
-    // change the app theme
-    shellToRun =
-      `${baseShellToRun} SystemUsesLightTheme -Value ${darkModeValue}; ${baseShellToRun} AppsUseLightTheme -Value ${darkModeValue}`.replace(
-        /\//g,
-        '\\',
-      );
-    await _executePowershell(shellToRun);
-  },
+  getDarkMode: DisplayAdapterToUse.getDarkMode,
+  updateDarkMode:  DisplayAdapterToUse.updateDarkMode
 };
 
 export default DisplayUtils;

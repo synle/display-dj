@@ -109,7 +109,7 @@ export function setUpDataEndpoints() {
     try {
       const isDarkModeOn = req.body.darkMode === true;
 
-      res.status(200).json(await DisplayUtils.toggleDarkMode(isDarkModeOn));
+      res.status(200).json(await DisplayUtils.updateDarkMode(isDarkModeOn));
     } catch (err) {
       res.status(500).json({ error: `Failed to update darkMode`, stack: err.stack });
     }

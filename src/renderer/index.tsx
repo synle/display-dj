@@ -107,14 +107,14 @@ type DarkModeSettingFormProps = {
 function DarkModeSettingForm(props: DarkModeSettingFormProps) {
   const darkModeFromProps = props.darkMode === true;
   const [darkMode, setDarkMode] = useState<boolean>(darkModeFromProps);
-  const { mutateAsync: toggleDarkMode } = useToggleDarkMode();
+  const { mutateAsync: updateDarkMode } = useToggleDarkMode();
 
   const onToggleDarkMode = async () => {
     const newDarkMode = !darkMode;
 
     setDarkMode(newDarkMode);
 
-    await toggleDarkMode(newDarkMode);
+    await updateDarkMode(newDarkMode);
 
     queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
   };
@@ -126,7 +126,7 @@ function DarkModeSettingForm(props: DarkModeSettingFormProps) {
   return (
     <div className='field field__darkmode'>
       <button onClick={onToggleDarkMode} title='Toggle Dark Mode'>
-        {darkMode ? 'Mode: Light' : 'Mode: Dark'}
+        {darkMode ? 'Mode: Dark' : 'Mode: Light'}
       </button>
     </div>
   );
