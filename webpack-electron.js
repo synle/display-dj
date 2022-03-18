@@ -17,9 +17,16 @@ module.exports = {
     rules: [
       {
         test: /\.tsx?$/,
-        use: 'ts-loader',
+        use: [
+          {
+            loader: 'ts-loader',
+            options: {
+              configFile: 'tsconfig-electron.json',
+            },
+          },
+        ],
         exclude: /node_modules/,
-      }
+      },
     ],
   },
   resolve: {

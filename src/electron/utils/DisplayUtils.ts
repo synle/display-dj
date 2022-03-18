@@ -2,12 +2,13 @@ import * as ddcci from '@hensm/ddcci';
 import StorageUtils from 'src/electron/utils/StorageUtils';
 import { spawn } from 'child_process';
 import { MONITOR_CONFIG_FILE_DIR, DISPLAY_TYPE } from 'src/constants';
+import { Monitor, MonitorUpdateInput } from 'src/types.d';
 
 /**
  * get current laptop brightness. more info here
  * https://docs.microsoft.com/en-us/windows/win32/wmicoreprov/wmimonitorbrightness
  */
-function _getBrightnessBuiltin() {
+function _getBrightnessBuiltin(): Promise<number> {
   return new Promise(async (resolve, reject) => {
     let shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness).CurrentBrightness`;
     const brightness = parseInt(await _executePowershell(shellToRun));
@@ -19,11 +20,12 @@ function _getBrightnessBuiltin() {
  * set current laptop brightness. more info here
  * https://docs.microsoft.com/en-us/windows/win32/wmicoreprov/wmisetbrightness-method-in-class-wmimonitorbrightnessmethods
  */
-async function _setBrightnessBuiltin(newBrightness) {
+async function _setBrightnessBuiltin(newBrightness: number): Promise<void> {
   let shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1,${newBrightness})`;
   await _executePowershell(shellToRun);
 }
-function _getBrightnessDccCi(idToUse) {
+
+function _getBrightnessDccCi(idToUse: string): Promise<number> {
   return new Promise(async (resolve, reject) => {
     let retry = 3;
     let error;
@@ -41,11 +43,11 @@ function _getBrightnessDccCi(idToUse) {
   });
 }
 
-async function _setBrightnessDccCi(idToUse, newBrightness) {
+async function _setBrightnessDccCi(idToUse: string, newBrightness: number): Promise<void> {
   await ddcci.setBrightness(idToUse, newBrightness);
 }
 
-function _getMonitorConfigs() {
+function _getMonitorConfigs(): Record<string, Monitor> {
   try {
     return StorageUtils.readJSON(MONITOR_CONFIG_FILE_DIR);
   } catch (err) {
@@ -54,7 +56,7 @@ function _getMonitorConfigs() {
   }
 }
 
-function _setMonitorConfigs(monitors) {
+function _setMonitorConfigs(monitors: Monitor[]) {
   // wrap it inside key => monitor
   const res = {};
   for (const monitor of monitors) {
@@ -63,7 +65,7 @@ function _setMonitorConfigs(monitors) {
   StorageUtils.writeJSON(MONITOR_CONFIG_FILE_DIR, res);
 }
 
-function _executePowershell(shellToRun, delay = 100) {
+function _executePowershell(shellToRun, delay = 100): Promise<string> {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const child = spawn('powershell.exe', ['-Command', shellToRun]);
@@ -73,7 +75,7 @@ function _executePowershell(shellToRun, delay = 100) {
         data += msg.toString();
       });
 
-      child.on('exit', function (exitCode) {
+      child.on('exit', function (exitCode: string) {
         if (parseInt(exitCode) !== 0) {
           //Handle non-zero exit
           reject(exitCode);
@@ -87,21 +89,22 @@ function _executePowershell(shellToRun, delay = 100) {
 
 const DisplayUtils = {
   getMonitors: async () => {
-    let monitors = [];
+    let monitors: Monitor[] = [];
 
     const monitorsFromStorage = _getMonitorConfigs();
 
-    let sortOrder = 0;
-    let sortOrderToUse;
-    let brightnessToUse;
-    let nameToUse;
-    let disabledToUse;
-    let idToUse;
+    let sortOrderToUse: number;
+    let brightnessToUse: number = 0;
+    let nameToUse: string;
+    let disabledToUse: boolean = false;
+    let idToUse: string;
 
     // getting the external monitors
     let monitorCount = 0;
-    const monitorIds = ddcci.getMonitorList();
-    for (const idToUse of monitorIds) {
+    const monitorIds = ddcci.getMonitorList() as string[];
+    for (let idx = 0; idx < monitorIds.length; idx++) {
+      const idToUse = monitorIds[idx];
+
       try {
         nameToUse = monitorsFromStorage[idToUse].name;
       } catch (err) {
@@ -111,7 +114,7 @@ const DisplayUtils = {
       try {
         sortOrderToUse = monitorsFromStorage[idToUse].sortOrder;
       } catch (err) {}
-      sortOrderToUse = sortOrderToUse || ++sortOrder;
+      sortOrderToUse = sortOrderToUse || idx;
 
       try {
         disabledToUse = !!monitorsFromStorage[idToUse].disabled;
@@ -141,10 +144,10 @@ const DisplayUtils = {
 
     // handling the sorting based on sortOrder
     monitors = monitors.sort((a, b) => {
-      a = `${(a.sortOrder || 0).toString().padStart(3, '0')}`;
-      b = `${(b.sortOrder || 0).toString().padStart(3, '0')}`;
+      const ca = `${(a.sortOrder || 0).toString().padStart(3, '0')}`;
+      const cb = `${(b.sortOrder || 0).toString().padStart(3, '0')}`;
 
-      return a.localeCompare(b);
+      return ca.localeCompare(cb);
     });
 
     // persist to storage
@@ -152,7 +155,7 @@ const DisplayUtils = {
 
     return Promise.resolve(monitors);
   },
-  updateMonitor: async (monitor) => {
+  updateMonitor: async (monitor: MonitorUpdateInput) => {
     const monitorsFromStorage = _getMonitorConfigs();
 
     if (!monitor.id) {
@@ -163,43 +166,41 @@ const DisplayUtils = {
       throw `id not found.`;
     }
 
-    monitor = {
+    monitorsFromStorage[monitor.id] = {
       ...monitorsFromStorage[monitor.id],
       ...monitor,
     };
 
-    monitorsFromStorage[monitor.id] = monitor;
-
-    await DisplayUtils.updateBrightness(monitor);
+    await DisplayUtils.updateBrightness(
+      monitorsFromStorage[monitor.id].id,
+      monitorsFromStorage[monitor.id].brightness,
+    );
 
     // persist to storage
     _setMonitorConfigs(Object.values(monitorsFromStorage));
   },
-  getAllMonitorsBrightness: async () => {
+  getAllMonitorsBrightness: async (): Promise<number> => {
     try {
       const monitors = await DisplayUtils.getMonitors();
 
       // get the min brightness of them all
-      return (
-        Math.min.apply(null, [...monitors.map((monitor) => parseInt(monitor.brightness))]) || 0
-      );
+      return Math.min.apply(null, [...monitors.map((monitor) => monitor.brightness || 0)]) || 0;
     } catch (err) {
       return 0;
     }
   },
-  updateBrightness: async (monitor) => {
+  updateBrightness: async (monitorId: string, newBrightness: number) => {
     // monitor is an external (DCC/CI)
     try {
-      const newBrightness = monitor.brightness;
-      await _setBrightnessDccCi(monitor.id, newBrightness);
+      await _setBrightnessDccCi(monitorId, newBrightness);
     } catch (err) {
       // monitor is a laptop
       try {
-        await _setBrightnessBuiltin(monitor.brightness);
+        await _setBrightnessBuiltin(newBrightness);
       } catch (err) {}
     }
   },
-  updateAllBrightness: async (newBrightness, delta = 0) => {
+  updateAllBrightness: async (newBrightness: number, delta: number = 0) => {
     newBrightness += delta;
 
     // making sure the range is 0 to 100
@@ -213,7 +214,7 @@ const DisplayUtils = {
     const promisesChangeBrightness = [];
     for (const monitor of monitors) {
       monitor.brightness = newBrightness;
-      promisesChangeBrightness.push(DisplayUtils.updateBrightness(monitor));
+      promisesChangeBrightness.push(DisplayUtils.updateBrightness(monitor.id, monitor.brightness));
     }
 
     // persist to storage
@@ -223,7 +224,7 @@ const DisplayUtils = {
 
     return newBrightness;
   },
-  getDarkMode: async () => {
+  getDarkMode: async (): Promise<boolean> => {
     let shellToRun =
       `Get-ItemProperty -Path HKCU:/SOFTWARE/Microsoft/Windows/CurrentVersion/Themes/Personalize -Name AppsUseLightTheme`.replace(
         /\//g,
@@ -246,7 +247,7 @@ const DisplayUtils = {
       resolve(false);
     });
   },
-  toggleDarkMode: async (isDarkModeOn) => {
+  toggleDarkMode: async (isDarkModeOn: boolean): Promise<void> => {
     const baseShellToRun = `Set-ItemProperty -Path HKCU:/SOFTWARE/Microsoft/Windows/CurrentVersion/Themes/Personalize -Name `;
 
     let shellToRun;
