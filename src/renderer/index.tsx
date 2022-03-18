@@ -55,8 +55,11 @@ function Home(props: HomeProps) {
           Display-DJ {configs.version} {configs.env !== 'production' ? configs.env : ''}
         </h2>
       </header>
-      <MonitorBrightnessSettingForm monitors={configs.monitors} />
-      <AllMonitorBrightnessSettings monitors={configs.monitors} />
+      {
+        appState.expanded
+        ? <MonitorBrightnessSettingForm monitors={configs.monitors} />
+        : <AllMonitorBrightnessSettings monitors={configs.monitors} />
+      }
       <DarkModeSettingForm darkMode={configs.darkMode} />
     </>
   );
@@ -195,15 +198,17 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
 
 type AllMonitorBrightnessSettingsProps = {
   monitors: Monitor[];
+  expanded: boolean;
 };
 function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) {
-  const { monitors } = props;
+  const { monitors, expanded } = props;
   const allBrightnessValueFromProps = Math.min(
     ...monitors.map((monitor) => monitor.brightness),
     100,
   );
   const [allBrightness, setAllBrightness] = useState(allBrightnessValueFromProps);
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
+  const { mutateAsync: updateAppState } = useUpdateAppState();
   const queryClient = useQueryClient();
 
   const onChange = async (value: number) => {
