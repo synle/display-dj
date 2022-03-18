@@ -222,7 +222,7 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
           type='range'
           min='0'
           max='100'
-          step='5'
+          step='10'
           value={monitor.brightness}
           placeholder='brightness'
           onChange={(e) => onChange('brightness', parseInt(e.target.value) || 0)}
@@ -273,7 +273,7 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
           type='range'
           min='0'
           max='100'
-          step='5'
+          step='10'
           value={allBrightness}
           placeholder='brightness'
           onChange={(e) => onChange(parseInt(e.target.value) || 0)}

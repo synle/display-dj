@@ -3,6 +3,7 @@ import StorageUtils, { MONITOR_CONFIG_FILE_DIR } from 'src/electron/utils/Storag
 import { spawn } from 'child_process';
 import { DISPLAY_TYPE } from 'src/constants';
 import { Monitor, MonitorUpdateInput } from 'src/types.d';
+import { executePowershell } from 'src/electron/utils/ShellUtils';
 
 /**
  * get current laptop brightness. more info here
@@ -189,17 +190,6 @@ const DisplayUtils = {
       return 0;
     }
   },
-  updateBrightness: async (monitorId: string, newBrightness: number) => {
-    // monitor is an external (DCC/CI)
-    try {
-      await _setBrightnessDccCi(monitorId, newBrightness);
-    } catch (err) {
-      // monitor is a laptop
-      try {
-        await _setBrightnessBuiltin(newBrightness);
-      } catch (err) {}
-    }
-  },
   updateAllBrightness: async (newBrightness: number, delta: number = 0) => {
     newBrightness += delta;
 
@@ -223,6 +213,17 @@ const DisplayUtils = {
     await Promise.all(promisesChangeBrightness);
 
     return newBrightness;
+  },
+  updateBrightness: async (monitorId: string, newBrightness: number) => {
+    // monitor is an external (DCC/CI)
+    try {
+      await _setBrightnessDccCi(monitorId, newBrightness);
+    } catch (err) {
+      // monitor is a laptop
+      try {
+        await _setBrightnessBuiltin(newBrightness);
+      } catch (err) {}
+    }
   },
   getDarkMode: async (): Promise<boolean> => {
     let shellToRun =
