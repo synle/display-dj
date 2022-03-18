@@ -1,7 +1,7 @@
 import { ipcRenderer } from 'electron';
 
 const origFetch = window.fetch;
-window.fetch = (input, options) => {
+function _doFetch(input: string, options: RequestInit) {
   const url = input as string;
   if (url.indexOf('/api') !== 0) {
     // if not /api/, then use the original fetch
@@ -42,9 +42,9 @@ window.fetch = (input, options) => {
     });
     ipcRenderer.send('mainAppEvent/fetch', { requestId, url, options });
   });
-};
+}
 
-export function fetch<T>(input: RequestInfo, initOptions?: RequestInit): Promise<T> {
+export function fetch<T>(input: string, initOptions?: RequestInit): Promise<T> {
   let { headers, ...restInput } = initOptions || {};
 
   headers = headers || {};
@@ -62,7 +62,7 @@ export function fetch<T>(input: RequestInfo, initOptions?: RequestInit): Promise
     headers,
   };
 
-  return fetch(input, initOptions)
+  return _doFetch(input, initOptions)
     .then(async (resp: any) => {
       const r = resp as Response;
       const response = await r.text();
