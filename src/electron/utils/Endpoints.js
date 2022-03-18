@@ -47,26 +47,34 @@ export function setUpDataEndpoints() {
 
       var mainScreen = screen.getPrimaryDisplay();
       const mainScreenSize = mainScreen.size;
-      let x = trayBound.x, y = trayBound.y;
-
-      if (x > mainScreenSize.width / 2) {
-        // right
-        x = Math.floor(trayBound.x - width + 50);
-      } else {
-        // left
-        x = Math.floor(trayBound.x + 50);
-      }
-
+      let x = trayBound.x,
+        y = trayBound.y;
+      let pos = '';
+      const xOffset = 50,
+        yOffset = 0;
       if (y > mainScreenSize.height / 2) {
         // bottom
-        y = Math.floor(trayBound.y - height - 20);
+        pos += 'bottom.';
+        y = Math.floor(trayBound.y - height - yOffset);
       } else {
         // top
-        y = Math.floor(trayBound.y - height + 20);
+        pos += 'top.';
+        y = Math.floor(trayBound.y - height + yOffset);
       }
-      mainWindow.setPosition(x, y);
+      if (x > mainScreenSize.width / 2) {
+        // right
+        pos += 'right.';
+        x = Math.floor(trayBound.x - width + xOffset);
+      } else {
+        // left
+        pos += 'left.';
+        x = Math.floor(trayBound.x + xOffset);
+      }
 
-      res.status(200).json({ height });
+      mainWindow.setPosition(x, y);
+      mainWindow.setSize(width, height);
+
+      res.status(200).json({ height, pos });
     } catch (err) {
       res.status(500).json({ error: `Failed to save monitor`, stack: err.stack });
     }

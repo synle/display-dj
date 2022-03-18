@@ -49,7 +49,7 @@ const ApiUtils = {
     _fetch(`/api/configs/positionWindow`, {
       method: 'put',
       body: JSON.stringify({
-        height: document.body.clientHeight,
+        height: document.body.clientHeight + 20,
       }),
     }),
 };

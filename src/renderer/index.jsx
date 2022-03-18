@@ -25,9 +25,14 @@ function Home(props) {
   const visibleMonitorsCount = ((configs && configs.monitors) || []).filter(
     (monitor) => !monitor.disabled,
   ).length;
+
   useEffect(() => {
     updateAppHeight();
   }, [visibleMonitorsCount]);
+
+  useEffect(() => {
+    document.addEventListener('visibilitychange', updateAppHeight, false);
+  }, []);
 
   if (isLoading) {
     return <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>Loading...</div>;
