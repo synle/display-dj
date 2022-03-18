@@ -22,19 +22,16 @@ function Home(props: HomeProps) {
   const { isLoading, data: configs } = useConfigs();
   const { mutateAsync: updateAppHeight } = useUpdateAppHeight();
 
-  // this routine will update the app height according to the content
-  const visibleMonitorsCount = (configs?.monitors || []).filter(
-    (monitor) => !monitor.disabled,
-  ).length;
-
   useEffect(() => {
-    updateAppHeight();
-  }, [visibleMonitorsCount]);
+    const config = { childList: true, subtree: true };
+    const callback = () => updateAppHeight();
 
-  useEffect(() => {
-    document.addEventListener('visibilitychange', () => {
-      updateAppHeight();
-    });
+    const observer = new MutationObserver(callback);
+    observer.observe(document.body, config);
+
+    return () => {
+      observer.disconnect();
+    }
   }, []);
 
   if (isLoading) {
