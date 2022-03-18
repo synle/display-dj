@@ -1,7 +1,8 @@
 import { ipcRenderer } from 'electron';
 
 const origFetch = window.fetch;
-window.fetch = (url, options) => {
+window.fetch = (input, options) => {
+  const url = input as string;
   if (url.indexOf('/api') !== 0) {
     // if not /api/, then use the original fetch
     return origFetch(url, options);
@@ -27,7 +28,7 @@ window.fetch = (url, options) => {
         '>> Network',
         ok ? 'Success' : 'Error:',
         status,
-        options.method || 'get',
+        options?.method || 'get',
         url,
         returnedData,
         headers,
@@ -37,8 +38,46 @@ window.fetch = (url, options) => {
         ok,
         text: () => text,
         headers,
-      });
+      } as Response);
     });
     ipcRenderer.send('mainAppEvent/fetch', { requestId, url, options });
   });
 };
+
+export function fetch<T>(input: RequestInfo, initOptions?: RequestInit): Promise<T> {
+  let { headers, ...restInput } = initOptions || {};
+
+  headers = headers || {};
+  headers = {
+    ...headers,
+    ...{
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+  };
+
+  restInput = restInput || {};
+  initOptions = {
+    ...restInput,
+    headers,
+  };
+
+  return fetch(input, initOptions)
+    .then(async (resp: any) => {
+      const r = resp as Response;
+      const response = await r.text();
+
+      let responseToUse;
+      try {
+        responseToUse = JSON.parse(response);
+      } catch (err) {
+        responseToUse = response;
+      }
+
+      return r.ok ? responseToUse : Promise.reject(responseToUse);
+    })
+    .then((r: any) => {
+      const res: T = r;
+      return res;
+    });
+}
