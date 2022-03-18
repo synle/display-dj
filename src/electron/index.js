@@ -133,7 +133,11 @@ async function createTray() {
     },
   ]);
 
-  tray.setToolTip(`display-dj (by Sy Le)`);
+  tray.setToolTip(
+    process.env.APPLICATION_MODE !== 'production'
+      ? `display-dj (by Sy Le) (${process.env.APPLICATION_MODE})`
+      : `display-dj (by Sy Le)`,
+  );
   tray.setContextMenu(menu);
 }
 

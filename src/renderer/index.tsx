@@ -20,21 +20,30 @@ const queryClient = new QueryClient();
 // react components
 type HomeProps = {};
 function Home(props: HomeProps) {
-  const { isLoading: loadingConfigs, data: configs } = useConfigs();
+  const { isLoading: loadingConfigs, data: configs, refetch } = useConfigs();
   const { isLoading: loadingAppState, data: appState } = useAppState();
-  const { mutateAsync: updateAppHeight } = useUpdateAppHeight();
+  const { mutateAsync: updateAppPosition } = useUpdateAppPosition();
 
   useEffect(() => {
     const config = { childList: true, subtree: true };
-    const callback = () => updateAppHeight();
+    const callback = () => updateAppPosition();
 
     const observer = new MutationObserver(callback);
     observer.observe(document.body, config);
 
+    // update position and refetched and the page is visible
+    const onVisibilityChange = () => {
+      updateAppPosition();
+      refetch();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     return () => {
       observer.disconnect();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
+
   const isLoading = loadingConfigs || loadingAppState;
   if (isLoading) {
     return <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>Loading...</div>;
@@ -82,7 +91,11 @@ function ToggleAllDisplay() {
     <span
       className='iconBtn'
       onClick={onToggleAll}
-      title='Toggle brightness for individual display'>
+      title={
+        appState.expanded
+          ? 'Collapse individual displays brightness'
+          : 'Expand individual displays brightness'
+      }>
       <ToggleSvg />
     </span>
   );
@@ -294,8 +307,8 @@ function useToggleDarkMode() {
   return useMutation(ApiUtils.updateDarkMode);
 }
 
-function useUpdateAppHeight() {
-  return useMutation(ApiUtils.updateAppHeight);
+function useUpdateAppPosition() {
+  return useMutation(ApiUtils.updateAppPosition);
 }
 
 function useUpdateAppState() {

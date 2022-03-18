@@ -15,8 +15,8 @@ const ApiUtils = {
         darkMode,
       }),
     }),
-  updateAppHeight: () =>
-    fetch(`/api/configs/positionWindow`, {
+  updateAppPosition: () =>
+    fetch(`/api/configs/appPosition`, {
       method: 'put',
       body: JSON.stringify({
         height: document.body.clientHeight + 20,

@@ -38,7 +38,7 @@ export function setUpDataEndpoints() {
     }
   });
 
-  addDataEndpoint('put', '/api/configs/positionWindow', async (req, res) => {
+  addDataEndpoint('put', '/api/configs/appPosition', async (req, res) => {
     try {
       const tray = global.tray;
       const mainWindow = global.mainWindow;
