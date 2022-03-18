@@ -37,6 +37,7 @@
   "dependencies": {
     "@hensm/ddcci": "^0.1.0",
     "auto-launch": "^5.0.5",
+    "menubar": "^9.1.1",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "react-query": "^3.34.16",
@@ -54,7 +55,7 @@
     "cpx": "^1.5.0",
     "cross-env": "^7.0.3",
     "css-loader": "^6.7.1",
-    "electron": "^17.1.2",
+    "electron": "^16.0.0",
     "electron-packager": "^15.4.0",
     "eslint": "^7.32.0",
     "prettier": "^2.6.0",
