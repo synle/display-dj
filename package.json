@@ -15,8 +15,8 @@
     "format": "npx prettier --config ./.prettierrc --write **/*.{ts,tsx,js,jsx,scss,yml,html,json,md}",
     "test-ci": "",
     "prestart": "npm run build",
-    "start": "cross-env NODE_ENV='dev' concurrently \"electron ./build/main.js\" \"npm run dev\"",
-    "predist": "cross-env NODE_ENV='production' npx electron-packager \"./\" --platform=win32 --out=\"dist\" --override",
+    "start": "concurrently \"cross-env APPLICATION_MODE='dev' electron ./build/main.js\" \"npm run dev\"",
+    "predist": "cross-env APPLICATION_MODE='production' npx electron-packager \"./\" --platform=win32 --out=\"dist\" --override",
     "dist": "node dist.js"
   },
   "repository": "https://github.com/synle/display-dj",

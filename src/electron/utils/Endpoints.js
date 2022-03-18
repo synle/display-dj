@@ -29,7 +29,7 @@ export function setUpDataEndpoints() {
       res.status(200).json({
         darkMode: (await DisplayUtils.getDarkMode()) === true,
         monitors: await DisplayUtils.getMonitors(),
-        env: process.env.NODE_ENV,
+        env: process.env.APPLICATION_MODE,
         version,
       });
     } catch (err) {
