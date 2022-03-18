@@ -19,7 +19,8 @@ const queryClient = new QueryClient();
 // react components
 type HomeProps = {};
 function Home(props: HomeProps) {
-  const { isLoading, data: configs } = useConfigs();
+  const { isLoading: loadingConfigs, data: configs } = useConfigs();
+  const { isLoading: loadingAppState , data: appState  } = useAppState()
   const { mutateAsync: updateAppHeight } = useUpdateAppHeight();
 
   useEffect(() => {
@@ -34,11 +35,13 @@ function Home(props: HomeProps) {
     }
   }, []);
 
+
+  const isLoading = loadingConfigs || loadingAppState;
   if (isLoading) {
     return <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>Loading...</div>;
   }
 
-  if (!configs) {
+  if (!configs || !appState) {
     // TODO: add message for no data state
     return (
       <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>Errors. Get configs failed...</div>
@@ -241,6 +244,15 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
 }
 // react query store
 const QUERY_KEY_CONFIGS = 'configs';
+const QUERY_KEY_APP_STATE = 'appState';
+
+type AppState = {
+  expanded: boolean,
+}
+let _appState: AppState = {expanded: false}
+function useAppState() {
+  return useQuery(QUERY_KEY_APP_STATE, () => _appState);
+}
 
 function useConfigs() {
   return useQuery(QUERY_KEY_CONFIGS, ApiUtils.getConfigs);
@@ -256,6 +268,16 @@ function useToggleDarkMode() {
 
 function useUpdateAppHeight() {
   return useMutation(ApiUtils.updateAppHeight);
+}
+
+function useUpdateAppState(){
+  return useMutation<void, void, AppState>(async (newAppState: AppState) => {
+    _appState = {..._appState, ...newAppState};
+  }, {
+    onSuccess:() => {
+      queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
+    }
+  });
 }
 
 // render the main app
