@@ -1,7 +1,7 @@
 import * as ddcci from '@hensm/ddcci';
 import { executePowershell } from 'src/electron/utils/ShellUtils';
 import { DISPLAY_TYPE } from 'src/constants';
-import { MonitorUpdateInput, DisplayAdapter } from 'src/types.d';
+import { DisplayAdapter } from 'src/types.d';
 
 /**
  * get current laptop brightness. more info here

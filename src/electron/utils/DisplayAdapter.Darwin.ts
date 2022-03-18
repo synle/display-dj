@@ -1,6 +1,6 @@
 // TODO: TBD and to be implemented
 import { DISPLAY_TYPE } from 'src/constants';
-import { MonitorUpdateInput, DisplayAdapter } from 'src/types.d';
+import { DisplayAdapter } from 'src/types.d';
 
 const DisplayUtils : DisplayAdapter= {
   getMonitorList: async() => {
