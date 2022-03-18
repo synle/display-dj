@@ -2,7 +2,7 @@ import { executePowershell } from 'src/electron/utils/ShellUtils';
 import StorageUtils, { MONITOR_CONFIG_FILE_DIR } from 'src/electron/utils/StorageUtils';
 import DisplayAdapterWin32 from 'src/electron/utils/DisplayAdapter.Win32';
 import DisplayAdapterDarwin from 'src/electron/utils/DisplayAdapter.Darwin';
-import { Monitor, MonitorUpdateInput } from 'src/types.d';
+import { Monitor, MonitorUpdateInput, DisplayAdapter } from 'src/types.d';
 
 function _getMonitorConfigs(): Record<string, Monitor> {
   try {
@@ -22,7 +22,9 @@ function _setMonitorConfigs(monitors: Monitor[]) {
   StorageUtils.writeJSON(MONITOR_CONFIG_FILE_DIR, res);
 }
 
-let DisplayAdapterToUse;
+let DisplayAdapterToUse: DisplayAdapter;
+console.log('>>>>>>>>>>>>', process.platform, process);
+
 switch(process.platform){
   case 'win32':
     DisplayAdapterToUse = DisplayAdapterWin32;
