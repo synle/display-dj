@@ -31,10 +31,12 @@ function Home(props) {
     );
   }
 
+
+
   return (
     <>
       <header>
-        <h2>Display-DJ 1.0.0</h2>
+        <h2>Display-DJ {configs.version} {configs.env !== 'production' ? configs.env : ''}</h2>
       </header>
       <MonitorBrightnessSettingForm monitors={configs.monitors} />
       <AllMonitorBrightnessSettings monitors={configs.monitors} />

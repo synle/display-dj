@@ -2,6 +2,9 @@ import DisplayUtils from './DisplayUtils';
 
 const electronEndpointHandlers = [];
 
+// TODO: read this from the package.json
+const version = '1.0.1';
+
 function addDataEndpoint(method, url, incomingHandler) {
   const handlerToUse = async (req, res, cache) => {
     try {
@@ -27,6 +30,7 @@ export function setUpDataEndpoints() {
         darkMode: (await DisplayUtils.getDarkMode()) === true,
         monitors: await DisplayUtils.getMonitors(),
         env: process.env.NODE_ENV,
+        version,
       });
     } catch (err) {
       res.status(500).json({ error: `Failed to get configs`, stack: err.stack });
