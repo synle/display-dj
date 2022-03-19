@@ -14,7 +14,25 @@ This application is at the moment for windows only and can be used to adjust ext
 
 ## Supported Platforms
 
+The following version of OS has been tested and working.
+
 - Windows 11
+- Mac OSX (Monterey) - requires a separate installation of ddcctl
+
+### MacOSX dependencies
+
+This application requires `ddcctl` application installed for it to be fully functional. You can use the following bash command to install it with `homebrew`
+
+```bash
+brew install ddcctl
+```
+
+## Downloads
+
+You can download `display-dj` at the following URL.
+
+- [display-dj Beta for Mac](https://github.com/synle/display-dj/releases)
+- [display-dj Beta for Windows](https://github.com/synle/display-dj/releases)
 
 ## Screenshots
 
@@ -71,6 +89,12 @@ At the moment, there is no UI to modify the configs, configs file are located at
 - [ ] Shortcut key for dark mode change
 - [ ] Properly package the build as `msi` or `exe` file instead of plain zipped files.
 
+
+## Contributing?
+
+If you are interested in contributing, you can refer to this doc to get started
+
+- [DEV.md](https://github.com/synle/display-dj/blob/main/DEV.md)
 
 ## Suggestion?
 Use the following link to file a bug or a suggestion.
