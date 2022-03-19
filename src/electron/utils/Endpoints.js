@@ -66,7 +66,7 @@ export function setUpDataEndpoints() {
 
   addDataEndpoint('put', '/api/configs/appPosition', async (req, res) => {
     try {
-      await PositionUtils.updateTrayPosition(req.body.height, global.tray, global.mainWindow);
+      await PositionUtils.updateTrayPosition(global.mainWindow, req.body.height);
       res.status(204).send();
     } catch (err) {
       res.status(500).json({
