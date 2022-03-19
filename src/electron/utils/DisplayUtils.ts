@@ -54,16 +54,16 @@ const DisplayUtils = {
       const type = await DisplayAdapter.getMonitorType(idToUse);
 
       let brightness: number = monitorsFromStorage?.[idToUse]?.brightness || 0;
-      if(process.platform === 'win32'){
+      if (process.platform === 'win32') {
         // windows always pick up the brightness from adapter
         brightness = await DisplayAdapter.getMonitorBrightness(idToUse);
       } else {
         // for mac osx, ddcci command can fail for external display, therefore
         // it's best to read that brightness from the storage
-        if(type === 'laptop_monitor'){
-          try{
+        if (type === 'laptop_monitor') {
+          try {
             brightness = await DisplayAdapter.getMonitorBrightness(idToUse);
-          } catch(err){}
+          } catch (err) {}
         }
       }
 
