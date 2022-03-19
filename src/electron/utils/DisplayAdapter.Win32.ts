@@ -1,6 +1,5 @@
 import { executePowershell } from 'src/electron/utils/ShellUtils';
 import * as ddcci from '@hensm/ddcci';
-import { DISPLAY_TYPE } from 'src/constants';
 import { IDisplayAdapter } from 'src/types.d';
 
 // source: https://github.com/hensm/node-ddcci
@@ -55,13 +54,14 @@ const DisplayAdapter: IDisplayAdapter = {
   getMonitorType: async (targetMonitorId: string) => {
     try {
       await _getBrightnessDccCi(targetMonitorId);
+      return 'external_monitor';
     } catch (err) {
       try {
         await _getBrightnessBuiltin();
-        return DISPLAY_TYPE.LAPTOP;
+        return  'laptop_monitor';
       } catch (err) {}
     }
-    return DISPLAY_TYPE.EXTERNAL;
+    return 'unknown_monitor';
   },
   getMonitorBrightness: async (targetMonitorId: string) => {
     try {

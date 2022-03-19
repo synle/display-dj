@@ -1,7 +1,7 @@
 import ReactDOM from 'react-dom';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import React, { useEffect, useState } from 'react';
-import { LAPTOP_BUILT_IN_DISPLAY_ID, DISPLAY_TYPE } from 'src/constants';
+import { LAPTOP_BUILT_IN_DISPLAY_ID } from 'src/constants';
 import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import LaptopSvg from 'src/renderer/svg/laptop.svg';
 import ToggleSvg from 'src/renderer/svg/toggle.svg';
@@ -163,7 +163,7 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   const [name, setName] = useState('');
   const { monitor } = props;
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
-  const isLaptop = monitor.type === DISPLAY_TYPE.LAPTOP;
+  const isLaptop = monitor.type === 'laptop_monitor';
 
   const onChange = (key: string, value: any) => {
     //@ts-ignore
