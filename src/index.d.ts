@@ -4,6 +4,13 @@ declare module '@hensm/ddcci' {
   export function setBrightness(id: string, brightness: number): Promise<void>;
 }
 
+declare module 'dark-mode' {
+  export function enable(): Promise<void>;
+  export function disable(): Promise<void>;
+  export function toggle(isDarkModeOn : boolean): Promise<void>;
+  export function isEnabled(): Promise<boolean>;
+}
+
 // for the UI
 declare module '*.svg' {
   const content: any;
