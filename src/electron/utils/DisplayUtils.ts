@@ -1,10 +1,10 @@
 import DisplayAdapter from 'src/electron/utils/DisplayAdapter';
-import StorageUtils, { MONITOR_CONFIG_FILE_DIR } from 'src/electron/utils/StorageUtils';
+import StorageUtils, { MONITOR_CONFIG_FILE_PATH } from 'src/electron/utils/StorageUtils';
 import { Monitor, MonitorUpdateInput } from 'src/types.d';
 
 function _getMonitorConfigs(): Record<string, Monitor> {
   try {
-    return StorageUtils.readJSON(MONITOR_CONFIG_FILE_DIR);
+    return StorageUtils.readJSON(MONITOR_CONFIG_FILE_PATH);
   } catch (err) {
     console.error('>> Failed to get monitor configs from JSON', err);
     return {};
@@ -17,7 +17,7 @@ function _setMonitorConfigs(monitors: Monitor[]) {
   for (const monitor of monitors) {
     res[monitor.id] = monitor;
   }
-  StorageUtils.writeJSON(MONITOR_CONFIG_FILE_DIR, res);
+  StorageUtils.writeJSON(MONITOR_CONFIG_FILE_PATH, res);
 }
 
 const DisplayUtils = {

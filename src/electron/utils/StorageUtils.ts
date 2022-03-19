@@ -2,7 +2,9 @@ import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
-export const MONITOR_CONFIG_FILE_DIR = _getPath('monitor-configs.json');
+export const MONITOR_CONFIG_FILE_PATH = _getPath('monitor-configs.json');
+export const PREFERENCE_FILE_PATH = _getPath('preferences.json');
+
 function _getPath(fileName: string) {
   const baseDir = path.join(app.getPath('appData'), 'display-dj');
 
