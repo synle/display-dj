@@ -243,12 +243,12 @@ function _getTrayIcon() {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.on('ready', () => {
-  createWindow();
-  createTray();
-  setUpShortcuts();
-  setupAutolaunch();
-  setUpDataEndpoints();
+app.on('ready', async () => {
+  await createWindow();
+  await createTray();
+  await setupAutolaunch();
+  await setUpDataEndpoints();
+  await setUpShortcuts();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
