@@ -1,7 +1,8 @@
 {
   "name": "display-dj",
+  "private": true,
   "version": "1.0.0",
-  "description": "A windows application that allows quick toggle of dark mode and manages display brightness of individual display quickly",
+  "description": "A cross platform desktop application that supports brightness adjustment for integrated laptop monitor as well as external monitors and dark mode toggle supporting Windows and MacOSX at the moment.",
   "scripts": {
     "clean": "rimraf build dist",
     "prebuild": "npm run clean && node prebuild.js",
