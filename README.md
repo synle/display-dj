@@ -1,6 +1,6 @@
 # [display-dj](https://synle.github.io/display-dj/)
 
-A windows application that allows quick toggle of dark mode and manages display brightness of individual display quickly
+`display-dj` is a cross platform desktop application that supports brightness adjustment for integrated laptop monitor as well as external monitors and dark mode toggle supporting Windows and MacOSX at the moment. Adjustment brightness will be quicker and does not require tinkering with the external monitor controls.
 
 ## The Problems
 
@@ -9,10 +9,6 @@ A windows application that allows quick toggle of dark mode and manages display 
 - There is not a single app that are cross platforms, and dark mode adjustment and also support brightness adjustment for integrated display as well as external display.
 - Windows and MacOSX have their own built in controls that allow you to adjust brightness. But this can only be done for integrated displays or certain monitors such as proprietary displays for mac. The built-in solution does not work for third party displays.
 - Built-in brightness controls and dark mode toggles are hard to find and requires extra steps to get to in the OS. This application handles all that within a few clicks.
-
-## The Solution
-
-`display-dj` is a cross platform desktop application that supports brightness adjustment for integrated laptop monitor as well as external monitors and dark mode toggle supporting Windows and MacOSX at the moment.
 
 ## Downloads
 
@@ -23,9 +19,12 @@ You can download `display-dj` at the following URL.
 
 ## Screenshots / Demo
 
-![image](https://user-images.githubusercontent.com/3792401/158890109-50c68910-dd79-45f4-8da8-b41346219fc4.png)
+![image](https://user-images.githubusercontent.com/3792401/159134000-ef989378-0e4d-4bd1-96f8-9c79110cb37e.png)
 
-![image](https://user-images.githubusercontent.com/3792401/158890188-6074254d-87df-4d74-92be-7ad8f825e25e.png)
+![image](https://user-images.githubusercontent.com/3792401/159134004-26547233-c46e-4e6a-b6b8-326502d08a8b.png)
+
+![image](https://user-images.githubusercontent.com/3792401/159134011-761cadb7-5dc5-4431-a4e0-4976b379e39d.png)
+
 
 ## Supported Platforms
 
@@ -160,8 +159,13 @@ If you are interested in contributing, you can refer to this doc to get started
 
 - [DEV.md](https://github.com/synle/display-dj/blob/main/DEV.md)
 
+## Known issues
+
+Due to the complexity and quirks of `ddc/ci` protocol, unfortunately it's nearly impossible to support every single monitor out there. So if you run into issue where this app doesn't work, we will not guarantee support.
+
+
 ## Suggestion?
 
-Use the following link to file a bug or a suggestion.
+Use the following link to file a bug or a suggestion. Please indicate which OS and monitor.
 
 - [File a bug or a suggestion?](https://github.com/synle/display-dj/issues/new)

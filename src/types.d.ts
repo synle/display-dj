@@ -29,9 +29,8 @@ export type IDisplayAdapter = {
 
 type KeyBinding = {
   key: string;
-  command:
-    // brightness commands
-    | 'command/changeBrightness/down'
+  command: // brightness commands
+  | 'command/changeBrightness/down'
     | 'command/changeBrightness/up'
     | 'command/changeBrightness/0'
     | 'command/changeBrightness/50'
