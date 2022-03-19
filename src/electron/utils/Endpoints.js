@@ -29,10 +29,6 @@ export function setUpDataEndpoints() {
   addDataEndpoint('get', '/api/preferences', async (req, res) => {
     try {
       const preferences = await PreferenceUtils.get();
-
-      // sync it
-      await PreferenceUtils.patch(preferences);
-
       res.status(200).json(preferences);
     } catch (err) {
       res

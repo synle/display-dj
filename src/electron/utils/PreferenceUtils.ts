@@ -11,7 +11,7 @@ const PreferenceUtils = {
     let preference: Preference = DEFAULT_PREFERENCES;
 
     try {
-      preference = StorageUtils.readJSON(PREFERENCE_FILE_PATH);
+      preference = StorageUtils.readJSON(PREFERENCE_FILE_PATH, DEFAULT_PREFERENCES);
     } catch (err) {}
 
     // hooking up default value
