@@ -56,7 +56,7 @@ jobs:
           asset_name: display-dj-win32-x64.zip
           asset_content_type: application/octet-stream
 
-  build_macos:
+  build_darwin: # darwin aka Mac OSX
     needs: [create_release]
     runs-on: macos-latest
     timeout-minutes: 30
@@ -79,7 +79,7 @@ jobs:
 
   roll_back:
     if: failure()
-    needs: [create_release, build_windows]
+    needs: [create_release, build_windows, build_darwin]
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
