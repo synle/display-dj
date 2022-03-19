@@ -1,7 +1,6 @@
 import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
 import darkMode from 'dark-mode';
 import { exec } from 'child_process';
-import { DISPLAY_TYPE } from 'src/constants';
 import { IDisplayAdapter } from 'src/types.d';
 
 // Source: http://chopmo.dk/2017/01/12/control-monitor-brightness-from-osx.html
@@ -49,7 +48,7 @@ const DisplayAdapter: IDisplayAdapter = {
   },
   getMonitorType: async (targetMonitorId: string) => {
     // TODO: to be implemented
-    return DISPLAY_TYPE.EXTERNAL;
+    return 'unknown_monitor';
   },
   getMonitorBrightness: async (targetMonitorId: string) => {
     return new Promise(async (resolve, reject) => {
