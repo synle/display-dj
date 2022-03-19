@@ -1,7 +1,7 @@
 import * as ddcci from '@hensm/ddcci';
 import { executePowershell } from 'src/electron/utils/ShellUtils';
 import { DISPLAY_TYPE } from 'src/constants';
-import { DisplayAdapter } from 'src/types.d';
+import { IDisplayAdapter } from 'src/types.d';
 
 /**
  * get current laptop brightness. more info here
@@ -24,14 +24,14 @@ async function _setBrightnessBuiltin(newBrightness: number): Promise<void> {
   await executePowershell(shellToRun);
 }
 
-function _getBrightnessDccCi(idToUse: string): Promise<number> {
+function _getBrightnessDccCi(targetMonitorId: string): Promise<number> {
   return new Promise(async (resolve, reject) => {
     let retry = 3;
     let error;
 
     while (--retry > 0) {
       try {
-        const res = await ddcci.getBrightness(idToUse);
+        const res = await ddcci.getBrightness(targetMonitorId);
         resolve(res);
       } catch (err) {
         error = err;
@@ -42,17 +42,17 @@ function _getBrightnessDccCi(idToUse: string): Promise<number> {
   });
 }
 
-async function _setBrightnessDccCi(idToUse: string, newBrightness: number): Promise<void> {
-  await ddcci.setBrightness(idToUse, newBrightness);
+async function _setBrightnessDccCi(targetMonitorId: string, newBrightness: number): Promise<void> {
+  await ddcci.setBrightness(targetMonitorId, newBrightness);
 }
 
-const DisplayUtils: DisplayAdapter = {
+const DisplayAdapter: IDisplayAdapter = {
   getMonitorList: async () => {
     return ddcci.getMonitorList();
   },
-  getMonitorType: async (idToUse: string) => {
+  getMonitorType: async (targetMonitorId: string) => {
     try {
-      await _getBrightnessDccCi(idToUse);
+      await _getBrightnessDccCi(targetMonitorId);
     } catch (err) {
       try {
         await _getBrightnessBuiltin();
@@ -61,9 +61,9 @@ const DisplayUtils: DisplayAdapter = {
     }
     return DISPLAY_TYPE.EXTERNAL;
   },
-  getMonitorBrightness: async (idToUse: string) => {
+  getMonitorBrightness: async (targetMonitorId: string) => {
     try {
-      return _getBrightnessDccCi(idToUse);
+      return _getBrightnessDccCi(targetMonitorId);
     } catch (err) {
       try {
         return await _getBrightnessBuiltin();
@@ -71,10 +71,10 @@ const DisplayUtils: DisplayAdapter = {
     }
     return 50;
   },
-  updateMonitorBrightness: async (monitorId: string, newBrightness: number) => {
+  updateMonitorBrightness: async (targetMonitorId: string, newBrightness: number) => {
     // monitor is an external (DCC/CI)
     try {
-      await _setBrightnessDccCi(monitorId, newBrightness);
+      await _setBrightnessDccCi(targetMonitorId, newBrightness);
     } catch (err) {
       // monitor is a laptop
       try {
@@ -123,4 +123,4 @@ const DisplayUtils: DisplayAdapter = {
   },
 };
 
-export default DisplayUtils;
+export default DisplayAdapter;
