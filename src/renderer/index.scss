@@ -1,7 +1,7 @@
 :root {
   --color-fg-1: #000;
   --color-bg-1: #fff;
-  --color-bg-2: #ccc;
+  --color-bg-2: #eee;
   --color-link: #3b49df;
   --color-focus: #333;
 }
@@ -115,6 +115,13 @@ button {
   display: block;
   font-weight: bold;
   border: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    margin-right: 0.5rem;
+  }
 
   &:hover,
   &:focus {
@@ -162,8 +169,8 @@ button {
   }
 
   &__icon {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     fill: color(--color-fg-1);
     margin-right: 0.5rem;
   }
