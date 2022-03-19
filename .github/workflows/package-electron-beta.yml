@@ -42,19 +42,39 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: npm version --no-git-tag-version patch
-      - run: npm ci
-      # - run: npm ci --no-optional
-      - run: npm run test-ci
+      - run: npm ci --no-optional
       - run: npm run build
-      - run: npm run dist
+      - run: npm run test-ci
+      - run: npm run dist-win32
 
       - uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.release_upload_url }}
-          asset_path: ./dist/display-dj.zip
-          asset_name: display-dj.zip
+          asset_path: ./dist/display-dj-win32-x64.zip
+          asset_name: display-dj-win32-x64.zip
+          asset_content_type: application/octet-stream
+
+  build_macos:
+    needs: [create_release]
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v2
+      - run: npm version --no-git-tag-version patch
+      - run: npm ci --no-optional
+      - run: npm run build
+      - run: npm run test-ci
+      - run: npm run dist-darwin
+
+      - uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.release_upload_url }}
+          asset_path: ./dist/display-dj-darwin-x64.zip
+          asset_name: display-dj-darwin-x64.zip
           asset_content_type: application/octet-stream
 
   roll_back:
