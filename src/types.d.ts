@@ -26,3 +26,8 @@ export type IDisplayAdapter = {
   getDarkMode: () => Promise<boolean>;
   updateDarkMode: (isDarkModeOn: boolean) => Promise<void>;
 };
+
+export type Preference = {
+  ddcctlBinary: string;
+  showIndividualDisplays: boolean;
+};
