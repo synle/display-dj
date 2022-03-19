@@ -1,5 +1,5 @@
-import { screen } from 'electron';
 import DisplayUtils from 'src/electron/utils/DisplayUtils';
+import PositionUtils from 'src/electron/utils/PositionUtils';
 import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
 
 const electronEndpointHandlers = [];
@@ -65,48 +65,8 @@ export function setUpDataEndpoints() {
 
   addDataEndpoint('put', '/api/configs/appPosition', async (req, res) => {
     try {
-      const tray = global.tray;
-      const mainWindow = global.mainWindow;
-
-      if (!tray) {
-        return res.status(500).send('App not ready yet');
-      }
-
-      const width = 300;
-      const height = req.body.height;
-
-      const trayBound = tray.getBounds();
-
-      var mainScreen = screen.getPrimaryDisplay();
-      const mainScreenSize = mainScreen.size;
-      let x = trayBound.x,
-        y = trayBound.y;
-      let pos = '';
-      const xOffset = 50,
-        yOffset = 0;
-      if (y > mainScreenSize.height / 2) {
-        // bottom
-        pos += 'bottom.';
-        y = Math.floor(trayBound.y - height - yOffset);
-      } else {
-        // top
-        pos += 'top.';
-        y = Math.floor(trayBound.y + yOffset);
-      }
-      if (x > mainScreenSize.width / 2) {
-        // right
-        pos += 'right.';
-        x = Math.floor(trayBound.x - width + xOffset);
-      } else {
-        // left
-        pos += 'left.';
-        x = Math.floor(trayBound.x + xOffset);
-      }
-
-      mainWindow.setPosition(x, y);
-      mainWindow.setSize(width, height);
-
-      res.status(200).json({ height, pos });
+      await PositionUtils.updateTrayPosition(req.body.height, global.tray, global.mainWindow);
+      res.status(204).send();
     } catch (err) {
       res.status(500).json({
         error: `Failed to adjust tray position: ` + JSON.stringify(err),
