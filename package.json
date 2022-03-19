@@ -37,7 +37,8 @@
   "license": "MIT",
   "main": "build/main.js",
   "optionalDependencies": {
-    "@hensm/ddcci": "^0.1.0"
+    "@hensm/ddcci": "^0.1.0",
+    "dark-mode": "^4.0.0"
   },
   "dependencies": {
     "auto-launch": "^5.0.5",
