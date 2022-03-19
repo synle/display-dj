@@ -3,12 +3,7 @@ import StorageUtils, { MONITOR_CONFIG_FILE_PATH } from 'src/electron/utils/Stora
 import { Monitor, MonitorUpdateInput } from 'src/types.d';
 
 function _getMonitorConfigs(): Record<string, Monitor> {
-  try {
-    return StorageUtils.readJSON(MONITOR_CONFIG_FILE_PATH);
-  } catch (err) {
-    console.error('>> Failed to get monitor configs from JSON', err);
-    return {};
-  }
+  return StorageUtils.readJSON(MONITOR_CONFIG_FILE_PATH);
 }
 
 function _setMonitorConfigs(monitors: Monitor[]) {
@@ -37,21 +32,9 @@ const DisplayUtils = {
     for (let idx = 0; idx < monitorIds.length; idx++) {
       const idToUse = monitorIds[idx];
 
-      try {
-        nameToUse = monitorsFromStorage[idToUse].name;
-      } catch (err) {
-        nameToUse = `Monitor #${++monitorCount}`;
-      }
-
-      try {
-        sortOrderToUse = monitorsFromStorage[idToUse].sortOrder;
-      } catch (err) {}
-      sortOrderToUse = sortOrderToUse || idx;
-
-      try {
-        disabledToUse = !!monitorsFromStorage[idToUse].disabled;
-      } catch (err) {}
-      disabledToUse = disabledToUse || false;
+      nameToUse = monitorsFromStorage?.[idToUse]?.name || `Monitor #${++monitorCount}`;
+      sortOrderToUse = monitorsFromStorage?.[idToUse]?.sortOrder || idx;
+      disabledToUse = !!monitorsFromStorage?.[idToUse]?.disabled || false;
 
       monitors.push({
         id: idToUse,
@@ -71,8 +54,10 @@ const DisplayUtils = {
       return ca.localeCompare(cb);
     });
 
-    // persist to storage
-    _setMonitorConfigs(monitors);
+    // sync only if the original config file is not present
+    if(monitorsFromStorage === undefined){
+      _setMonitorConfigs(monitors);
+    }
 
     return Promise.resolve(monitors);
   },

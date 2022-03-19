@@ -20,12 +20,13 @@ const StorageUtils = {
     try {
       return JSON.parse(fs.readFileSync(file, { encoding: 'utf8', flag: 'r' }).trim());
     } catch (err) {
-      if(defaultValue){
+      if (defaultValue) {
         // if default value is defined, then will attempt to write it to preference once
         StorageUtils.writeJSON(file, defaultValue);
+        return defaultValue;
       }
 
-      return defaultValue;
+      return undefined;
     }
   },
   writeJSON: (file: string, jsonObject: any) => {
