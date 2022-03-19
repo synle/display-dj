@@ -3,17 +3,22 @@ import darkMode from 'dark-mode';
 import { exec } from 'child_process';
 import { DISPLAY_TYPE } from 'src/constants';
 import { IDisplayAdapter } from 'src/types.d';
-async function _findDisplayById(targetMonitorId: string) {
+
+// Source: http://chopmo.dk/2017/01/12/control-monitor-brightness-from-osx.html
+// Source: https://github.com/kfix/ddcctl
+
+async function _findWhichDisplayById(targetMonitorId: string) {
   const monitorIds = await DisplayAdapter.getMonitorList();
   for (let idx = 0; idx < monitorIds.length; idx++) {
     const monitorId = monitorIds[idx];
 
     if (monitorId === targetMonitorId) {
-      return idx;
+      // NOTE here the index start from 1 for the display api (ddcctl)
+      return idx + 1;
     }
   }
 
-  return -1;
+  return undefined;
 }
 
 const DisplayAdapter: IDisplayAdapter = {
@@ -47,27 +52,40 @@ const DisplayAdapter: IDisplayAdapter = {
     return DISPLAY_TYPE.EXTERNAL;
   },
   getMonitorBrightness: async (targetMonitorId: string) => {
-    // TODO: to be implemented
-    return 0;
+    return new Promise(async (resolve, reject) => {
+      try {
+        const whichDisplay = await _findWhichDisplayById(targetMonitorId);
+
+        if (whichDisplay === undefined) {
+          return reject(`Display not found`);
+        }
+
+        const ddcctlBinary = (await PreferenceUtils.get()).ddcctlBinary;
+
+        const shellToRun = `${ddcctlBinary} -d ${whichDisplay} -b \\?`;
+        exec(shellToRun, (error, stdout, stderr) => {
+          if (error) {
+            return reject(stderr);
+          }
+          resolve(parseInt(stdout) || 0);
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
   },
   updateMonitorBrightness: async (targetMonitorId: string, newBrightness: number) => {
     return new Promise(async (resolve, reject) => {
       try {
-        let whichMonitor: number | undefined;
+        const whichDisplay = await _findWhichDisplayById(targetMonitorId);
 
-        const matchedIdx = await _findDisplayById(targetMonitorId);
-
-        if (matchedIdx === -1) {
-          return reject(`Monitor not found - ${targetMonitorId}`);
-        } else {
-          // NOTE here the index start from 1 for the display api (ddcctl)
-          whichMonitor = matchedIdx + 1;
+        if (whichDisplay === undefined) {
+          return reject(`Display not found`);
         }
 
-        const preference = await PreferenceUtils.get();
-        const ddcctlBinary = preference.ddcctlBinary;
+        const ddcctlBinary = (await PreferenceUtils.get()).ddcctlBinary;
 
-        const shellToRun = `${ddcctlBinary} -d ${whichMonitor} -b ${newBrightness}`;
+        const shellToRun = `${ddcctlBinary} -d ${whichDisplay} -b ${newBrightness}`;
         exec(shellToRun, (error, stdout, stderr) => {
           if (error) {
             return reject(stderr);

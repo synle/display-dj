@@ -3,6 +3,8 @@ import * as ddcci from '@hensm/ddcci';
 import { DISPLAY_TYPE } from 'src/constants';
 import { IDisplayAdapter } from 'src/types.d';
 
+// source: https://github.com/hensm/node-ddcci
+
 /**
  * get current laptop brightness. more info here
  * https://docs.microsoft.com/en-us/windows/win32/wmicoreprov/wmimonitorbrightness
