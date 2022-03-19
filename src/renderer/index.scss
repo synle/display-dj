@@ -63,6 +63,10 @@ a {
   color: var(--color-link);
   font-weight: bold;
   text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 .iconBtn {
@@ -127,7 +131,7 @@ button {
   display: flex;
   flex-direction: row;
   align-items: center;
-  margin-top: 0.5rem;
+  height: 27px;
 
   &__label {
     margin-bottom: 0.5rem;
@@ -158,9 +162,13 @@ button {
   }
 
   &__icon {
-    width: 15px;
-    height: 15px;
+    width: 20px;
+    height: 20px;
     fill: color(--color-fg-1);
     margin-right: 0.5rem;
   }
+}
+
+.btnToggleDarkMode {
+  margin-top: 0.5rem;
 }
