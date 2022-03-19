@@ -27,11 +27,7 @@ You can download `display-dj` at the following URL.
 ![image](https://user-images.githubusercontent.com/3792401/159134011-761cadb7-5dc5-4431-a4e0-4976b379e39d.png)
 
 ### Mac OSX Monterey
-![image](https://user-images.githubusercontent.com/3792401/159140684-4eb2b999-c58e-4ea3-a08d-97b39124021d.png)
-
-![image](https://user-images.githubusercontent.com/3792401/159140688-9c20e2e8-f9b2-433c-9c41-d77ea9304f41.png)
-
-![image](https://user-images.githubusercontent.com/3792401/159140694-41d6b71c-47a2-4f9b-8f11-20e329eba0b4.png)
+![demo-mac](https://user-images.githubusercontent.com/3792401/159141171-c6c8a6a5-4b7b-4fc6-af28-c082fc1bd723.gif)
 
 
 ## Supported Platforms

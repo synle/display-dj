@@ -18,6 +18,9 @@ import StorageUtils, {
   MONITOR_CONFIG_FILE_PATH,
   PREFERENCE_FILE_PATH,
 } from 'src/electron/utils/StorageUtils';
+import { screen } from 'electron';
+
+
 let mainWindow;
 
 const appBaseDir = __dirname;
@@ -89,6 +92,24 @@ async function createTray() {
       mainWindow.hide();
     } else {
       mainWindow.show();
+
+      const xOffset = 50;
+      let x = iconPos.x;
+      let y = iconPos.y;
+      const{width} = mainWindow.getBounds();
+
+      const mainScreen = screen.getPrimaryDisplay();
+      const mainScreenSize = mainScreen.size;
+
+      if (x > mainScreenSize.width / 2) {
+        // right
+        x = Math.floor(x - width + xOffset);
+      } else {
+        // left
+        x = Math.floor(x + xOffset);
+      }
+
+      mainWindow.setPosition(x, y);
     }
   });
 
