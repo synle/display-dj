@@ -1,6 +1,6 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from 'react-query';
 import ApiUtils from 'src/renderer/utils/ApiUtils';
-import { LAPTOP_BUILT_IN_DISPLAY_ID, DISPLAY_TYPE } from 'src/constants';
+import { LAPTOP_BUILT_IN_DISPLAY_ID } from 'src/constants';
 import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import LaptopSvg from 'src/renderer/svg/laptop.svg';
 import ToggleSvg from 'src/renderer/svg/toggle.svg';

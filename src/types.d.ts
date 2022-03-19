@@ -1,4 +1,4 @@
-import { DISPLAY_TYPE } from 'src/constants';
+type DisplayType = 'laptop_monitor' | 'external_monitor' | 'unknown_monitor';
 
 export type MonitorUpdateInput = {
   id: string;
@@ -6,7 +6,7 @@ export type MonitorUpdateInput = {
   brightness?: number;
   disabled?: boolean;
   sortOrder?: number;
-  type: DISPLAY_TYPE;
+  type: DisplayType;
 };
 
 export type Monitor = Required<MonitorUpdateInput>;
@@ -20,7 +20,7 @@ export type AppConfig = {
 
 export type IDisplayAdapter = {
   getMonitorList: () => Promise<string[]>;
-  getMonitorType: (targetMonitorId: string) => Promise<string>;
+  getMonitorType: (targetMonitorId: string) => Promise<DisplayType>;
   getMonitorBrightness: (targetMonitorId: string) => Promise<number>;
   updateMonitorBrightness: (targetMonitorId: string, newBrightness: number) => Promise<void>;
   getDarkMode: () => Promise<boolean>;
