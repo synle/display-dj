@@ -5,6 +5,8 @@ import { LAPTOP_BUILT_IN_DISPLAY_ID } from 'src/constants';
 import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import LaptopSvg from 'src/renderer/svg/laptop.svg';
 import ToggleSvg from 'src/renderer/svg/toggle.svg';
+import DarkModeSvg from 'src/renderer/svg/darkMode.svg';
+import LightModeSvg from 'src/renderer/svg/lightMode.svg';
 import './index.scss';
 import { Monitor, MonitorUpdateInput, Preference } from 'src/types.d';
 import {
@@ -131,7 +133,16 @@ function DarkModeSettingForm(props: DarkModeSettingFormProps) {
 
   return (
     <button className='btnToggleDarkMode' onClick={onToggleDarkMode} title='Toggle Dark Mode'>
-      {darkMode ? 'Mode: Dark' : 'Mode: Light'}
+      {darkMode ? (
+        <>
+          <DarkModeSvg /> <span>Mode: Dark</span>
+        </>
+      ) : (
+        <>
+          <LightModeSvg />
+          <span>Mode: Light</span>
+        </>
+      )}
     </button>
   );
 }
