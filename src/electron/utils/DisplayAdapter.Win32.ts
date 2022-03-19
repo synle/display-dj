@@ -1,5 +1,5 @@
-import * as ddcci from '@hensm/ddcci';
 import { executePowershell } from 'src/electron/utils/ShellUtils';
+import * as ddcci from '@hensm/ddcci';
 import { DISPLAY_TYPE } from 'src/constants';
 import { IDisplayAdapter } from 'src/types.d';
 

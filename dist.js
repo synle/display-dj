@@ -22,7 +22,7 @@ function zipDirectory(sourceDir, outPath) {
   });
 }
 
-switch(process.platform){
+switch (process.platform) {
   case 'win32':
     zipDirectory(
       path.join(__dirname, 'dist', 'display-dj-win32-x64'),

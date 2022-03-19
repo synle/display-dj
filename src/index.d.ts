@@ -7,7 +7,7 @@ declare module '@hensm/ddcci' {
 declare module 'dark-mode' {
   export function enable(): Promise<void>;
   export function disable(): Promise<void>;
-  export function toggle(isDarkModeOn : boolean): Promise<void>;
+  export function toggle(isDarkModeOn: boolean): Promise<void>;
   export function isEnabled(): Promise<boolean>;
 }
 
