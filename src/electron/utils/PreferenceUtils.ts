@@ -3,6 +3,7 @@ import { Preference } from 'src/types.d';
 
 const DEFAULT_PREFERENCES: Preference = {
   ddcctlBinary: `/usr/local/bin/ddcctl`,
+  brightnessBinary: '/usr/local/bin/brightness',
   showIndividualDisplays: false,
   brightnessDelta: 50,
   keyBindings: [
