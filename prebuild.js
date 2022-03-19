@@ -21,6 +21,6 @@ switch(process.platform){
 }
 
 // install extra dependencies
-exec(`npm i ${packages.join(' ')}`)
+exec(`npm install ${packages.join(' ')}`)
 
 fs.copyFileSync(source, dest);
