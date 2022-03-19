@@ -35,10 +35,14 @@ The following version of OS has been tested and working.
 
 ### MacOSX dependencies
 
-This application requires `ddcctl` application installed for it to be fully functional. You can use the following bash command to install it with `homebrew`
+This application requires `ddcctl` and `brightness` installed for it to be fully functional. You can use the following bash command to install it with `homebrew`
 
 ```bash
+# for external Display
 brew install ddcctl
+
+# for Mac Integrated Display
+brew install brightness
 ```
 
 ## Monitor Configs
