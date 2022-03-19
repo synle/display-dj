@@ -27,7 +27,19 @@ export type IDisplayAdapter = {
   updateDarkMode: (isDarkModeOn: boolean) => Promise<void>;
 };
 
+type KeyBinding = {
+  key: string;
+  command:
+    | 'command/changeBrightness/Down'
+    | 'command/changeBrightness/Up'
+    | 'command/changeBrightness/0'
+    | 'command/changeBrightness/50'
+    | 'command/changeBrightness/100';
+};
+
 export type Preference = {
   ddcctlBinary: string;
   showIndividualDisplays: boolean;
+  brightnessDelta: number;
+  keyBindings: KeyBinding[];
 };
