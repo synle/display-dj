@@ -11,10 +11,18 @@ const PositionUtils = {
     const mainScreen = screen.getPrimaryDisplay();
     const mainScreenSize = mainScreen.size;
 
-    let { x, y } = mainWindow.getBounds();
+    let { x, y } = global.trayPos || mainWindow.getBounds();
+
+    const xOffset = 50;
+    if (x > mainScreenSize.width / 2) {
+      // right
+      x = Math.floor(x - width + xOffset);
+    } else {
+      // left
+      x = Math.floor(x + xOffset);
+    }
 
     const yOffset = 0;
-
     if (y > mainScreenSize.height / 2) {
       // bottom
       y = Math.floor(y - height - yOffset);

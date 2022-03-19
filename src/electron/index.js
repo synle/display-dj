@@ -7,11 +7,11 @@ import {
   globalShortcut,
   ipcMain,
   nativeTheme,
-  screen,
   shell,
 } from 'electron';
 import DisplayUtils from 'src/electron/utils/DisplayUtils';
 import { getEndpointHandlers, setUpDataEndpoints } from 'src/electron/utils/Endpoints';
+import PositionUtils from 'src/electron/utils/PositionUtils';
 import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
 import { matchPath } from 'react-router-dom';
 import path from 'path';
@@ -85,30 +85,18 @@ async function createTray() {
     tray.setImage(_getTrayIcon());
   });
 
-  tray.on('click', async (event, iconPos, mousePos) => {
+  tray.on('click', async (event, trayBounds, mousePos) => {
     try {
       if (mainWindow.isVisible()) {
         mainWindow.hide();
       } else {
         mainWindow.show();
 
-        const { width } = mainWindow.getBounds();
-        let x = iconPos.x;
-        let y = iconPos.y;
+        const { width, height } = mainWindow.getBounds();
 
-        const mainScreen = screen.getPrimaryDisplay();
-        const mainScreenSize = mainScreen.size;
+        global.trayPos = trayBounds;
 
-        const xOffset = 50;
-        if (x > mainScreenSize.width / 2) {
-          // right
-          x = Math.floor(x - width + xOffset);
-        } else {
-          // left
-          x = Math.floor(x + xOffset);
-        }
-
-        mainWindow.setPosition(x, y);
+        PositionUtils.updateTrayPosition(global.mainWindow, height);
       }
     } catch (err) {}
   });
