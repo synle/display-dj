@@ -13,7 +13,10 @@ Requires C build tools. can be installed as part of node js executable
 This application requires `ddcctl` (for external display) and `brightness` (for integrated display). Can be installed as followed
 
 ```bash
+# for external Display
 brew install ddcctl
+
+# for Mac Integrated Display
 brew install brightness
 ```
 
