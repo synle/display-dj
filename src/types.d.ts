@@ -18,11 +18,11 @@ export type AppConfig = {
   version: string;
 };
 
-export type DisplayAdapter = {
+export type IDisplayAdapter = {
   getMonitorList: () => Promise<string[]>;
-  getMonitorType: (idToUse: string) => Promise<string>;
-  getMonitorBrightness: (idToUse: string) => Promise<number>;
-  updateMonitorBrightness: (monitorId: string, newBrightness: number) => Promise<void>;
+  getMonitorType: (targetMonitorId: string) => Promise<string>;
+  getMonitorBrightness: (targetMonitorId: string) => Promise<number>;
+  updateMonitorBrightness: (targetMonitorId: string, newBrightness: number) => Promise<void>;
   getDarkMode: () => Promise<boolean>;
   updateDarkMode: (isDarkModeOn: boolean) => Promise<void>;
 };
