@@ -79,8 +79,6 @@ const DisplayAdapter: IDisplayAdapter = {
               if(line.includes(`display ${whichDisplay}: brightness`)){
                 const brightness = Math.floor(parseFloat(line.substr(line.indexOf(': brightness') + ': brightness'.length + 1)) * 100);
 
-                console.debug('getMonitorBrightness', targetMonitorId, shellToRun, brightness)
-
                 if(brightness > 0){
                   return resolve(brightness)
                 }
@@ -108,7 +106,6 @@ const DisplayAdapter: IDisplayAdapter = {
           });
         }
       } catch (err) {
-        console.error(`getMonitorBrightness failed: `+ JSON.stringify(err));
         reject(`getMonitorBrightness failed: `+ JSON.stringify(err));
       }
     });
