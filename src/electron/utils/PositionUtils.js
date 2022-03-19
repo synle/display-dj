@@ -11,7 +11,7 @@ const PositionUtils = {
     const mainScreen = screen.getPrimaryDisplay();
     const mainScreenSize = mainScreen.size;
 
-    let {x,y} = mainWindow.getBounds();
+    let { x, y } = mainWindow.getBounds();
 
     const yOffset = 0;
 
