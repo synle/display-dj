@@ -12,7 +12,12 @@ const DisplayAdapter: IDisplayAdapter = {
           .split('\n')
           .filter((line) => line.indexOf('D:') === 0)
           .map((line, idx) => line.replace('D:', '').trim());
-        resolve(monitors);
+
+        if(monitors.length > 0){
+          resolve(monitors);
+        } else {
+          reject({stdout, stderr})
+        }
       });
     });
   },
