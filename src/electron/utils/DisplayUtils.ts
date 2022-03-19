@@ -6,13 +6,35 @@ function _getMonitorConfigs(): Record<string, Monitor> {
   return StorageUtils.readJSON(MONITOR_CONFIG_FILE_PATH);
 }
 
-function _setMonitorConfigs(monitors: Monitor[]) {
-  // wrap it inside key => monitor
+/**
+ * This routine will sync the monitor configs such as name and brightness
+ *
+ * Here we will concat what's in storage with what's active by the api.
+ * The reasons here are that sometimes you have different monitor setup.
+ * One set of monitors for work and another set for home. So it's a good
+ * practice to store the configs and merge them instead of using what's active
+ * @param {Monitor[]} monitors active monitors returned by the API
+ */
+function _syncMonitorConfigs(monitors: Monitor[]) {
+  // this section will merge the monitors from input with what's in the storage
+  const monitorsFromStorage = _getMonitorConfigs();
+
+  for (const monitor of monitors) {
+    delete monitorsFromStorage[monitor.id];
+  }
+
+  // adding the remaining missing monitor from storage
+  monitors = [...monitors, ...Object.values(monitorsFromStorage)];
+
+  StorageUtils.writeJSON(MONITOR_CONFIG_FILE_PATH, _serializeMonitorConfigs(monitors));
+}
+
+function _serializeMonitorConfigs(monitors: Monitor[]) {
   const res: Record<string, Monitor> = {};
   for (const monitor of monitors) {
     res[monitor.id] = monitor;
   }
-  StorageUtils.writeJSON(MONITOR_CONFIG_FILE_PATH, res);
+  return res;
 }
 
 const DisplayUtils = {
@@ -21,28 +43,21 @@ const DisplayUtils = {
 
     const monitorsFromStorage = _getMonitorConfigs();
 
-    let sortOrderToUse: number = 0;
-    let nameToUse: string = '';
-    let disabledToUse: boolean = false;
-    let idToUse: string = '';
+    let shouldSync = false;
 
-    // getting the external monitors
+    // construct the active displays
     let monitorCount = 0;
     const monitorIds = await DisplayAdapter.getMonitorList();
     for (let idx = 0; idx < monitorIds.length; idx++) {
       const idToUse = monitorIds[idx];
 
-      nameToUse = monitorsFromStorage?.[idToUse]?.name || `Monitor #${++monitorCount}`;
-      sortOrderToUse = monitorsFromStorage?.[idToUse]?.sortOrder || idx;
-      disabledToUse = !!monitorsFromStorage?.[idToUse]?.disabled || false;
-
       monitors.push({
         id: idToUse,
-        name: nameToUse,
+        name: monitorsFromStorage?.[idToUse]?.name || `Monitor #${++monitorCount}`,
         type: await DisplayAdapter.getMonitorType(idToUse),
         brightness: await DisplayAdapter.getMonitorBrightness(idToUse),
-        sortOrder: sortOrderToUse,
-        disabled: disabledToUse,
+        sortOrder: monitorsFromStorage?.[idToUse]?.sortOrder || idx,
+        disabled: !!monitorsFromStorage?.[idToUse]?.disabled || false,
       });
     }
 
@@ -54,9 +69,9 @@ const DisplayUtils = {
       return ca.localeCompare(cb);
     });
 
-    // sync only if the original config file is not present
-    if(monitorsFromStorage === undefined){
-      _setMonitorConfigs(monitors);
+    // syncing if needed aka the configs are different from what's there in the database
+    if (JSON.stringify(monitorsFromStorage) !== JSON.stringify(monitors)) {
+      _syncMonitorConfigs(monitors);
     }
 
     return Promise.resolve(monitors);
@@ -83,7 +98,7 @@ const DisplayUtils = {
     );
 
     // persist to storage
-    _setMonitorConfigs(Object.values(monitorsFromStorage));
+    _syncMonitorConfigs(Object.values(monitorsFromStorage));
   },
   getAllMonitorsBrightness: async (): Promise<number> => {
     try {
@@ -115,7 +130,7 @@ const DisplayUtils = {
     }
 
     // persist to storage
-    _setMonitorConfigs(monitors);
+    _syncMonitorConfigs(monitors);
 
     await Promise.all(promisesChangeBrightness);
 
