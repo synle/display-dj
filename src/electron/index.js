@@ -11,13 +11,13 @@ import {
 } from 'electron';
 import DisplayUtils from 'src/electron/utils/DisplayUtils';
 import { getEndpointHandlers, setUpDataEndpoints } from 'src/electron/utils/Endpoints';
+import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
 import { matchPath } from 'react-router-dom';
 import path from 'path';
 import StorageUtils, {
   MONITOR_CONFIG_FILE_PATH,
   PREFERENCE_FILE_PATH,
 } from 'src/electron/utils/StorageUtils';
-
 let mainWindow;
 
 const appBaseDir = __dirname;
@@ -158,45 +158,47 @@ async function createTray() {
 }
 
 async function setUpShortcuts() {
-  // TODO: move this into a config
-  const keyBrightnessDown = `Shift+F1`;
-  const keyBrightnessUp = `Shift+F2`;
-  const delta = 50;
-  let isChangingAllMonitorBrightness = false;
   let allMonitorBrightness = await DisplayUtils.getAllMonitorsBrightness();
-  const keybindingSuccess = [];
-  keybindingSuccess.push(
-    globalShortcut.register(keyBrightnessDown, async () => {
-      if (isChangingAllMonitorBrightness) {
-        return;
-      }
-      isChangingAllMonitorBrightness = true;
-      try {
+
+  const preferences = await PreferenceUtils.get();
+
+  const keybindingSuccess = preferences.keyBindings.map((keyBinding) => {
+    return globalShortcut.register(keyBinding.key, async () => {
+      if (keyBinding.command.includes(`command/changeBrightness/`)) {
+        // these commands are change brightness
+        let delta = preferences.brightnessDelta;
+
+        switch (keyBinding.command) {
+          case 'command/changeBrightness/Down':
+            delta = -1 * preferences.brightnessDelta;
+            break;
+          case 'command/changeBrightness/Up':
+            delta = preferences.brightnessDelta;
+            break;
+          case 'command/changeBrightness/0':
+            delta = 0;
+            allMonitorBrightness = 0;
+            break;
+          case 'command/changeBrightness/50':
+            delta = 0;
+            allMonitorBrightness = 50;
+            break;
+          case 'command/changeBrightness/100':
+            delta = 0;
+            allMonitorBrightness = 100;
+            break;
+        }
+
         allMonitorBrightness = await DisplayUtils.updateAllBrightness(
           allMonitorBrightness,
-          -1 * delta,
+          delta,
         );
-      } catch (err) {}
-      isChangingAllMonitorBrightness = false;
-    }),
-  );
-
-  keybindingSuccess.push(
-    globalShortcut.register(keyBrightnessUp, async () => {
-      if (isChangingAllMonitorBrightness) {
-        return;
       }
-
-      isChangingAllMonitorBrightness = true;
-      try {
-        allMonitorBrightness = await DisplayUtils.updateAllBrightness(allMonitorBrightness, delta);
-      } catch (err) {}
-      isChangingAllMonitorBrightness = false;
-    }),
-  );
+    });
+  });
 
   if (!keybindingSuccess.every((success) => success)) {
-    console.log('>> globalShortcut keybinding failed');
+    console.log('>> globalShortcut keybinding failed', preferences.keyBindings.map((keyBinding, idx) => `${keyBinding.key} = ${keybindingSuccess[idx]}`));
   } else {
     console.log('>> globalShortcut keybinding success');
   }

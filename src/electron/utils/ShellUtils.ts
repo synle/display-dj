@@ -1,6 +1,6 @@
 import { spawn, exec } from 'child_process';
 
-export function executePowershell(shellToRun: string, delay = 100): Promise<string> {
+export function executePowershell(shellToRun: string, delay = 50): Promise<string> {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const child = spawn('powershell.exe', ['-Command', shellToRun]);
