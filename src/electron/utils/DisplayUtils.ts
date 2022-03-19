@@ -3,7 +3,7 @@ import StorageUtils, { MONITOR_CONFIG_FILE_PATH } from 'src/electron/utils/Stora
 import { Monitor, MonitorUpdateInput } from 'src/types.d';
 
 function _getMonitorConfigs(): Record<string, Monitor> {
-  return StorageUtils.readJSON(MONITOR_CONFIG_FILE_PATH);
+  return StorageUtils.readJSON(MONITOR_CONFIG_FILE_PATH) || {};
 }
 
 /**
@@ -70,7 +70,7 @@ const DisplayUtils = {
     });
 
     // syncing if needed aka the configs are different from what's there in the database
-    if (JSON.stringify(monitorsFromStorage) !== JSON.stringify(monitors)) {
+    if (JSON.stringify(Object.values(monitorsFromStorage)) !== JSON.stringify(monitors)) {
       _syncMonitorConfigs(monitors);
     }
 
