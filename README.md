@@ -31,8 +31,8 @@ brew install ddcctl
 
 You can download `display-dj` at the following URL.
 
-- [display-dj Beta for Mac](https://github.com/synle/display-dj/releases)
-- [display-dj Beta for Windows](https://github.com/synle/display-dj/releases)
+- [display-dj Beta for Mac](https://github.com/synle/display-dj/releases/download/beta/display-dj-darwin-x64.zip)
+- [display-dj Beta for Windows](https://github.com/synle/display-dj/releases/download/beta/display-dj-win32-x64.zip)
 
 ## Screenshots
 
