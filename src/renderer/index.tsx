@@ -6,8 +6,10 @@ import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import LaptopSvg from 'src/renderer/svg/laptop.svg';
 import ToggleSvg from 'src/renderer/svg/toggle.svg';
 import './index.scss';
-import { Monitor, MonitorUpdateInput } from 'src/types.d';
+import { Monitor, MonitorUpdateInput, Preference } from 'src/types.d';
 import {
+  usePreferences,
+  useUpdatePreferences,
   useAppState,
   useConfigs,
   useUpdateMonitor,
@@ -25,6 +27,7 @@ type HomeProps = {};
 function Home(props: HomeProps) {
   const { isLoading: loadingConfigs, data: configs, refetch } = useConfigs();
   const { isLoading: loadingAppState, data: appState } = useAppState();
+  const { isLoading: loadingPrefs, data: preference } = usePreferences();
   const { mutateAsync: updateAppPosition } = useUpdateAppPosition();
 
   useEffect(() => {
@@ -47,15 +50,19 @@ function Home(props: HomeProps) {
     };
   }, []);
 
-  const isLoading = loadingConfigs || loadingAppState;
+  const isLoading = loadingConfigs || loadingAppState || loadingPrefs;
   if (isLoading) {
-    return <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>Loading...</div>;
+    return (
+      <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>Loading... Please wait...</div>
+    );
   }
 
-  if (!configs || !appState) {
+  if (!configs || !appState || !preference) {
     // TODO: add message for no data state
     return (
-      <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>Errors. Get configs failed...</div>
+      <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>
+        Errors... Failed to get data...
+      </div>
     );
   }
 
@@ -65,9 +72,9 @@ function Home(props: HomeProps) {
         <h2>
           Display-DJ {configs.version} {configs.env !== 'production' ? configs.env : ''}
         </h2>
-        <ToggleAllDisplay />
+        <ToggleAllDisplay preference={preference} />
       </header>
-      {appState.expanded ? (
+      {preference.showIndividualDisplays ? (
         <MonitorBrightnessSettingForm monitors={configs.monitors} />
       ) : (
         <AllMonitorBrightnessSettings monitors={configs.monitors} />
@@ -76,18 +83,16 @@ function Home(props: HomeProps) {
     </>
   );
 }
-
-function ToggleAllDisplay() {
-  const { isLoading, data: appState } = useAppState();
-  const { mutateAsync: updateAppState } = useUpdateAppState();
-
-  if (isLoading || !appState) {
-    return null;
-  }
+type ToggleAllDisplayProps = {
+  preference: Preference;
+};
+function ToggleAllDisplay(props: ToggleAllDisplayProps) {
+  const { preference } = props;
+  const { mutateAsync: updatePreferences } = useUpdatePreferences();
 
   const onToggleAll = () => {
-    appState.expanded = !appState.expanded;
-    updateAppState(appState);
+    preference.showIndividualDisplays = !preference.showIndividualDisplays;
+    updatePreferences(preference);
   };
 
   return (
@@ -95,7 +100,7 @@ function ToggleAllDisplay() {
       className='iconBtn'
       onClick={onToggleAll}
       title={
-        appState.expanded
+        preference.showIndividualDisplays
           ? 'Collapse individual displays brightness'
           : 'Expand individual displays brightness'
       }>
@@ -243,7 +248,6 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
   );
   const [allBrightness, setAllBrightness] = useState(allBrightnessValueFromProps);
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
-  const { mutateAsync: updateAppState } = useUpdateAppState();
 
   const onChange = async (value: number) => {
     setAllBrightness(value);

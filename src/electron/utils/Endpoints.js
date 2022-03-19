@@ -28,7 +28,12 @@ export function getEndpointHandlers() {
 export function setUpDataEndpoints() {
   addDataEndpoint('get', '/api/preferences', async (req, res) => {
     try {
-      res.status(200).json(await PreferenceUtils.get());
+      const preferences = await PreferenceUtils.get();
+
+      // sync it
+      await PreferenceUtils.patch(preferences);
+
+      res.status(200).json(preferences);
     } catch (err) {
       res
         .status(500)
@@ -38,7 +43,7 @@ export function setUpDataEndpoints() {
 
   addDataEndpoint('put', '/api/preferences', async (req, res) => {
     try {
-      res.status(200).json(await DisplayUtils.set(req.body));
+      res.status(200).json(await PreferenceUtils.patch(req.body));
     } catch (err) {
       res.status(500).json({
         error: `Failed to update preference: ` + JSON.stringify(err),
