@@ -10,10 +10,11 @@ Requires C build tools. can be installed as part of node js executable
 
 ### Mac
 
-This application requires `ddcctl`. Can be installed as followed
+This application requires `ddcctl` (for external display) and `brightness` (for integrated display). Can be installed as followed
 
 ```bash
 brew install ddcctl
+brew install brightness
 ```
 
 For mac only, temporarily remove this windows only package for windows
