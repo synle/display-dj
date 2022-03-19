@@ -26,7 +26,8 @@ const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
 
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
 
-console.error = console.log.bind(null, 'ERROR');
+console.error = console.log.bind(null, '[ERROR]');
+console.debug = console.log.bind(null, '[DEBUG]');
 
 function createWindow() {
   // Create the browser window.
@@ -289,7 +290,7 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
       if (status >= 300 || status < 200) {
         ok = false;
       }
-      console.log('>> Response', status, method, url, sessionId, body, responseData);
+      console.log('>> Response', status, method, url, body, responseData);
       event.reply(requestId, {
         ok,
         status,

@@ -1,17 +1,16 @@
 import { screen } from 'electron';
 
+const APP_WIDTH = 300;
+const APP_HEIGHT_MIN = 50;
+
 const PositionUtils = {
   updateTrayPosition: async (contentHeight, tray, mainWindow) => {
     if (!tray) {
       throw `tray and mainWindow not ready yet`;
     }
 
-    const width = 300;
-    const height = contentHeight;
-
-    if (height === undefined || height <= 100) {
-      throw `height is required and need to be at least 100px`;
-    }
+    const width = APP_WIDTH;
+    const height = Math.max(contentHeight, APP_HEIGHT_MIN);
 
     const trayBound = tray.getBounds();
 
