@@ -16,10 +16,10 @@ const DisplayAdapter: IDisplayAdapter = {
           .filter((line) => line.indexOf('D:') === 0)
           .map((line, idx) => line.replace('D:', '').trim());
 
-        if(monitors.length > 0){
+        if (monitors.length > 0) {
           resolve(monitors);
         } else {
-          reject({stdout, stderr})
+          reject({ stdout, stderr });
         }
       });
     });
@@ -33,21 +33,21 @@ const DisplayAdapter: IDisplayAdapter = {
     return 0;
   },
   updateMonitorBrightness: async (targetMonitorId: string, newBrightness: number) => {
-    return new Promise(async(resolve, reject) => {
-      let whichMonitor : number | undefined;
+    return new Promise(async (resolve, reject) => {
+      let whichMonitor: number | undefined;
 
       const monitorIds = await DisplayAdapter.getMonitorList();
-      for(let idx = 0; idx < monitorIds.length; idx++){
+      for (let idx = 0; idx < monitorIds.length; idx++) {
         const monitorId = monitorIds[idx];
 
-        if(monitorId === targetMonitorId){
+        if (monitorId === targetMonitorId) {
           // NOTE here the index start from 1 for the display api (ddcctl)
           whichMonitor = idx + 1;
           break;
         }
       }
 
-      if(whichMonitor === undefined){
+      if (whichMonitor === undefined) {
         return reject(`Monitor not found - ${targetMonitorId}`);
       }
 

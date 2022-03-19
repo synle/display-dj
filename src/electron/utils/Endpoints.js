@@ -35,7 +35,9 @@ export function setUpDataEndpoints() {
         platform: process.platform,
       });
     } catch (err) {
-      res.status(500).json({ error: `Failed to get configs: ` + JSON.stringify(err), stack: err.stack });
+      res
+        .status(500)
+        .json({ error: `Failed to get configs: ` + JSON.stringify(err), stack: err.stack });
     }
   });
 
@@ -84,7 +86,12 @@ export function setUpDataEndpoints() {
 
       res.status(200).json({ height, pos });
     } catch (err) {
-      res.status(500).json({ error: `Failed to adjust tray position: ` + JSON.stringify(err), stack: err.stack });
+      res
+        .status(500)
+        .json({
+          error: `Failed to adjust tray position: ` + JSON.stringify(err),
+          stack: err.stack,
+        });
     }
   });
 
@@ -102,7 +109,9 @@ export function setUpDataEndpoints() {
 
       res.status(200).json(await DisplayUtils.updateMonitor(monitor));
     } catch (err) {
-      res.status(500).json({ error: `Failed to save monitor config: ` + JSON.stringify(err), stack: err.stack });
+      res
+        .status(500)
+        .json({ error: `Failed to save monitor config: ` + JSON.stringify(err), stack: err.stack });
     }
   });
 
@@ -112,7 +121,12 @@ export function setUpDataEndpoints() {
 
       res.status(200).json(await DisplayUtils.updateDarkMode(isDarkModeOn));
     } catch (err) {
-      res.status(500).json({ error: `Failed to save darkmode config: ` + JSON.stringify(err), stack: err.stack });
+      res
+        .status(500)
+        .json({
+          error: `Failed to save darkmode config: ` + JSON.stringify(err),
+          stack: err.stack,
+        });
     }
   });
 }
