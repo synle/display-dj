@@ -88,6 +88,7 @@ At the moment, there is no UI to modify the configs, configs file are located at
 - [ ] Change dark mode based on time of day
 - [ ] Shortcut key for dark mode change
 - [ ] Properly package the build as `msi` or `exe` file instead of plain zipped files.
+- [ ] Properly hookup the icons for mac
 
 
 ## Contributing?
