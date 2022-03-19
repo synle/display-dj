@@ -22,7 +22,17 @@ function zipDirectory(sourceDir, outPath) {
   });
 }
 
-zipDirectory(
-  path.join(__dirname, 'dist', 'display-dj-win32-x64'),
-  path.join(__dirname, 'dist', 'display-dj.zip'),
-);
+switch(process.platform){
+  case 'win32':
+    zipDirectory(
+      path.join(__dirname, 'dist', 'display-dj-win32-x64'),
+      path.join(__dirname, 'dist', 'display-dj-win32-x64.zip'),
+    );
+    break;
+  case 'darwin':
+    zipDirectory(
+      path.join(__dirname, 'dist', 'display-dj-darwin-x64'),
+      path.join(__dirname, 'dist', 'display-dj-darwin-x64.zip'),
+    );
+    break;
+}
