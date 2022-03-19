@@ -190,10 +190,7 @@ async function setUpShortcuts() {
             break;
         }
 
-        allMonitorBrightness = await DisplayUtils.updateAllBrightness(
-          allMonitorBrightness,
-          delta,
-        );
+        allMonitorBrightness = await DisplayUtils.updateAllBrightness(allMonitorBrightness, delta);
       } else if (keyBinding.command.includes(`command/changeDarkMode`)) {
         switch (keyBinding.command) {
           case 'command/changeDarkMode/toggle':
@@ -214,7 +211,12 @@ async function setUpShortcuts() {
   });
 
   if (!keybindingSuccess.every((success) => success)) {
-    console.log('>> globalShortcut keybinding failed', preferences.keyBindings.map((keyBinding, idx) => `${keyBinding.key} = ${keybindingSuccess[idx]}`));
+    console.log(
+      '>> globalShortcut keybinding failed',
+      preferences.keyBindings.map(
+        (keyBinding, idx) => `${keyBinding.key} = ${keybindingSuccess[idx]}`,
+      ),
+    );
   } else {
     console.log('>> globalShortcut keybinding success');
   }
