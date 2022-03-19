@@ -14,10 +14,10 @@ const PreferenceUtils = {
       preference = StorageUtils.readJSON(PREFERENCE_FILE_PATH, DEFAULT_PREFERENCES);
     } catch (err) {}
 
-    // hooking up default value
-    preference.ddcctlBinary = preference.ddcctlBinary || DEFAULT_PREFERENCES.ddcctlBinary;
-    preference.showIndividualDisplays =
-      preference.showIndividualDisplays || DEFAULT_PREFERENCES.showIndividualDisplays;
+    // merging config keys
+    for(const prefKey of Object.keys(DEFAULT_PREFERENCES)){
+      preference[prefKey] = preference[prefKey] || DEFAULT_PREFERENCES[prefKey];
+    }
 
     return preference;
   },
