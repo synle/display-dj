@@ -159,20 +159,21 @@ async function createTray() {
 
 async function setUpShortcuts() {
   let allMonitorBrightness = await DisplayUtils.getAllMonitorsBrightness();
+  let darkModeToUse = (await DisplayUtils.getDarkMode()) === true;
 
   const preferences = await PreferenceUtils.get();
 
   const keybindingSuccess = preferences.keyBindings.map((keyBinding) => {
     return globalShortcut.register(keyBinding.key, async () => {
-      if (keyBinding.command.includes(`command/changeBrightness/`)) {
+      if (keyBinding.command.includes(`command/changeBrightness`)) {
         // these commands are change brightness
         let delta = preferences.brightnessDelta;
 
         switch (keyBinding.command) {
-          case 'command/changeBrightness/Down':
+          case 'command/changeBrightness/down':
             delta = -1 * preferences.brightnessDelta;
             break;
-          case 'command/changeBrightness/Up':
+          case 'command/changeBrightness/up':
             delta = preferences.brightnessDelta;
             break;
           case 'command/changeBrightness/0':
@@ -193,6 +194,21 @@ async function setUpShortcuts() {
           allMonitorBrightness,
           delta,
         );
+      } else if (keyBinding.command.includes(`command/changeDarkMode`)) {
+        switch (keyBinding.command) {
+          case 'command/changeDarkMode/toggle':
+            darkModeToUse = (await DisplayUtils.getDarkMode()) === true;
+            darkModeToUse = !darkModeToUse;
+            break;
+          case 'command/changeDarkMode/light':
+            darkModeToUse = false;
+            break;
+          case 'command/changeDarkMode/dark':
+            darkModeToUse = true;
+            break;
+        }
+
+        await DisplayUtils.updateDarkMode(darkModeToUse);
       }
     });
   });

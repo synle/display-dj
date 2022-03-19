@@ -6,8 +6,9 @@ const DEFAULT_PREFERENCES: Preference = {
   showIndividualDisplays: false,
   brightnessDelta: 50,
   keyBindings: [
-    { key: 'Shift+F1', command: 'command/changeBrightness/Down' },
-    { key: 'Shift+F2', command: 'command/changeBrightness/Up' },
+    { key: 'Shift+Escape', command: 'command/changeDarkMode/toggle' },
+    { key: 'Shift+F1', command: 'command/changeBrightness/down' },
+    { key: 'Shift+F2', command: 'command/changeBrightness/up' },
     { key: 'Shift+F3', command: 'command/changeBrightness/0' },
     { key: 'Shift+F4', command: 'command/changeBrightness/50' },
     { key: 'Shift+F5', command: 'command/changeBrightness/100' },
