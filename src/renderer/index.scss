@@ -68,7 +68,8 @@ a {
 .iconBtn {
   cursor: pointer;
 
-  &:hover, &:focus{
+  &:hover,
+  &:focus {
     color: var(--color-link);
   }
 }
