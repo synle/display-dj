@@ -16,16 +16,10 @@ function _getPath(fileName: string) {
 }
 
 const StorageUtils = {
-  readJSON: (file: string, defaultValue?: any) => {
+  readJSON: (file: string) => {
     try {
       return JSON.parse(fs.readFileSync(file, { encoding: 'utf8', flag: 'r' }).trim());
     } catch (err) {
-      if (defaultValue) {
-        // if default value is defined, then will attempt to write it to preference once
-        StorageUtils.writeJSON(file, defaultValue);
-        return defaultValue;
-      }
-
       return undefined;
     }
   },
