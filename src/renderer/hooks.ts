@@ -14,12 +14,10 @@ export const QUERY_KEY_APP_STATE = 'appState';
 
 export const QUERY_KEY_PREFERENCE = 'preferences';
 
-// app state
-type AppState = {
-  expanded: boolean;
-};
+// app state (not used anymore, but left as is if we want to add new global state to the app)
+type AppState = {};
 
-let _appState: AppState = { expanded: false };
+let _appState: AppState = {};
 
 export function useAppState() {
   return useQuery(QUERY_KEY_APP_STATE, () => _appState);

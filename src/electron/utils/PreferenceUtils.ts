@@ -7,7 +7,7 @@ const DEFAULT_PREFERENCES: Preference = {
 };
 
 const PreferenceUtils = {
-  get: async (shouldIgnoreSync = true) => {
+  get: async (shouldIgnoreSync = false) => {
     let preference: Preference = DEFAULT_PREFERENCES;
 
     try {
@@ -18,11 +18,6 @@ const PreferenceUtils = {
     preference.ddcctlBinary = preference.ddcctlBinary || DEFAULT_PREFERENCES.ddcctlBinary;
     preference.showIndividualDisplays =
       preference.showIndividualDisplays || DEFAULT_PREFERENCES.showIndividualDisplays;
-
-    // sync the values
-    if (shouldIgnoreSync) {
-      PreferenceUtils.patch(preference);
-    }
 
     return preference;
   },

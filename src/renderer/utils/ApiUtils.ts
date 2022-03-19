@@ -3,9 +3,9 @@ import { AppConfig, MonitorUpdateInput, Preference } from 'src/types.d';
 
 const ApiUtils = {
   // preferences
-  getPreferences: () => fetch<Preference>(`/api/preference`),
+  getPreferences: () => fetch<Preference>(`/api/preferences`),
   updatePreferences: (preference: Preference) =>
-    fetch(`/api/preference`, {
+    fetch(`/api/preferences`, {
       method: 'put',
       body: JSON.stringify(preference),
     }),
