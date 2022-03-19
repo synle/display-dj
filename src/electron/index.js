@@ -13,7 +13,7 @@ import DisplayUtils from 'src/electron/utils/DisplayUtils';
 import { getEndpointHandlers, setUpDataEndpoints } from 'src/electron/utils/Endpoints';
 import { matchPath } from 'react-router-dom';
 import path from 'path';
-import StorageUtils, { MONITOR_CONFIG_FILE_DIR } from 'src/electron/utils/StorageUtils';
+import StorageUtils, { MONITOR_CONFIG_FILE_PATH } from 'src/electron/utils/StorageUtils';
 
 let mainWindow;
 
@@ -112,8 +112,8 @@ async function createTray() {
       label: 'Open Configs',
       click: () => {
         try {
-          console.log(`file://${MONITOR_CONFIG_FILE_DIR}`);
-          shell.openExternal(`file://${MONITOR_CONFIG_FILE_DIR}`);
+          console.log(`file://${MONITOR_CONFIG_FILE_PATH}`);
+          shell.openExternal(`file://${MONITOR_CONFIG_FILE_PATH}`);
         } catch (err) {}
       },
     },
