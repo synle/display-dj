@@ -70,6 +70,12 @@ async function createTray() {
   let tray = new Tray((await DisplayUtils.getDarkMode()) === true ? DARK_ICON : LIGHT_ICON);
   global.tray = tray;
 
+  tray.setToolTip(
+    process.env.APPLICATION_MODE !== 'production'
+      ? `display-dj (by Sy Le) (${process.env.APPLICATION_MODE})`
+      : `display-dj (by Sy Le)`,
+  );
+
   nativeTheme.on('updated', () => {
     tray.setImage(_getTrayIcon());
   });
@@ -82,7 +88,11 @@ async function createTray() {
     }
   });
 
-  const menu = Menu.buildFromTemplate([
+  tray.on('right-click', function(event) {
+      tray.popUpContextMenu(contextMenu)
+  });
+
+  const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Change brightness to 0%',
       click: () => DisplayUtils.updateAllBrightness(0),
@@ -133,16 +143,6 @@ async function createTray() {
       },
     },
   ]);
-
-  tray.setToolTip(
-    process.env.APPLICATION_MODE !== 'production'
-      ? `display-dj (by Sy Le) (${process.env.APPLICATION_MODE})`
-      : `display-dj (by Sy Le)`,
-  );
-
-  if(process.platform === 'win32'){
-    tray.setContextMenu(menu);
-  }
 }
 
 async function setUpShortcuts() {
