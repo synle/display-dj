@@ -20,6 +20,7 @@ You can download `display-dj` at the following URL.
 ## Screenshots / Demo
 
 ### Windows 11
+
 ![image](https://user-images.githubusercontent.com/3792401/159134000-ef989378-0e4d-4bd1-96f8-9c79110cb37e.png)
 
 ![image](https://user-images.githubusercontent.com/3792401/159134004-26547233-c46e-4e6a-b6b8-326502d08a8b.png)
@@ -27,8 +28,8 @@ You can download `display-dj` at the following URL.
 ![image](https://user-images.githubusercontent.com/3792401/159134011-761cadb7-5dc5-4431-a4e0-4976b379e39d.png)
 
 ### Mac OSX Monterey
-![demo-mac](https://user-images.githubusercontent.com/3792401/159141171-c6c8a6a5-4b7b-4fc6-af28-c082fc1bd723.gif)
 
+![demo-mac](https://user-images.githubusercontent.com/3792401/159141171-c6c8a6a5-4b7b-4fc6-af28-c082fc1bd723.gif)
 
 ## Supported Platforms
 
@@ -108,6 +109,7 @@ command/changeDarkMode/light
 ```
 
 ### Sample preferences file
+
 ```json
 {
   "ddcctlBinary": "/usr/local/bin/ddcctl",
@@ -171,7 +173,6 @@ If you are interested in contributing, you can refer to this doc to get started
 ## Known issues
 
 Due to the complexity and quirks of `ddc/ci` protocol, unfortunately it's nearly impossible to support every single monitor out there. So if you run into issue where this app doesn't work, we will not guarantee support.
-
 
 ## Suggestion?
 

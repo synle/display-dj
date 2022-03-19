@@ -7,6 +7,7 @@ import {
   globalShortcut,
   ipcMain,
   nativeTheme,
+  screen,
   shell,
 } from 'electron';
 import DisplayUtils from 'src/electron/utils/DisplayUtils';
@@ -18,9 +19,6 @@ import StorageUtils, {
   MONITOR_CONFIG_FILE_PATH,
   PREFERENCE_FILE_PATH,
 } from 'src/electron/utils/StorageUtils';
-import { screen } from 'electron';
-
-
 let mainWindow;
 
 const appBaseDir = __dirname;
@@ -88,29 +86,31 @@ async function createTray() {
   });
 
   tray.on('click', async (event, iconPos, mousePos) => {
-    if (mainWindow.isVisible()) {
-      mainWindow.hide();
-    } else {
-      mainWindow.show();
-
-      const xOffset = 50;
-      let x = iconPos.x;
-      let y = iconPos.y;
-      const{width} = mainWindow.getBounds();
-
-      const mainScreen = screen.getPrimaryDisplay();
-      const mainScreenSize = mainScreen.size;
-
-      if (x > mainScreenSize.width / 2) {
-        // right
-        x = Math.floor(x - width + xOffset);
+    try {
+      if (mainWindow.isVisible()) {
+        mainWindow.hide();
       } else {
-        // left
-        x = Math.floor(x + xOffset);
-      }
+        mainWindow.show();
 
-      mainWindow.setPosition(x, y);
-    }
+        const { width } = mainWindow.getBounds();
+        let x = iconPos.x;
+        let y = iconPos.y;
+
+        const mainScreen = screen.getPrimaryDisplay();
+        const mainScreenSize = mainScreen.size;
+
+        const xOffset = 50;
+        if (x > mainScreenSize.width / 2) {
+          // right
+          x = Math.floor(x - width + xOffset);
+        } else {
+          // left
+          x = Math.floor(x + xOffset);
+        }
+
+        mainWindow.setPosition(x, y);
+      }
+    } catch (err) {}
   });
 
   tray.on('right-click', function (event) {
