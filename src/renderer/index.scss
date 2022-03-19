@@ -67,6 +67,10 @@ a {
 
 .iconBtn {
   cursor: pointer;
+
+  &:hover, &:focus{
+    color: var(--color-link);
+  }
 }
 
 label {

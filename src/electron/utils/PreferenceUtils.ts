@@ -7,7 +7,7 @@ const DEFAULT_PREFERENCES: Preference = {
 };
 
 const PreferenceUtils = {
-  get: async (shouldIgnoreSync = false) => {
+  get: async () => {
     let preference: Preference = DEFAULT_PREFERENCES;
 
     try {
@@ -22,7 +22,7 @@ const PreferenceUtils = {
     return preference;
   },
   patch: async (newPartialPrefs: Preference) => {
-    const oldPrefs = await PreferenceUtils.get(true);
+    const oldPrefs = await PreferenceUtils.get();
 
     StorageUtils.writeJSON(PREFERENCE_FILE_PATH, {
       ...oldPrefs,
