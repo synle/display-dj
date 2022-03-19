@@ -58,7 +58,7 @@ const DisplayAdapter: IDisplayAdapter = {
     } catch (err) {
       try {
         await _getBrightnessBuiltin();
-        return  'laptop_monitor';
+        return 'laptop_monitor';
       } catch (err) {}
     }
     return 'unknown_monitor';
