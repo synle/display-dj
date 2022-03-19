@@ -66,7 +66,7 @@ export function setUpDataEndpoints() {
       } else {
         // top
         pos += 'top.';
-        y = Math.floor(trayBound.y - height + yOffset);
+        y = Math.floor(trayBound.y + yOffset);
       }
       if (x > mainScreenSize.width / 2) {
         // right
