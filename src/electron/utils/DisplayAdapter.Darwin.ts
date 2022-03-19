@@ -3,10 +3,13 @@ import { exec } from 'child_process';
 import { DISPLAY_TYPE } from 'src/constants';
 import { IDisplayAdapter } from 'src/types.d';
 
+// TODO: make this into a config
+const ddcctlBinary = `/usr/local/bin/ddcctl`;
+
 const DisplayAdapter: IDisplayAdapter = {
   getMonitorList: async () => {
     return new Promise((resolve, reject) => {
-      const shellToRun = `ddcctl`;
+      const shellToRun = `${ddcctlBinary}`;
       exec(shellToRun, (error, stdout, stderr) => {
         const monitors = (stdout || '')
           .split('\n')
@@ -48,7 +51,7 @@ const DisplayAdapter: IDisplayAdapter = {
         return reject(`Monitor not found - ${targetMonitorId}`);
       }
 
-      const shellToRun = `ddcctl -d ${whichMonitor} -b ${newBrightness}`;
+      const shellToRun = `${ddcctlBinary} -d ${whichMonitor} -b ${newBrightness}`;
       exec(shellToRun, (error, stdout, stderr) => {
         if (error) {
           return reject(stderr);
