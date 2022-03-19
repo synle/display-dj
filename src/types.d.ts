@@ -30,11 +30,16 @@ export type IDisplayAdapter = {
 type KeyBinding = {
   key: string;
   command:
-    | 'command/changeBrightness/Down'
-    | 'command/changeBrightness/Up'
+    // brightness commands
+    | 'command/changeBrightness/down'
+    | 'command/changeBrightness/up'
     | 'command/changeBrightness/0'
     | 'command/changeBrightness/50'
-    | 'command/changeBrightness/100';
+    | 'command/changeBrightness/100'
+    // dark mode commands
+    | 'command/changeDarkMode/toggle'
+    | 'command/changeDarkMode/dark'
+    | 'command/changeDarkMode/light';
 };
 
 export type Preference = {
