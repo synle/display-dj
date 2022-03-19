@@ -1,21 +1,24 @@
-import ReactDOM from 'react-dom';
-import {
-  QueryClient,
-  QueryClientProvider,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from 'react-query';
 import React, { useEffect, useState } from 'react';
-import ApiUtils from 'src/renderer/utils/ApiUtils';
+import ReactDOM from 'react-dom';
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from 'react-query';
 import { LAPTOP_BUILT_IN_DISPLAY_ID, DISPLAY_TYPE } from 'src/constants';
 import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import LaptopSvg from 'src/renderer/svg/laptop.svg';
 import ToggleSvg from 'src/renderer/svg/toggle.svg';
 import './index.scss';
 import { Monitor, MonitorUpdateInput } from 'src/types.d';
+import {
+  useAppState,
+  useConfigs,
+  useUpdateMonitor,
+  useToggleDarkMode,
+  useUpdateAppPosition,
+  useUpdateAppState,
+  QUERY_KEY_CONFIGS,
+  QUERY_KEY_APP_STATE,
+} from 'src/renderer/hooks';
+
 // TODO: extract these things
-const queryClient = new QueryClient();
 
 // react components
 type HomeProps = {};
@@ -108,6 +111,7 @@ function DarkModeSettingForm(props: DarkModeSettingFormProps) {
   const darkModeFromProps = props.darkMode === true;
   const [darkMode, setDarkMode] = useState<boolean>(darkModeFromProps);
   const { mutateAsync: updateDarkMode } = useToggleDarkMode();
+  const queryClient = useQueryClient();
 
   const onToggleDarkMode = async () => {
     const newDarkMode = !darkMode;
@@ -282,51 +286,11 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
     </>
   );
 }
-// react query store
-const QUERY_KEY_CONFIGS = 'configs';
-
-const QUERY_KEY_APP_STATE = 'appState';
-
-type AppState = {
-  expanded: boolean;
-};
-let _appState: AppState = { expanded: false };
-function useAppState() {
-  return useQuery(QUERY_KEY_APP_STATE, () => _appState);
-}
-
-function useConfigs() {
-  return useQuery(QUERY_KEY_CONFIGS, ApiUtils.getConfigs);
-}
-
-function useUpdateMonitor() {
-  return useMutation(ApiUtils.updateMonitor);
-}
-
-function useToggleDarkMode() {
-  return useMutation(ApiUtils.updateDarkMode);
-}
-
-function useUpdateAppPosition() {
-  return useMutation(ApiUtils.updateAppPosition);
-}
-
-function useUpdateAppState() {
-  return useMutation<void, void, AppState>(
-    async (newAppState: AppState) => {
-      _appState = { ..._appState, ...newAppState };
-    },
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
-      },
-    },
-  );
-}
 
 // render the main app
+const appQueryClient = new QueryClient();
 ReactDOM.render(
-  <QueryClientProvider client={queryClient}>
+  <QueryClientProvider client={appQueryClient}>
     <Home />
   </QueryClientProvider>,
   document.querySelector('#root'),

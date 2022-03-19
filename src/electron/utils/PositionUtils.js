@@ -9,7 +9,7 @@ const PositionUtils = {
     const width = 300;
     const height = contentHeight;
 
-    if(height === undefined || height <= 100){
+    if (height === undefined || height <= 100) {
       throw `height is required and need to be at least 100px`;
     }
 
