@@ -1,7 +1,6 @@
 import StorageUtils, { MONITOR_CONFIG_FILE_DIR } from 'src/electron/utils/StorageUtils';
-import DisplayAdapterWin32 from 'src/electron/utils/DisplayAdapter.Win32';
-import DisplayAdapterDarwin from 'src/electron/utils/DisplayAdapter.Darwin';
-import { Monitor, MonitorUpdateInput, DisplayAdapter } from 'src/types.d';
+import DisplayAdapter from 'src/electron/utils/DisplayAdapter';
+import { Monitor, MonitorUpdateInput } from 'src/types.d';
 
 function _getMonitorConfigs(): Record<string, Monitor> {
   try {
@@ -21,22 +20,6 @@ function _setMonitorConfigs(monitors: Monitor[]) {
   StorageUtils.writeJSON(MONITOR_CONFIG_FILE_DIR, res);
 }
 
-let DisplayAdapterToUse: DisplayAdapter;
-console.log('>>>>>>>>>>>>', process.platform, process);
-
-switch (process.platform) {
-  case 'win32':
-    DisplayAdapterToUse = DisplayAdapterWin32;
-    break;
-  case 'darwin':
-    DisplayAdapterToUse = DisplayAdapterDarwin;
-    break;
-  default:
-    console.error(`Application does not supported for this OS - ${process.platform}`);
-    process.exit(1);
-    break;
-}
-
 const DisplayUtils = {
   getMonitors: async () => {
     let monitors: Monitor[] = [];
@@ -50,7 +33,7 @@ const DisplayUtils = {
 
     // getting the external monitors
     let monitorCount = 0;
-    const monitorIds = await DisplayAdapterToUse.getMonitorList();
+    const monitorIds = await DisplayAdapter.getMonitorList();
     for (let idx = 0; idx < monitorIds.length; idx++) {
       const idToUse = monitorIds[idx];
 
@@ -73,8 +56,8 @@ const DisplayUtils = {
       monitors.push({
         id: idToUse,
         name: nameToUse,
-        type: await DisplayAdapterToUse.getMonitorType(idToUse),
-        brightness: await DisplayAdapterToUse.getMonitorBrightness(idToUse),
+        type: await DisplayAdapter.getMonitorType(idToUse),
+        brightness: await DisplayAdapter.getMonitorBrightness(idToUse),
         sortOrder: sortOrderToUse,
         disabled: disabledToUse,
       });
@@ -109,7 +92,7 @@ const DisplayUtils = {
       ...monitor,
     };
 
-    await DisplayAdapterToUse.updateMonitorBrightness(
+    await DisplayAdapter.updateMonitorBrightness(
       monitorsFromStorage[monitor.id].id,
       monitorsFromStorage[monitor.id].brightness,
     );
@@ -142,7 +125,7 @@ const DisplayUtils = {
     for (const monitor of monitors) {
       monitor.brightness = newBrightness;
       promisesChangeBrightness.push(
-        DisplayAdapterToUse.updateMonitorBrightness(monitor.id, monitor.brightness),
+        DisplayAdapter.updateMonitorBrightness(monitor.id, monitor.brightness),
       );
     }
 
@@ -153,8 +136,8 @@ const DisplayUtils = {
 
     return newBrightness;
   },
-  getDarkMode: DisplayAdapterToUse.getDarkMode,
-  updateDarkMode: DisplayAdapterToUse.updateDarkMode,
+  getDarkMode: DisplayAdapter.getDarkMode,
+  updateDarkMode: DisplayAdapter.updateDarkMode,
 };
 
 export default DisplayUtils;
