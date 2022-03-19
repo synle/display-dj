@@ -1,3 +1,4 @@
+import darkMode from 'dark-mode';
 import { exec } from 'child_process';
 import { DISPLAY_TYPE } from 'src/constants';
 import { IDisplayAdapter } from 'src/types.d';
@@ -52,11 +53,10 @@ const DisplayAdapter: IDisplayAdapter = {
     });
   },
   getDarkMode: async () => {
-    // TODO: to be implemented
-    return true;
+    return darkMode.isEnabled();
   },
   updateDarkMode: async (isDarkModeOn: boolean) => {
-    // TODO: to be implemented
+    return darkMode.toggle(isDarkModeOn);
   },
 };
 
