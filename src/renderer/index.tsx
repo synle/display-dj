@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from 'react-query';
+import { QueryClient, QueryClientProvider } from 'react-query';
+import React, { useEffect, useState } from 'react';
 import { LAPTOP_BUILT_IN_DISPLAY_ID, DISPLAY_TYPE } from 'src/constants';
 import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import LaptopSvg from 'src/renderer/svg/laptop.svg';
@@ -111,7 +111,6 @@ function DarkModeSettingForm(props: DarkModeSettingFormProps) {
   const darkModeFromProps = props.darkMode === true;
   const [darkMode, setDarkMode] = useState<boolean>(darkModeFromProps);
   const { mutateAsync: updateDarkMode } = useToggleDarkMode();
-  const queryClient = useQueryClient();
 
   const onToggleDarkMode = async () => {
     const newDarkMode = !darkMode;
@@ -119,8 +118,6 @@ function DarkModeSettingForm(props: DarkModeSettingFormProps) {
     setDarkMode(newDarkMode);
 
     await updateDarkMode(newDarkMode);
-
-    queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
   };
 
   useEffect(() => {
@@ -161,7 +158,6 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   const [name, setName] = useState('');
   const { monitor } = props;
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
-  const queryClient = useQueryClient();
   const isLaptop = monitor.type === DISPLAY_TYPE.LAPTOP;
 
   const onChange = (key: string, value: any) => {
@@ -248,7 +244,6 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
   const [allBrightness, setAllBrightness] = useState(allBrightnessValueFromProps);
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
   const { mutateAsync: updateAppState } = useUpdateAppState();
-  const queryClient = useQueryClient();
 
   const onChange = async (value: number) => {
     setAllBrightness(value);
@@ -257,8 +252,6 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
       monitor.brightness = value;
       await updateMonitor(monitor);
     }
-
-    queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
   };
 
   return (

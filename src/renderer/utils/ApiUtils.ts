@@ -1,7 +1,16 @@
 import { fetch } from 'src/renderer/utils/FetchUtils';
-import { AppConfig, MonitorUpdateInput } from 'src/types.d';
+import { AppConfig, MonitorUpdateInput, Preference } from 'src/types.d';
 
 const ApiUtils = {
+  // preferences
+  getPreferences: () => fetch<Preference>(`/api/preference`),
+  updatePreferences: (preference: Preference) =>
+    fetch(`/api/preference`, {
+      method: 'put',
+      body: JSON.stringify(preference),
+    }),
+
+  // configs
   getConfigs: () => fetch<AppConfig>(`/api/configs`),
   updateMonitor: (monitor: MonitorUpdateInput) =>
     fetch(`/api/configs/monitors`, {
