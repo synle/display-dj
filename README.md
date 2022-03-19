@@ -2,30 +2,17 @@
 
 A windows application that allows quick toggle of dark mode and manages display brightness of individual display quickly
 
-## Problems
+## The Problems
 
 - Back in the old days, it requires physical controls to change the brightness of external monitors. It is very time consuming and quirky to get it just right.
-- As of right now, there is standard called DDC/CI that can be used to update information related to brightness, etc...
-- There are apps out there that does these 2 things: adjust brightness and darkmode toggle, but they are completely different apps and require more context switching.
+- There are apps out there that does these 3 things: adjust external monitor brightness, integrated laptop monitor brightness and dark mode toggle, but they are completely different apps and require more context switching. These individuals sometimes don't support shortcuts / keybindings.
+- There is not a single app that are cross platforms, and dark mode adjustment and also support brightness adjustment for integrated display as well as external display.
+- Windows and MacOSX have their own built in controls that allow you to adjust brightness. But this can only be done for integrated displays or certain monitors such as proprietary displays for mac. The built-in solution does not work for third party displays.
+- Built-in brightness controls and dark mode toggles are hard to find and requires extra steps to get to in the OS. This application handles all that within a few clicks.
 
-## Solutions
+## The Solution
 
-This application is at the moment for windows only and can be used to adjust external monitors brightness individually or all at once using software instead of you tinkering around with physical controls on your external monitors.
-
-## Supported Platforms
-
-The following version of OS has been tested and working.
-
-- Windows 11
-- Mac OSX (Monterey) - requires a separate installation of ddcctl
-
-### MacOSX dependencies
-
-This application requires `ddcctl` application installed for it to be fully functional. You can use the following bash command to install it with `homebrew`
-
-```bash
-brew install ddcctl
-```
+`display-dj` is a cross platform desktop application that supports brightness adjustment for integrated laptop monitor as well as external monitors and dark mode toggle supporting Windows and MacOSX at the moment.
 
 ## Downloads
 
@@ -34,11 +21,26 @@ You can download `display-dj` at the following URL.
 - [display-dj Beta for Mac](https://github.com/synle/display-dj/releases/download/beta/display-dj-darwin-x64.zip)
 - [display-dj Beta for Windows](https://github.com/synle/display-dj/releases/download/beta/display-dj-win32-x64.zip)
 
-## Screenshots
+## Screenshots / Demo
 
 ![image](https://user-images.githubusercontent.com/3792401/158890109-50c68910-dd79-45f4-8da8-b41346219fc4.png)
 
 ![image](https://user-images.githubusercontent.com/3792401/158890188-6074254d-87df-4d74-92be-7ad8f825e25e.png)
+
+## Supported Platforms
+
+The following version of OS has been tested and working.
+
+- Windows 11
+- Mac OSX (Monterey) - requires a separate installation of `ddcctl`
+
+### MacOSX dependencies
+
+This application requires `ddcctl` application installed for it to be fully functional. You can use the following bash command to install it with `homebrew`
+
+```bash
+brew install ddcctl
+```
 
 ## Monitor Configs
 
@@ -150,6 +152,7 @@ command/changeDarkMode/light
 - [x] Keyboard shortcuts to be dynamically managed in the preference file.
 - [ ] Properly package the build as `msi` or `exe` file instead of plain zipped files.
 - [ ] Properly hookup the icons for mac.
+- [ ] Properly set up CI/CD pipeline for releases and main page content.
 
 ## Contributing?
 
