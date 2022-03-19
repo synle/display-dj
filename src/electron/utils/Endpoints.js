@@ -32,6 +32,7 @@ export function setUpDataEndpoints() {
         monitors: await DisplayUtils.getMonitors(),
         env: process.env.APPLICATION_MODE,
         version,
+        platform: process.platform,
       });
     } catch (err) {
       res.status(500).json({ error: `Failed to get configs`, stack: err.stack });

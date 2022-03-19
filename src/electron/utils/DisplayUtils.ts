@@ -80,11 +80,11 @@ const DisplayUtils = {
     const monitorsFromStorage = _getMonitorConfigs();
 
     if (!monitor.id) {
-      throw `id is required.`;
+      throw `ID is required.`;
     }
 
     if (!monitorsFromStorage[monitor.id]) {
-      throw `id not found.`;
+      throw `ID=${monitor.id} not found.`;
     }
 
     monitorsFromStorage[monitor.id] = {

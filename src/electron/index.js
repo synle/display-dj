@@ -81,6 +81,7 @@ async function createTray() {
       mainWindow.show();
     }
   });
+
   const menu = Menu.buildFromTemplate([
     {
       label: 'Change brightness to 0%',
@@ -138,7 +139,10 @@ async function createTray() {
       ? `display-dj (by Sy Le) (${process.env.APPLICATION_MODE})`
       : `display-dj (by Sy Le)`,
   );
-  tray.setContextMenu(menu);
+
+  if(process.platform === 'win32'){
+    tray.setContextMenu(menu);
+  }
 }
 
 async function setUpShortcuts() {
