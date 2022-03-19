@@ -42,12 +42,14 @@ You can download `display-dj` at the following URL.
 
 ## Monitor Configs
 
-At the moment, there is no UI to modify the configs, configs file are located at `%AppData%\display-dj\monitor-configs.json`
+At the moment, there is no UI to modify the configs, configs file are located at `%AppData%\display-dj\monitor-configs.json`. This can also be accessed via right clicking the tray icon of display-dj and choose `Open Monitor Configs`.
 
-- `disabled` flag can be used to hide a monitor off the list
-- `sortOrder` flag can be used to change which monitor showing up first
+- `disabled`: flag can be used to hide a monitor off the list
+- `sortOrder`: flag can be used to change which monitor showing up first
 
-```
+### Sample configs file
+
+```json
 {
   "\\\\?\\DISPLAY#VSCB73A#5&21f33940&0&UID4352#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}": {
     "id": "\\\\?\\DISPLAY#VSCB73A#5&21f33940&0&UID4352#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}",
@@ -73,22 +75,81 @@ At the moment, there is no UI to modify the configs, configs file are located at
 }
 ```
 
+## Preferences / Keybindings
+
+At the moment, there is no UI to modify the preferences, preferences file are located at `%AppData%\display-dj\preferences.json`. This can also be accessed via right clicking the tray icon of display-dj and choose `Open App Preferences`.
+
+- `ddcctlBinary`: applicable to mac system only. ddcctl binary used for display-dj.
+- `showIndividualDisplays`: flag can be used to show a single brightness control for all displays or individual ones.
+- `brightnessDelta`: a delta value / step value for brightness adjustment (applicable only for keyboard shortcut).
+- `keyBindings`: a list of shortcuts / bindings to adjust brightness based on the keyboard shortcuts. Below is a list of all supported commands. Refer to [this list for a set of all supported commands](https://github.com/synle/display-dj/blob/main/src/types.d.ts#L30)
+
+```bash
+# brightness commands
+command/changeBrightness/down
+command/changeBrightness/up
+command/changeBrightness/0
+command/changeBrightness/50
+command/changeBrightness/100
+
+# dark mode commands
+command/changeDarkMode/toggle
+command/changeDarkMode/dark
+command/changeDarkMode/light
+```
+
+### Sample preferences file
+```json
+{
+  "ddcctlBinary": "/usr/local/bin/ddcctl",
+  "showIndividualDisplays": false,
+  "brightnessDelta": 50,
+  "keyBindings": [
+    {
+      "key": "Shift+Escape",
+      "command": "command/changeDarkMode/toggle"
+    },
+    {
+      "key": "Shift+F1",
+      "command": "command/changeBrightness/down"
+    },
+    {
+      "key": "Shift+F2",
+      "command": "command/changeBrightness/up"
+    },
+    {
+      "key": "Shift+F3",
+      "command": "command/changeBrightness/0"
+    },
+    {
+      "key": "Shift+F4",
+      "command": "command/changeBrightness/50"
+    },
+    {
+      "key": "Shift+F5",
+      "command": "command/changeBrightness/100"
+    }
+  ]
+}
+```
+
 ## TODO
 
-- [x] Basic MVP
-- [x] Create a basic build pipeline
-- [x] Support external monitors brightness
-- [x] Support laptop brightness
-- [ ] Support for windows 10
-- [ ] Support for linux (is this possible?)
-- [ ] Support for mac (is this possible?)
-- [ ] Support for vertical task bar or top placement taskbar
-- [x] Properly run the app on startup
-- [ ] Change brightness based on time of day
-- [ ] Change dark mode based on time of day
-- [ ] Shortcut key for dark mode change
+- [x] Basic MVP.
+- [x] Create a basic build pipeline.
+- [x] Support external monitors brightness.
+- [x] Support laptop brightness.
+- [ ] Support for windows 10.
+- [ ] Support for linux (is this possible?).
+- [ ] Support for mac (is this possible?).
+- [ ] Support for vertical task bar or top placement taskbar.
+- [x] Properly run the app on startup.
+- [ ] Change brightness based on time of day.
+- [ ] Change dark mode based on time of day.
+- [x] Shortcut key for dark mode change.
+- [x] Keyboard shortcuts to be dynamically managed in the preference file.
 - [ ] Properly package the build as `msi` or `exe` file instead of plain zipped files.
-- [ ] Properly hookup the icons for mac
+- [ ] Properly hookup the icons for mac.
 
 ## Contributing?
 
