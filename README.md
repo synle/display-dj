@@ -90,7 +90,6 @@ At the moment, there is no UI to modify the configs, configs file are located at
 - [ ] Properly package the build as `msi` or `exe` file instead of plain zipped files.
 - [ ] Properly hookup the icons for mac
 
-
 ## Contributing?
 
 If you are interested in contributing, you can refer to this doc to get started
@@ -98,6 +97,7 @@ If you are interested in contributing, you can refer to this doc to get started
 - [DEV.md](https://github.com/synle/display-dj/blob/main/DEV.md)
 
 ## Suggestion?
+
 Use the following link to file a bug or a suggestion.
 
 - [File a bug or a suggestion?](https://github.com/synle/display-dj/issues/new)

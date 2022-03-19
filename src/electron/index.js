@@ -88,8 +88,8 @@ async function createTray() {
     }
   });
 
-  tray.on('right-click', function(event) {
-      tray.popUpContextMenu(contextMenu)
+  tray.on('right-click', function (event) {
+    tray.popUpContextMenu(contextMenu);
   });
 
   const contextMenu = Menu.buildFromTemplate([
