@@ -19,11 +19,19 @@ You can download `display-dj` at the following URL.
 
 ## Screenshots / Demo
 
+### Windows 11
 ![image](https://user-images.githubusercontent.com/3792401/159134000-ef989378-0e4d-4bd1-96f8-9c79110cb37e.png)
 
 ![image](https://user-images.githubusercontent.com/3792401/159134004-26547233-c46e-4e6a-b6b8-326502d08a8b.png)
 
 ![image](https://user-images.githubusercontent.com/3792401/159134011-761cadb7-5dc5-4431-a4e0-4976b379e39d.png)
+
+### Mac OSX Monterey
+![image](https://user-images.githubusercontent.com/3792401/159140684-4eb2b999-c58e-4ea3-a08d-97b39124021d.png)
+
+![image](https://user-images.githubusercontent.com/3792401/159140688-9c20e2e8-f9b2-433c-9c41-d77ea9304f41.png)
+
+![image](https://user-images.githubusercontent.com/3792401/159140694-41d6b71c-47a2-4f9b-8f11-20e329eba0b4.png)
 
 
 ## Supported Platforms
@@ -156,6 +164,7 @@ command/changeDarkMode/light
 - [ ] Properly package the build as `msi` or `exe` file instead of plain zipped files.
 - [ ] Properly hookup the icons for mac.
 - [ ] Properly set up CI/CD pipeline for releases and main page content.
+- [ ] MacOSX - Fix an issue where the positioning of the app is misplaced in the main display regardless of mouse click.
 
 ## Contributing?
 
