@@ -27,8 +27,26 @@ const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
 
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
 
-console.error = console.log.bind(null, '[ERROR]');
-console.debug = console.log.bind(null, '[DEBUG]');
+// colors and stylings for console logs
+String.prototype.blue = function () {
+  return `\x1b[36m${this}\x1b[0m`;
+};
+
+String.prototype.yellow = function () {
+  return `\x1b[33m${this}\x1b[0m`;
+};
+
+String.prototype.green = function () {
+  return `\x1b[32m${this}\x1b[0m`;
+};
+
+String.prototype.red = function () {
+  return `\x1b[31m${this}\x1b[0m`;
+};
+
+console.info = console.log.bind(null, '[INFO]'.green);
+console.error = console.log.bind(null, '[ERROR]'.red);
+console.debug = console.log.bind(null, '[DEBUG]'.yellow);
 
 function createWindow() {
   // Create the browser window.
@@ -108,15 +126,15 @@ async function createTray() {
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Change brightness to 0%',
-      click: () => DisplayUtils.updateAllBrightness(0),
+      click: () => DisplayUtils.batchUpdateBrightness(0),
     },
     {
       label: 'Change brightness to 50%',
-      click: () => DisplayUtils.updateAllBrightness(50),
+      click: () => DisplayUtils.batchUpdateBrightness(50),
     },
     {
       label: 'Change brightness to 100%',
-      click: () => DisplayUtils.updateAllBrightness(100),
+      click: () => DisplayUtils.batchUpdateBrightness(100),
     },
     {
       type: 'separator',
@@ -125,7 +143,7 @@ async function createTray() {
       label: 'Open Monitor Configs',
       click: () => {
         try {
-          console.log(`file://${MONITOR_CONFIG_FILE_PATH}`);
+          console.info(`file://${MONITOR_CONFIG_FILE_PATH}`);
           shell.openExternal(`file://${MONITOR_CONFIG_FILE_PATH}`);
         } catch (err) {}
       },
@@ -134,7 +152,7 @@ async function createTray() {
       label: 'Open App Preferences',
       click: () => {
         try {
-          console.log(`file://${PREFERENCE_FILE_PATH}`);
+          console.info(`file://${PREFERENCE_FILE_PATH}`);
           shell.openExternal(`file://${PREFERENCE_FILE_PATH}`);
         } catch (err) {}
       },
@@ -200,7 +218,7 @@ async function setUpShortcuts() {
             break;
         }
 
-        allMonitorBrightness = await DisplayUtils.updateAllBrightness(allMonitorBrightness, delta);
+        allMonitorBrightness = await DisplayUtils.batchUpdateBrightness(allMonitorBrightness, delta);
       } else if (keyBinding.command.includes(`command/changeDarkMode`)) {
         switch (keyBinding.command) {
           case 'command/changeDarkMode/toggle':
@@ -221,14 +239,14 @@ async function setUpShortcuts() {
   });
 
   if (!keybindingSuccess.every((success) => success)) {
-    console.log(
+    console.info(
       '>> globalShortcut keybinding failed',
       preferences.keyBindings.map(
         (keyBinding, idx) => `${keyBinding.key} = ${keybindingSuccess[idx]}`,
       ),
     );
   } else {
-    console.log('>> globalShortcut keybinding success');
+    console.info('>> globalShortcut keybinding success');
   }
 }
 function setupAutolaunch() {
@@ -282,7 +300,7 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
     body = JSON.parse(options.body);
   } catch (err) {}
 
-  console.log('>> Request', method, url, sessionId, body);
+  console.info('>> Request', method, url, sessionId, body);
   let matchedUrlObject;
   const matchCurrentUrlAgainst = (matchAgainstUrl) => {
     try {
@@ -299,7 +317,7 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
       if (status >= 300 || status < 200) {
         ok = false;
       }
-      console.log('>> Response', status, method, url, body, responseData);
+      console.info('>> Response', status, method, url, body, responseData);
       event.reply(requestId, {
         ok,
         status,
@@ -369,6 +387,6 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
     // not found, then return 404
     sendResponse('Resource Not Found...', 500);
   } catch (err) {
-    console.log('error', err);
+    console.info('error', err);
   }
 });
