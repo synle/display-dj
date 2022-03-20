@@ -52,8 +52,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.release_upload_url }}
-          asset_path: ./dist/display-dj-win32-x64.zip
-          asset_name: display-dj-win32-x64.zip
+          asset_path: ./dist/display-dj-setup.exe
+          asset_name: display-dj-setup.exe
           asset_content_type: application/octet-stream
 
   build_darwin: # darwin aka Mac OSX
