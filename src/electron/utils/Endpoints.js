@@ -13,7 +13,9 @@ function addDataEndpoint(method, url, incomingHandler) {
       res.header('api-call-session-id', req.headers['api-call-session-id']);
       await incomingHandler(req, res, cache);
     } catch (err) {
-      res.status(500).json({ error: `Failed to addDataEndpoint: ` + JSON.stringify(err), stack: err.stack });
+      res
+        .status(500)
+        .json({ error: `Failed to addDataEndpoint: ` + JSON.stringify(err), stack: err.stack });
     }
   };
 
