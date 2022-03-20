@@ -4,6 +4,7 @@ import path from 'path';
 
 export const MONITOR_CONFIG_FILE_PATH = _getPath('monitor-configs.json');
 export const PREFERENCE_FILE_PATH = _getPath('preferences.json');
+export const LOG_FILE_PATH = _getPath('logs.txt');
 
 function _getPath(fileName: string) {
   const baseDir = path.join(app.getPath('appData'), 'display-dj');
@@ -25,6 +26,9 @@ const StorageUtils = {
   },
   writeJSON: (file: string, jsonObject: any) => {
     fs.writeFileSync(file, JSON.stringify(jsonObject, null, 2));
+  },
+  append: (file: string, text: string) => {
+    fs.appendFileSync(file, text);
   },
 };
 

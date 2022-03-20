@@ -1,3 +1,27 @@
+import StorageUtils, {
+  LOG_FILE_PATH,
+} from 'src/electron/utils/StorageUtils';
+
+function _appendLogToFile(...data){
+  StorageUtils.append(LOG_FILE_PATH, `[${new Date().toLocaleString()}] ${_serializeLogData(...data)}\n`);
+}
+
+function _serializeLogData(...data){
+  const res = [];
+
+  for(const item of data){
+    if (Array.isArray(item)){
+      res.push(item.map(JSON.stringify).join(', '));
+    } else if(item.constructor === Object) {
+      res.push(JSON.stringify(item));
+    } else {
+      res.push(item);
+    }
+  }
+
+  return res.join('  ')
+}
+
 // colors and stylings for console logs
 String.prototype.blue = function () {
   return `\x1b[36m${this}\x1b[0m`;
@@ -15,7 +39,30 @@ String.prototype.red = function () {
   return `\x1b[31m${this}\x1b[0m`;
 };
 
-console.info = console.log.bind(null, '[INFO]'.green());
-console.error = console.log.bind(null, '[ERROR]'.red());
-console.debug = console.log.bind(null, '[DEBUG]'.yellow());
-console.trace = console.log.bind(null, '[TRACE]'.blue());
+const origConsole = console.log;
+console.log = (...data) => {
+  origConsole('[LOG]'.green(), ...data);
+
+  _appendLogToFile(`[LOG]`, ...data);
+}
+
+console.info = (...data) => {
+  origConsole('[INFO]'.green(), ...data);
+
+  _appendLogToFile(`[INFO]`, ...data);
+};
+console.error = (...data) => {
+  origConsole('[ERROR]'.red(), ...data);
+
+  _appendLogToFile(`[ERROR]`, ...data);
+};
+console.debug = (...data) => {
+  origConsole('[DEBUG]'.yellow(), ...data);
+
+  _appendLogToFile(`[DEBUG]`, ...data);
+};
+console.trace = (...data) => {
+  origConsole('[TRACE]'.blue(), ...data);
+
+  _appendLogToFile(`[TRACE]`, ...data);
+};
