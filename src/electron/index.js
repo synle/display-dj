@@ -18,6 +18,7 @@ import path from 'path';
 import StorageUtils, {
   MONITOR_CONFIG_FILE_PATH,
   PREFERENCE_FILE_PATH,
+  LOG_FILE_PATH,
 } from 'src/electron/utils/StorageUtils';
 import 'src/electron/utils/LogUtils';
 let mainWindow;
@@ -123,7 +124,6 @@ async function createTray() {
       label: 'Open Monitor Configs',
       click: () => {
         try {
-          console.info(`file://${MONITOR_CONFIG_FILE_PATH}`);
           shell.openExternal(`file://${MONITOR_CONFIG_FILE_PATH}`);
         } catch (err) {}
       },
@@ -132,8 +132,15 @@ async function createTray() {
       label: 'Open App Preferences',
       click: () => {
         try {
-          console.info(`file://${PREFERENCE_FILE_PATH}`);
           shell.openExternal(`file://${PREFERENCE_FILE_PATH}`);
+        } catch (err) {}
+      },
+    },
+    {
+      label: 'Open Dev Logs',
+      click: () => {
+        try {
+          shell.openExternal(`file://${LOG_FILE_PATH}`);
         } catch (err) {}
       },
     },
