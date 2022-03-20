@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "description": "A cross platform desktop application that supports brightness adjustment for integrated laptop monitor as well as external monitors and dark mode toggle supporting Windows and MacOSX at the moment.",
   "scripts": {
-    "clean": "rimraf build dist",
+    "clean-dist": "rimraf dist",
+    "clean-build": "rimraf build",
+    "clean": "npm run clean-dist && npm run clean-build",
     "prebuild": "npm run clean && node prebuild.js",
     "build-electron": "webpack --config webpack-electron.js",
     "build-ui": "webpack --config webpack-ui.js",
@@ -41,7 +43,8 @@
   "main": "build/main.js",
   "optionalDependencies": {
     "@hensm/ddcci": "^0.1.0",
-    "dark-mode": "^4.0.0"
+    "dark-mode": "^4.0.0",
+    "electron-winstaller": "^5.0.0"
   },
   "dependencies": {
     "auto-launch": "^5.0.5",

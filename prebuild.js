@@ -8,11 +8,11 @@ let packages = [];
 switch (process.platform) {
   case 'win32':
     source = `src/electron/utils/DisplayAdapter.Win32.ts`;
-    packages = ['@hensm/ddcci'];
+    packages = ['@hensm/ddcci', 'electron-winstaller'];
     break;
   case 'darwin':
-    packages = ['dark-mode'];
     source = `src/electron/utils/DisplayAdapter.Darwin.ts`;
+    packages = ['dark-mode'];
     break;
 }
 
