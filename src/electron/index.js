@@ -64,15 +64,6 @@ function createWindow() {
 }
 
 async function createTray() {
-  let tray = new Tray((await DisplayUtils.getDarkMode()) === true ? DARK_ICON : LIGHT_ICON);
-  global.tray = tray;
-
-  tray.setToolTip(
-    process.env.APPLICATION_MODE !== 'production'
-      ? `display-dj (by Sy Le) (${process.env.APPLICATION_MODE})`
-      : `display-dj (by Sy Le)`,
-  );
-
   nativeTheme.on('updated', () => {
     tray.setImage(_getTrayIcon());
   });
@@ -277,6 +268,9 @@ function _getTrayIcon() {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
+  // show the tray as soon as possible
+  global.tray = new Tray((await DisplayUtils.getDarkMode()) === true ? DARK_ICON : LIGHT_ICON);
+
   await setUpDataEndpoints();
   await synchronizeBrightness();
   await createWindow();
