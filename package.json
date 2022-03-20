@@ -21,10 +21,11 @@
     "test-ci": "",
     "prestart": "npm run build",
     "start": "concurrently \"cross-env APPLICATION_MODE='dev' electron ./build/main.js\" \"npm run dev\"",
+    "dist": "cross-env APPLICATION_MODE='production' node dist.js",
     "predist-win32": " npx electron-packager \"./\" --overwrite --asar --prune=true --out=\"dist\" --icon=./src/assets/icon.png --platform=win32",
-    "dist-win32": "node dist.js",
+    "dist-win32": "npm run dist",
     "predist-darwin": "npx electron-packager \"./\" --overwrite --asar --prune=true --out=\"dist\" --icon=./src/assets/icon.icns --platform=darwin",
-    "dist-darwin": "node dist.js",
+    "dist-darwin": "npm run dist",
     "postdist-darwin": "mv display-dj.dmg dist/display-dj-darwin.dmg"
   },
   "repository": "https://github.com/synle/display-dj",
