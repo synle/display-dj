@@ -8,8 +8,9 @@ import ToggleSvg from 'src/renderer/svg/toggle.svg';
 import DarkModeSvg from 'src/renderer/svg/darkMode.svg';
 import LightModeSvg from 'src/renderer/svg/lightMode.svg';
 import './index.scss';
-import { Monitor, MonitorUpdateInput, Preference } from 'src/types.d';
+import { Monitor, SingleMonitorUpdateInput, Preference } from 'src/types.d';
 import {
+  useBatchUpdateMonitors,
   usePreferences,
   useUpdatePreferences,
   useAppState,
@@ -256,15 +257,11 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
     100,
   );
   const [allBrightness, setAllBrightness] = useState(allBrightnessValueFromProps);
-  const { mutateAsync: updateMonitor } = useUpdateMonitor();
+  const { mutateAsync: batchUpdateMonitors } = useBatchUpdateMonitors();
 
-  const onChange = async (value: number) => {
-    setAllBrightness(value);
-
-    for (const monitor of monitors) {
-      monitor.brightness = value;
-      await updateMonitor(monitor);
-    }
+  const onChange = async (brightness: number) => {
+    setAllBrightness(brightness);
+    await batchUpdateMonitors({ brightness });
   };
 
   return (

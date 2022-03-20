@@ -13,8 +13,7 @@ function addDataEndpoint(method, url, incomingHandler) {
       res.header('api-call-session-id', req.headers['api-call-session-id']);
       await incomingHandler(req, res, cache);
     } catch (err) {
-      console.log('err', err);
-      res.status(500).send(err);
+      res.status(500).json({ error: `Failed to addDataEndpoint: ` + JSON.stringify(err), stack: err.stack });
     }
   };
 
@@ -76,6 +75,7 @@ export function setUpDataEndpoints() {
     }
   });
 
+  // update a single display
   addDataEndpoint('put', '/api/configs/monitors/:monitorId', async (req, res) => {
     try {
       const monitor = {
@@ -89,6 +89,19 @@ export function setUpDataEndpoints() {
       }
 
       res.status(200).json(await DisplayUtils.updateMonitor(monitor));
+    } catch (err) {
+      res.status(500).json({
+        error: `Failed to update monitor config: ` + JSON.stringify(err),
+        stack: err.stack,
+      });
+    }
+  });
+
+  // update all displays (only brightness)
+  addDataEndpoint('put', '/api/configs/monitors', async (req, res) => {
+    try {
+      const newBrightness = parseInt(req.body.brightness) || 0;
+      res.status(200).json(await DisplayUtils.batchUpdateBrightness(newBrightness));
     } catch (err) {
       res.status(500).json({
         error: `Failed to update monitor config: ` + JSON.stringify(err),

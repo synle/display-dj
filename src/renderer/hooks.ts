@@ -5,13 +5,12 @@ import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import LaptopSvg from 'src/renderer/svg/laptop.svg';
 import ToggleSvg from 'src/renderer/svg/toggle.svg';
 import './index.scss';
-import { Monitor, MonitorUpdateInput } from 'src/types.d';
+import { Monitor, SingleMonitorUpdateInput } from 'src/types.d';
 
 // react query store
 export const QUERY_KEY_CONFIGS = 'configs';
 
 export const QUERY_KEY_APP_STATE = 'appState';
-
 export const QUERY_KEY_PREFERENCE = 'preferences';
 
 // app state (not used anymore, but left as is if we want to add new global state to the app)
@@ -60,6 +59,14 @@ export function useConfigs() {
 export function useUpdateMonitor() {
   const queryClient = useQueryClient();
   return useMutation(ApiUtils.updateMonitor, {
+    onSuccess: () => {
+      queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
+    },
+  });
+}
+export function useBatchUpdateMonitors() {
+  const queryClient = useQueryClient();
+  return useMutation(ApiUtils.batchUpdateMonitors, {
     onSuccess: () => {
       queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
     },
