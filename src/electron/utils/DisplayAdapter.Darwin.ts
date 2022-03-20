@@ -89,7 +89,7 @@ const DisplayAdapter: IDisplayAdapter = {
                 }
               }
             }
-            resolve(0);
+            reject('cannot read the brightness for laptop display from brightness')
           });
         } else {
           // for external display
@@ -103,9 +103,17 @@ const DisplayAdapter: IDisplayAdapter = {
               return reject(stderr);
             }
 
-            console.debug('getMonitorBrightness', targetMonitorId, shellToRun, stdout);
+            for (let line of stdout.split('\n')) {
+              if (line.includes(`VCP control`) && line.includes('current')) {
+                const brightness = parseInt(line.substr(line.indexOf('current: ') + 'current: '.length))
 
-            resolve(parseInt(stdout) || 0);
+                if (brightness >= 0) {
+                  return resolve(brightness);
+                }
+              }
+            }
+
+            reject('cannot read the brightness for external display from ddcci')
           });
         }
       } catch (err) {
