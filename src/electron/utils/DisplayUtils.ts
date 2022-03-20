@@ -58,16 +58,9 @@ const DisplayUtils = {
       const type = await DisplayAdapter.getMonitorType(idToUse);
 
       let brightness: number = monitorsFromStorage?.[idToUse]?.brightness || 0;
-      if (process.platform === 'win32') {
-        // windows always pick up the brightness from adapter
+      try {
         brightness = await DisplayAdapter.getMonitorBrightness(idToUse);
-      } else {
-        // for mac osx, ddcci command can fail for external display, therefore
-        // it's best to read that brightness from the storage
-        try {
-          brightness = await DisplayAdapter.getMonitorBrightness(idToUse);
-        } catch (err) {}
-      }
+      } catch (err) {}
 
 
       let name = monitorsFromStorage?.[idToUse]?.name || '';
@@ -148,9 +141,6 @@ const DisplayUtils = {
     const promisesChangeBrightness = [];
     for (const monitor of monitors) {
       monitor.brightness = newBrightness;
-      promisesChangeBrightness.push(
-        DisplayAdapter.updateMonitorBrightness(monitor.id, monitor.brightness),
-      );
 
       promisesChangeBrightness.push(new Promise(async (resolve) => {
         try{
