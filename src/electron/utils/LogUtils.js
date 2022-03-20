@@ -3,7 +3,16 @@ import StorageUtils, {
 } from 'src/electron/utils/StorageUtils';
 
 function _appendLogToFile(...data){
-  StorageUtils.append(LOG_FILE_PATH, `[${new Date().toLocaleString()}] ${_serializeLogData(...data)}\n`);
+  const logLine = `[${new Date().toLocaleString()}] ${_serializeLogData(...data)}\n`;
+
+  if(StorageUtils.size(LOG_FILE_PATH) > 100){
+    // if the file is greater threshold in MB, then do this as a write
+    // to wipe out the old logs
+    StorageUtils.write(LOG_FILE_PATH, logLine);
+  } else {
+    // otherwise append the log
+    StorageUtils.append(LOG_FILE_PATH, logLine);
+  }
 }
 
 function _serializeLogData(...data){
