@@ -234,9 +234,9 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
         )}
         <Slider
           className='field__value'
-          value={monitor.brightness}
           placeholder='brightness'
-          onInput={(e: React.FormEvent<HTMLInputElement>) =>
+          value={monitor.brightness}
+          onInput={(e) =>
             onChange('brightness', parseInt((e.target as HTMLInputElement).value) || 0)
           }
         />
@@ -275,9 +275,9 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
         </span>
         <Slider
           className='field__value'
-          value={allBrightness}
           placeholder='brightness'
-          onInput={(e: React.FormEvent<HTMLInputElement>) =>
+          value={allBrightness}
+          onInput={(e) =>
             onChange(parseInt((e.target as HTMLInputElement).value) || 0)
           }
         />
@@ -286,9 +286,28 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
   );
 }
 
-type SliderProps = any;
+type SliderProps = {
+  value?: number;
+  onInput: (e: React.FormEvent<HTMLInputElement>) => void;
+  className?: string;
+  placeholder?: string;
+};
 function Slider(props: SliderProps) {
-  return <input type='range' min='0' max='100' step='10' {...props} />;
+  const { value, onInput, className, placeholder } = props;
+
+  return (
+    <input
+      type='range'
+      min='0'
+      max='100'
+      step='10'
+      defaultValue={value}
+      onKeyUp={onInput}
+      onMouseUp={onInput}
+      className={className}
+      placeholder={placeholder}
+    />
+  );
 }
 
 // render the main app
