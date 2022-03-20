@@ -62,7 +62,7 @@ At the moment, there is no UI to modify the configs. This can also be accessed v
 Configs file are located at:
 
 - `%AppData%\display-dj\monitor-configs.json` (for windows)
-- `TBD` (For Mac)
+- `~/Library/Application\ Support/display-dj/monitor-configs.json` (For Mac)
 
 ```json
 {
@@ -117,8 +117,8 @@ command/changeDarkMode/light
 
 Preferences file are located at:
 
-- `%AppData%\display-dj\preferences.json` (For Windows)
-- `TBD` (For Mac)
+- Windows: `%AppData%\display-dj\preferences.json`
+- Mac: `~/Library/Application\ Support/display-dj/preferences.json`
 
 ```json
 {

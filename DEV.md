@@ -34,3 +34,10 @@ After all the dependencies have been installed, the application can be started u
 npm install
 npm start
 ```
+
+
+## Log Files
+Log files are located in
+
+- Windows: `%AppData%\display-dj\logs.txt`
+- Mac: `~/Library/Application\ Support/display-dj/logs.txt`
