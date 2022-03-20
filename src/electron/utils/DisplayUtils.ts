@@ -60,11 +60,9 @@ const DisplayUtils = {
       } else {
         // for mac osx, ddcci command can fail for external display, therefore
         // it's best to read that brightness from the storage
-        if (type === 'laptop_monitor') {
-          try {
-            brightness = await DisplayAdapter.getMonitorBrightness(idToUse);
-          } catch (err) {}
-        }
+        try {
+          brightness = await DisplayAdapter.getMonitorBrightness(idToUse);
+        } catch (err) {}
       }
 
       monitors.push({
