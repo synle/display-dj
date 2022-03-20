@@ -9,6 +9,11 @@ import { IDisplayAdapter } from 'src/types.d';
 // Why 2 separate packages for brightness : refer to this https://github.com/nriley/brightness/issues/11
 const ID_BUILT_IN_DISPLAY = 'built-in-mac-display';
 
+
+let _cache : Record<string, any>= {
+  whichDisplayLaptopBuiltin: undefined,
+};
+
 async function _findWhichExternalDisplayById(targetMonitorId: string) {
   const monitorIds = (await _getMonitorList()).filter(
     (monitorId) => monitorId !== ID_BUILT_IN_DISPLAY,
@@ -25,8 +30,11 @@ async function _findWhichExternalDisplayById(targetMonitorId: string) {
 
 async function _findWhichBuiltinDisplayById() {
   return new Promise(async (resolve) => {
-    const shellToRun = `${await _getBrightnessBinary()} -l`;
+    if(_cache.whichDisplayLaptopBuiltin){
+      return resolve(_cache.whichDisplayLaptopBuiltin)
+    }
 
+    const shellToRun = `${await _getBrightnessBinary()} -l`;
     try {
       const stdout =await executeBash(shellToRun);
 
@@ -35,6 +43,7 @@ async function _findWhichBuiltinDisplayById() {
           line = line.replace('display', '').trim();
           line = line.substr(0, line.indexOf(':'));
           const whichDisplay = parseInt(line);
+          _cache.whichDisplayLaptopBuiltin = whichDisplay;
           return resolve(whichDisplay);
         }
       }
@@ -46,7 +55,12 @@ async function _findWhichBuiltinDisplayById() {
 
 async function _getMonitorList () : Promise<string[]> {
   return new Promise(async (resolve, reject) => {
+    if(_cache.allMonitorList){
+      return resolve(_cache.allMonitorList)
+    }
+
     try {
+      // TODO: let's cache it
       const shellToRun = `${await _getDdcctlBinary()}`;
       exec(shellToRun, (error, stdout, stderr) => {
         const monitors = (stdout || '')
@@ -54,6 +68,9 @@ async function _getMonitorList () : Promise<string[]> {
           .filter((line) => line.indexOf('D:') === 0)
           .map((line, idx) => line.replace('D:', '').trim());
         monitors.unshift(ID_BUILT_IN_DISPLAY);
+
+        _cache.allMonitorList = monitors;
+
         resolve(monitors);
       });
     } catch (err) {
