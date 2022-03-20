@@ -57,7 +57,7 @@ const DisplayUtils = {
 
       const type = await DisplayAdapter.getMonitorType(idToUse);
 
-      let brightness: number = monitorsFromStorage?.[idToUse]?.brightness || 0;
+      let brightness: number = monitorsFromStorage?.[idToUse]?.brightness || 50; // set default brightness to 50%
       try {
         brightness = await DisplayAdapter.getMonitorBrightness(idToUse);
       } catch (err) {}
@@ -137,26 +137,17 @@ const DisplayUtils = {
       newBrightness = 100;
     }
 
-    const monitors = await DisplayUtils.getMonitors();
-    const promisesChangeBrightness = [];
-    for (const monitor of monitors) {
-      monitor.brightness = newBrightness;
-
-      promisesChangeBrightness.push(new Promise(async (resolve) => {
-        try{
-          await DisplayUtils.updateMonitorBrightness(monitor.id, monitor.brightness);
-          console.trace('Update monitor brightness', monitor.name, monitor.brightness);
-        } catch(err){
-          console.error('Failed to update monitor brightness', monitor.name, monitor.id);
-        }
-        resolve(monitor.id)
-      }))
-    }
+    const monitors = (await DisplayUtils.getMonitors()).map(monitor => ({
+      ...monitor,
+      brightness: newBrightness
+    }));
 
     // persist to storage
     _syncMonitorConfigs(monitors);
 
-    await Promise.all(promisesChangeBrightness);
+    await DisplayAdapter.batchUpdateMonitorBrightness(
+      monitors
+    );
 
     return newBrightness;
   },

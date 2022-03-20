@@ -167,6 +167,7 @@ Preferences file are located at:
 - [x] Properly run the app on startup.
 - [ ] Change brightness based on time of day.
 - [ ] Change dark mode based on time of day.
+- [ ] Allow creation of display profiles so the profile can be selected from context menu or a shortcut. This profile should apply all individual display brightness.
 - [x] Shortcut key for dark mode change.
 - [x] Keyboard shortcuts to be dynamically managed in the preference file.
 - [X] Windows build - Properly package the build as `exe` file instead of plain zipped files.

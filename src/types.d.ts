@@ -41,6 +41,7 @@ export type IDisplayAdapter = {
   getMonitorType: (targetMonitorId: string) => Promise<DisplayType>;
   getMonitorBrightness: (targetMonitorId: string) => Promise<number>;
   updateMonitorBrightness: (targetMonitorId: string, newBrightness: number) => Promise<void>;
+  batchUpdateMonitorBrightness: (monitors: Monitor[]) => Promise<void>;
   getDarkMode: () => Promise<boolean>;
   updateDarkMode: (isDarkModeOn: boolean) => Promise<void>;
 };
