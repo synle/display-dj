@@ -73,8 +73,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.release_upload_url }}
-          asset_path: ./dist/display-dj-darwin-x64.zip
-          asset_name: display-dj-darwin-x64.zip
+          asset_path: ./dist/display-dj-darwin.dmg
+          asset_name: display-dj-darwin.dmg
           asset_content_type: application/octet-stream
 
   roll_back:
