@@ -190,15 +190,24 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   const [name, setName] = useState('');
   const { monitor } = props;
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
+  const { data: appState } = useAppState();
+  const {mutateAsync: updateAppState} = useUpdateAppState();
+
   const isLaptop = monitor.type === 'laptop_monitor';
 
-  const onChange = (key: string, value: any) => {
-    //@ts-ignore
-    monitor[key] = value;
+  const onBrightnessChange = (value: number) => {
+    monitor.brightness = value;
+
+    updateAppState({
+      isUpdatingBrightness: true
+    })
     updateMonitor(monitor);
+    updateAppState({
+      isUpdatingBrightness: false
+    })
   };
 
-  const onNameBlur = (e: React.SyntheticEvent) => {
+  const onDisplayNameChange = (e: React.SyntheticEvent) => {
     e.preventDefault();
 
     monitor.name = name.trim();
@@ -219,14 +228,14 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
     <>
       <div className='field'>
         {editName ? (
-          <form onSubmit={onNameBlur}>
+          <form onSubmit={onDisplayNameChange}>
             <input
               className='field__value'
               value={name}
               placeholder='Enter a display name'
               autoFocus={true}
               onInput={(e) => setName((e.target as HTMLInputElement).value)}
-              onBlur={onNameBlur}
+              onBlur={onDisplayNameChange}
               required
               type='text'
             />
@@ -252,9 +261,10 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
         <Slider
           className='field__value'
           placeholder='brightness'
+          disabled={appState?.isUpdatingBrightness}
           value={monitor.brightness}
           onInput={(e) =>
-            onChange('brightness', parseInt((e.target as HTMLInputElement).value) || 0)
+            onBrightnessChange(parseInt((e.target as HTMLInputElement).value) || 0)
           }
         />
       </div>
@@ -273,10 +283,18 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
   );
   const [allBrightness, setAllBrightness] = useState(allBrightnessValueFromProps);
   const { mutateAsync: batchUpdateMonitors } = useBatchUpdateMonitors();
+  const { data: appState } = useAppState();
+  const {mutateAsync: updateAppState} = useUpdateAppState();
 
   const onChange = async (brightness: number) => {
     setAllBrightness(brightness);
+    updateAppState({
+      isUpdatingBrightness: true
+    })
     await batchUpdateMonitors({ brightness });
+    updateAppState({
+      isUpdatingBrightness: false
+    })
   };
 
   return (
@@ -293,6 +311,7 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
         <Slider
           className='field__value'
           placeholder='brightness'
+          disabled={appState?.isUpdatingBrightness}
           value={allBrightness}
           onInput={(e) => onChange(parseInt((e.target as HTMLInputElement).value) || 0)}
         />
