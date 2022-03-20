@@ -2,7 +2,7 @@ import { executeBash } from 'src/electron/utils/ShellUtils';
 import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
 import darkMode from 'dark-mode';
 import { exec } from 'child_process';
-import { IDisplayAdapter } from 'src/types.d';
+import { IDisplayAdapter, Monitor } from 'src/types.d';
 
 // Source: http://chopmo.dk/2017/01/12/control-monitor-brightness-from-osx.html
 // Source: https://github.com/kfix/ddcctl
@@ -90,6 +90,28 @@ async function _getMonitorList () : Promise<string[]> {
   });
 }
 
+async function _getUpdateBrightnessShellScript(targetMonitorId: string, newBrightness: number) : Promise<string>{
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (targetMonitorId === ID_BUILT_IN_DISPLAY) {
+        // for built in display
+        const whichDisplay = await _findWhichBuiltinDisplayById();
+        return resolve(`${await _getBrightnessBinary()} -d ${whichDisplay} ${newBrightness / 100}`)
+      } else {
+        // for external display
+        const whichDisplay = await _findWhichExternalDisplayById(targetMonitorId);
+        if (whichDisplay === undefined) {
+          return reject(`Display not found`);
+        }
+
+        return resolve(`${await _getDdcctlBinary()} -d ${whichDisplay} -b ${newBrightness}`)
+      }
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 const _getDdcctlBinary = async () => (await PreferenceUtils.get()).ddcctlBinary;
 
 const _getBrightnessBinary = async () => (await PreferenceUtils.get()).brightnessBinary;
@@ -156,31 +178,20 @@ const DisplayAdapter: IDisplayAdapter = {
     });
   },
   updateMonitorBrightness: async (targetMonitorId: string, newBrightness: number) => {
-    return new Promise(async (resolve, reject) => {
-      try {
-        let shellToRun;
+    const shellToRun = await _getUpdateBrightnessShellScript(targetMonitorId, newBrightness);
+    console.debug('updateMonitorBrightness', targetMonitorId, shellToRun);
+    await executeBash(shellToRun);
+  },
+  batchUpdateMonitorBrightness: async (monitors: Monitor[]) => {
+    const shellsToRun = [];
 
-        if (targetMonitorId === ID_BUILT_IN_DISPLAY) {
-          // for built in display
-          const whichDisplay = await _findWhichBuiltinDisplayById();
-          shellToRun = `${await _getBrightnessBinary()} -d ${whichDisplay} ${newBrightness / 100}`;
-        } else {
-          // for external display
-          const whichDisplay = await _findWhichExternalDisplayById(targetMonitorId);
-          if (whichDisplay === undefined) {
-            return reject(`Display not found`);
-          }
+    for (const monitor of monitors) {
+      try{
+        shellsToRun.push(await _getUpdateBrightnessShellScript(monitor.id, monitor.brightness));
+      } catch(err){}
+    }
 
-          shellToRun = `${await _getDdcctlBinary()} -d ${whichDisplay} -b ${newBrightness}`;
-        }
-
-        console.debug('updateMonitorBrightness', targetMonitorId, shellToRun);
-        await executeBash(shellToRun);
-        resolve();
-      } catch (err) {
-        reject(err);
-      }
-    });
+    await executeBash(shellsToRun.join('; '));
   },
   getDarkMode: async () => {
     return darkMode.isEnabled();
