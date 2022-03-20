@@ -160,7 +160,7 @@ command/changeDarkMode/light
 - [x] Shortcut key for dark mode change.
 - [x] Keyboard shortcuts to be dynamically managed in the preference file.
 - [ ] Properly package the build as `msi` or `exe` file instead of plain zipped files.
-- [ ] Properly hookup the icons for mac.
+- [X] Properly hookup the icons for mac.
 - [ ] Properly set up CI/CD pipeline for releases and main page content.
 - [x] MacOSX - Fix an issue where the positioning of the app is misplaced in the main display regardless of mouse click.
 - [x] Support changing contrast (is this possible?).
