@@ -306,9 +306,10 @@ type SliderProps = {
   onInput: (e: React.FormEvent<HTMLInputElement>) => void;
   className?: string;
   placeholder?: string;
+  disabled?: boolean;
 };
 function Slider(props: SliderProps) {
-  const { value, onInput, className, placeholder } = props;
+  const { value, onInput, className, placeholder, disabled } = props;
 
   return (
     <input
@@ -321,6 +322,7 @@ function Slider(props: SliderProps) {
       onMouseUp={onInput}
       className={className}
       placeholder={placeholder}
+      disabled={disabled}
     />
   );
 }
