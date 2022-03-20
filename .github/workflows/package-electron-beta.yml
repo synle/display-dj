@@ -13,6 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: git push origin --delete beta
+        continue-on-error: true
       - id: package-version
         uses: martinbeentjes/npm-get-version-action@master
         with:
