@@ -75,6 +75,8 @@ const DisplayAdapter: IDisplayAdapter = {
           const whichDisplay = await _findWhichBuiltinDisplayById();
           const shellToRun = `${await _getBrightnessBinary()} -l`;
 
+          console.debug('getMonitorBrightness', targetMonitorId, shellToRun);
+
           exec(shellToRun, (error, stdout, stderr) => {
             for (let line of stdout.split('\n')) {
               if (line.includes(`display ${whichDisplay}: brightness`)) {
@@ -97,7 +99,10 @@ const DisplayAdapter: IDisplayAdapter = {
           if (whichDisplay === undefined) {
             return reject(`Display not found`);
           }
+
           const shellToRun = `${await _getDdcctlBinary()} -d ${whichDisplay} -b \\?`;
+          console.debug('getMonitorBrightness', targetMonitorId, shellToRun);
+
           exec(shellToRun, (error, stdout, stderr) => {
             if (error) {
               return reject(stderr);

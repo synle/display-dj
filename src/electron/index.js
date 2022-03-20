@@ -102,6 +102,7 @@ async function createTray() {
 
   tray.on('right-click', function (event) {
     tray.popUpContextMenu(contextMenu);
+    mainWindow.hide();
   });
 
   const contextMenu = Menu.buildFromTemplate([
