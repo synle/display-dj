@@ -19,9 +19,9 @@
     "test-ci": "",
     "prestart": "npm run build",
     "start": "concurrently \"cross-env APPLICATION_MODE='dev' electron ./build/main.js\" \"npm run dev\"",
-    "predist-win32": "cross-env APPLICATION_MODE='production'  npx electron-packager \"./\" --overwrite --asar --prune=true --out=\"dist\" --icon=./src/assets/icon.ico --platform=win32",
+    "predist-win32": "cross-env APPLICATION_MODE='production'  npx electron-packager \"./\" --overwrite --asar --prune=true --out=\"dist\" --icon=./src/assets/icon.png --platform=win32",
     "dist-win32": "node dist.js",
-    "predist-darwin": "cross-env APPLICATION_MODE='production' npx electron-packager \"./\" --overwrite --asar --prune=true --out=\"dist\" --icon=./src/assets/icon.ico --platform=darwin",
+    "predist-darwin": "cross-env APPLICATION_MODE='production' npx electron-packager \"./\" --overwrite --asar --prune=true --out=\"dist\" --icon=./src/assets/icon.png --platform=darwin",
     "dist-darwin": "node dist.js"
   },
   "repository": "https://github.com/synle/display-dj",
