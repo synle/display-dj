@@ -68,7 +68,7 @@ async function createTray() {
   global.tray = tray;
 
   tray.setToolTip(
-    process.env.APPLICATION_MODE === 'dev'
+    process.env.APPLICATION_MODE !== 'production'
       ? `display-dj (by Sy Le) (${process.env.APPLICATION_MODE})`
       : `display-dj (by Sy Le)`,
   );
@@ -234,7 +234,7 @@ async function setUpShortcuts() {
   }
 }
 function setupAutolaunch() {
-  if (process.env.APPLICATION_MODE === 'dev') {
+  if (process.env.APPLICATION_MODE !== 'production') {
     return;
   }
 
