@@ -69,9 +69,15 @@ const DisplayUtils = {
         } catch (err) {}
       }
 
+
+      let name = monitorsFromStorage?.[idToUse]?.name || '';
+      if(!name){
+        name = type === 'laptop_monitor' ? `Laptop Display` : `External Monitor #${++monitorCount}`
+      }
+
       monitors.push({
         id: idToUse,
-        name: monitorsFromStorage?.[idToUse]?.name || `Monitor #${++monitorCount}`,
+        name: name,
         type,
         brightness,
         sortOrder: monitorsFromStorage?.[idToUse]?.sortOrder || idx,
