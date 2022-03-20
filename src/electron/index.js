@@ -233,7 +233,7 @@ async function setUpShortcuts() {
   }
 }
 function setupAutolaunch() {
-  if (process.env.APPLICATION_MODE !== 'production') {
+  if (process.env.APPLICATION_MODE === 'dev') {
     return;
   }
 
