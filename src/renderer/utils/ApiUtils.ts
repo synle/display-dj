@@ -13,7 +13,7 @@ const ApiUtils = {
   // configs
   getConfigs: () => fetch<AppConfig>(`/api/configs`),
   updateMonitor: (monitor: MonitorUpdateInput) =>
-    fetch(`/api/configs/monitors`, {
+    fetch(`/api/configs/monitors/${monitor.id}`, {
       method: 'put',
       body: JSON.stringify(monitor),
     }),

@@ -76,7 +76,7 @@ export function setUpDataEndpoints() {
     }
   });
 
-  addDataEndpoint('put', '/api/configs/monitors', async (req, res) => {
+  addDataEndpoint('put', '/api/configs/monitors/:monitorId', async (req, res) => {
     try {
       const monitor = {
         id: req.body.id,
