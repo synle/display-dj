@@ -253,6 +253,22 @@ function setupAutolaunch() {
   });
 }
 
+/**
+ * This routine runs once on load to make sure all the brightness are in sync with your configs
+ */
+async function synchronizeBrightness(){
+  const monitors = await DisplayUtils.getMonitors();
+
+  for(const monitor of monitors){
+    try{
+      await DisplayUtils.updateMonitor(monitor);
+      console.trace('Sync monitor brightness on load', monitor.name, monitor.brightness);
+    } catch(err){
+      console.error('Failed to sync monitor brightness on load', monitor.name, monitor.id);
+    }
+  }
+}
+
 function _getTrayIcon() {
   return nativeTheme.shouldUseDarkColors ? DARK_ICON : LIGHT_ICON;
 }
@@ -266,6 +282,7 @@ app.on('ready', async () => {
   await setupAutolaunch();
   await setUpDataEndpoints();
   await setUpShortcuts();
+  await synchronizeBrightness();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
