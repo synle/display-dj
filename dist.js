@@ -1,4 +1,3 @@
-const archiver = require('archiver');
 const path = require('path');
 const fs = require('fs');
 
@@ -41,10 +40,14 @@ async function doDistWork() {
         });
         break;
       case 'darwin':
-        _zipDirectory(
-          path.join(__dirname, 'dist', 'display-dj-darwin-x64'),
-          path.join(__dirname, 'dist', 'display-dj-darwin-x64.zip'),
-        );
+        const createDMG = require('electron-installer-dmg');
+        await createDMG({
+          appPath: path.join(__dirname, 'dist', 'display-dj-darwin-x64', 'display-dj.app'),
+          name: 'display-dj',
+          icon: path.join(__dirname, 'src', 'assets', 'icon.png'),
+          overwrite: true,
+        });
+
         break;
     }
   } catch (err) {
