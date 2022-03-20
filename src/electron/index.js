@@ -300,7 +300,14 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
       if (status >= 300 || status < 200) {
         ok = false;
       }
-      console.trace('Response', status, method, url, body, '\n' + JSON.stringify(responseData, null, 2));
+      console.trace(
+        'Response',
+        status,
+        method,
+        url,
+        body,
+        '\n' + JSON.stringify(responseData, null, 2),
+      );
       event.reply(requestId, {
         ok,
         status,

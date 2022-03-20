@@ -152,7 +152,7 @@ command/changeDarkMode/light
 - [x] Support laptop brightness.
 - [ ] Support for windows 10.
 - [ ] Support for linux (is this possible?).
-- [X] Support for mac (possible with some quirks).
+- [x] Support for mac (possible with some quirks).
 - [ ] Support for vertical task bar or top placement taskbar.
 - [x] Properly run the app on startup.
 - [ ] Change brightness based on time of day.
@@ -162,8 +162,8 @@ command/changeDarkMode/light
 - [ ] Properly package the build as `msi` or `exe` file instead of plain zipped files.
 - [ ] Properly hookup the icons for mac.
 - [ ] Properly set up CI/CD pipeline for releases and main page content.
-- [X] MacOSX - Fix an issue where the positioning of the app is misplaced in the main display regardless of mouse click.
-- [X] Support changing contrast (is this possible?).
+- [x] MacOSX - Fix an issue where the positioning of the app is misplaced in the main display regardless of mouse click.
+- [x] Support changing contrast (is this possible?).
 
 ## Contributing?
 
