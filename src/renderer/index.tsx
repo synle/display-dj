@@ -232,15 +232,13 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
             <MonitorSvg />
           </span>
         )}
-        <input
+        <Slider
           className='field__value'
-          type='range'
-          min='0'
-          max='100'
-          step='10'
           value={monitor.brightness}
           placeholder='brightness'
-          onChange={(e) => onChange('brightness', parseInt(e.target.value) || 0)}
+          onInput={(e: React.FormEvent<HTMLInputElement>) =>
+            onChange('brightness', parseInt((e.target as HTMLInputElement).value) || 0)
+          }
         />
       </div>
     </>
@@ -275,19 +273,22 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
         <span className='field__icon' title='All Monitor Brightness'>
           🔆
         </span>
-        <input
+        <Slider
           className='field__value'
-          type='range'
-          min='0'
-          max='100'
-          step='10'
           value={allBrightness}
           placeholder='brightness'
-          onChange={(e) => onChange(parseInt(e.target.value) || 0)}
+          onInput={(e: React.FormEvent<HTMLInputElement>) =>
+            onChange(parseInt((e.target as HTMLInputElement).value) || 0)
+          }
         />
       </div>
     </>
   );
+}
+
+type SliderProps = any;
+function Slider(props: SliderProps) {
+  return <input type='range' min='0' max='100' step='10' {...props} />;
 }
 
 // render the main app
