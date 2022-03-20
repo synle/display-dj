@@ -8,7 +8,7 @@ import ToggleSvg from 'src/renderer/svg/toggle.svg';
 import DarkModeSvg from 'src/renderer/svg/darkMode.svg';
 import LightModeSvg from 'src/renderer/svg/lightMode.svg';
 import './index.scss';
-import { Monitor, SingleMonitorUpdateInput, Preference } from 'src/types.d';
+import { Monitor, SingleMonitorUpdateInput, Preference, AppConfig } from 'src/types.d';
 import {
   useBatchUpdateMonitors,
   usePreferences,
@@ -56,27 +56,28 @@ function Home(props: HomeProps) {
   const isLoading = loadingConfigs || loadingAppState || loadingPrefs;
   if (isLoading) {
     return (
-      <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>Loading... Please wait...</div>
+      <>
+      <Header configs={configs} preference={preference} />
+      <h3>Loading... Please wait...</h3>
+      </>
     );
   }
 
   if (!configs || !appState || !preference) {
     // TODO: add message for no data state
     return (
-      <div style={{ padding: '2rem 1rem', fontSize: '1.25rem' }}>
+      <>
+      <Header configs={configs} preference={preference} />
+      <h3>
         Errors... Failed to get data...
-      </div>
+      </h3>
+      </>
     );
   }
 
   return (
     <>
-      <header>
-        <h2>
-          Display-DJ {configs.version} {configs.env !== 'production' ? configs.env : ''}
-        </h2>
-        <ToggleAllDisplay preference={preference} />
-      </header>
+      <Header configs={configs} preference={preference} />
       {preference.showIndividualDisplays ? (
         <MonitorBrightnessSettingForm monitors={configs.monitors} />
       ) : (
@@ -86,6 +87,22 @@ function Home(props: HomeProps) {
     </>
   );
 }
+
+type HeaderProps = {
+  configs?: AppConfig,
+  preference?: Preference
+}
+function Header(props: HeaderProps){
+  const { configs, preference } = props;
+
+  return <header>
+        <h2>
+          Display-DJ {configs?.version} {configs?.env !== 'production' ? configs?.env : ''}
+        </h2>
+        {!preference ? null : <ToggleAllDisplay preference={preference} />}
+      </header>
+}
+
 type ToggleAllDisplayProps = {
   preference: Preference;
 };
