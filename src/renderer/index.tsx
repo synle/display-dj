@@ -13,12 +13,10 @@ import {
   useBatchUpdateMonitors,
   usePreferences,
   useUpdatePreferences,
-  useAppState,
   useConfigs,
   useUpdateMonitor,
   useToggleDarkMode,
   useUpdateAppPosition,
-  useUpdateAppState,
   QUERY_KEY_CONFIGS,
   QUERY_KEY_APP_STATE,
 } from 'src/renderer/hooks';
@@ -29,7 +27,6 @@ import {
 type HomeProps = {};
 function Home(props: HomeProps) {
   const { isLoading: loadingConfigs, data: configs, refetch } = useConfigs();
-  const { isLoading: loadingAppState, data: appState } = useAppState();
   const { isLoading: loadingPrefs, data: preference } = usePreferences();
   const { mutateAsync: updateAppPosition } = useUpdateAppPosition();
 
@@ -53,7 +50,7 @@ function Home(props: HomeProps) {
     };
   }, []);
 
-  const isLoading = loadingConfigs || loadingAppState || loadingPrefs;
+  const isLoading = loadingConfigs  || loadingPrefs;
   if (isLoading) {
     return (
       <>
@@ -63,7 +60,7 @@ function Home(props: HomeProps) {
     );
   }
 
-  if (!configs || !appState || !preference) {
+  if (!configs || !preference) {
     // TODO: add message for no data state
     return (
       <>
@@ -190,21 +187,13 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   const [name, setName] = useState('');
   const { monitor } = props;
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
-  const { data: appState } = useAppState();
-  const {mutateAsync: updateAppState} = useUpdateAppState();
 
   const isLaptop = monitor.type === 'laptop_monitor';
 
   const onBrightnessChange = (value: number) => {
     monitor.brightness = value;
 
-    updateAppState({
-      isUpdatingBrightness: true
-    })
     updateMonitor(monitor);
-    updateAppState({
-      isUpdatingBrightness: false
-    })
   };
 
   const onDisplayNameChange = (e: React.SyntheticEvent) => {
@@ -261,7 +250,6 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
         <Slider
           className='field__value'
           placeholder='brightness'
-          disabled={appState?.isUpdatingBrightness}
           value={monitor.brightness}
           onInput={(e) =>
             onBrightnessChange(parseInt((e.target as HTMLInputElement).value) || 0)
@@ -283,18 +271,10 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
   );
   const [allBrightness, setAllBrightness] = useState(allBrightnessValueFromProps);
   const { mutateAsync: batchUpdateMonitors } = useBatchUpdateMonitors();
-  const { data: appState } = useAppState();
-  const {mutateAsync: updateAppState} = useUpdateAppState();
 
   const onChange = async (brightness: number) => {
     setAllBrightness(brightness);
-    updateAppState({
-      isUpdatingBrightness: true
-    })
     await batchUpdateMonitors({ brightness });
-    updateAppState({
-      isUpdatingBrightness: false
-    })
   };
 
   return (
@@ -311,7 +291,6 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
         <Slider
           className='field__value'
           placeholder='brightness'
-          disabled={appState?.isUpdatingBrightness}
           value={allBrightness}
           onInput={(e) => onChange(parseInt((e.target as HTMLInputElement).value) || 0)}
         />

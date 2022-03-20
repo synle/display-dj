@@ -16,7 +16,7 @@ export const QUERY_KEY_PREFERENCE = 'preferences';
 
 // app state (not used anymore, but left as is if we want to add new global state to the app)
 let _appState: UIAppState = {
-  isUpdatingBrightness: false
+
 };
 
 export function useAppState() {
