@@ -60,7 +60,6 @@ async function _getMonitorList () : Promise<string[]> {
     }
 
     try {
-      // TODO: let's cache it
       const shellToRun = `${await _getDdcctlBinary()}`;
       exec(shellToRun, (error, stdout, stderr) => {
         const monitors = (stdout || '')
