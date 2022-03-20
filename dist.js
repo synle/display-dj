@@ -7,7 +7,7 @@ const fs = require('fs');
  * @param {String} outPath: /path/to/created.zip
  * @returns {Promise}
  */
-function zipDirectory(sourceDir, outPath) {
+function _zipDirectory(sourceDir, outPath) {
   const archive = archiver('zip', { zlib: { level: 9 } });
   const stream = fs.createWriteStream(outPath);
 
@@ -22,17 +22,33 @@ function zipDirectory(sourceDir, outPath) {
   });
 }
 
-switch (process.platform) {
-  case 'win32':
-    zipDirectory(
-      path.join(__dirname, 'dist', 'display-dj-win32-x64'),
-      path.join(__dirname, 'dist', 'display-dj-win32-x64.zip'),
-    );
-    break;
-  case 'darwin':
-    zipDirectory(
-      path.join(__dirname, 'dist', 'display-dj-darwin-x64'),
-      path.join(__dirname, 'dist', 'display-dj-darwin-x64.zip'),
-    );
-    break;
+async function doDistWork() {
+  try {
+    switch (process.platform) {
+      case 'win32':
+        const electronInstaller = require('electron-winstaller');
+        electronInstaller.createWindowsInstaller({
+          appDirectory: path.join(__dirname, 'dist', 'display-dj-win32-x64'),
+          outputDirectory: path.join(__dirname, 'dist'),
+          iconUrl: path.join(__dirname, 'src', 'assets', 'icon.ico'),
+          setupIcon: path.join(__dirname, 'src', 'assets', 'icon.ico'),
+          name: 'DisplayDJ',
+          authors: 'Sy Le',
+          exe: 'display-dj.exe',
+          setupExe: 'display-dj-setup.exe',
+          noMsi: true,
+        });
+        break;
+      case 'darwin':
+        _zipDirectory(
+          path.join(__dirname, 'dist', 'display-dj-darwin-x64'),
+          path.join(__dirname, 'dist', 'display-dj-darwin-x64.zip'),
+        );
+        break;
+    }
+  } catch (err) {
+    console.log('Err', err);
+  }
 }
+
+doDistWork();

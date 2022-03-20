@@ -15,7 +15,7 @@
 You can download `display-dj` at the following URL.
 
 - [display-dj Beta for Mac](https://github.com/synle/display-dj/releases/download/beta/display-dj-darwin-x64.zip)
-- [display-dj Beta for Windows](https://github.com/synle/display-dj/releases/download/beta/display-dj-win32-x64.zip)
+- [display-dj Beta for Windows](https://github.com/synle/display-dj/releases/download/beta/display-dj-setup.exe)
 
 ## Screenshots / Demo
 
@@ -52,12 +52,17 @@ brew install brightness
 
 ## Monitor Configs
 
-At the moment, there is no UI to modify the configs, configs file are located at `%AppData%\display-dj\monitor-configs.json`. This can also be accessed via right clicking the tray icon of display-dj and choose `Open Monitor Configs`.
+At the moment, there is no UI to modify the configs. This can also be accessed via right clicking the tray icon of display-dj and choose `Open Monitor Configs`.
 
 - `disabled`: flag can be used to hide a monitor off the list
 - `sortOrder`: flag can be used to change which monitor showing up first
 
 ### Sample configs file
+
+Configs file are located at:
+
+- `%AppData%\display-dj\monitor-configs.json` (for windows)
+- `TBD` (For Mac)
 
 ```json
 {
@@ -87,7 +92,7 @@ At the moment, there is no UI to modify the configs, configs file are located at
 
 ## Preferences / Keybindings
 
-At the moment, there is no UI to modify the preferences, preferences file are located at `%AppData%\display-dj\preferences.json`. This can also be accessed via right clicking the tray icon of display-dj and choose `Open App Preferences`.
+At the moment, there is no UI to modify the preferences. This can also be accessed via right clicking the tray icon of display-dj and choose `Open App Preferences`.
 
 - `ddcctlBinary`: applicable to mac system only. ddcctl binary used for display-dj.
 - `showIndividualDisplays`: flag can be used to show a single brightness control for all displays or individual ones.
@@ -109,6 +114,11 @@ command/changeDarkMode/light
 ```
 
 ### Sample preferences file
+
+Preferences file are located at:
+
+- `%AppData%\display-dj\preferences.json` (For Windows)
+- `TBD` (For Mac)
 
 ```json
 {
@@ -160,7 +170,7 @@ command/changeDarkMode/light
 - [x] Shortcut key for dark mode change.
 - [x] Keyboard shortcuts to be dynamically managed in the preference file.
 - [ ] Properly package the build as `msi` or `exe` file instead of plain zipped files.
-- [X] Properly hookup the icons for mac.
+- [x] Properly hookup the icons for mac.
 - [ ] Properly set up CI/CD pipeline for releases and main page content.
 - [x] MacOSX - Fix an issue where the positioning of the app is misplaced in the main display regardless of mouse click.
 - [x] Support changing contrast (is this possible?).
