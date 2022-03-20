@@ -92,7 +92,7 @@ At the moment, there is no UI to modify the preferences, preferences file are lo
 - `ddcctlBinary`: applicable to mac system only. ddcctl binary used for display-dj.
 - `showIndividualDisplays`: flag can be used to show a single brightness control for all displays or individual ones.
 - `brightnessDelta`: a delta value / step value for brightness adjustment (applicable only for keyboard shortcut).
-- `keyBindings`: a list of shortcuts / bindings to adjust brightness based on the keyboard shortcuts. Below is a list of all supported commands. Refer to [this list for a set of all supported commands](https://github.com/synle/display-dj/blob/main/src/types.d.ts#L30)
+- `keyBindings`: a list of shortcuts / bindings to adjust brightness based on the keyboard shortcuts. Below is a list of all supported commands. Refer to [this list for a set of all supported commands](https://github.com/synle/display-dj/blob/main/src/types.d.ts#L3)
 
 ```bash
 # brightness commands
