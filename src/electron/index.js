@@ -19,6 +19,7 @@ import StorageUtils, {
   MONITOR_CONFIG_FILE_PATH,
   PREFERENCE_FILE_PATH,
 } from 'src/electron/utils/StorageUtils';
+import 'src/electron/utils/LogUtils';
 let mainWindow;
 
 const appBaseDir = __dirname;
@@ -26,27 +27,6 @@ const appBaseDir = __dirname;
 const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
 
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
-
-// colors and stylings for console logs
-String.prototype.blue = function () {
-  return `\x1b[36m${this}\x1b[0m`;
-};
-
-String.prototype.yellow = function () {
-  return `\x1b[33m${this}\x1b[0m`;
-};
-
-String.prototype.green = function () {
-  return `\x1b[32m${this}\x1b[0m`;
-};
-
-String.prototype.red = function () {
-  return `\x1b[31m${this}\x1b[0m`;
-};
-
-console.info = console.log.bind(null, '[INFO]'.green);
-console.error = console.log.bind(null, '[ERROR]'.red);
-console.debug = console.log.bind(null, '[DEBUG]'.yellow);
 
 function createWindow() {
   // Create the browser window.
@@ -94,7 +74,7 @@ async function createTray() {
   global.tray = tray;
 
   tray.setToolTip(
-    process.env.APPLICATION_MODE !== 'production'
+    process.env.APPLICATION_MODE === 'dev'
       ? `display-dj (by Sy Le) (${process.env.APPLICATION_MODE})`
       : `display-dj (by Sy Le)`,
   );
@@ -218,7 +198,10 @@ async function setUpShortcuts() {
             break;
         }
 
-        allMonitorBrightness = await DisplayUtils.batchUpdateBrightness(allMonitorBrightness, delta);
+        allMonitorBrightness = await DisplayUtils.batchUpdateBrightness(
+          allMonitorBrightness,
+          delta,
+        );
       } else if (keyBinding.command.includes(`command/changeDarkMode`)) {
         switch (keyBinding.command) {
           case 'command/changeDarkMode/toggle':
@@ -239,14 +222,14 @@ async function setUpShortcuts() {
   });
 
   if (!keybindingSuccess.every((success) => success)) {
-    console.info(
-      '>> globalShortcut keybinding failed',
+    console.error(
+      'globalShortcut keybinding failed',
       preferences.keyBindings.map(
         (keyBinding, idx) => `${keyBinding.key} = ${keybindingSuccess[idx]}`,
       ),
     );
   } else {
-    console.info('>> globalShortcut keybinding success');
+    console.info('globalShortcut keybinding success');
   }
 }
 function setupAutolaunch() {
@@ -300,7 +283,7 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
     body = JSON.parse(options.body);
   } catch (err) {}
 
-  console.info('>> Request', method, url, sessionId, body);
+  console.trace('Request', method, url, sessionId, body);
   let matchedUrlObject;
   const matchCurrentUrlAgainst = (matchAgainstUrl) => {
     try {
@@ -317,7 +300,7 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
       if (status >= 300 || status < 200) {
         ok = false;
       }
-      console.info('>> Response', status, method, url, body, responseData);
+      console.trace('Response', status, method, url, body, '\n' + JSON.stringify(responseData, null, 2));
       event.reply(requestId, {
         ok,
         status,
