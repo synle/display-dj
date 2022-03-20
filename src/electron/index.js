@@ -260,14 +260,20 @@ function setupAutolaunch() {
 async function synchronizeBrightness(){
   const monitors = await DisplayUtils.getMonitorsFromStorage();
 
+  const promises =[];
   for(const monitor of monitors){
-    try{
-      await DisplayUtils.updateMonitorBrightness(monitor.id, monitor.brightness);
-      console.trace('Sync monitor brightness on load', monitor.name, monitor.brightness);
-    } catch(err){
-      console.error('Failed to sync monitor brightness on load', monitor.name, monitor.id);
-    }
+    promises.push(new Promise(async (resolve) => {
+      try{
+        await DisplayUtils.updateMonitorBrightness(monitor.id, monitor.brightness);
+        console.trace('Sync monitor brightness on load', monitor.name, monitor.brightness);
+      } catch(err){
+        console.error('Failed to sync monitor brightness on load', monitor.name, monitor.id);
+      }
+      resolve()
+    }))
   }
+
+  await Promise.all(promises)
 }
 
 function _getTrayIcon() {

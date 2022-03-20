@@ -1,3 +1,4 @@
+import { executeBash } from 'src/electron/utils/ShellUtils';
 import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
 import darkMode from 'dark-mode';
 import { exec } from 'child_process';
@@ -9,7 +10,7 @@ import { IDisplayAdapter } from 'src/types.d';
 const ID_BUILT_IN_DISPLAY = 'built-in-mac-display';
 
 async function _findWhichExternalDisplayById(targetMonitorId: string) {
-  const monitorIds = (await DisplayAdapter.getMonitorList()).filter(
+  const monitorIds = (await _getMonitorList()).filter(
     (monitorId) => monitorId !== ID_BUILT_IN_DISPLAY,
   );
   for (let idx = 0; idx < monitorIds.length; idx++) {
@@ -26,19 +27,38 @@ async function _findWhichBuiltinDisplayById() {
   return new Promise(async (resolve) => {
     const shellToRun = `${await _getBrightnessBinary()} -l`;
 
-    exec(shellToRun, (error, stdout, stderr) => {
-      try {
-        for (let line of stdout.split('\n')) {
-          if (line.includes(`display`) && line.includes(`built-in`) && line.includes(`ID`)) {
-            line = line.replace('display', '').trim();
-            line = line.substr(0, line.indexOf(':'));
-            const whichDisplay = parseInt(line);
-            return resolve(whichDisplay);
-          }
+    try {
+      const stdout =await executeBash(shellToRun);
+
+      for (let line of stdout.split('\n')) {
+        if (line.includes(`display`) && line.includes(`built-in`) && line.includes(`ID`)) {
+          line = line.replace('display', '').trim();
+          line = line.substr(0, line.indexOf(':'));
+          const whichDisplay = parseInt(line);
+          return resolve(whichDisplay);
         }
-      } catch (err) {}
-      resolve(0);
-    });
+      }
+    } catch (err) {}
+
+    resolve(0);
+  });
+}
+
+async function _getMonitorList () : Promise<string[]> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const shellToRun = `${await _getDdcctlBinary()}`;
+      exec(shellToRun, (error, stdout, stderr) => {
+        const monitors = (stdout || '')
+          .split('\n')
+          .filter((line) => line.indexOf('D:') === 0)
+          .map((line, idx) => line.replace('D:', '').trim());
+        monitors.unshift(ID_BUILT_IN_DISPLAY);
+        resolve(monitors);
+      });
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 
@@ -47,23 +67,7 @@ const _getDdcctlBinary = async () => (await PreferenceUtils.get()).ddcctlBinary;
 const _getBrightnessBinary = async () => (await PreferenceUtils.get()).brightnessBinary;
 
 const DisplayAdapter: IDisplayAdapter = {
-  getMonitorList: async () => {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const shellToRun = `${await _getDdcctlBinary()}`;
-        exec(shellToRun, (error, stdout, stderr) => {
-          const monitors = (stdout || '')
-            .split('\n')
-            .filter((line) => line.indexOf('D:') === 0)
-            .map((line, idx) => line.replace('D:', '').trim());
-          monitors.unshift(ID_BUILT_IN_DISPLAY);
-          resolve(monitors);
-        });
-      } catch (err) {
-        reject(err);
-      }
-    });
-  },
+  getMonitorList: _getMonitorList,
   getMonitorType: async (targetMonitorId: string) => {
     return targetMonitorId === ID_BUILT_IN_DISPLAY ? 'laptop_monitor' : 'external_monitor';
   },
@@ -77,22 +81,21 @@ const DisplayAdapter: IDisplayAdapter = {
 
           console.debug('getMonitorBrightness', targetMonitorId, shellToRun);
 
-          exec(shellToRun, (error, stdout, stderr) => {
-            for (let line of stdout.split('\n')) {
-              if (line.includes(`display ${whichDisplay}: brightness`)) {
-                const brightness = Math.floor(
-                  parseFloat(
-                    line.substr(line.indexOf(': brightness') + ': brightness'.length + 1),
-                  ) * 100,
-                );
+          const stdout =await executeBash(shellToRun);
+          for (let line of stdout.split('\n')) {
+            if (line.includes(`display ${whichDisplay}: brightness`)) {
+              const brightness = Math.floor(
+                parseFloat(
+                  line.substr(line.indexOf(': brightness') + ': brightness'.length + 1),
+                ) * 100,
+              );
 
-                if (brightness > 0) {
-                  return resolve(brightness);
-                }
+              if (brightness >= 0) {
+                return resolve(brightness);
               }
             }
-            reject('cannot read the brightness for laptop display from brightness')
-          });
+          }
+          reject('cannot read the brightness for laptop display from brightness')
         } else {
           // for external display
           const whichDisplay = await _findWhichExternalDisplayById(targetMonitorId);
@@ -103,23 +106,18 @@ const DisplayAdapter: IDisplayAdapter = {
           const shellToRun = `${await _getDdcctlBinary()} -d ${whichDisplay} -b \\?`;
           console.debug('getMonitorBrightness', targetMonitorId, shellToRun);
 
-          exec(shellToRun, (error, stdout, stderr) => {
-            if (error) {
-              return reject(stderr);
-            }
+          const stdout =await executeBash(shellToRun);
+          for (let line of stdout.split('\n')) {
+            if (line.includes(`VCP control`) && line.includes('current')) {
+              const brightness = parseInt(line.substr(line.indexOf('current: ') + 'current: '.length))
 
-            for (let line of stdout.split('\n')) {
-              if (line.includes(`VCP control`) && line.includes('current')) {
-                const brightness = parseInt(line.substr(line.indexOf('current: ') + 'current: '.length))
-
-                if (brightness >= 0) {
-                  return resolve(brightness);
-                }
+              if (brightness >= 0) {
+                return resolve(brightness);
               }
             }
+          }
 
-            reject('cannot read the brightness for external display from ddcci')
-          });
+          reject('cannot read the brightness for external display from ddcci')
         }
       } catch (err) {
         reject(`getMonitorBrightness failed: ` + JSON.stringify(err));
@@ -146,12 +144,8 @@ const DisplayAdapter: IDisplayAdapter = {
         }
 
         console.debug('updateMonitorBrightness', targetMonitorId, shellToRun);
-        exec(shellToRun, (error, stdout, stderr) => {
-          if (error) {
-            return reject(stderr);
-          }
-          resolve();
-        });
+        await executeBash(shellToRun);
+        resolve();
       } catch (err) {
         reject(err);
       }

@@ -145,6 +145,16 @@ const DisplayUtils = {
       promisesChangeBrightness.push(
         DisplayAdapter.updateMonitorBrightness(monitor.id, monitor.brightness),
       );
+
+      promisesChangeBrightness.push(new Promise(async (resolve) => {
+        try{
+          await DisplayUtils.updateMonitorBrightness(monitor.id, monitor.brightness);
+          console.trace('Update monitor brightness', monitor.name, monitor.brightness);
+        } catch(err){
+          console.error('Failed to update monitor brightness', monitor.name, monitor.id);
+        }
+        resolve(monitor.id)
+      }))
     }
 
     // persist to storage
