@@ -53,3 +53,7 @@ export type Preference = {
   brightnessDelta: number;
   keyBindings: KeyBinding[];
 };
+
+export type UIAppState = {
+  isUpdatingBrightness: boolean;
+};
