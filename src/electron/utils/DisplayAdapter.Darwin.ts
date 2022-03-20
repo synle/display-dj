@@ -10,9 +10,21 @@ import { IDisplayAdapter } from 'src/types.d';
 const ID_BUILT_IN_DISPLAY = 'built-in-mac-display';
 
 
+let _cacheTime = 0;
 let _cache : Record<string, any>= {
   whichDisplayLaptopBuiltin: undefined,
+  allMonitorList: undefined,
 };
+
+function getCache(){
+  if(Date.now() - _cacheTime <= 3000){
+    // clear cache
+    _cache = {};
+  }
+
+  return _cache;
+}
+
 
 async function _findWhichExternalDisplayById(targetMonitorId: string) {
   const monitorIds = (await _getMonitorList()).filter(
@@ -30,8 +42,8 @@ async function _findWhichExternalDisplayById(targetMonitorId: string) {
 
 async function _findWhichBuiltinDisplayById() {
   return new Promise(async (resolve) => {
-    if(_cache.whichDisplayLaptopBuiltin){
-      return resolve(_cache.whichDisplayLaptopBuiltin)
+    if(getCache().whichDisplayLaptopBuiltin){
+      return resolve(getCache().whichDisplayLaptopBuiltin)
     }
 
     const shellToRun = `${await _getBrightnessBinary()} -l`;
@@ -43,7 +55,7 @@ async function _findWhichBuiltinDisplayById() {
           line = line.replace('display', '').trim();
           line = line.substr(0, line.indexOf(':'));
           const whichDisplay = parseInt(line);
-          _cache.whichDisplayLaptopBuiltin = whichDisplay;
+          getCache().whichDisplayLaptopBuiltin = whichDisplay;
           return resolve(whichDisplay);
         }
       }
@@ -55,8 +67,8 @@ async function _findWhichBuiltinDisplayById() {
 
 async function _getMonitorList () : Promise<string[]> {
   return new Promise(async (resolve, reject) => {
-    if(_cache.allMonitorList){
-      return resolve(_cache.allMonitorList)
+    if(getCache().allMonitorList){
+      return resolve(getCache().allMonitorList)
     }
 
     try {
@@ -68,7 +80,7 @@ async function _getMonitorList () : Promise<string[]> {
           .map((line, idx) => line.replace('D:', '').trim());
         monitors.unshift(ID_BUILT_IN_DISPLAY);
 
-        _cache.allMonitorList = monitors;
+        getCache().allMonitorList = monitors;
 
         resolve(monitors);
       });
@@ -124,7 +136,10 @@ const DisplayAdapter: IDisplayAdapter = {
 
           const stdout =await executeBash(shellToRun);
           for (let line of stdout.split('\n')) {
-            if (line.includes(`VCP control`) && line.includes('current')) {
+            if(line.includes('No data after') && line.includes('tries')){
+              break;
+            }
+            else if (line.includes(`VCP control`) && line.includes('current')) {
               const brightness = parseInt(line.substr(line.indexOf('current: ') + 'current: '.length))
 
               if (brightness >= 0) {
