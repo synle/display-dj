@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@v2
       - run: npm version --no-git-tag-version patch
       - run: npm install --no-optional
-      - run: npm run build
+      - run: npm run build-prod
       - run: npm run test-ci
       - run: npm run dist-win32
 
@@ -65,7 +65,7 @@ jobs:
       - uses: actions/checkout@v2
       - run: npm version --no-git-tag-version patch
       - run: npm install --no-optional
-      - run: npm run build
+      - run: npm run build-prod
       - run: npm run test-ci
       - run: npm run dist-darwin
 
