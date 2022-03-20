@@ -12,7 +12,7 @@ jobs:
       release_upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       - uses: actions/checkout@v2
-      - run: npm version --no-git-tag-version patch
+      - run: git push origin --delete beta
       - id: package-version
         uses: martinbeentjes/npm-get-version-action@master
         with:
