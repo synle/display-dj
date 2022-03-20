@@ -70,7 +70,7 @@
     "electron": "^17.1.2",
     "electron-installer-dmg": "^3.0.0",
     "electron-packager": "^15.4.0",
-    "eslint": "^7.32.0",
+    "eslint": "^8.11.0",
     "prettier": "^2.6.0",
     "rimraf": "^3.0.2",
     "sass": "^1.49.9",
