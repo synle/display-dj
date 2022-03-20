@@ -32,6 +32,7 @@ async function doDistWork() {
           outputDirectory: path.join(__dirname, 'dist'),
           iconUrl: path.join(__dirname, 'src', 'assets', 'icon.ico'),
           setupIcon: path.join(__dirname, 'src', 'assets', 'icon.ico'),
+          loadingGif: path.join(__dirname, 'src', 'assets', 'installing.gif'),
           name: 'DisplayDJ',
           authors: 'Sy Le',
           exe: 'display-dj.exe',
