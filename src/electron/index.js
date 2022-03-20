@@ -45,20 +45,13 @@ function createWindow() {
     height: 200,
   });
 
-  mainWindow.on('minimize', function (event) {
-    event.preventDefault();
+  mainWindow.on('minimize', (e) => {
+    e.preventDefault();
     mainWindow.hide();
   });
 
-  // mainWindow.on('close', function (event) {
-  //   event.preventDefault();
-  //   mainWindow.hide();
-
-  //   return false;
-  // });
-
-  mainWindow.on('blur', function (event) {
-    event.preventDefault();
+  mainWindow.on('blur', (e) => {
+    e.preventDefault();
     mainWindow.hide();
   });
 
@@ -284,11 +277,11 @@ function _getTrayIcon() {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
+  await setUpDataEndpoints();
   await synchronizeBrightness();
   await createWindow();
   await createTray();
   await setupAutolaunch();
-  await setUpDataEndpoints();
   await setUpShortcuts();
 });
 
