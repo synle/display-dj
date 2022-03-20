@@ -258,11 +258,11 @@ function setupAutolaunch() {
  * This routine runs once on load to make sure all the brightness are in sync with your configs
  */
 async function synchronizeBrightness(){
-  const monitors = await DisplayUtils.getMonitors();
+  const monitors = await DisplayUtils.getMonitorsFromStorage();
 
   for(const monitor of monitors){
     try{
-      await DisplayUtils.updateMonitor(monitor);
+      await DisplayUtils.updateMonitorBrightness(monitor.id, monitor.brightness);
       console.trace('Sync monitor brightness on load', monitor.name, monitor.brightness);
     } catch(err){
       console.error('Failed to sync monitor brightness on load', monitor.name, monitor.id);
@@ -278,12 +278,12 @@ function _getTrayIcon() {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
+  await synchronizeBrightness();
   await createWindow();
   await createTray();
   await setupAutolaunch();
   await setUpDataEndpoints();
   await setUpShortcuts();
-  await synchronizeBrightness();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common

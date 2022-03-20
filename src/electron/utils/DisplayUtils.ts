@@ -38,6 +38,10 @@ function _serializeMonitorConfigs(monitors: Monitor[]) {
 }
 
 const DisplayUtils = {
+  getMonitorsFromStorage: async() => {
+    const monitorsFromStorage = _getMonitorConfigs();
+    return Object.values(monitorsFromStorage)
+  },
   getMonitors: async () => {
     let monitors: Monitor[] = [];
 
@@ -150,6 +154,7 @@ const DisplayUtils = {
 
     return newBrightness;
   },
+  updateMonitorBrightness: DisplayAdapter.updateMonitorBrightness,
   getDarkMode: DisplayAdapter.getDarkMode,
   updateDarkMode: DisplayAdapter.updateDarkMode,
 };
