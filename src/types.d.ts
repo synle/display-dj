@@ -55,5 +55,5 @@ export type Preference = {
 };
 
 export type UIAppState = {
-  isUpdatingBrightness: boolean;
+
 };
