@@ -27,9 +27,22 @@ const StorageUtils = {
   writeJSON: (file: string, jsonObject: any) => {
     fs.writeFileSync(file, JSON.stringify(jsonObject, null, 2));
   },
+  write: (file: string, text: string) => {
+    fs.writeFileSync(file, text);
+  },
   append: (file: string, text: string) => {
     fs.appendFileSync(file, text);
   },
+  /**
+   * return value in mb
+   */
+  size: (file: string) => {
+    try{
+      return fs.statSync(file).size / 1000000;
+    } catch(err){
+      return undefined;
+    }
+  }
 };
 
 export default StorageUtils;
