@@ -53,14 +53,23 @@ const DisplayAdapter: IDisplayAdapter = {
   },
   getMonitorType: async (targetMonitorId: string) => {
     try {
-      await _getBrightnessDccCi(targetMonitorId);
-      return 'external_monitor';
+      const brightness = await _getBrightnessDccCi(targetMonitorId);
+
+      if(brightness >= 0 && brightness <= 100){
+        return 'external_monitor';
+      }
+
+      throw 'invalid brightness number from ddcci';
     } catch (err) {
       try {
-        await _getBrightnessBuiltin();
-        return 'laptop_monitor';
+        const brightness = await _getBrightnessBuiltin();
+
+        if(brightness >= 0 && brightness <= 100){
+           return 'laptop_monitor';
+        }
       } catch (err) {}
     }
+
     return 'unknown_monitor';
   },
   getMonitorBrightness: async (targetMonitorId: string) => {
