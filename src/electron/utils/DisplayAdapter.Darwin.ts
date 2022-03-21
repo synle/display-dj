@@ -138,7 +138,7 @@ const DisplayAdapter: IDisplayAdapter = {
                   100,
               );
 
-              if(brightness >= 0 && brightness <= 100){
+              if (brightness >= 0 && brightness <= 100) {
                 return resolve(brightness);
               }
             }
@@ -163,7 +163,7 @@ const DisplayAdapter: IDisplayAdapter = {
                 line.substr(line.indexOf('current: ') + 'current: '.length),
               );
 
-              if(brightness >= 0 && brightness <= 100){
+              if (brightness >= 0 && brightness <= 100) {
                 return resolve(brightness);
               }
             }
