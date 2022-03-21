@@ -1,11 +1,9 @@
-import StorageUtils, {
-  LOG_FILE_PATH,
-} from 'src/electron/utils/StorageUtils';
+import StorageUtils, { LOG_FILE_PATH } from 'src/electron/utils/StorageUtils';
 
-function _appendLogToFile(...data){
+function _appendLogToFile(...data) {
   const logLine = `[${new Date().toLocaleString()}] ${_serializeLogData(...data)}\n`;
 
-  if(StorageUtils.size(LOG_FILE_PATH) > 100){
+  if (StorageUtils.size(LOG_FILE_PATH) > 100) {
     // if the file is greater threshold in MB, then do this as a write
     // to wipe out the old logs
     StorageUtils.write(LOG_FILE_PATH, logLine);
@@ -15,20 +13,20 @@ function _appendLogToFile(...data){
   }
 }
 
-function _serializeLogData(...data){
+function _serializeLogData(...data) {
   const res = [];
 
-  for(const item of data){
-    if (Array.isArray(item)){
+  for (const item of data) {
+    if (Array.isArray(item)) {
       res.push(item.map(JSON.stringify).join(', '));
-    } else if(item.constructor === Object) {
+    } else if (item.constructor === Object) {
       res.push(JSON.stringify(item));
     } else {
       res.push(item);
     }
   }
 
-  return res.join('  ')
+  return res.join('  ');
 }
 
 // colors and stylings for console logs
@@ -53,7 +51,7 @@ console.log = (...data) => {
   origConsole('[LOG]'.green(), ...data);
 
   _appendLogToFile(`[LOG]`, ...data);
-}
+};
 
 console.info = (...data) => {
   origConsole('[INFO]'.green(), ...data);

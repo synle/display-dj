@@ -15,9 +15,7 @@ export const QUERY_KEY_APP_STATE = 'appState';
 export const QUERY_KEY_PREFERENCE = 'preferences';
 
 // app state (not used anymore, but left as is if we want to add new global state to the app)
-let _appState: UIAppState = {
-
-};
+let _appState: UIAppState = {};
 
 export function useAppState() {
   return useQuery(QUERY_KEY_APP_STATE, () => _appState);

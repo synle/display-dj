@@ -38,9 +38,9 @@ function _serializeMonitorConfigs(monitors: Monitor[]) {
 }
 
 const DisplayUtils = {
-  getMonitorsFromStorage: async() => {
+  getMonitorsFromStorage: async () => {
     const monitorsFromStorage = _getMonitorConfigs();
-    return Object.values(monitorsFromStorage)
+    return Object.values(monitorsFromStorage);
   },
   getMonitors: async () => {
     let monitors: Monitor[] = [];
@@ -61,11 +61,9 @@ const DisplayUtils = {
       try {
         brightness = await DisplayAdapter.getMonitorBrightness(idToUse);
       } catch (err) {}
-
-
       let name = monitorsFromStorage?.[idToUse]?.name || '';
-      if(!name){
-        name = type === 'laptop_monitor' ? `Laptop Display` : `External Monitor #${++monitorCount}`
+      if (!name) {
+        name = type === 'laptop_monitor' ? `Laptop Display` : `External Monitor #${++monitorCount}`;
       }
 
       monitors.push({
@@ -137,17 +135,15 @@ const DisplayUtils = {
       newBrightness = 100;
     }
 
-    const monitors = (await DisplayUtils.getMonitors()).map(monitor => ({
+    const monitors = (await DisplayUtils.getMonitors()).map((monitor) => ({
       ...monitor,
-      brightness: newBrightness
+      brightness: newBrightness,
     }));
 
     // persist to storage
     _syncMonitorConfigs(monitors);
 
-    await DisplayAdapter.batchUpdateMonitorBrightness(
-      monitors
-    );
+    await DisplayAdapter.batchUpdateMonitorBrightness(monitors);
 
     return newBrightness;
   },
