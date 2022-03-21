@@ -2,6 +2,8 @@
 
 `display-dj` is a cross platform desktop application that supports brightness adjustment for integrated laptop monitor as well as external monitors and dark mode toggle supporting Windows and MacOSX at the moment. Adjustment brightness will be quicker and does not require tinkering with the external monitor controls.
 
+I published an article describing this project in details. Here's [the link to the published article about display-dj](https://www.linkedin.com/pulse/my-journey-building-display-dj-cross-platform-application-sy-le)
+
 ## The Problems
 
 - Back in the old days, it requires physical controls to change the brightness of external monitors. It is very time consuming and quirky to get it just right.
