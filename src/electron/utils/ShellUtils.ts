@@ -1,6 +1,6 @@
 import { spawn, exec } from 'child_process';
 
-export function executePowershell(shellToRun: string, delay = 50): Promise<string> {
+export function executePowershell(shellToRun: string, delay = 25): Promise<string> {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const child = spawn('powershell.exe', ['-Command', shellToRun]);
@@ -22,7 +22,7 @@ export function executePowershell(shellToRun: string, delay = 50): Promise<strin
   });
 }
 
-export function executeBash(shellToRun: string, delay = 50): Promise<string> {
+export function executeBash(shellToRun: string, delay = 25): Promise<string> {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       exec(shellToRun, (error, stdout, stderr) => {
@@ -31,40 +31,6 @@ export function executeBash(shellToRun: string, delay = 50): Promise<string> {
         }
 
         resolve(stdout);
-      });
-    }, delay);
-  });
-}
-
-export function executeBashFork(shellToRun: string, delay = 25): Promise<string> {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      const [tool, ...rest] = shellToRun.split(' ');
-
-      const command = spawn(shellToRun, [rest.join(' ')]);
-
-      let stderr = '';
-      let stdout = '';
-
-      command.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      command.stderr.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      command.on('error', function (err) {
-        console.error(err);
-        reject(stderr);
-      });
-
-      command.on('exit', function (exitCode: string) {
-        if (parseInt(exitCode) !== 0) {
-          reject(stderr); //Handle non-zero exit
-        } else {
-          resolve(stdout);
-        }
       });
     }, delay);
   });
