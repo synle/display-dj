@@ -55,7 +55,7 @@ const DisplayAdapter: IDisplayAdapter = {
     try {
       const brightness = await _getBrightnessDccCi(targetMonitorId);
 
-      if(brightness >= 0 && brightness <= 100){
+      if (brightness >= 0 && brightness <= 100) {
         return 'external_monitor';
       }
 
@@ -64,8 +64,8 @@ const DisplayAdapter: IDisplayAdapter = {
       try {
         const brightness = await _getBrightnessBuiltin();
 
-        if(brightness >= 0 && brightness <= 100){
-           return 'laptop_monitor';
+        if (brightness >= 0 && brightness <= 100) {
+          return 'laptop_monitor';
         }
       } catch (err) {}
     }
