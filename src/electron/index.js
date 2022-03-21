@@ -43,6 +43,7 @@ function createWindow() {
     icon: path.join(appBaseDir, 'icon.ico'),
     width: 300,
     height: 200,
+    skipTaskbar: true,
   });
 
   mainWindow.on('minimize', (e) => {
