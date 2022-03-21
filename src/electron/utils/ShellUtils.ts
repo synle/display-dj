@@ -36,7 +36,7 @@ export function executeBash(shellToRun: string, delay = 50): Promise<string> {
   });
 }
 
-export function executeBashFork(shellToRun: string, delay = 50): Promise<string> {
+export function executeBashFork(shellToRun: string, delay = 25): Promise<string> {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const [tool, ...rest] = shellToRun.split(' ');
