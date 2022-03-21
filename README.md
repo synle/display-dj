@@ -52,14 +52,26 @@ brew install ddcctl
 brew install brightness
 ```
 
-## Monitor Configs
+## Features / Configs / Preferences
+
+### Renaming the display
+
+By default, we will give each display a name. You can rename the display to something more friendly by clicking on the name of the display and finish by hitting Enter key.
+
+![image](https://user-images.githubusercontent.com/3792401/159371503-32609f31-552a-49d4-97e8-285f906c7c94.png)
+
+![image](https://user-images.githubusercontent.com/3792401/159371522-18fb1947-ba3a-4042-a2a8-68b425dde6e2.png)
+
+![image](https://user-images.githubusercontent.com/3792401/159371549-4f92a00e-2f14-4cee-b258-1af5440122d3.png)
+
+### Monitor Configs
 
 At the moment, there is no UI to modify the configs. This can also be accessed via right clicking the tray icon of display-dj and choose `Open Monitor Configs`.
 
 - `disabled`: flag can be used to hide a monitor off the list
 - `sortOrder`: flag can be used to change which monitor showing up first
 
-### Sample configs file
+#### Sample configs file
 
 Configs file are located at:
 
@@ -92,7 +104,7 @@ Configs file are located at:
 }
 ```
 
-## Preferences / Keybindings
+### Preferences / Keybindings
 
 At the moment, there is no UI to modify the preferences. This can also be accessed via right clicking the tray icon of display-dj and choose `Open App Preferences`.
 
@@ -115,7 +127,7 @@ command/changeDarkMode/dark
 command/changeDarkMode/light
 ```
 
-### Sample preferences file
+#### Sample preferences file
 
 Preferences file are located at:
 
