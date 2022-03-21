@@ -1,3 +1,4 @@
+import {EventEmitter} from 'events';
 import AutoLaunch from 'auto-launch';
 import {
   BrowserWindow,
@@ -93,15 +94,15 @@ async function createTray() {
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Change brightness to 0%',
-      click: () => DisplayUtils.batchUpdateBrightness(0),
+      click: () => global.AppEventEmitter.emit('GlobalAppEvent', {command: 'command/changeBrightness/0'}),
     },
     {
       label: 'Change brightness to 50%',
-      click: () => DisplayUtils.batchUpdateBrightness(50),
+      click: () => global.AppEventEmitter.emit('GlobalAppEvent', {command: 'command/changeBrightness/50'}),
     },
     {
       label: 'Change brightness to 100%',
-      click: () => DisplayUtils.batchUpdateBrightness(100),
+      click: () => global.AppEventEmitter.emit('GlobalAppEvent', {command: 'command/changeBrightness/100'}),
     },
     {
       type: 'separator',
@@ -159,58 +160,11 @@ async function createTray() {
 }
 
 async function setUpShortcuts() {
-  let allMonitorBrightness = await DisplayUtils.getAllMonitorsBrightness();
-  let darkModeToUse = (await DisplayUtils.getDarkMode()) === true;
-
   const preferences = await PreferenceUtils.get();
 
   const keybindingSuccess = preferences.keyBindings.map((keyBinding) => {
     return globalShortcut.register(keyBinding.key, async () => {
-      if (keyBinding.command.includes(`command/changeBrightness`)) {
-        // these commands are change brightness
-        let delta = preferences.brightnessDelta;
-
-        switch (keyBinding.command) {
-          case 'command/changeBrightness/down':
-            delta = -1 * preferences.brightnessDelta;
-            break;
-          case 'command/changeBrightness/up':
-            delta = preferences.brightnessDelta;
-            break;
-          case 'command/changeBrightness/0':
-            delta = 0;
-            allMonitorBrightness = 0;
-            break;
-          case 'command/changeBrightness/50':
-            delta = 0;
-            allMonitorBrightness = 50;
-            break;
-          case 'command/changeBrightness/100':
-            delta = 0;
-            allMonitorBrightness = 100;
-            break;
-        }
-
-        allMonitorBrightness = await DisplayUtils.batchUpdateBrightness(
-          allMonitorBrightness,
-          delta,
-        );
-      } else if (keyBinding.command.includes(`command/changeDarkMode`)) {
-        switch (keyBinding.command) {
-          case 'command/changeDarkMode/toggle':
-            darkModeToUse = (await DisplayUtils.getDarkMode()) === true;
-            darkModeToUse = !darkModeToUse;
-            break;
-          case 'command/changeDarkMode/light':
-            darkModeToUse = false;
-            break;
-          case 'command/changeDarkMode/dark':
-            darkModeToUse = true;
-            break;
-        }
-
-        await DisplayUtils.updateDarkMode(darkModeToUse);
-      }
+      global.AppEventEmitter.emit('GlobalAppEvent', {command: keyBinding.command});
     });
   });
 
@@ -225,6 +179,7 @@ async function setUpShortcuts() {
     console.info('globalShortcut keybinding success');
   }
 }
+
 function setupAutolaunch() {
   if (process.env.APPLICATION_MODE !== 'production') {
     return;
@@ -236,6 +191,62 @@ function setupAutolaunch() {
   });
   autoLaunch.isEnabled().then((isEnabled) => {
     if (!isEnabled) autoLaunch.enable();
+  });
+}
+
+async function setupCommandChannel(){
+  let allMonitorBrightness = await DisplayUtils.getAllMonitorsBrightness();
+  let darkModeToUse = (await DisplayUtils.getDarkMode()) === true;
+  const preferences = await PreferenceUtils.get();
+
+  global.AppEventEmitter = new EventEmitter();
+
+  // global.AppEventEmitter.emit('GlobalAppEvent', {command: 'command/changeBrightness/0'});
+  global.AppEventEmitter.on('GlobalAppEvent', async (data) => {
+    const {command} = data;
+
+    if (command.includes(`command/changeBrightness`)) {
+      // these commands are change brightness
+      let delta = preferences.brightnessDelta;
+
+      switch (command) {
+        case 'command/changeBrightness/down':
+          delta = -1 * preferences.brightnessDelta;
+          break;
+        case 'command/changeBrightness/up':
+          delta = preferences.brightnessDelta;
+          break;
+        case 'command/changeBrightness/0':
+          delta = 0;
+          allMonitorBrightness = 0;
+          break;
+        case 'command/changeBrightness/50':
+          delta = 0;
+          allMonitorBrightness = 50;
+          break;
+        case 'command/changeBrightness/100':
+          delta = 0;
+          allMonitorBrightness = 100;
+          break;
+      }
+
+      await DisplayUtils.batchUpdateBrightness(allMonitorBrightness, delta);
+    } else if (command.includes(`command/changeDarkMode`)) {
+      switch (command) {
+        case 'command/changeDarkMode/toggle':
+          darkModeToUse = (await DisplayUtils.getDarkMode()) === true;
+          darkModeToUse = !darkModeToUse;
+          break;
+        case 'command/changeDarkMode/light':
+          darkModeToUse = false;
+          break;
+        case 'command/changeDarkMode/dark':
+          darkModeToUse = true;
+          break;
+      }
+
+      await DisplayUtils.updateDarkMode(darkModeToUse);
+    }
   });
 }
 
@@ -272,6 +283,7 @@ app.on('ready', async () => {
   // show the tray as soon as possible
   global.tray = new Tray((await DisplayUtils.getDarkMode()) === true ? DARK_ICON : LIGHT_ICON);
 
+  await setupCommandChannel()
   await setUpDataEndpoints();
   await synchronizeBrightness();
   await createWindow();
