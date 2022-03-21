@@ -12,7 +12,7 @@ switch (process.platform) {
     break;
   case 'darwin':
     source = `src/electron/utils/DisplayAdapter.Darwin.ts`;
-    packages = ['dark-mode'];
+    packages = ['dark-mode', 'electron-installer-dmg'];
     break;
 }
 
