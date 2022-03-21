@@ -35,8 +35,8 @@ npm install
 npm start
 ```
 
-
 ## Log Files
+
 Log files are located in
 
 - Windows: `%AppData%\display-dj\logs.txt`

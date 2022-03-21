@@ -88,15 +88,17 @@ const DisplayAdapter: IDisplayAdapter = {
     const promisesChangeBrightness = [];
 
     for (const monitor of monitors) {
-      promisesChangeBrightness.push(new Promise(async (resolve) => {
-        try{
-          await DisplayAdapter.updateMonitorBrightness(monitor.id, monitor.brightness);
-          console.trace('Update monitor brightness', monitor.name, monitor.brightness);
-        } catch(err){
-          console.error('Failed to update monitor brightness', monitor.name, monitor.id);
-        }
-        resolve(monitor.id)
-      }))
+      promisesChangeBrightness.push(
+        new Promise(async (resolve) => {
+          try {
+            await DisplayAdapter.updateMonitorBrightness(monitor.id, monitor.brightness);
+            console.trace('Update monitor brightness', monitor.name, monitor.brightness);
+          } catch (err) {
+            console.error('Failed to update monitor brightness', monitor.name, monitor.id);
+          }
+          resolve(monitor.id);
+        }),
+      );
     }
 
     await Promise.all(promisesChangeBrightness);

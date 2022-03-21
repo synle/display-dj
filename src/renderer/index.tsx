@@ -50,12 +50,12 @@ function Home(props: HomeProps) {
     };
   }, []);
 
-  const isLoading = loadingConfigs  || loadingPrefs;
+  const isLoading = loadingConfigs || loadingPrefs;
   if (isLoading) {
     return (
       <>
-      <Header configs={configs} preference={preference} />
-      <h3>Loading... Please wait...</h3>
+        <Header configs={configs} preference={preference} />
+        <h3>Loading... Please wait...</h3>
       </>
     );
   }
@@ -64,10 +64,8 @@ function Home(props: HomeProps) {
     // TODO: add message for no data state
     return (
       <>
-      <Header configs={configs} preference={preference} />
-      <h3>
-        Errors... Failed to get data...
-      </h3>
+        <Header configs={configs} preference={preference} />
+        <h3>Errors... Failed to get data...</h3>
       </>
     );
   }
@@ -86,18 +84,20 @@ function Home(props: HomeProps) {
 }
 
 type HeaderProps = {
-  configs?: AppConfig,
-  preference?: Preference
-}
-function Header(props: HeaderProps){
+  configs?: AppConfig;
+  preference?: Preference;
+};
+function Header(props: HeaderProps) {
   const { configs, preference } = props;
 
-  return <header>
-        <h2>
-          Display-DJ {configs?.version} {configs?.env !== 'production' ? configs?.env : ''}
-        </h2>
-        {!preference ? null : <ToggleAllDisplay preference={preference} />}
-      </header>
+  return (
+    <header>
+      <h2>
+        Display-DJ {configs?.version} {configs?.env !== 'production' ? configs?.env : ''}
+      </h2>
+      {!preference ? null : <ToggleAllDisplay preference={preference} />}
+    </header>
+  );
 }
 
 type ToggleAllDisplayProps = {
@@ -251,9 +251,7 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
           className='field__value'
           placeholder='brightness'
           value={monitor.brightness}
-          onInput={(e) =>
-            onBrightnessChange(parseInt((e.target as HTMLInputElement).value) || 0)
-          }
+          onInput={(e) => onBrightnessChange(parseInt((e.target as HTMLInputElement).value) || 0)}
         />
       </div>
     </>

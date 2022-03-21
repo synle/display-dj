@@ -11,7 +11,13 @@ type KeyBinding = {
     // dark mode commands
     | 'command/changeDarkMode/toggle'
     | 'command/changeDarkMode/dark'
-    | 'command/changeDarkMode/light';
+    | 'command/changeDarkMode/light'
+    // open external links or text files
+    | 'command/openExternal/file/monitorConfigs'
+    | 'command/openExternal/file/preferences'
+    | 'command/openExternal/file/devLogs'
+    | 'command/openExternal/link/bugReport'
+    | 'command/openExternal/link/aboutUs';
 };
 
 export type SingleMonitorUpdateInput = {
@@ -54,6 +60,4 @@ export type Preference = {
   keyBindings: KeyBinding[];
 };
 
-export type UIAppState = {
-
-};
+export type UIAppState = {};

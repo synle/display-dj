@@ -37,12 +37,12 @@ const StorageUtils = {
    * return value in mb
    */
   size: (file: string) => {
-    try{
+    try {
       return fs.statSync(file).size / 1000000;
-    } catch(err){
+    } catch (err) {
       return undefined;
     }
-  }
+  },
 };
 
 export default StorageUtils;

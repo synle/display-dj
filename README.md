@@ -170,8 +170,8 @@ Preferences file are located at:
 - [ ] Allow creation of display profiles so the profile can be selected from context menu or a shortcut. This profile should apply all individual display brightness.
 - [x] Shortcut key for dark mode change.
 - [x] Keyboard shortcuts to be dynamically managed in the preference file.
-- [X] Windows build - Properly package the build as `exe` file instead of plain zipped files.
-- [X] Mac build - Properly package the build as `dmg` file instead of plain zipped files.
+- [x] Windows build - Properly package the build as `exe` file instead of plain zipped files.
+- [x] Mac build - Properly package the build as `dmg` file instead of plain zipped files.
 - [x] Properly hookup the icons for mac.
 - [ ] Properly set up CI/CD pipeline for releases and main page content.
 - [x] MacOSX - Fix an issue where the positioning of the app is misplaced in the main display regardless of mouse click.
