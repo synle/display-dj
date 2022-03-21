@@ -1,4 +1,3 @@
-import {EventEmitter} from 'events';
 import AutoLaunch from 'auto-launch';
 import {
   BrowserWindow,
@@ -15,6 +14,7 @@ import { getEndpointHandlers, setUpDataEndpoints } from 'src/electron/utils/Endp
 import PositionUtils from 'src/electron/utils/PositionUtils';
 import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
 import { matchPath } from 'react-router-dom';
+import { EventEmitter } from 'events';
 import path from 'path';
 import StorageUtils, {
   MONITOR_CONFIG_FILE_PATH,
@@ -94,57 +94,52 @@ async function createTray() {
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Change brightness to 0%',
-      click: () => global.AppEventEmitter.emit('GlobalAppEvent', {command: 'command/changeBrightness/0'}),
+      click: () => global.emitAppEvent({ command: 'command/changeBrightness/0' }),
     },
     {
       label: 'Change brightness to 50%',
-      click: () => global.AppEventEmitter.emit('GlobalAppEvent', {command: 'command/changeBrightness/50'}),
+      click: () => global.emitAppEvent({ command: 'command/changeBrightness/50' }),
     },
     {
       label: 'Change brightness to 100%',
-      click: () => global.AppEventEmitter.emit('GlobalAppEvent', {command: 'command/changeBrightness/100'}),
+      click: () => global.emitAppEvent({ command: 'command/changeBrightness/100' }),
+    },
+    {
+      type: 'separator',
+    },
+    {
+      label: 'Use Light Mode',
+      click: () => global.emitAppEvent({ command: 'command/changeDarkMode/light' }),
+    },
+    {
+      label: 'Use Dark Mode',
+      click: () => global.emitAppEvent({ command: 'command/changeDarkMode/dark' }),
     },
     {
       type: 'separator',
     },
     {
       label: 'Open Monitor Configs',
-      click: () => {
-        try {
-          shell.openExternal(`file://${MONITOR_CONFIG_FILE_PATH}`);
-        } catch (err) {}
-      },
+      click: () => global.emitAppEvent({ command: 'command/openExternal/file/monitorConfigs' }),
     },
     {
       label: 'Open App Preferences',
-      click: () => {
-        try {
-          shell.openExternal(`file://${PREFERENCE_FILE_PATH}`);
-        } catch (err) {}
-      },
+      click: () => global.emitAppEvent({ command: 'command/openExternal/file/preferences' }),
     },
     {
       label: 'Open Dev Logs',
-      click: () => {
-        try {
-          shell.openExternal(`file://${LOG_FILE_PATH}`);
-        } catch (err) {}
-      },
+      click: () => global.emitAppEvent({ command: 'command/openExternal/file/devLogs' }),
     },
     {
       type: 'separator',
     },
     {
       label: 'File a bug',
-      click: async () => {
-        await shell.openExternal('https://github.com/synle/display-dj/issues/new');
-      },
+      click: () => global.emitAppEvent({ command: 'command/openExternal/link/bugReport' }),
     },
     {
       label: 'About display-dj',
-      click: async () => {
-        await shell.openExternal('https://github.com/synle/display-dj');
-      },
+      click: () => global.emitAppEvent({ command: 'command/openExternal/link/aboutUs' }),
     },
     {
       type: 'separator',
@@ -164,7 +159,7 @@ async function setUpShortcuts() {
 
   const keybindingSuccess = preferences.keyBindings.map((keyBinding) => {
     return globalShortcut.register(keyBinding.key, async () => {
-      global.AppEventEmitter.emit('GlobalAppEvent', {command: keyBinding.command});
+      global.emitAppEvent({ command: keyBinding.command });
     });
   });
 
@@ -194,16 +189,24 @@ function setupAutolaunch() {
   });
 }
 
-async function setupCommandChannel(){
+async function setupCommandChannel() {
   let allMonitorBrightness = await DisplayUtils.getAllMonitorsBrightness();
   let darkModeToUse = (await DisplayUtils.getDarkMode()) === true;
   const preferences = await PreferenceUtils.get();
 
-  global.AppEventEmitter = new EventEmitter();
+  const AppEventEmitter = new EventEmitter();
 
-  // global.AppEventEmitter.emit('GlobalAppEvent', {command: 'command/changeBrightness/0'});
-  global.AppEventEmitter.on('GlobalAppEvent', async (data) => {
-    const {command} = data;
+  const EVENT_KEY_MISSION_CONTROL = 'GlobalAppEvent';
+
+  global.emitAppEvent = (data, eventName = EVENT_KEY_MISSION_CONTROL) => {
+    AppEventEmitter.emit(eventName, data);
+  };
+
+  global.subscribeAppEvent = (callbackFunc, eventName = EVENT_KEY_MISSION_CONTROL) => {
+    // TODO: not used right now
+  };
+  AppEventEmitter.on(EVENT_KEY_MISSION_CONTROL, async (data) => {
+    const { command } = data;
 
     if (command.includes(`command/changeBrightness`)) {
       // these commands are change brightness
@@ -246,6 +249,29 @@ async function setupCommandChannel(){
       }
 
       await DisplayUtils.updateDarkMode(darkModeToUse);
+    } else if (command.includes(`command/openExternal`)) {
+      let locationToUse;
+      let protocol = command.includes(`command/openExternal/file`) ? 'file://' : '';
+
+      switch (command) {
+        case 'command/openExternal/file/monitorConfigs':
+          locationToUse = MONITOR_CONFIG_FILE_PATH;
+          break;
+        case 'command/openExternal/file/preferences':
+          locationToUse = PREFERENCE_FILE_PATH;
+          break;
+        case 'command/openExternal/file/devLogs':
+          locationToUse = LOG_FILE_PATH;
+          break;
+        case 'command/openExternal/link/bugReport':
+          locationToUse = 'https://github.com/synle/display-dj/issues/new';
+          break;
+        case 'command/openExternal/link/aboutUs':
+          locationToUse = 'https://github.com/synle/display-dj';
+          break;
+      }
+
+      shell.openExternal(`${protocol}${locationToUse}`);
     }
   });
 }
@@ -253,23 +279,25 @@ async function setupCommandChannel(){
 /**
  * This routine runs once on load to make sure all the brightness are in sync with your configs
  */
-async function synchronizeBrightness(){
+async function synchronizeBrightness() {
   const monitors = await DisplayUtils.getMonitorsFromStorage();
 
-  const promises =[];
-  for(const monitor of monitors){
-    promises.push(new Promise(async (resolve) => {
-      try{
-        await DisplayUtils.updateMonitorBrightness(monitor.id, monitor.brightness);
-        console.trace('Sync monitor brightness on load', monitor.name, monitor.brightness);
-      } catch(err){
-        console.error('Failed to sync monitor brightness on load', monitor.name, monitor.id);
-      }
-      resolve()
-    }))
+  const promises = [];
+  for (const monitor of monitors) {
+    promises.push(
+      new Promise(async (resolve) => {
+        try {
+          await DisplayUtils.updateMonitorBrightness(monitor.id, monitor.brightness);
+          console.trace('Sync monitor brightness on load', monitor.name, monitor.brightness);
+        } catch (err) {
+          console.error('Failed to sync monitor brightness on load', monitor.name, monitor.id);
+        }
+        resolve();
+      }),
+    );
   }
 
-  await Promise.all(promises)
+  await Promise.all(promises);
 }
 
 function _getTrayIcon() {
@@ -283,7 +311,7 @@ app.on('ready', async () => {
   // show the tray as soon as possible
   global.tray = new Tray((await DisplayUtils.getDarkMode()) === true ? DARK_ICON : LIGHT_ICON);
 
-  await setupCommandChannel()
+  await setupCommandChannel();
   await setUpDataEndpoints();
   await synchronizeBrightness();
   await createWindow();
