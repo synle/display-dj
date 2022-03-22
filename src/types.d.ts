@@ -1,9 +1,8 @@
 type DisplayType = 'laptop_monitor' | 'external_monitor' | 'unknown_monitor';
 
-type KeyBinding = {
-  key: string;
-  command: // brightness commands
-  | 'command/changeBrightness/down'
+type Command = // brightness commands
+
+    | 'command/changeBrightness/down'
     | 'command/changeBrightness/up'
     | 'command/changeBrightness/0'
     | 'command/changeBrightness/50'
@@ -18,6 +17,10 @@ type KeyBinding = {
     | 'command/openExternal/file/devLogs'
     | 'command/openExternal/link/bugReport'
     | 'command/openExternal/link/aboutUs';
+
+type KeyBinding = {
+  key: string;
+  command: Command[] | Command;
 };
 
 export type SingleMonitorUpdateInput = {
