@@ -333,6 +333,7 @@ function Slider(props: SliderProps) {
       className={className}
       placeholder={placeholder}
       disabled={disabled}
+      autoFocus={true}
     />
   );
 }
