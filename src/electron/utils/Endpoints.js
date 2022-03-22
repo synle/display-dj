@@ -4,8 +4,7 @@ import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
 
 const electronEndpointHandlers = [];
 
-// TODO: read this from the package.json
-const version = '1.0.1';
+const version = process.env.APP_VERSION;
 
 function addDataEndpoint(method, url, incomingHandler) {
   const handlerToUse = async (req, res, cache) => {
