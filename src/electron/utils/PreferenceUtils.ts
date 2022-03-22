@@ -7,12 +7,18 @@ const DEFAULT_PREFERENCES: Preference = {
   showIndividualDisplays: false,
   brightnessDelta: 50,
   keyBindings: [
-    { key: 'Shift+Escape', command: 'command/changeDarkMode/toggle' },
-    { key: 'Shift+F1', command: 'command/changeBrightness/down' },
-    { key: 'Shift+F2', command: 'command/changeBrightness/up' },
-    { key: 'Shift+F3', command: 'command/changeBrightness/0' },
-    { key: 'Shift+F4', command: 'command/changeBrightness/50' },
-    { key: 'Shift+F5', command: 'command/changeBrightness/100' },
+    { key: 'Shift+Escape', command: ['command/changeDarkMode/toggle'] },
+    {
+      key: 'Shift+F1',
+      command: ['command/changeDarkMode/dark', 'command/changeBrightness/0'],
+    },
+    {
+      key: 'Shift+F2',
+      command: ['command/changeDarkMode/light', 'command/changeBrightness/100'],
+    },
+    { key: 'Shift+F3', command: ['command/changeBrightness/0'] },
+    { key: 'Shift+F4', command: ['command/changeBrightness/50'] },
+    { key: 'Shift+F5', command: ['command/changeBrightness/100'] },
   ],
 };
 
@@ -24,8 +30,8 @@ const PreferenceUtils = {
     preference = StorageUtils.readJSON(PREFERENCE_FILE_PATH);
 
     if (preference === undefined) {
-      preference = DEFAULT_PREFERENCES;
       shouldSync = true; // sync the default value
+      preference = DEFAULT_PREFERENCES; // fallback if preference is empty
     }
 
     // merging config keys

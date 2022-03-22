@@ -108,14 +108,16 @@ Configs file are located at:
 
 Below are default Key Bindings, you can modify the default keybinding in `preferences.json`, refer to the sample preferences file section.
 
-| Keys           | Command                          |
-| -------------- | -------------------------------- |
-| Shift + Escape | Toggle Dark Mode                 |
-| Shift + F1     | Change brightness one notch down |
-| Shift + F2     | Change brightness one notch up   |
-| Shift + F3     | Change brightness to 0%          |
-| Shift + F4     | Change brightness to 50%         |
-| Shift + F5     | Change brightness to 100%        |
+Key Bindings' command can be an array in case you want to mix and match multiple commands. In this case, `Shift + F1`, minimize brightness and also turn off darkmode.
+
+| Keys           | Command                                         |
+| -------------- | ----------------------------------------------- |
+| Shift + Escape | Toggle Dark Mode                                |
+| Shift + F1     | Change brightness to 0% and turn dark mode off  |
+| Shift + F2     | Change brightness to 100% and turn dark mode on |
+| Shift + F3     | Change brightness to 0%                         |
+| Shift + F4     | Change brightness to 50%                        |
+| Shift + F5     | Change brightness to 100%                       |
 
 ### Preferences / Key Bindings
 
@@ -159,12 +161,12 @@ Preferences file are located at:
     },
     {
       "key": "Shift+F1",
-      "command": "command/changeBrightness/down"
+      "command": ["command/changeDarkMode/dark", "command/changeBrightness/0"]
     },
     {
       "key": "Shift+F2",
-      "command": "command/changeBrightness/up"
-    },
+      "command": ["command/changeDarkMode/light", "command/changeBrightness/100"]
+    }
     {
       "key": "Shift+F3",
       "command": "command/changeBrightness/0"
