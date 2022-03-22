@@ -6,7 +6,7 @@ on:
 jobs:
   create_release:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 5
     outputs:
       package_version: ${{ steps.package-version.outputs.current-version }}
       release_upload_url: ${{ steps.create_release.outputs.upload_url }}
