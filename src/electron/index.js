@@ -145,6 +145,13 @@ async function createTray() {
       type: 'separator',
     },
     {
+      label: 'Reset',
+      click: () => global.emitAppEvent({ command: 'command/reset' }),
+    },
+    {
+      type: 'separator',
+    },
+    {
       label: 'Exit',
       click: () => {
         app.quit();
@@ -240,8 +247,10 @@ async function setupCommandChannel() {
           break;
       }
 
-      await DisplayUtils.batchUpdateBrightness(allMonitorBrightness, delta);
-    } else if (command.includes(`command/changeDarkMode`)) {
+      return await DisplayUtils.batchUpdateBrightness(allMonitorBrightness, delta);
+    }
+
+    if (command.includes(`command/changeDarkMode`)) {
       switch (command) {
         case 'command/changeDarkMode/toggle':
           darkModeToUse = (await DisplayUtils.getDarkMode()) === true;
@@ -255,8 +264,10 @@ async function setupCommandChannel() {
           break;
       }
 
-      await DisplayUtils.updateDarkMode(darkModeToUse);
-    } else if (command.includes(`command/openExternal`)) {
+      return await DisplayUtils.updateDarkMode(darkModeToUse);
+    }
+
+    if (command.includes(`command/openExternal`)) {
       let locationToUse;
       let protocol = command.includes(`command/openExternal/file`) ? 'file://' : '';
 
@@ -278,7 +289,11 @@ async function setupCommandChannel() {
           break;
       }
 
-      shell.openExternal(`${protocol}${locationToUse}`);
+      return shell.openExternal(`${protocol}${locationToUse}`);
+    }
+
+    if (command.includes(`command/reset`)) {
+      return await DisplayUtils.reset();
     }
   });
 }

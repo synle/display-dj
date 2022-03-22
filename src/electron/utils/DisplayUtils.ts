@@ -38,6 +38,12 @@ function _serializeMonitorConfigs(monitors: Monitor[]) {
 }
 
 const DisplayUtils = {
+  reset:async() => {
+    await Promise.all([
+      StorageUtils.delete(MONITOR_CONFIG_FILE_PATH),
+      StorageUtils.delete(PREFERENCE_FILE_PATH),
+    ]);
+  },
   getMonitorsFromStorage: async () => {
     const monitorsFromStorage = _getMonitorConfigs();
     return Object.values(monitorsFromStorage);
