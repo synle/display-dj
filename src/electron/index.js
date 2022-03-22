@@ -4,11 +4,11 @@ import {
   Menu,
   Tray,
   app,
+  dialog,
   globalShortcut,
   ipcMain,
   nativeTheme,
   shell,
-  dialog,
 } from 'electron';
 import DisplayUtils from 'src/electron/utils/DisplayUtils';
 import { getEndpointHandlers, setUpDataEndpoints } from 'src/electron/utils/Endpoints';
@@ -129,7 +129,8 @@ async function createTray() {
     },
     {
       label: `Open Monitor Configs`,
-      click: async () => global.emitAppEvent({ command: 'command/openExternal/file/monitorConfigs' }),
+      click: async () =>
+        global.emitAppEvent({ command: 'command/openExternal/file/monitorConfigs' }),
     },
     {
       label: `Open App Preferences`,
@@ -156,19 +157,19 @@ async function createTray() {
     {
       label: `Reset`,
       click: async () => {
-        try{
-          const buttons = ["Yes","No"]
+        try {
+          const buttons = ['Yes', 'No'];
           const responseResult = await dialog.showMessageBox({
-           buttons,
-           message: "Do you want to reset all monitor configs and preferences?"
-          })
+            buttons,
+            message: 'Do you want to reset all monitor configs and preferences?',
+          });
 
-          if(responseResult.response === buttons.indexOf('Yes')){
+          if (responseResult.response === buttons.indexOf('Yes')) {
             console.trace('Continue with Reset application configs and preferences');
-            global.emitAppEvent({ command: 'command/reset' })
+            global.emitAppEvent({ command: 'command/reset' });
             return;
           }
-        } catch(err){}
+        } catch (err) {}
         console.trace('Skip reset application configs and preferences');
       },
     },
@@ -203,9 +204,7 @@ async function setUpShortcuts() {
   if (!keybindingSuccess.every((success) => success)) {
     console.error(
       'globalShortcut keybinding failed',
-      keyBindings.map(
-        (keyBinding, idx) => `${keyBinding.key} = ${keybindingSuccess[idx]}`,
-      ),
+      keyBindings.map((keyBinding, idx) => `${keyBinding.key} = ${keybindingSuccess[idx]}`),
     );
   } else {
     console.info('globalShortcut keybinding success');
