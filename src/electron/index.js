@@ -4,6 +4,7 @@ import {
   Menu,
   Tray,
   app,
+  dialog,
   globalShortcut,
   ipcMain,
   nativeTheme,
@@ -101,67 +102,83 @@ async function createTray() {
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Change brightness to 0%',
-      click: () => global.emitAppEvent({ command: 'command/changeBrightness/0' }),
+      label: `Change brightness to 0%`,
+      click: async () => global.emitAppEvent({ command: 'command/changeBrightness/0' }),
     },
     {
-      label: 'Change brightness to 50%',
-      click: () => global.emitAppEvent({ command: 'command/changeBrightness/50' }),
+      label: `Change brightness to 50%`,
+      click: async () => global.emitAppEvent({ command: 'command/changeBrightness/50' }),
     },
     {
-      label: 'Change brightness to 100%',
-      click: () => global.emitAppEvent({ command: 'command/changeBrightness/100' }),
-    },
-    {
-      type: 'separator',
-    },
-    {
-      label: 'Use Light Mode',
-      click: () => global.emitAppEvent({ command: 'command/changeDarkMode/light' }),
-    },
-    {
-      label: 'Use Dark Mode',
-      click: () => global.emitAppEvent({ command: 'command/changeDarkMode/dark' }),
+      label: `Change brightness to 100%`,
+      click: async () => global.emitAppEvent({ command: 'command/changeBrightness/100' }),
     },
     {
       type: 'separator',
     },
     {
-      label: 'Open Monitor Configs',
-      click: () => global.emitAppEvent({ command: 'command/openExternal/file/monitorConfigs' }),
+      label: `Use Light Mode`,
+      click: async () => global.emitAppEvent({ command: 'command/changeDarkMode/light' }),
     },
     {
-      label: 'Open App Preferences',
-      click: () => global.emitAppEvent({ command: 'command/openExternal/file/preferences' }),
-    },
-    {
-      label: 'Open Dev Logs',
-      click: () => global.emitAppEvent({ command: 'command/openExternal/file/devLogs' }),
+      label: `Use Dark Mode`,
+      click: async () => global.emitAppEvent({ command: 'command/changeDarkMode/dark' }),
     },
     {
       type: 'separator',
     },
     {
-      label: 'File a bug',
-      click: () => global.emitAppEvent({ command: 'command/openExternal/link/bugReport' }),
+      label: `Open Monitor Configs`,
+      click: async () =>
+        global.emitAppEvent({ command: 'command/openExternal/file/monitorConfigs' }),
     },
     {
-      label: 'About display-dj',
-      click: () => global.emitAppEvent({ command: 'command/openExternal/link/aboutUs' }),
+      label: `Open App Preferences`,
+      click: async () => global.emitAppEvent({ command: 'command/openExternal/file/preferences' }),
+    },
+    {
+      label: `Open Dev Logs`,
+      click: async () => global.emitAppEvent({ command: 'command/openExternal/file/devLogs' }),
     },
     {
       type: 'separator',
     },
     {
-      label: 'Reset',
-      click: () => global.emitAppEvent({ command: 'command/reset' }),
+      label: `File a bug`,
+      click: async () => global.emitAppEvent({ command: 'command/openExternal/link/bugReport' }),
+    },
+    {
+      label: `About display-dj (${process.env.APP_VERSION})`,
+      click: async () => global.emitAppEvent({ command: 'command/openExternal/link/aboutUs' }),
     },
     {
       type: 'separator',
     },
     {
-      label: 'Exit',
-      click: () => {
+      label: `Reset`,
+      click: async () => {
+        try {
+          const buttons = ['Yes', 'No'];
+          const responseResult = await dialog.showMessageBox({
+            buttons,
+            message: 'Do you want to reset all monitor configs and preferences?',
+          });
+
+          if (responseResult.response === buttons.indexOf('Yes')) {
+            console.trace('Continue with Reset application configs and preferences');
+            global.emitAppEvent({ command: 'command/reset' });
+            return;
+          }
+        } catch (err) {}
+        console.trace('Skip reset application configs and preferences');
+      },
+    },
+    {
+      type: 'separator',
+    },
+    {
+      label: `Exit`,
+      click: async () => {
         app.quit();
         process.exit();
       },
@@ -187,9 +204,7 @@ async function setUpShortcuts() {
   if (!keybindingSuccess.every((success) => success)) {
     console.error(
       'globalShortcut keybinding failed',
-      keyBindings.map(
-        (keyBinding, idx) => `${keyBinding.key} = ${keybindingSuccess[idx]}`,
-      ),
+      keyBindings.map((keyBinding, idx) => `${keyBinding.key} = ${keybindingSuccess[idx]}`),
     );
   } else {
     console.info('globalShortcut keybinding success');
@@ -258,7 +273,8 @@ async function setupCommandChannel() {
           break;
       }
 
-      return await DisplayUtils.batchUpdateBrightness(allMonitorBrightness, delta);
+      await DisplayUtils.batchUpdateBrightness(allMonitorBrightness, delta);
+      return;
     }
 
     if (command.includes(`command/changeDarkMode`)) {
@@ -275,7 +291,8 @@ async function setupCommandChannel() {
           break;
       }
 
-      return await DisplayUtils.updateDarkMode(darkModeToUse);
+      await DisplayUtils.updateDarkMode(darkModeToUse);
+      return;
     }
 
     if (command.includes(`command/openExternal`)) {
@@ -300,11 +317,14 @@ async function setupCommandChannel() {
           break;
       }
 
-      return shell.openExternal(`${protocol}${locationToUse}`);
+      shell.openExternal(`${protocol}${locationToUse}`);
+      return;
     }
 
     if (command.includes(`command/reset`)) {
-      return await DisplayUtils.reset();
+      await DisplayUtils.reset();
+      await setUpShortcuts(); // call this to reset keyboard shortcut
+      return;
     }
   });
 }

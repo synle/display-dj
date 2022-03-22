@@ -33,11 +33,11 @@ const StorageUtils = {
   append: (file: string, text: string) => {
     fs.appendFileSync(file, text);
   },
-  delete:(file: string) => {
-    try{
-      fs.unlinkSync(file)
-    } catch(err){}
-  }
+  delete: (file: string) => {
+    try {
+      fs.unlinkSync(file);
+    } catch (err) {}
+  },
   /**
    * return value in mb
    */
