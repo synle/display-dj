@@ -226,6 +226,10 @@ async function setupCommandChannel() {
           delta = 0;
           allMonitorBrightness = 0;
           break;
+        case 'command/changeBrightness/10':
+          delta = 0;
+          allMonitorBrightness = 10;
+          break;
         case 'command/changeBrightness/50':
           delta = 0;
           allMonitorBrightness = 50;

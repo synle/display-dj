@@ -10,7 +10,7 @@ const DEFAULT_PREFERENCES: Preference = {
     { key: 'Shift+Escape', command: ['command/changeDarkMode/toggle'] },
     {
       key: 'Shift+F1',
-      command: ['command/changeDarkMode/dark', 'command/changeBrightness/0'],
+      command: ['command/changeDarkMode/dark', 'command/changeBrightness/10'],
     },
     {
       key: 'Shift+F2',

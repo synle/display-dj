@@ -115,7 +115,7 @@ Key Bindings' command can be an array in case you want to mix and match multiple
 | Keys           | Command                                         |
 | -------------- | ----------------------------------------------- |
 | Shift + Escape | Toggle Dark Mode                                |
-| Shift + F1     | Change brightness to 0% and turn dark mode off  |
+| Shift + F1     | Change brightness to 10% and turn dark mode off |
 | Shift + F2     | Change brightness to 100% and turn dark mode on |
 | Shift + F3     | Change brightness to 0%                         |
 | Shift + F4     | Change brightness to 50%                        |
@@ -135,6 +135,7 @@ At the moment, there is no UI to modify the preferences. This can also be access
 command/changeBrightness/down
 command/changeBrightness/up
 command/changeBrightness/0
+command/changeBrightness/10
 command/changeBrightness/50
 command/changeBrightness/100
 
@@ -163,7 +164,7 @@ Preferences file are located at:
     },
     {
       "key": "Shift+F1",
-      "command": ["command/changeDarkMode/dark", "command/changeBrightness/0"]
+      "command": ["command/changeDarkMode/dark", "command/changeBrightness/10"]
     },
     {
       "key": "Shift+F2",
