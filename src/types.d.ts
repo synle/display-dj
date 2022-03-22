@@ -1,7 +1,9 @@
 type DisplayType = 'laptop_monitor' | 'external_monitor' | 'unknown_monitor';
 
-type Command = // brightness commands
-
+type Command =
+    // reset
+    | 'command/reset'
+    // brightness commands
     | 'command/changeBrightness/down'
     | 'command/changeBrightness/up'
     | 'command/changeBrightness/0'
