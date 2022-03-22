@@ -1,5 +1,5 @@
 import DisplayAdapter from 'src/electron/utils/DisplayAdapter';
-import StorageUtils, { MONITOR_CONFIG_FILE_PATH } from 'src/electron/utils/StorageUtils';
+import StorageUtils, { MONITOR_CONFIG_FILE_PATH, PREFERENCE_FILE_PATH } from 'src/electron/utils/StorageUtils';
 import { Monitor, SingleMonitorUpdateInput } from 'src/types.d';
 
 function _getMonitorConfigs(): Record<string, Monitor> {

@@ -37,7 +37,7 @@ const StorageUtils = {
     try{
       fs.unlinkSync(file)
     } catch(err){}
-  }
+  },
   /**
    * return value in mb
    */

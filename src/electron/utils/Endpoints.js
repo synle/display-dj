@@ -4,8 +4,6 @@ import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
 
 const electronEndpointHandlers = [];
 
-const version = process.env.APP_VERSION;
-
 function addDataEndpoint(method, url, incomingHandler) {
   const handlerToUse = async (req, res, cache) => {
     try {
@@ -54,7 +52,7 @@ export function setUpDataEndpoints() {
         darkMode: (await DisplayUtils.getDarkMode()) === true,
         monitors: await DisplayUtils.getMonitors(),
         env: process.env.APPLICATION_MODE,
-        version,
+        version: process.env.APP_VERSION,
         platform: process.platform,
       });
     } catch (err) {
