@@ -7,7 +7,7 @@ I published an article describing this project in details. Here's [the link to t
 ## The Problems
 
 - Back in the old days, it requires physical controls to change the brightness of external monitors. It is very time consuming and quirky to get it just right.
-- There are apps out there that does these 3 things: adjust external monitor brightness, integrated laptop monitor brightness and dark mode toggle, but they are completely different apps and require more context switching. These individuals sometimes don't support shortcuts / keybindings.
+- There are apps out there that does these 3 things: adjust external monitor brightness, integrated laptop monitor brightness and dark mode toggle, but they are completely different apps and require more context switching. These individuals sometimes don't support shortcuts / Key Bindings.
 - There is not a single app that are cross platforms, and dark mode adjustment and also support brightness adjustment for integrated display as well as external display.
 - Windows and MacOSX have their own built in controls that allow you to adjust brightness. But this can only be done for integrated displays or certain monitors such as proprietary displays for mac. The built-in solution does not work for third party displays.
 - Built-in brightness controls and dark mode toggles are hard to find and requires extra steps to get to in the OS. This application handles all that within a few clicks.
@@ -104,7 +104,20 @@ Configs file are located at:
 }
 ```
 
-### Preferences / Keybindings
+### Default Key Bindings
+
+Below are default Key Bindings, you can modify the default keybinding in `preferences.json`, refer to the sample preferences file section.
+
+| Keys           | Command                          |
+| -------------- | -------------------------------- |
+| Shift + Escape | Toggle Dark Mode                 |
+| Shift + F1     | Change brightness one notch down |
+| Shift + F2     | Change brightness one notch up   |
+| Shift + F3     | Change brightness to 0%          |
+| Shift + F4     | Change brightness to 50%         |
+| Shift + F5     | Change brightness to 100%        |
+
+### Preferences / Key Bindings
 
 At the moment, there is no UI to modify the preferences. This can also be accessed via right clicking the tray icon of display-dj and choose `Open App Preferences`.
 
