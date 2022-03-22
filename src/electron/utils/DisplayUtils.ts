@@ -52,6 +52,9 @@ const DisplayUtils = {
     // construct the active displays
     let monitorCount = 0;
     const monitorIds = await DisplayAdapter.getMonitorList();
+
+    console.debug(`Monitor List: ${monitorIds.length}`, monitorIds)
+
     for (let idx = 0; idx < monitorIds.length; idx++) {
       const idToUse = monitorIds[idx];
 
