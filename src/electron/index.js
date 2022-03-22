@@ -159,7 +159,10 @@ async function setUpShortcuts() {
 
   const keybindingSuccess = preferences.keyBindings.map((keyBinding) => {
     return globalShortcut.register(keyBinding.key, async () => {
-      global.emitAppEvent({ command: keyBinding.command });
+      const commands = [].concat(keyBinding.command);
+      for (const command of commands) {
+        global.emitAppEvent({ command });
+      }
     });
   });
 
