@@ -239,9 +239,10 @@ async function setupCommandChannel() {
   };
 
   global.subscribeAppEvent = (callbackFunc, eventName = EVENT_KEY_MISSION_CONTROL) => {
-    // TODO: not used right now
+    return AppEventEmitter.on(eventName, callbackFunc);
   };
-  AppEventEmitter.on(EVENT_KEY_MISSION_CONTROL, async (data) => {
+
+  global.subscribeAppEvent(async (data) => {
     const { command } = data;
 
     if (command.includes(`command/changeBrightness`)) {
@@ -255,21 +256,9 @@ async function setupCommandChannel() {
         case 'command/changeBrightness/up':
           delta = preferences.brightnessDelta;
           break;
-        case 'command/changeBrightness/0':
+        default:
           delta = 0;
-          allMonitorBrightness = 0;
-          break;
-        case 'command/changeBrightness/10':
-          delta = 0;
-          allMonitorBrightness = 10;
-          break;
-        case 'command/changeBrightness/50':
-          delta = 0;
-          allMonitorBrightness = 50;
-          break;
-        case 'command/changeBrightness/100':
-          delta = 0;
-          allMonitorBrightness = 100;
+          allMonitorBrightness = parseInt(command.replace('command/changeBrightness/', ''));
           break;
       }
 
