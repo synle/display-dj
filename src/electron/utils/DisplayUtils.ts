@@ -152,6 +152,9 @@ const DisplayUtils = {
       brightness: newBrightness,
     }));
 
+
+    console.trace(`batchUpdateBrightness`, newBrightness, delta, monitors.length + ' monitors');
+
     // persist to storage
     _syncMonitorConfigs(monitors);
 
