@@ -8,6 +8,7 @@ import {
   ipcMain,
   nativeTheme,
   shell,
+  dialog,
 } from 'electron';
 import DisplayUtils from 'src/electron/utils/DisplayUtils';
 import { getEndpointHandlers, setUpDataEndpoints } from 'src/electron/utils/Endpoints';
@@ -154,7 +155,17 @@ async function createTray() {
     },
     {
       label: 'Reset',
-      click: () => global.emitAppEvent({ command: 'command/reset' }),
+      click: () => {
+        let options  = {
+         buttons: ["Yes","No"],
+         message: "Do you want to reset all monitor configs and preferences?"
+        }
+
+        let response = dialog.showMessageBox(options)
+        console.log(response);
+
+        global.emitAppEvent({ command: 'command/reset' })
+      },
     },
     {
       type: 'separator',
@@ -258,7 +269,8 @@ async function setupCommandChannel() {
           break;
       }
 
-      return await DisplayUtils.batchUpdateBrightness(allMonitorBrightness, delta);
+      await DisplayUtils.batchUpdateBrightness(allMonitorBrightness, delta);
+      return;
     }
 
     if (command.includes(`command/changeDarkMode`)) {
@@ -275,7 +287,8 @@ async function setupCommandChannel() {
           break;
       }
 
-      return await DisplayUtils.updateDarkMode(darkModeToUse);
+      await DisplayUtils.updateDarkMode(darkModeToUse);
+      return;
     }
 
     if (command.includes(`command/openExternal`)) {
@@ -300,11 +313,14 @@ async function setupCommandChannel() {
           break;
       }
 
-      return shell.openExternal(`${protocol}${locationToUse}`);
+      shell.openExternal(`${protocol}${locationToUse}`);
+      return;
     }
 
     if (command.includes(`command/reset`)) {
-      return await DisplayUtils.reset();
+      await DisplayUtils.reset();
+      await setUpShortcuts(); // call this to reset keyboard shortcut
+      return;
     }
   });
 }
