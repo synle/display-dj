@@ -1,5 +1,6 @@
 const path = require('path');
 const webpack = require('webpack');
+const appPackage = require('./package.json')
 
 module.exports = {
   entry: ['./src/electron/index.js'],
@@ -38,7 +39,10 @@ module.exports = {
   },
   plugins: [
     new webpack.BannerPlugin({
-      banner: `process.env.APPLICATION_MODE = "${process.env.APPLICATION_MODE}";`,
+      banner: [
+        `process.env.APPLICATION_MODE = "${process.env.APPLICATION_MODE}";`,
+        `process.env.APP_VERSION = "${appPackage.version}";`
+      ].join(''),
       raw: true,
     }),
   ],
