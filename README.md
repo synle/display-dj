@@ -18,8 +18,8 @@ I published an article describing this project in details. Here's [the link to t
 
 You can download `display-dj` at the following URL.
 
-- [display-dj Beta for Mac](https://github.com/synle/display-dj/releases/download/beta/display-dj-darwin.dmg)
-- [display-dj Beta for Windows](https://github.com/synle/display-dj/releases/download/beta/display-dj-setup.exe)
+- [display-dj for Mac](https://github.com/synle/display-dj/releases/latest/download/display-dj-darwin.dmg)
+- [display-dj for Windows](https://github.com/synle/display-dj/releases/latest/download/display-dj-setup.exe)
 
 ## Screenshots / Demo
 
