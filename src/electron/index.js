@@ -71,6 +71,10 @@ async function createTray() {
   });
 
   tray.on('click', async (event, trayBounds, mousePos) => {
+    // when clicked on to open menu or context menu
+    // we will reset keybindings
+    setUpShortcuts();
+
     try {
       if (mainWindow.isVisible()) {
         mainWindow.hide();
@@ -87,6 +91,10 @@ async function createTray() {
   });
 
   tray.on('right-click', function (event) {
+    // when clicked on to open menu or context menu
+    // we will reset keybindings
+    setUpShortcuts();
+
     tray.popUpContextMenu(contextMenu);
     mainWindow.hide();
   });
@@ -162,9 +170,12 @@ async function createTray() {
 }
 
 async function setUpShortcuts() {
-  const preferences = await PreferenceUtils.get();
+  // reset keybindings first
+  globalShortcut.unregisterAll();
 
-  const keybindingSuccess = preferences.keyBindings.map((keyBinding) => {
+  const keyBindings = await PreferenceUtils.getKeybindings();
+
+  const keybindingSuccess = keyBindings.map((keyBinding) => {
     return globalShortcut.register(keyBinding.key, async () => {
       const commands = [].concat(keyBinding.command);
       for (const command of commands) {
@@ -176,7 +187,7 @@ async function setUpShortcuts() {
   if (!keybindingSuccess.every((success) => success)) {
     console.error(
       'globalShortcut keybinding failed',
-      preferences.keyBindings.map(
+      keyBindings.map(
         (keyBinding, idx) => `${keyBinding.key} = ${keybindingSuccess[idx]}`,
       ),
     );
