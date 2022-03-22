@@ -60,6 +60,9 @@ const PreferenceUtils = {
       ...newPartialPrefs,
     });
   },
+  getKeybindings: async () => {
+    return (await PreferenceUtils.get()).keyBindings;
+  },
 };
 
 export default PreferenceUtils;
