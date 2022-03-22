@@ -309,7 +309,7 @@ function Slider(props: SliderProps) {
 
   const onKeyUp = (e: React.FormEvent<HTMLInputElement>) => {
     // @ts-ignore
-    switch(e.key as string){
+    switch (e.key as string) {
       case 'ArrowUp':
       case 'ArrowDown':
       case 'ArrowLeft':
@@ -319,7 +319,7 @@ function Slider(props: SliderProps) {
         onInput(e);
         break;
     }
-  }
+  };
 
   return (
     <input
