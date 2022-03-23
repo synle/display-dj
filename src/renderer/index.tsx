@@ -307,20 +307,6 @@ type SliderProps = {
 function Slider(props: SliderProps) {
   const { value, onInput, className, placeholder, disabled } = props;
 
-  const onKeyUp = (e: React.FormEvent<HTMLInputElement>) => {
-    // @ts-ignore
-    switch (e.key as string) {
-      case 'ArrowUp':
-      case 'ArrowDown':
-      case 'ArrowLeft':
-      case 'ArrowRight':
-      case 'Home':
-      case 'End':
-        onInput(e);
-        break;
-    }
-  };
-
   return (
     <input
       type='range'
@@ -328,8 +314,7 @@ function Slider(props: SliderProps) {
       max='100'
       step='10'
       defaultValue={value}
-      onKeyUp={onKeyUp}
-      onMouseUp={onInput}
+      onInput={onInput}
       className={className}
       placeholder={placeholder}
       disabled={disabled}
