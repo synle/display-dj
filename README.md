@@ -4,15 +4,14 @@
 
 `display-dj` is a cross platform desktop application that supports brightness adjustment for integrated laptop monitor as well as external monitors and dark mode toggle supporting Windows and MacOSX at the moment. Adjustment brightness will be quicker and does not require tinkering with the external monitor controls.
 
-I published an article describing this project in details. Here's [the link to the published article about display-dj](https://www.linkedin.com/pulse/my-journey-building-display-dj-cross-platform-application-sy-le)
+I published an article describing this project in details. Here's [the link to the published article about display-dj](https://www.linkedin.com/pulse/my-journey-building-display-dj-cross-platform-application-sy-le).
 
 ## The Problems
 
-- Back in the old days, it requires physical controls to change the brightness of external monitors. It is very time consuming and quirky to get it just right.
-- There are apps out there that does these 3 things: adjust external monitor brightness, integrated laptop monitor brightness and dark mode toggle, but they are completely different apps and require more context switching. These individuals sometimes don't support shortcuts / Key Bindings.
-- There is not a single app that are cross platforms, and dark mode adjustment and also support brightness adjustment for integrated display as well as external display.
-- Windows and MacOSX have their own built in controls that allow you to adjust brightness. But this can only be done for integrated displays or certain monitors such as proprietary displays for mac. The built-in solution does not work for third party displays.
-- Built-in brightness controls and dark mode toggles are hard to find and requires extra steps to get to in the OS. This application handles all that within a few clicks.
+- As of right now, it requires physical controls to change the brightness of external monitors. It is very time consuming and quirky to get the brightness notch just right. Also some external monitors bury the brightness under sub-menus within the on screen display, which requires a lot of mental strength to figure out.
+- There are applications out there that do these things: adjust external monitor brightness, integrated laptop monitor brightness and dark mode, but they are completely different apps and require more context switching. These applications sometimes don't support shortcuts or key bindings. And most importantly none of them are cross platform and only support either Windows or Mac OSX.
+- Windows and Mac OSX have their own built in controls that allow you to adjust brightness and dark mode. But this built-in option only works for integrated displays such as your laptop monitors or certain proprietary monitors such as Apple Displays. The built-in solution does not work for third party displays.
+- Another issue with built-in solution is sometimes the user interface is not intuitive and requires extra clicks and navigations to get to because they are buried deep inside a set of nested menus.
 
 ## Downloads
 
@@ -20,6 +19,14 @@ You can download `display-dj` at the following URL.
 
 - [display-dj for Mac](https://github.com/synle/display-dj/releases/latest/download/display-dj-darwin.dmg)
 - [display-dj for Windows](https://github.com/synle/display-dj/releases/latest/download/display-dj-setup.exe)
+
+## Motivation
+
+The challenge of work from home in the last 2 years with 2 young toddlers is that they can charge into your room any time of the day and playing with the light switch. This is my defense mechanism for those sudden changes in light intensity. I can toggle between 2 different modes rather quickly with a key stroke: going to the dark side vs going to the light side of the force.
+
+![image](https://user-images.githubusercontent.com/3792401/159738107-9b6c476d-3031-4529-9213-9cc047e9bac2.png)
+![image](https://user-images.githubusercontent.com/3792401/159738119-e141918b-8f38-4486-8412-6444dc383757.png)
+
 
 ## Screenshots / Demo
 
