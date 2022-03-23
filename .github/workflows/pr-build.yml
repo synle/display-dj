@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: windows-latest
 
     strategy:
       matrix:
@@ -23,7 +23,6 @@ jobs:
           registry-url: https://registry.npmjs.org/
       - run: npm install --no-optional
       - run: npm run format
-        continue-on-error: true
       - run: npm run test-ci
       - run: npm run build
       - run: npm version --no-git-tag-version patch

@@ -27,7 +27,6 @@ The challenge of work from home in the last 2 years with 2 young toddlers is tha
 ![image](https://user-images.githubusercontent.com/3792401/159738107-9b6c476d-3031-4529-9213-9cc047e9bac2.png)
 ![image](https://user-images.githubusercontent.com/3792401/159738119-e141918b-8f38-4486-8412-6444dc383757.png)
 
-
 ## Screenshots / Demo
 
 ### Windows 11
