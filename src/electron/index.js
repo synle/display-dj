@@ -1,15 +1,5 @@
 import AutoLaunch from 'auto-launch';
-import {
-  BrowserWindow,
-  Menu,
-  Tray,
-  app,
-  dialog,
-  globalShortcut,
-  ipcMain,
-  nativeTheme,
-  shell,
-} from 'electron';
+import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeTheme, shell } from 'electron';
 import DisplayUtils from 'src/electron/utils/DisplayUtils';
 import { getEndpointHandlers, setUpDataEndpoints } from 'src/electron/utils/Endpoints';
 import PositionUtils from 'src/electron/utils/PositionUtils';

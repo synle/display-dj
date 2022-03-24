@@ -24,7 +24,7 @@ type Command =
 type BrightnessPreset = {
   which?: string;
   level: number;
-}
+};
 
 type KeyBinding = {
   key: string;
