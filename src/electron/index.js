@@ -100,19 +100,13 @@ async function createTray() {
     mainWindow.hide();
   });
 
+  const brightnessPresets = await PreferenceUtils.getBrightnessPresets();
+
   const contextMenu = Menu.buildFromTemplate([
-    {
-      label: `Change brightness to 0%`,
-      click: async () => global.emitAppEvent({ command: 'command/changeBrightness/0' }),
-    },
-    {
-      label: `Change brightness to 50%`,
-      click: async () => global.emitAppEvent({ command: 'command/changeBrightness/50' }),
-    },
-    {
-      label: `Change brightness to 100%`,
-      click: async () => global.emitAppEvent({ command: 'command/changeBrightness/100' }),
-    },
+    ...brightnessPresets.map(brightnessPreset => ({
+      label: `Change brightness to ${brightnessPreset.level}%`,
+      click: async () => global.emitAppEvent({ command: `command/changeBrightness/${brightnessPreset.level}` }),
+    })),
     {
       type: 'separator',
     },

@@ -5,7 +5,7 @@ const DEFAULT_PREFERENCES: Preference = {
   ddcctlBinary: `/usr/local/bin/ddcctl`,
   brightnessBinary: '/usr/local/bin/brightness',
   showIndividualDisplays: false,
-  brightnessDelta: 50,
+  brightnessDelta: 25,
   brightnessPresets: [
     { level: 0 },
     { level: 50 },
@@ -68,6 +68,9 @@ const PreferenceUtils = {
   getKeybindings: async () => {
     return (await PreferenceUtils.get()).keyBindings;
   },
+  getBrightnessPresets: async() => {
+    return (await PreferenceUtils.get()).brightnessPresets;
+  }
 };
 
 export default PreferenceUtils;
