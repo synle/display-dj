@@ -1,15 +1,18 @@
 type DisplayType = 'laptop_monitor' | 'external_monitor' | 'unknown_monitor';
 
-type Command =
-  // reset
-  | 'command/reset'
-  // brightness commands
+type BrightnessCommand = // brightness commands
   | 'command/changeBrightness/down'
   | 'command/changeBrightness/up'
   | 'command/changeBrightness/0'
   | 'command/changeBrightness/10'
   | 'command/changeBrightness/50'
   | 'command/changeBrightness/100'
+
+type Command =
+  // reset
+  | 'command/reset'
+  // brightness commands
+  | BrightnessCommand
   // dark mode commands
   | 'command/changeDarkMode/toggle'
   | 'command/changeDarkMode/dark'
@@ -20,6 +23,11 @@ type Command =
   | 'command/openExternal/file/devLogs'
   | 'command/openExternal/link/bugReport'
   | 'command/openExternal/link/aboutUs';
+
+type BrightnessPreset = {
+  which?: string;
+  level: number;
+}
 
 type KeyBinding = {
   key: string;
@@ -63,6 +71,7 @@ export type Preference = {
   ddcctlBinary: string;
   showIndividualDisplays: boolean;
   brightnessDelta: number;
+  brightnessPresets: BrightnessPreset[];
   keyBindings: KeyBinding[];
 };
 

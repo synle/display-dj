@@ -6,6 +6,11 @@ const DEFAULT_PREFERENCES: Preference = {
   brightnessBinary: '/usr/local/bin/brightness',
   showIndividualDisplays: false,
   brightnessDelta: 50,
+  brightnessPresets: [
+    { level: 0 },
+    { level: 50 },
+    { level: 100 },
+  ],
   keyBindings: [
     { key: 'Shift+Escape', command: ['command/changeDarkMode/toggle'] },
     {
