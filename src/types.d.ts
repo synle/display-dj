@@ -21,6 +21,11 @@ type Command =
   | 'command/openExternal/link/bugReport'
   | 'command/openExternal/link/aboutUs';
 
+type BrightnessPreset = {
+  which?: string;
+  level: number;
+};
+
 type KeyBinding = {
   key: string;
   command: Command[] | Command;
@@ -63,6 +68,7 @@ export type Preference = {
   ddcctlBinary: string;
   showIndividualDisplays: boolean;
   brightnessDelta: number;
+  brightnessPresets: BrightnessPreset[];
   keyBindings: KeyBinding[];
 };
 
