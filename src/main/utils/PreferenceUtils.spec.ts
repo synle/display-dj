@@ -1,9 +1,16 @@
 import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 import DisplayUtils from 'src/main/utils/DisplayUtils';
+import StorageUtils, {
+  MONITOR_CONFIG_FILE_PATH,
+  PREFERENCE_FILE_PATH,
+} from 'src/main/utils/StorageUtils';
 
 describe('PreferenceUtils', () => {
   beforeAll(async () => {
-    await DisplayUtils.reset();
+    await Promise.all([
+      StorageUtils.delete(MONITOR_CONFIG_FILE_PATH),
+      StorageUtils.delete(PREFERENCE_FILE_PATH),
+    ]);
   });
 
   test('get', async () => {
