@@ -5,3 +5,4 @@ package-lock.json
 build
 src/main/utils/DisplayAdapter.ts
 coverage
+display-dj
