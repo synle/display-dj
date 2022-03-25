@@ -11,6 +11,8 @@ module.exports = {
   collectCoverage: true,
   moduleDirectories: ['node_modules', '.'],
   globals: {
-    tsConfig: 'tsconfig-electron.json'
+    'ts-jest':{
+      tsConfig: 'tsconfig-electron.json'
+    }
   }
 };
