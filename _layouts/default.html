@@ -18,7 +18,7 @@
 
     <header class="page-header" role="banner">
       <h1 class="project-name">
-        <a href="https://synle.github.io/sqlui-native/" style="color: white">{{ page.title | default: site.title | default: site.github.repository_name }} (<span class="appVersion"></span>)</a></h1>
+        <a href="https://synle.github.io/sqlui-native/" style="color: white">{{ page.title | default: site.title | default: site.github.repository_name }} (<span class="appVersion">APP_VERSION</span>)</a></h1>
       <h2 class="project-tagline">{{ page.description | default: site.description | default: site.github.project_tagline }}</h2>
       {% if site.github.is_project_page %}
         <a href="{{ site.github.repository_url }}" class="btn">GitHub</a>
@@ -48,9 +48,14 @@
     <script>
       // pull in the version from package.json
       fetch(`https://synle.github.io/display-dj/release.json`).then(r => r.json()).then(r => r.version).then(version => {
-          for(const item of document.querySelectorAll('.appVersion')){
-              item.innerText = version;
+        for(const item of document.querySelectorAll('.appVersion')){
+          if(item.href){
+            item.href = item.href.replace(/APP_VERSION/g, version)
           }
+          if(item.innerText){
+            item.innerText = item.innerText.replace(/APP_VERSION/g, version)
+          }
+        }
       })
     </script>
   </body>
