@@ -7,7 +7,7 @@ export const PREFERENCE_FILE_PATH = _getPath('preferences.json');
 export const LOG_FILE_PATH = _getPath('logs.txt');
 
 function _getPath(fileName: string) {
-  const baseDir = path.join(app.getPath('appData'), 'display-dj');
+  const baseDir = path.join(app === undefined ? './' : app.getPath('appData'), 'display-dj');
 
   try {
     fs.mkdirSync(baseDir);
