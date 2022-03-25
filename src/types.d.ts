@@ -29,6 +29,7 @@ type BrightnessPreset = {
 type KeyBinding = {
   key: string;
   command: Command[] | Command;
+  notification?: string;
 };
 
 export type SingleMonitorUpdateInput = {

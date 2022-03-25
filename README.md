@@ -221,7 +221,7 @@ Preferences file are located at:
 
 If you are interested in contributing, you can refer to this doc to get started
 
-- [DEV.md](https://github.com/synle/display-dj/blob/main/DEV.md)
+- [CONTRIBUTING.md](https://github.com/synle/display-dj/blob/main/CONTRIBUTING.md)
 
 ## Known issues
 

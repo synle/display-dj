@@ -16,14 +16,16 @@ const DEFAULT_PREFERENCES: Preference = {
     {
       key: 'Shift+F1',
       command: ['command/changeDarkMode/dark', 'command/changeBrightness/10'],
+      notification: 'Switching to Dark profile',
     },
     {
       key: 'Shift+F2',
       command: ['command/changeDarkMode/light', 'command/changeBrightness/100'],
+      notification: 'Switching to Light profile',
     },
-    { key: 'Shift+F3', command: ['command/changeBrightness/0'] },
-    { key: 'Shift+F4', command: ['command/changeBrightness/50'] },
-    { key: 'Shift+F5', command: ['command/changeBrightness/100'] },
+    { key: 'Shift+F3', command: ['command/changeBrightness/0'], },
+    { key: 'Shift+F4', command: ['command/changeBrightness/50'], },
+    { key: 'Shift+F5', command: ['command/changeBrightness/100'], },
   ],
 };
 
