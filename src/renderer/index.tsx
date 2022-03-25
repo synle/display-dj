@@ -17,6 +17,7 @@ import {
   useUpdateMonitor,
   useToggleDarkMode,
   useUpdateAppPosition,
+  useUpdateMonitorSortOrder,
   QUERY_KEY_CONFIGS,
   QUERY_KEY_APP_STATE,
 } from 'src/renderer/hooks';
@@ -195,28 +196,12 @@ function _getIndex(currentTarget: Element) {
     }
   }
 }
-function _getUpdatedOrdersForList(items: any[], from: number, to: number) {
-  // ordering will move the tab from the old index to the new index
-  // and push everything from that point out
-  const targetItem = items[from];
-  let leftHalf: any[];
-  let rightHalf: any[];
-
-  if (from > to) {
-    leftHalf = items.filter((q, idx) => idx < to && idx !== from);
-    rightHalf = items.filter((q, idx) => idx >= to && idx !== from);
-  } else {
-    leftHalf = items.filter((q, idx) => idx <= to && idx !== from);
-    rightHalf = items.filter((q, idx) => idx > to && idx !== from);
-  }
-
-  return [...leftHalf, targetItem, ...rightHalf];
-}
 function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   const { monitor, monitors } = props;
   const [editName, setEditName] = useState(false);
   const [name, setName] = useState('');
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
+  const { mutateAsync: updateMonitorSortOrder } = useUpdateMonitorSortOrder();
 
   const isLaptop = monitor.type === 'laptop_monitor';
 
@@ -251,11 +236,7 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   const onDrop = async (e: React.MouseEvent) => {
     toIdx = _getIndex(e.currentTarget);
     if(fromIdx !== undefined && toIdx !== undefined){
-      const newMonitors = _getUpdatedOrdersForList(monitors, fromIdx, toIdx);
-      for(let i = 0; i < newMonitors.length; i++){
-        newMonitors[i].sortOrder = i;
-        await updateMonitor(newMonitors[i], newMonitors[i]);
-      }
+      await updateMonitorSortOrder([fromIdx, toIdx]);
     }
   }
 

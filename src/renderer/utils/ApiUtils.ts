@@ -17,6 +17,14 @@ const ApiUtils = {
 
   // configs
   getConfigs: () => fetch<AppConfig>(`/api/configs`),
+  updateMonitorSortOrder: ([fromIdx: number, toIdx: number]) =>
+    fetch(`/api/configs/monitors/${monitor.id}`, {
+      method: 'put',
+      body: JSON.stringify({
+        fromIdx,
+        toIdx
+      }),
+    }),
   updateMonitor: (monitor: SingleMonitorUpdateInput) =>
     fetch(`/api/configs/monitors/${monitor.id}`, {
       method: 'put',

@@ -72,6 +72,15 @@ export function useBatchUpdateMonitors() {
   });
 }
 
+export function useUpdateMonitorSortOrder() {
+  const queryClient = useQueryClient();
+  return useMutation<void, void, number[]>(ApiUtils.updateMonitorSortOrder, {
+    onSuccess: () => {
+      queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
+    },
+  });
+}
+
 export function useToggleDarkMode() {
   const queryClient = useQueryClient();
   return useMutation(ApiUtils.updateDarkMode, {
