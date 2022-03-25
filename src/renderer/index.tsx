@@ -173,7 +173,7 @@ function MonitorBrightnessSettingForm(props: MonitorBrightnessSettingFormProps) 
       {monitors
         .filter((monitor) => !monitor.disabled)
         .map((monitor, idx) => (
-          <MonitorBrightnessSetting key={monitor.id} monitor={monitor} idx={idx + 1} />
+          <MonitorBrightnessSetting key={monitor.id} monitor={monitor} idx={idx + 1} monitors={monitors} />
         ))}
     </>
   );
@@ -181,12 +181,41 @@ function MonitorBrightnessSettingForm(props: MonitorBrightnessSettingFormProps) 
 
 type MonitorBrightnessSettingProps = {
   monitor: Monitor;
+  monitors: Monitor[];
   idx: number;
 };
+let fromIdx : number | undefined;
+let toIdx : number | undefined;
+function _getIndex(currentTarget: Element) {
+  const connectionElems = document.querySelectorAll('.MonitorBrightnessSetting');
+  for (let i = 0; i < connectionElems.length; i++) {
+    const connectionElem = connectionElems[i];
+    if (connectionElem === currentTarget) {
+      return i;
+    }
+  }
+}
+function _getUpdatedOrdersForList(items: any[], from: number, to: number) {
+  // ordering will move the tab from the old index to the new index
+  // and push everything from that point out
+  const targetItem = items[from];
+  let leftHalf: any[];
+  let rightHalf: any[];
+
+  if (from > to) {
+    leftHalf = items.filter((q, idx) => idx < to && idx !== from);
+    rightHalf = items.filter((q, idx) => idx >= to && idx !== from);
+  } else {
+    leftHalf = items.filter((q, idx) => idx <= to && idx !== from);
+    rightHalf = items.filter((q, idx) => idx > to && idx !== from);
+  }
+
+  return [...leftHalf, targetItem, ...rightHalf];
+}
 function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
+  const { monitor, monitors } = props;
   const [editName, setEditName] = useState(false);
   const [name, setName] = useState('');
-  const { monitor } = props;
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
 
   const isLaptop = monitor.type === 'laptop_monitor';
@@ -210,12 +239,36 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
     updateMonitor(monitor);
   };
 
+  const onDragStart = (e: React.DragEvent) => {
+    fromIdx = _getIndex(e.currentTarget);
+    toIdx = undefined;
+  };
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const onDrop = async (e: React.MouseEvent) => {
+    toIdx = _getIndex(e.currentTarget);
+    if(fromIdx !== undefined && toIdx !== undefined){
+      const newMonitors = _getUpdatedOrdersForList(monitors, fromIdx, toIdx);
+      for(let i = 0; i < newMonitors.length; i++){
+        newMonitors[i].sortOrder = i;
+        await updateMonitor(newMonitors[i], newMonitors[i]);
+      }
+    }
+  }
+
   useEffect(() => {
     setName(monitor.name);
   }, [monitor.name]);
 
   return (
-    <>
+    <div className='MonitorBrightnessSetting'
+      draggable={true}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}>
       <div className='field'>
         {editName ? (
           <form onSubmit={onDisplayNameChange}>
@@ -255,7 +308,7 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
           onInput={(e) => onBrightnessChange(parseInt((e.target as HTMLInputElement).value) || 0)}
         />
       </div>
-    </>
+    </div>
   );
 }
 
