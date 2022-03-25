@@ -59,11 +59,14 @@ const PreferenceUtils = {
   },
   patch: async (newPartialPrefs: Preference) => {
     const oldPrefs = await PreferenceUtils.get();
-
-    StorageUtils.writeJSON(PREFERENCE_FILE_PATH, {
+    const newPrefs = {
       ...oldPrefs,
       ...newPartialPrefs,
-    });
+    };
+
+    StorageUtils.writeJSON(PREFERENCE_FILE_PATH, newPrefs);
+
+    return newPrefs;
   },
   getKeybindings: async () => {
     return (await PreferenceUtils.get()).keyBindings;
