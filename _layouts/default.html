@@ -47,7 +47,7 @@
     </main>
     <script>
       // pull in the version from package.json
-      fetch(`https://synle.github.io/display-dj/package.json`).then(r => r.json()).then(r => r.version).then(version => {
+      fetch(`https://synle.github.io/display-dj/release.json`).then(r => r.json()).then(r => r.version).then(version => {
           for(const item of document.querySelectorAll('.appVersion')){
               item.innerText = version;
           }
