@@ -5,7 +5,9 @@ module.exports = {
     '^.+\\.(ts|tsx)$': 'ts-jest',
   },
   setupFilesAfterEnv: ['./jest.setup.js'],
-  moduleNameMapper: {},
+  moduleNameMapper: {
+    "^src/(.*)": "<rootDir>/src/$1"
+  },
   collectCoverage: true,
   moduleDirectories: ['node_modules', '.'],
 };

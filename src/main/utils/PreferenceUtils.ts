@@ -1,4 +1,4 @@
-import StorageUtils, { PREFERENCE_FILE_PATH } from 'src/electron/utils/StorageUtils';
+import StorageUtils, { PREFERENCE_FILE_PATH } from 'src/main/utils/StorageUtils';
 import { Preference } from 'src/types.d';
 
 const DEFAULT_PREFERENCES: Preference = {

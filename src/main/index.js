@@ -1,9 +1,9 @@
 import AutoLaunch from 'auto-launch';
 import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeTheme, shell } from 'electron';
-import DisplayUtils from 'src/electron/utils/DisplayUtils';
-import { getEndpointHandlers, setUpDataEndpoints } from 'src/electron/utils/Endpoints';
-import PositionUtils from 'src/electron/utils/PositionUtils';
-import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
+import DisplayUtils from 'src/main/utils/DisplayUtils';
+import { getEndpointHandlers, setUpDataEndpoints } from 'src/main/utils/Endpoints';
+import PositionUtils from 'src/main/utils/PositionUtils';
+import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 import { matchPath } from 'react-router-dom';
 import { EventEmitter } from 'events';
 import path from 'path';
@@ -11,8 +11,8 @@ import StorageUtils, {
   MONITOR_CONFIG_FILE_PATH,
   PREFERENCE_FILE_PATH,
   LOG_FILE_PATH,
-} from 'src/electron/utils/StorageUtils';
-import 'src/electron/utils/LogUtils';
+} from 'src/main/utils/StorageUtils';
+import 'src/main/utils/LogUtils';
 let mainWindow;
 
 const appBaseDir = __dirname;

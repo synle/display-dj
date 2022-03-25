@@ -1,5 +1,5 @@
-import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
-import DisplayUtils from 'src/electron/utils/DisplayUtils';
+import PreferenceUtils from 'src/main/utils/PreferenceUtils';
+import DisplayUtils from 'src/main/utils/DisplayUtils';
 
 describe('PreferenceUtils', () => {
   beforeAll(async() => {
