@@ -1,6 +1,6 @@
 import ReactDOM from 'react-dom';
 import { QueryClient, QueryClientProvider } from 'react-query';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { LAPTOP_BUILT_IN_DISPLAY_ID } from 'src/constants';
 import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import LaptopSvg from 'src/renderer/svg/laptop.svg';
@@ -20,6 +20,7 @@ import {
   QUERY_KEY_CONFIGS,
   QUERY_KEY_APP_STATE,
 } from 'src/renderer/hooks';
+import { debounce } from 'src/renderer/utils/CommonUtils';
 
 // TODO: extract these things
 
@@ -307,6 +308,8 @@ type SliderProps = {
 function Slider(props: SliderProps) {
   const { value, onInput, className, placeholder, disabled } = props;
 
+  const debouncedOnInput = useMemo(() => debounce(onInput, 300), []);
+
   return (
     <input
       type='range'
@@ -314,7 +317,7 @@ function Slider(props: SliderProps) {
       max='100'
       step='10'
       defaultValue={value}
-      onInput={onInput}
+      onInput={debouncedOnInput}
       className={className}
       placeholder={placeholder}
       disabled={disabled}
