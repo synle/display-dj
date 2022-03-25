@@ -1,4 +1,4 @@
-import { executePowershell } from 'src/electron/utils/ShellUtils';
+import { executePowershell } from 'src/main/utils/ShellUtils';
 import * as ddcci from '@hensm/ddcci';
 import { IDisplayAdapter, Monitor } from 'src/types.d';
 
