@@ -2,16 +2,16 @@ const fs = require('fs');
 const { exec } = require('child_process');
 
 let source;
-const dest = `src/electron/utils/DisplayAdapter.ts`;
+const dest = `src/main/utils/DisplayAdapter.ts`;
 let packages = [];
 
 switch (process.platform) {
   case 'win32':
-    source = `src/electron/utils/DisplayAdapter.Win32.ts`;
+    source = `src/main/utils/DisplayAdapter.Win32.ts`;
     packages = ['@hensm/ddcci', 'electron-winstaller'];
     break;
   case 'darwin':
-    source = `src/electron/utils/DisplayAdapter.Darwin.ts`;
+    source = `src/main/utils/DisplayAdapter.Darwin.ts`;
     packages = ['dark-mode', 'electron-installer-dmg'];
     break;
 }
