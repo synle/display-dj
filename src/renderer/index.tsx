@@ -20,7 +20,7 @@ import {
   QUERY_KEY_CONFIGS,
   QUERY_KEY_APP_STATE,
 } from 'src/renderer/hooks';
-import {debounce} from 'src/renderer/utils/CommonUtils';
+import { debounce } from 'src/renderer/utils/CommonUtils';
 
 // TODO: extract these things
 
@@ -308,10 +308,7 @@ type SliderProps = {
 function Slider(props: SliderProps) {
   const { value, onInput, className, placeholder, disabled } = props;
 
-  const debouncedOnInput = useMemo(
-    () => debounce(onInput, 300)
-  , []);
-
+  const debouncedOnInput = useMemo(() => debounce(onInput, 300), []);
 
   return (
     <input
