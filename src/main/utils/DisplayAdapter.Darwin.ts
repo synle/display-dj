@@ -1,5 +1,5 @@
-import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
-import { executeBash } from 'src/electron/utils/ShellUtils';
+import PreferenceUtils from 'src/main/utils/PreferenceUtils';
+import { executeBash } from 'src/main/utils/ShellUtils';
 import darkMode from 'dark-mode';
 import { exec } from 'child_process';
 import { IDisplayAdapter, Monitor } from 'src/types.d';
