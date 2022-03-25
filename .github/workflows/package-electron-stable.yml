@@ -76,6 +76,21 @@ jobs:
           asset_name: display-dj-darwin.dmg
           asset_content_type: application/octet-stream
 
+  publish:
+    needs: [create_release, build_windows, build_macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ github.head_ref }}
+      - run: npm version --no-git-tag-version patch
+      - run: |
+          echo "{\"version\": \"${{ needs.create_release.outputs.package_version }}\"}" > release.json
+      - uses: EndBug/add-and-commit@v8
+        with:
+          message: 'CI / CD - New Release ${{needs.create_release.outputs.package_version}}'
+
   roll_back:
     if: failure()
     needs: [create_release, build_windows, build_darwin]
