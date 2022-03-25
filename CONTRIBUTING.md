@@ -36,6 +36,12 @@ npm run build
 npm start
 ```
 
+### Reset Jest Test Snapshots
+
+```bash
+npm test -- -u
+```
+
 ## Log Files
 
 Log files are located in

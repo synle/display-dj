@@ -44,6 +44,7 @@ describe('PreferenceUtils', () => {
               "command/changeBrightness/10",
             ],
             "key": "Shift+F1",
+            "notification": "Switching to Dark profile",
           },
           Object {
             "command": Array [
@@ -51,6 +52,7 @@ describe('PreferenceUtils', () => {
               "command/changeBrightness/100",
             ],
             "key": "Shift+F2",
+            "notification": "Switching to Light profile",
           },
           Object {
             "command": Array [
@@ -92,6 +94,7 @@ describe('PreferenceUtils', () => {
             "command/changeBrightness/10",
           ],
           "key": "Shift+F1",
+          "notification": "Switching to Dark profile",
         },
         Object {
           "command": Array [
@@ -99,6 +102,7 @@ describe('PreferenceUtils', () => {
             "command/changeBrightness/100",
           ],
           "key": "Shift+F2",
+          "notification": "Switching to Light profile",
         },
         Object {
           "command": Array [
@@ -174,6 +178,7 @@ describe('PreferenceUtils', () => {
               "command/changeBrightness/10",
             ],
             "key": "Shift+F1",
+            "notification": "Switching to Dark profile",
           },
           Object {
             "command": Array [
@@ -181,6 +186,7 @@ describe('PreferenceUtils', () => {
               "command/changeBrightness/100",
             ],
             "key": "Shift+F2",
+            "notification": "Switching to Light profile",
           },
           Object {
             "command": Array [
