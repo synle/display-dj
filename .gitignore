@@ -4,3 +4,4 @@ dist
 package-lock.json
 build
 src/electron/utils/DisplayAdapter.ts
+coverage
