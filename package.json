@@ -1,7 +1,7 @@
 {
   "name": "display-dj",
   "private": true,
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "A cross platform desktop application that supports brightness adjustment for integrated laptop monitor as well as external monitors and dark mode toggle supporting Windows and MacOSX at the moment.",
   "scripts": {
     "clean-dist": "rimraf dist",
@@ -22,7 +22,7 @@
     "format": "npx prettier --config ./.prettierrc --write **/*.{ts,tsx,js,jsx,scss,yml,html,json,md} && npx prettier --config ./.prettierrc --parser html --write **/*.svg",
     "test-ci": "",
     "prestart": "npm run build-dev",
-    "start": "concurrently \"cross-env APPLICATION_MODE='dev' electron ./build/main.js\" \"npm run dev\"",
+    "start": "concurrently \"electron ./build/main.js\" \"npm run dev\"",
     "dist": "node dist.js",
     "predist-win32": " npx electron-packager \"./\" --overwrite --asar --prune=true --out=\"dist\" --icon=./src/assets/icon.png --platform=win32",
     "dist-win32": "npm run dist",
