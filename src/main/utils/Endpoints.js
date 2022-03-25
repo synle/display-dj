@@ -124,7 +124,8 @@ export function setUpDataEndpoints() {
         const newMonitors = _getUpdatedOrdersForList(monitors, fromIdx, toIdx);
         for(let i = 0; i < newMonitors.length; i++){
           newMonitors[i].sortOrder = i;
-          await DisplayUtils.updateMonitor(newMonitors[i], newMonitors[i]);
+          console.debug('fixed', newMonitors[i]);
+          await DisplayUtils.updateMonitor(newMonitors[i]);
         }
 
         return res.status(200).json(newMonitors);

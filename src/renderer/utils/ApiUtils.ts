@@ -10,7 +10,7 @@ const ApiUtils = {
   // preferences
   getPreferences: () => fetch<Preference>(`/api/preferences`),
   updatePreferences: (preference: Preference) =>
-    fetch(`/api/preferences`, {
+    fetch<void>(`/api/preferences`, {
       method: 'put',
       body: JSON.stringify(preference),
     }),
@@ -27,24 +27,24 @@ const ApiUtils = {
         }),
       })},
   updateMonitor: (monitor: SingleMonitorUpdateInput) =>
-    fetch(`/api/configs/monitors/${monitor.id}`, {
+    fetch<void>(`/api/configs/monitors/${monitor.id}`, {
       method: 'put',
       body: JSON.stringify(monitor),
     }),
   batchUpdateMonitors: (monitor: BatchMonitorUpdateInput) =>
-    fetch(`/api/configs/monitors`, {
+    fetch<void>(`/api/configs/monitors`, {
       method: 'put',
       body: JSON.stringify(monitor),
     }),
   updateDarkMode: (darkMode: boolean) =>
-    fetch(`/api/configs/darkMode`, {
+    fetch<void>(`/api/configs/darkMode`, {
       method: 'put',
       body: JSON.stringify({
         darkMode,
       }),
     }),
   updateAppPosition: () =>
-    fetch(`/api/configs/appPosition`, {
+    fetch<void>(`/api/configs/appPosition`, {
       method: 'put',
       body: JSON.stringify({
         height: document.body.clientHeight + 20,

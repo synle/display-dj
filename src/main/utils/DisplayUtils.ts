@@ -114,6 +114,8 @@ const DisplayUtils = {
       throw `ID=${monitor.id} not found.`;
     }
 
+    console.debug('monitorsFromStorage', monitorsFromStorage[monitor.id], monitor);
+
     monitorsFromStorage[monitor.id] = {
       ...monitorsFromStorage[monitor.id],
       ...monitor,
