@@ -14,10 +14,7 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
-    "target": "es6",
-    "paths": {
-      "src/*": [ "./src/*" ]
-    }
+    "target": "es6"
   },
   "exclude": ["node_modules"]
 }
