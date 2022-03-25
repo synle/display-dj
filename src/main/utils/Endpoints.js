@@ -1,6 +1,6 @@
-import DisplayUtils from 'src/electron/utils/DisplayUtils';
-import PositionUtils from 'src/electron/utils/PositionUtils';
-import PreferenceUtils from 'src/electron/utils/PreferenceUtils';
+import DisplayUtils from 'src/main/utils/DisplayUtils';
+import PositionUtils from 'src/main/utils/PositionUtils';
+import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 
 const electronEndpointHandlers = [];
 

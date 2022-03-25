@@ -3,7 +3,7 @@ const webpack = require('webpack');
 const appPackage = require('./package.json');
 
 module.exports = {
-  entry: ['./src/electron/index.js'],
+  entry: ['./src/main/index.js'],
   output: {
     filename: 'main.js',
     path: path.resolve(__dirname, 'build'),

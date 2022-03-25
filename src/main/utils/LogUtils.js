@@ -1,4 +1,4 @@
-import StorageUtils, { LOG_FILE_PATH } from 'src/electron/utils/StorageUtils';
+import StorageUtils, { LOG_FILE_PATH } from 'src/main/utils/StorageUtils';
 
 function _appendLogToFile(...data) {
   const logLine = `[${new Date().toLocaleString()}] ${_serializeLogData(...data)}\n`;
