@@ -1,3 +1,5 @@
+[![main-build](https://github.com/synle/display-dj/actions/workflows/main-build.yml/badge.svg)](https://github.com/synle/display-dj/actions/workflows/main-build.yml)
+
 # [display-dj](https://synle.github.io/display-dj/)
 
 ![icon](https://user-images.githubusercontent.com/3792401/159400503-1524c1a0-7911-484e-8c8d-a62385856dcf.png)
