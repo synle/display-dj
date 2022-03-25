@@ -31,7 +31,8 @@ For mac only, temporarily remove this windows only package for windows
 After all the dependencies have been installed, the application can be started using the following command.
 
 ```bash
-npm install
+npm install --no-optional
+npm run build
 npm start
 ```
 
