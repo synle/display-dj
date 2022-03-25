@@ -13,12 +13,11 @@ import StorageUtils, {
   LOG_FILE_PATH,
 } from 'src/main/utils/StorageUtils';
 import 'src/main/utils/LogUtils';
+import {showNotification} from 'src/main/utils/NotificationUtils';
+
 let mainWindow;
-
 const appBaseDir = __dirname;
-
 const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
-
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
 
 function createWindow() {
@@ -181,6 +180,10 @@ async function setUpShortcuts() {
       const commands = [].concat(keyBinding.command);
       for (const command of commands) {
         global.emitAppEvent({ command });
+      }
+
+      if(keyBinding.notification){
+        showNotification(keyBinding.notification);
       }
     });
   });
