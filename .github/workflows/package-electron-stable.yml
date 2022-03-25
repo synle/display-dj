@@ -86,7 +86,7 @@ jobs:
           ref: ${{ github.head_ref }}
       - run: npm version --no-git-tag-version patch
       - run: |
-          echo "{\"version\": \"${{ needs.create_release.outputs.package_version }}\"}" > release.json
+          echo "{ \"version\": \"${{ needs.create_release.outputs.package_version }}\" }" > release.json
       - uses: EndBug/add-and-commit@v8
         with:
           message: 'CI / CD - New Release ${{needs.create_release.outputs.package_version}}'
