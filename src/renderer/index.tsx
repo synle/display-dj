@@ -322,7 +322,7 @@ function VolumeSetting(props: VolumeSettingProps) {
       </div>
       <div className='field'>
         <span className='field__icon iconBtn' title='Toggle Muted' onClick={onSetMuted}>
-          <VolumeIcon volume={volume}/>
+          <VolumeIcon volume={volume} />
         </span>
         <Slider
           key={volume.value}
@@ -339,24 +339,21 @@ function VolumeSetting(props: VolumeSettingProps) {
 function VolumeIcon(props: VolumeSettingProps) {
   const { volume } = props;
 
-  const icon = useMemo(
-    () => {
-      if(volume.muted){
-        return '🔇'
-      }
+  const icon = useMemo(() => {
+    if (volume.muted) {
+      return '🔇';
+    }
 
-      const {value} = volume;
-      if(value < 30){
-        return '🔈'
-      }
-      if(value < 60){
-        return '🔉'
-      }
-      return '🔊'
-    },
-    [volume.muted, volume.value]
-  );
-  return <>{icon}</>
+    const { value } = volume;
+    if (value < 30) {
+      return '🔈';
+    }
+    if (value < 60) {
+      return '🔉';
+    }
+    return '🔊';
+  }, [volume.muted, volume.value]);
+  return <>{icon}</>;
 }
 
 type SliderProps = {

@@ -50,7 +50,7 @@ export type Monitor = Required<SingleMonitorUpdateInput>;
 export type VolumeInput = {
   muted: boolean;
   value: number;
-}
+};
 
 export type Volume = Required<VolumeInput>;
 
