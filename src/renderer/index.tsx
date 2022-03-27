@@ -321,7 +321,7 @@ function VolumeSetting(props: VolumeSettingProps) {
         </div>
       </div>
       <div className='field'>
-        <span className='field__icon iconBtn' title='Volume' onClick={onSetMuted}>
+        <span className='field__icon iconBtn' title='Toggle Muted' onClick={onSetMuted}>
           <VolumeIcon volume={volume}/>
         </span>
         <Slider
