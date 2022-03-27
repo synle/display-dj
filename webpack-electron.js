@@ -5,8 +5,8 @@ const appPackage = require('./package.json');
 const externals = {};
 const externalsDeps = [
   'electron',
-  ...Object.keys(appPackage.optionalDependencies),
-  ...Object.keys(appPackage.dependencies)
+  ...Object.keys(appPackage.optionalDependencies || []),
+  ...Object.keys(appPackage.dependencies || [])
 ];
 for(const dep of externalsDeps){
   externals[dep] = `commonjs ${dep}`;
