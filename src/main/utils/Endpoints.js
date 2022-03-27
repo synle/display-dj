@@ -131,7 +131,7 @@ export function setUpDataEndpoints() {
   addDataEndpoint('put', '/api/configs/volume', async (req, res) => {
     try {
       if(req.body.isMuted !== undefined){
-        await SoundUtils.setMuted();
+        await SoundUtils.setMuted(req.body.isMuted === true);
         res.status(204).send();
       } else if(parseInt(req.body.volume) >= 0) {
         const volume = Math.min(parseInt(req.body.volume), 100);
