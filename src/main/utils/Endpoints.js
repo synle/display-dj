@@ -1,6 +1,7 @@
 import DisplayUtils from 'src/main/utils/DisplayUtils';
 import PositionUtils from 'src/main/utils/PositionUtils';
 import PreferenceUtils from 'src/main/utils/PreferenceUtils';
+import SoundUtils from 'src/main/utils/SoundUtils';
 
 const electronEndpointHandlers = [];
 
@@ -51,6 +52,10 @@ export function setUpDataEndpoints() {
       res.status(200).json({
         darkMode: (await DisplayUtils.getDarkMode()) === true,
         monitors: await DisplayUtils.getMonitors(),
+        volume: {
+          muted: (await SoundUtils.getMuted()) === true,
+          value: await SoundUtils.getVolume(),
+        },
         env: process.env.APPLICATION_MODE,
         version: process.env.APP_VERSION,
         platform: process.platform,
@@ -114,6 +119,27 @@ export function setUpDataEndpoints() {
       const isDarkModeOn = req.body.darkMode === true;
 
       res.status(200).json(await DisplayUtils.updateDarkMode(isDarkModeOn));
+    } catch (err) {
+      res.status(500).json({
+        error: `Failed to update darkmode config: ` + JSON.stringify(err),
+        stack: err.stack,
+      });
+    }
+  });
+
+
+  addDataEndpoint('put', '/api/configs/volume', async (req, res) => {
+    try {
+      if(req.body.isMuted !== undefined){
+        await SoundUtils.setMuted();
+        res.status(204).send();
+      } else if(parseInt(req.body.volume) >= 0) {
+        const volume = Math.min(parseInt(req.body.volume), 100);
+        await SoundUtils.setVolume(volume);
+        res.status(204).send();
+      } else {
+        res.status(400).send('This API requires volume or isMuted in the body');
+      }
     } catch (err) {
       res.status(500).json({
         error: `Failed to update darkmode config: ` + JSON.stringify(err),
