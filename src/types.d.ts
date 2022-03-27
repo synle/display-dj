@@ -47,11 +47,20 @@ export type BatchMonitorUpdateInput = {
 
 export type Monitor = Required<SingleMonitorUpdateInput>;
 
+export type VolumeInput = {
+  muted: boolean;
+  value: number;
+};
+
+export type Volume = Required<VolumeInput>;
+
 export type AppConfig = {
   monitors: Monitor[];
   darkMode: boolean;
+  volume: Volume;
   env: string;
   version: string;
+  platform: 'win32' | 'darwin';
 };
 
 export type IDisplayAdapter = {

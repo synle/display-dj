@@ -29,9 +29,7 @@ export function useUpdateAppState() {
       _appState = { ..._appState, ...newAppState };
     },
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
-      },
+      onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
     },
   );
 }
@@ -45,9 +43,7 @@ export function useUpdatePreferences() {
   const queryClient = useQueryClient();
 
   return useMutation(ApiUtils.updatePreferences, {
-    onSuccess: () => {
-      queryClient.invalidateQueries(QUERY_KEY_PREFERENCE);
-    },
+    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_PREFERENCE),
   });
 }
 // configs
@@ -58,28 +54,40 @@ export function useConfigs() {
 export function useUpdateMonitor() {
   const queryClient = useQueryClient();
   return useMutation(ApiUtils.updateMonitor, {
-    onSuccess: () => {
-      queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
-    },
+    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
   });
 }
+
 export function useBatchUpdateMonitors() {
   const queryClient = useQueryClient();
   return useMutation(ApiUtils.batchUpdateMonitors, {
-    onSuccess: () => {
-      queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
-    },
+    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
   });
 }
 
 export function useToggleDarkMode() {
   const queryClient = useQueryClient();
   return useMutation(ApiUtils.updateDarkMode, {
-    onSuccess: () => {
-      queryClient.invalidateQueries(QUERY_KEY_CONFIGS);
-    },
+    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
   });
 }
+
+export function useUpdateVolume() {
+  const queryClient = useQueryClient();
+  return useMutation<void, void, number>(ApiUtils.updateVolume, {
+    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
+  });
+}
+
+export function useUpdateMuted() {
+  const queryClient = useQueryClient();
+  return useMutation<void, void, boolean>(ApiUtils.updateMuted, {
+    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
+  });
+}
+
+
+
 // misc
 export function useUpdateAppPosition() {
   return useMutation(ApiUtils.updateAppPosition);

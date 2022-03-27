@@ -1,4 +1,17 @@
 const path = require('path');
+const appPackage = require('./package.json');
+
+const externals = {};
+const externalsDeps = [
+  'fs',
+  'path',
+  'electron',
+  ...Object.keys(appPackage.optionalDependencies),
+  ...Object.keys(appPackage.dependencies)
+];
+for(const dep of externalsDeps){
+  externals[dep] = `commonjs ${dep}`;
+}
 
 module.exports = {
   entry: ['./src/renderer/index.tsx'],
@@ -8,13 +21,7 @@ module.exports = {
     path: path.resolve(__dirname, 'build'),
   },
   mode: 'production',
-  externals: {
-    fs: 'commonjs fs',
-    path: 'commonjs path',
-    electron: 'commonjs electron',
-    react: 'commonjs react',
-    'react-dom': 'commonjs react-dom',
-  },
+  externals: externals,
   module: {
     rules: [
       {
