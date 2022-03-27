@@ -30,6 +30,7 @@ function _doFetch(input: string, options: RequestInit) {
         status,
         options?.method || 'get',
         url,
+        options.body,
         returnedData,
         headers,
       );
