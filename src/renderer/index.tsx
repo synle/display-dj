@@ -8,7 +8,7 @@ import ToggleSvg from 'src/renderer/svg/toggle.svg';
 import DarkModeSvg from 'src/renderer/svg/darkMode.svg';
 import LightModeSvg from 'src/renderer/svg/lightMode.svg';
 import './index.scss';
-import { Monitor, SingleMonitorUpdateInput, Preference, AppConfig } from 'src/types.d';
+import { Monitor, SingleMonitorUpdateInput, Preference, AppConfig, Volume } from 'src/types.d';
 import {
   useBatchUpdateMonitors,
   usePreferences,
@@ -17,6 +17,8 @@ import {
   useUpdateMonitor,
   useToggleDarkMode,
   useUpdateAppPosition,
+  useUpdateVolume,
+  useUpdateMuted,
   QUERY_KEY_CONFIGS,
   QUERY_KEY_APP_STATE,
 } from 'src/renderer/hooks';
@@ -77,8 +79,9 @@ function Home(props: HomeProps) {
       {preference.showIndividualDisplays ? (
         <MonitorBrightnessSettingForm monitors={configs.monitors} />
       ) : (
-        <AllMonitorBrightnessSettings monitors={configs.monitors} />
+        <AllMonitorBrightnessSetting monitors={configs.monitors} />
       )}
+      <VolumeSetting volume={configs.volume} />
       <DarkModeSettingForm darkMode={configs.darkMode} />
     </>
   );
@@ -259,10 +262,10 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   );
 }
 
-type AllMonitorBrightnessSettingsProps = {
+type AllMonitorBrightnessSettingProps = {
   monitors: Monitor[];
 };
-function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) {
+function AllMonitorBrightnessSetting(props: AllMonitorBrightnessSettingProps) {
   const { monitors } = props;
   const allBrightnessValueFromProps = Math.min(
     ...monitors.map((monitor) => monitor.brightness),
@@ -298,6 +301,61 @@ function AllMonitorBrightnessSettings(props: AllMonitorBrightnessSettingsProps) 
   );
 }
 
+type VolumeSettingProps = {
+  volume: Volume;
+};
+function VolumeSetting(props: VolumeSettingProps) {
+  const { volume } = props;
+
+  const { mutateAsync: updateVolume } = useUpdateVolume();
+  const { mutateAsync: updateMuted } = useUpdateMuted();
+
+  const onChange = (newValue: number) => updateVolume(newValue);
+  const onSetMuted = () => updateMuted(!volume.muted);
+
+  return (
+    <>
+      <div className='field'>
+        <div className='field__value field__value-readonly' title='Volume'>
+          Volume
+        </div>
+      </div>
+      <div className='field'>
+        <span className='field__icon iconBtn' title='Toggle Muted' onClick={onSetMuted}>
+          <VolumeIcon volume={volume} />
+        </span>
+        <Slider
+          key={volume.value}
+          className='field__value'
+          placeholder='Volume'
+          value={volume.value}
+          onInput={(e) => onChange(parseInt((e.target as HTMLInputElement).value) || 0)}
+        />
+      </div>
+    </>
+  );
+}
+
+function VolumeIcon(props: VolumeSettingProps) {
+  const { volume } = props;
+
+  const icon = useMemo(() => {
+    if (volume.muted) {
+      return '🔇';
+    }
+
+    const { value } = volume;
+    if (value < 30) {
+      return '🔈';
+    }
+    if (value < 60) {
+      return '🔉';
+    }
+    return '🔊';
+  }, [volume.muted, volume.value]);
+  return <>{icon}</>;
+}
+
 type SliderProps = {
   value?: number;
   onInput: (e: React.FormEvent<HTMLInputElement>) => void;
@@ -308,7 +366,7 @@ type SliderProps = {
 function Slider(props: SliderProps) {
   const { value, onInput, className, placeholder, disabled } = props;
 
-  const debouncedOnInput = useMemo(() => debounce(onInput, 300), []);
+  const debouncedOnInput = useMemo(() => debounce(onInput, 200), []);
 
   return (
     <input

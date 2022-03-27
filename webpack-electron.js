@@ -2,6 +2,16 @@ const path = require('path');
 const webpack = require('webpack');
 const appPackage = require('./package.json');
 
+const externals = {};
+const externalsDeps = [
+  'electron',
+  ...Object.keys(appPackage.optionalDependencies),
+  ...Object.keys(appPackage.dependencies)
+];
+for(const dep of externalsDeps){
+  externals[dep] = `commonjs ${dep}`;
+}
+
 module.exports = {
   entry: ['./src/main/index.js'],
   output: {
@@ -10,11 +20,7 @@ module.exports = {
   },
   mode: 'production',
   target: ['node'],
-  externals: {
-    electron: 'commonjs electron',
-    'react-router-dom': 'commonjs react-router-dom',
-    '@hensm/ddcci': 'commonjs @hensm/ddcci',
-  },
+  externals: externals,
   module: {
     rules: [
       {

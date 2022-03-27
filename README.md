@@ -33,11 +33,8 @@ The challenge of work from home in the last 2 years with 2 young toddlers is tha
 
 ### Windows 11
 
-![image](https://user-images.githubusercontent.com/3792401/159134000-ef989378-0e4d-4bd1-96f8-9c79110cb37e.png)
-
-![image](https://user-images.githubusercontent.com/3792401/159134004-26547233-c46e-4e6a-b6b8-326502d08a8b.png)
-
-![image](https://user-images.githubusercontent.com/3792401/159134011-761cadb7-5dc5-4431-a4e0-4976b379e39d.png)
+![image](https://user-images.githubusercontent.com/3792401/160289019-a5144339-8ca9-4b33-9d6a-f5677c31c2d1.png)
+![image](https://user-images.githubusercontent.com/3792401/160289031-9c6c8c4a-d694-4f17-8442-4d081421081b.png)
 
 ### Mac OSX Monterey
 
