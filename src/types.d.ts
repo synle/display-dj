@@ -52,7 +52,7 @@ export type VolumeInput = {
   value?: number;
 };
 
-export type Volume = Required<VolumeInput> & {isDisabled?: boolean};
+export type Volume = Required<VolumeInput> & { isDisabled?: boolean };
 
 export type AppConfig = {
   monitors: Monitor[];
