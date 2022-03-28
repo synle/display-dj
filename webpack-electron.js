@@ -7,7 +7,8 @@ const externalsDeps = [
   'electron',
   ...Object.keys(appPackage.optionalDependencies || []),
   ...Object.keys(appPackage.dependencies || [])
-];
+].filter(s => s !== 'dark-mode');
+
 for(const dep of externalsDeps){
   externals[dep] = `commonjs ${dep}`;
 }
