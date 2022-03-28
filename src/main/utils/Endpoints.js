@@ -55,9 +55,8 @@ export function setUpDataEndpoints() {
 
       try{
         volume = {
+          ...(await SoundUtils.getVolume()),
           isDisabled: false,
-          muted: (await SoundUtils.getMuted()) === true,
-          value: await SoundUtils.getVolume(),
         }
       } catch(err1){}
 
@@ -65,7 +64,7 @@ export function setUpDataEndpoints() {
         darkMode: (await DisplayUtils.getDarkMode()) === true,
         monitors: await DisplayUtils.getMonitors(),
         volume,
-        env: process.env.APPLICATION_MODE,
+        env: process.env.APP_MODE,
         version: process.env.APP_VERSION,
         platform: process.platform,
       });
