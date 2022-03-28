@@ -1,5 +1,5 @@
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 
 /**
  * @param {String} sourceDir: /some/folder/to/compress
@@ -25,6 +25,12 @@ async function doDistWork() {
   try {
     switch (process.platform) {
       case 'win32':
+        // copy over the binary required for windows volume settings
+        fs.copyFileSync(
+          path.join(__dirname, `src/binaries/win32_volume_helper.exe`),
+          path.join(__dirname, `dist/display-dj-win32-x64/resources/win32_volume_helper.exe`)
+        );
+
         const electronInstaller = require('electron-winstaller');
         electronInstaller.createWindowsInstaller({
           appDirectory: path.join(__dirname, 'dist', 'display-dj-win32-x64'),
@@ -39,6 +45,7 @@ async function doDistWork() {
           noMsi: true,
         });
         break;
+
       case 'darwin':
         const createDMG = require('electron-installer-dmg');
         await createDMG({
@@ -47,7 +54,6 @@ async function doDistWork() {
           icon: path.join(__dirname, 'src', 'assets', 'icon.png'),
           overwrite: true,
         });
-
         break;
     }
   } catch (err) {

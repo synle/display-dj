@@ -13,6 +13,11 @@ for(const dep of externalsDeps){
   externals[dep] = `commonjs ${dep}`;
 }
 
+console.log('=====================')
+console.log('App Version: ', appPackage.version)
+console.log('App Mode: ', process.env.APP_MODE)
+console.log('=====================')
+
 module.exports = {
   entry: ['./src/renderer/index.tsx'],
   devtool: 'source-map',

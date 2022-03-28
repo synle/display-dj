@@ -199,7 +199,7 @@ async function setUpShortcuts() {
 }
 
 function setupAutolaunch() {
-  if (process.env.APPLICATION_MODE !== 'production') {
+  if (process.env.APP_MODE !== 'production') {
     return;
   }
 
