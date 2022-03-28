@@ -24,8 +24,6 @@ import {
 } from 'src/renderer/hooks';
 import { debounce } from 'src/renderer/utils/CommonUtils';
 
-// TODO: extract these things
-
 // react components
 type HomeProps = {};
 function Home(props: HomeProps) {
@@ -81,7 +79,7 @@ function Home(props: HomeProps) {
       ) : (
         <AllMonitorBrightnessSetting monitors={configs.monitors} />
       )}
-      <VolumeSetting volume={configs.volume} />
+      {configs.volume.isDisabled === false && <VolumeSetting volume={configs.volume} />}
       <DarkModeSettingForm darkMode={configs.darkMode} />
     </>
   );

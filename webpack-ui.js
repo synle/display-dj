@@ -21,7 +21,7 @@ module.exports = {
     path: path.resolve(__dirname, 'build'),
   },
   mode: 'production',
-  externals: externals,
+  externals,
   module: {
     rules: [
       {

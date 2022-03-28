@@ -49,13 +49,22 @@ export function setUpDataEndpoints() {
 
   addDataEndpoint('get', '/api/configs', async (req, res) => {
     try {
+      let volume = {
+        isDisabled: true
+      };
+
+      try{
+        volume = {
+          isDisabled: false,
+          muted: (await SoundUtils.getMuted()) === true,
+          value: await SoundUtils.getVolume(),
+        }
+      } catch(err1){}
+
       res.status(200).json({
         darkMode: (await DisplayUtils.getDarkMode()) === true,
         monitors: await DisplayUtils.getMonitors(),
-        volume: {
-          muted: (await SoundUtils.getMuted()) === true,
-          value: await SoundUtils.getVolume(),
-        },
+        volume,
         env: process.env.APPLICATION_MODE,
         version: process.env.APP_VERSION,
         platform: process.platform,
