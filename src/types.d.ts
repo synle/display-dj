@@ -48,11 +48,11 @@ export type BatchMonitorUpdateInput = {
 export type Monitor = Required<SingleMonitorUpdateInput>;
 
 export type VolumeInput = {
-  muted: boolean;
-  value: number;
+  muted?: boolean;
+  value?: number;
 };
 
-export type Volume = Required<VolumeInput>;
+export type Volume = Required<VolumeInput> & {isDisabled?: boolean};
 
 export type AppConfig = {
   monitors: Monitor[];
