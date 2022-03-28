@@ -2,8 +2,6 @@ import loudness from 'loudness';
 
 const SoundUtils = {
   getVolume: async() => {
-    throw 'TODO: to be implemented and tested';
-
     return {
       value: await loudness.getVolume(),
       muted: await loudness.getMuted()
