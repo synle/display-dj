@@ -24,6 +24,8 @@ switch (process.platform) {
     `;
     files.push([`src/main/utils/DisplayAdapter.Darwin.ts`, DEST_IMPL_DISPLAY_UTILS]);
     files.push([`src/main/utils/SoundUtils.Darwin.ts`, DEST_IMPL_SOUND_UTILS]);
+    files.push([`src/binaries/darwin_brightness`, `node_modules/electron/dist/Electron.app/Contents/Resources/brightness`]);
+    files.push([`src/binaries/darwin_ddcctl`, `node_modules/electron/dist/Electron.app/Contents/Resources/ddcctl`]);
     break;
 }
 
