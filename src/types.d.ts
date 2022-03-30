@@ -74,8 +74,6 @@ export type IDisplayAdapter = {
 };
 
 export type Preference = {
-  brightnessBinary: string;
-  ddcctlBinary: string;
   showIndividualDisplays: boolean;
   brightnessDelta: number;
   brightnessPresets: BrightnessPreset[];

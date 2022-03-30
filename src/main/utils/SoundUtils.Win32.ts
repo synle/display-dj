@@ -3,7 +3,7 @@ import path from 'path';
 
 const binaryPath = process.env.APP_MODE === 'dev'
   ? path.join(process.cwd(), `src/binaries/win32_volume_helper.exe`)
-  : path.join(process.cwd(), `resources/win32_volume_helper.exe`);
+  : path.join(process['resourcesPath'], `resources/win32_volume_helper.exe`);
 
 const SoundUtils = {
   getVolume: async() => {

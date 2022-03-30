@@ -25,7 +25,7 @@ async function doDistWork() {
   try {
     switch (process.platform) {
       case 'win32':
-        // copy over the binary required for windows volume settings
+        // copy over the additional required binaries
         fs.copyFileSync(
           path.join(__dirname, `src/binaries/win32_volume_helper.exe`),
           path.join(__dirname, `dist/display-dj-win32-x64/resources/win32_volume_helper.exe`)
@@ -47,6 +47,17 @@ async function doDistWork() {
         break;
 
       case 'darwin':
+        // copy over the additional required binaries
+        fs.copyFileSync(
+          path.join(__dirname, `src/binaries/darwin_ddcctl`),
+          path.join(__dirname, `dist/display-dj-darwin-x64/display-dj.app/Contents/Resources`, `ddcctl`)
+        );
+
+        fs.copyFileSync(
+          path.join(__dirname, `src/binaries/darwin_brightness`),
+          path.join(__dirname, `dist/display-dj-darwin-x64/display-dj.app/Contents/Resources`, `brightness`)
+        );
+
         const createDMG = require('electron-installer-dmg');
         await createDMG({
           appPath: path.join(__dirname, 'dist', 'display-dj-darwin-x64', 'display-dj.app'),
