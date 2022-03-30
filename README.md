@@ -44,20 +44,8 @@ The challenge of work from home in the last 2 years with 2 young toddlers is tha
 
 The following version of OS has been tested and working.
 
-- Windows 11
-- Mac OSX (Monterey) - requires a separate installation of `ddcctl`
-
-### MacOSX dependencies
-
-This application requires `ddcctl` and `brightness` installed for it to be fully functional. You can use the following bash command to install it with `homebrew`
-
-```bash
-# for external Display
-brew install ddcctl
-
-# for Mac Integrated Display
-brew install brightness
-```
+- Windows (tested on Windows 11)
+- Mac OSX (tested on Monterey)
 
 ## Features / Configs / Preferences
 
@@ -130,7 +118,6 @@ Key Bindings' command can be an array in case you want to mix and match multiple
 
 At the moment, there is no UI to modify the preferences. This can also be accessed via right clicking the tray icon of display-dj and choose `Open App Preferences`.
 
-- `ddcctlBinary`: applicable to mac system only. ddcctl binary used for display-dj.
 - `showIndividualDisplays`: flag can be used to show a single brightness control for all displays or individual ones.
 - `brightnessDelta`: a delta value / step value for brightness adjustment (applicable only for keyboard shortcut).
 - `keyBindings`: a list of shortcuts / bindings to adjust brightness based on the keyboard shortcuts. Below is a list of all supported commands. Refer to [this list for a set of all supported commands](https://github.com/synle/display-dj/blob/main/src/types.d.ts#L3)
@@ -159,7 +146,6 @@ Preferences file are located at:
 
 ```json
 {
-  "ddcctlBinary": "/usr/local/bin/ddcctl",
   "showIndividualDisplays": false,
   "brightnessDelta": 50,
   "keyBindings": [
