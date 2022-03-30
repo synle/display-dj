@@ -1,3 +1,4 @@
+import path from 'path';
 import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 import { executeBash } from 'src/main/utils/ShellUtils';
 import darkMode from 'dark-mode';
@@ -111,9 +112,9 @@ async function _getUpdateBrightnessShellScript(
   });
 }
 
-const _getDdcctlBinary = async () => (await PreferenceUtils.get()).ddcctlBinary;
+const _getDdcctlBinary = async () => path.join(process['resourcesPath'], `ddcctl`);
 
-const _getBrightnessBinary = async () => (await PreferenceUtils.get()).brightnessBinary;
+const _getBrightnessBinary = async () => path.join(process['resourcesPath'], `brightness`);
 
 const DisplayAdapter: IDisplayAdapter = {
   getMonitorList: _getMonitorList,
