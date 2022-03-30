@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const { exec } = require('child_process');
 
 const DEST_IMPL_DISPLAY_UTILS = `src/main/utils/DisplayAdapter.ts`;
@@ -9,15 +10,19 @@ let files = [];
 
 switch (process.platform) {
   case 'win32':
+    const DEV_ELECTRON_WIN32_RESOURCE_PATH = `node_modules/electron/dist/resources`;
+
     packages = `
       @hensm/ddcci
       electron-winstaller
     `;
     files.push([`src/main/utils/DisplayAdapter.Win32.ts`, DEST_IMPL_DISPLAY_UTILS]);
     files.push([`src/main/utils/SoundUtils.Win32.ts`, DEST_IMPL_SOUND_UTILS]);
-    files.push([`src/binaries/win32_volume_helper.exe`, `node_modules/electron/dist/Electron.app/Contents/Resources/win32_volume_helper.exe`]);
+    files.push([`src/binaries/win32_volume_helper.exe`, path.join(DEV_ELECTRON_WIN32_RESOURCE_PATH ,`win32_volume_helper.exe`)]);
     break;
   case 'darwin':
+    const DEV_ELECTRON_DARWIN_RESOURCE_PATH = `node_modules/electron/dist/Electron.app/Contents/Resources`;
+
     packages = `
       dark-mode
       loudness
@@ -25,8 +30,8 @@ switch (process.platform) {
     `;
     files.push([`src/main/utils/DisplayAdapter.Darwin.ts`, DEST_IMPL_DISPLAY_UTILS]);
     files.push([`src/main/utils/SoundUtils.Darwin.ts`, DEST_IMPL_SOUND_UTILS]);
-    files.push([`src/binaries/darwin_brightness`, `node_modules/electron/dist/Electron.app/Contents/Resources/brightness`]);
-    files.push([`src/binaries/darwin_ddcctl`, `node_modules/electron/dist/Electron.app/Contents/Resources/ddcctl`]);
+    files.push([`src/binaries/darwin_brightness`, path.join(DEV_ELECTRON_DARWIN_RESOURCE_PATH, `brightness`)]);
+    files.push([`src/binaries/darwin_ddcctl`, path.join(DEV_ELECTRON_DARWIN_RESOURCE_PATH, `ddcctl`)]);
     break;
 }
 
