@@ -17,7 +17,6 @@ describe('PreferenceUtils', () => {
     const actual = await PreferenceUtils.get();
     expect(actual).toMatchInlineSnapshot(`
       Object {
-        "brightnessBinary": "/usr/local/bin/brightness",
         "brightnessDelta": 25,
         "brightnessPresets": Array [
           Object {
@@ -30,7 +29,6 @@ describe('PreferenceUtils', () => {
             "level": 100,
           },
         ],
-        "ddcctlBinary": "/usr/local/bin/ddcctl",
         "keyBindings": Array [
           Object {
             "command": Array [
@@ -151,7 +149,6 @@ describe('PreferenceUtils', () => {
     });
     expect(actual).toMatchInlineSnapshot(`
       Object {
-        "brightnessBinary": "/usr/local/bin/brightness",
         "brightnessDelta": 30,
         "brightnessPresets": Array [
           Object {
@@ -164,7 +161,6 @@ describe('PreferenceUtils', () => {
             "level": 100,
           },
         ],
-        "ddcctlBinary": "/usr/local/bin/ddcctl",
         "keyBindings": Array [
           Object {
             "command": Array [

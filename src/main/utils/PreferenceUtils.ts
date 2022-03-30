@@ -2,8 +2,6 @@ import StorageUtils, { PREFERENCE_FILE_PATH } from 'src/main/utils/StorageUtils'
 import { Preference } from 'src/types.d';
 
 const DEFAULT_PREFERENCES: Preference = {
-  ddcctlBinary: `/usr/local/bin/ddcctl`,
-  brightnessBinary: '/usr/local/bin/brightness',
   showIndividualDisplays: false,
   brightnessDelta: 25,
   brightnessPresets: [
