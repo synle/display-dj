@@ -15,6 +15,7 @@ switch (process.platform) {
     `;
     files.push([`src/main/utils/DisplayAdapter.Win32.ts`, DEST_IMPL_DISPLAY_UTILS]);
     files.push([`src/main/utils/SoundUtils.Win32.ts`, DEST_IMPL_SOUND_UTILS]);
+    files.push([`src/binaries/win32_volume_helper.exe`, `node_modules/electron/dist/Electron.app/Contents/Resources/win32_volume_helper.exe`]);
     break;
   case 'darwin':
     packages = `
