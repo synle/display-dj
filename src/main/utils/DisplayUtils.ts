@@ -73,14 +73,15 @@ const DisplayUtils = {
       try {
         brightness = await DisplayAdapter.getMonitorBrightness(idToUse);
       } catch (err) {}
-      let name = monitorsFromStorage?.[idToUse]?.name || '';
+
+      let name = (monitorsFromStorage?.[idToUse]?.name || '').trim();
       if (!name) {
-        name = type === 'laptop_monitor' ? `Laptop Display` : `External Monitor #${++monitorCount}`;
+        name = `Monitor #${++monitorCount}`;
       }
 
       monitors.push({
         id: idToUse,
-        name: name,
+        name,
         type,
         brightness,
         sortOrder: monitorsFromStorage?.[idToUse]?.sortOrder || idx,
@@ -114,15 +115,20 @@ const DisplayUtils = {
       throw `ID=${monitor.id} not found.`;
     }
 
+    // merging the objects
     monitorsFromStorage[monitor.id] = {
       ...monitorsFromStorage[monitor.id],
       ...monitor,
     };
 
-    await DisplayAdapter.updateMonitorBrightness(
-      monitorsFromStorage[monitor.id].id,
-      monitorsFromStorage[monitor.id].brightness,
-    );
+    if(monitor.brightness !== undefined){
+      console.trace(`updateMonitor brightness`, monitor.id, monitor.brightness);
+
+      await DisplayAdapter.updateMonitorBrightness(
+        monitorsFromStorage[monitor.id].id,
+        monitorsFromStorage[monitor.id].brightness,
+      );
+    }
 
     // persist to storage
     _syncMonitorConfigs(Object.values(monitorsFromStorage));
