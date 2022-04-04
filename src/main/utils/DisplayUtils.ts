@@ -115,10 +115,13 @@ const DisplayUtils = {
       throw `ID=${monitor.id} not found.`;
     }
 
+    let nameToUse = monitor.name || monitorsFromStorage[monitor.id].name;
+
     // merging the objects
     monitorsFromStorage[monitor.id] = {
       ...monitorsFromStorage[monitor.id],
       ...monitor,
+      ...{name: nameToUse}
     };
 
     if(monitor.brightness !== undefined){
@@ -132,6 +135,8 @@ const DisplayUtils = {
 
     // persist to storage
     _syncMonitorConfigs(Object.values(monitorsFromStorage));
+
+    return monitorsFromStorage;
   },
   getAllMonitorsBrightness: async (): Promise<number> => {
     try {
