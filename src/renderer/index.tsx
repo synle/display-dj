@@ -192,23 +192,23 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
 
   const isLaptop = monitor.type === 'laptop_monitor';
 
-  const onBrightnessChange = (value: number) => {
-    monitor.brightness = value;
-
-    updateMonitor(monitor);
+  const onBrightnessChange = (brightness: number) => {
+    updateMonitor({
+      id: monitor.id,
+      brightness
+    });
   };
 
   const onDisplayNameChange = (e: React.SyntheticEvent) => {
     e.preventDefault();
-
-    monitor.name = name.trim();
-
-    if (!monitor.name) {
-      monitor.name = `Monitor #${props.idx}`;
-    }
-
     setEditName(false);
-    updateMonitor(monitor);
+
+    let nameToUse = (name || '').trim() || `Monitor #${props.idx}`;
+
+    updateMonitor({
+      id: monitor.id,
+      name: nameToUse
+    });
   };
 
   useEffect(() => {
