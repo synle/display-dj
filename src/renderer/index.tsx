@@ -185,30 +185,34 @@ type MonitorBrightnessSettingProps = {
   idx: number;
 };
 function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
-  const [editName, setEditName] = useState(false);
+  const [mode, setMode] = useState<string>('mode/read');
   const [name, setName] = useState('');
   const { monitor } = props;
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
 
   const isLaptop = monitor.type === 'laptop_monitor';
 
-  const onBrightnessChange = (brightness: number) => {
-    updateMonitor({
+  const isSavingName = mode === 'mode/saving';
+
+  const onBrightnessChange = async (brightness: number) => {
+    await updateMonitor({
       id: monitor.id,
       brightness,
     });
   };
 
-  const onDisplayNameChange = (e: React.SyntheticEvent) => {
+  const onDisplayNameChange = async (e: React.SyntheticEvent) => {
     e.preventDefault();
-    setEditName(false);
+    setMode('mode/saving');
 
     let nameToUse = (name || '').trim() || `Monitor #${props.idx}`;
 
-    updateMonitor({
+    await updateMonitor({
       id: monitor.id,
       name: nameToUse,
     });
+
+    setMode('mode/read');
   };
 
   useEffect(() => {
@@ -218,7 +222,7 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   return (
     <>
       <div className='field'>
-        {editName ? (
+        {mode !== 'mode/read' ? (
           <form onSubmit={onDisplayNameChange}>
             <input
               className='field__value'
@@ -228,12 +232,13 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
               onInput={(e) => setName((e.target as HTMLInputElement).value)}
               onBlur={onDisplayNameChange}
               required
+              disabled={isSavingName}
               type='text'
             />
           </form>
         ) : (
           <div className='field__value field__value-readonly'>
-            <a onClick={() => setEditName(true)} title='Monitor Name' href='#'>
+            <a onClick={() => setMode('mode/edit')} title='Monitor Name' href='#'>
               {monitor.name}
             </a>
           </div>
