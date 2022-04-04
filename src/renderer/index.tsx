@@ -195,7 +195,7 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   const onBrightnessChange = (brightness: number) => {
     updateMonitor({
       id: monitor.id,
-      brightness
+      brightness,
     });
   };
 
@@ -207,7 +207,7 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
 
     updateMonitor({
       id: monitor.id,
-      name: nameToUse
+      name: nameToUse,
     });
   };
 
