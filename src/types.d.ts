@@ -38,7 +38,7 @@ export type SingleMonitorUpdateInput = {
   brightness?: number;
   disabled?: boolean;
   sortOrder?: number;
-  type: DisplayType;
+  type?: DisplayType;
 };
 
 export type BatchMonitorUpdateInput = {
