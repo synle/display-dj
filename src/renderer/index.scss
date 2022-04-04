@@ -91,13 +91,13 @@ input[type='text'] {
   background: transparent;
   color: var(--color-fg-1);
   padding: 0.5rem 0.25rem;
-  border: none;
   width: 100%;
-  border: 2px solid transparent;
+  border: 2px solid var(--color-focus);
+  font-weight: bold;
 
   &:hover,
   &:focus {
-    border-color: var(--color-focus);
+    border-color: var(--color-link);
   }
 }
 
