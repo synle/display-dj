@@ -308,13 +308,34 @@ type VolumeSettingProps = {
   volume: Volume;
 };
 function VolumeSetting(props: VolumeSettingProps) {
-  const { volume } = props;
+  const [volume, setVolume] = useState<Volume>(props.volume);
 
   const { mutateAsync: updateVolume } = useUpdateVolume();
   const { mutateAsync: updateMuted } = useUpdateMuted();
 
-  const onChange = (newValue: number) => updateVolume(newValue);
-  const onSetMuted = () => updateMuted(!volume.muted);
+  const onChange = async (newValue: number) => {
+    setVolume({
+      ...volume,
+      value: newValue,
+      muted: newValue === 0,
+    });
+
+    await updateVolume(newValue);
+  };
+
+  const onSetMuted = async () => {
+    setVolume({
+      ...volume,
+      muted: !volume.muted,
+    });
+    await updateMuted(!volume.muted);
+  };
+
+  useEffect(() => {
+    if (JSON.stringify(volume) !== JSON.stringify(props.volume)) {
+      setVolume(props.volume);
+    }
+  }, [props.volume]);
 
   return (
     <>
@@ -356,6 +377,7 @@ function VolumeIcon(props: VolumeSettingProps) {
     }
     return '🔊';
   }, [volume.muted, volume.value]);
+
   return <>{icon}</>;
 }
 
