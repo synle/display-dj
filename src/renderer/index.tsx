@@ -318,22 +318,22 @@ function VolumeSetting(props: VolumeSettingProps) {
       ...volume,
       value: newValue,
       muted: newValue === 0,
-    })
+    });
 
     await updateVolume(newValue);
-  }
+  };
 
   const onSetMuted = async () => {
     setVolume({
       ...volume,
-      muted: !volume.muted
-    })
+      muted: !volume.muted,
+    });
     await updateMuted(!volume.muted);
-  }
+  };
 
   useEffect(() => {
-    if(JSON.stringify(volume) !== JSON.stringify(props.volume)){
-      setVolume(props.volume)
+    if (JSON.stringify(volume) !== JSON.stringify(props.volume)) {
+      setVolume(props.volume);
     }
   }, [props.volume]);
 
@@ -361,7 +361,7 @@ function VolumeSetting(props: VolumeSettingProps) {
 }
 
 function VolumeIcon(props: VolumeSettingProps) {
-  const {volume} = props;
+  const { volume } = props;
 
   const icon = useMemo(() => {
     if (volume.muted) {
