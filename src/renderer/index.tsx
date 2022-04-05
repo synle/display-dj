@@ -340,7 +340,11 @@ function VolumeSetting(props: VolumeSettingProps) {
 }
 
 function VolumeIcon(props: VolumeSettingProps) {
-  const { volume } = props;
+  const [volume, setVolume] = useState<Volume>(props.volume);
+
+  useEffect(() => {
+    setVolume(props.volume)
+  }, [props.volume])
 
   const icon = useMemo(() => {
     if (volume.muted) {
