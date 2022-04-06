@@ -1,5 +1,5 @@
-import { executePowershell } from 'src/main/utils/ShellUtils';
 import * as ddcci from '@hensm/ddcci';
+import { executePowershell } from 'src/main/utils/ShellUtils';
 import { IDisplayAdapter, Monitor } from 'src/types.d';
 
 // source: https://github.com/hensm/node-ddcci
