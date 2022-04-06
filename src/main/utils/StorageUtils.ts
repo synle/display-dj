@@ -19,7 +19,7 @@ function _getPath(fileName: string) {
 const StorageUtils = {
   readJSON: (file: string) => {
     try {
-      return JSON.parse(fs.readFileSync(file, { encoding: 'utf8', flag: 'r' }).trim());
+      return StorageUtils.parseJsonWithComments(fs.readFileSync(file, { encoding: 'utf8', flag: 'r' }).trim());
     } catch (err) {
       return undefined;
     }
@@ -48,6 +48,32 @@ const StorageUtils = {
       return undefined;
     }
   },
+  parseJsonWithComments: (oldText: string) : any => {
+    oldText = (oldText || '').trim();
+    return eval(`var ___temp = ${oldText}; ___temp;`);
+  },
+  findDirSingle: (srcDir: string, targetMatch: string | RegExp) : string | undefined => {
+    const dirs = StorageUtils.findDirList(srcDir, targetMatch);
+
+    if(dirs && dirs.length > 0){
+      return dirs[0];
+    }
+  },
+  findDirList: (srcDir: string, targetMatch: string | RegExp) : string[] => {
+    try {
+      const dirFiles = fs
+        .readdirSync(srcDir, {
+          withFileTypes: true,
+        })
+        .filter((dirent) => dirent.isDirectory())
+        .map((dirent) => dirent.name)
+        .filter((d) => d.match(targetMatch))
+        .map((d) => path.join(srcDir, d));
+      return dirFiles;
+    } catch (err) {
+      return [];
+    }
+  }
 };
 
 export default StorageUtils;
