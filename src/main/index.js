@@ -1,21 +1,21 @@
 import AutoLaunch from 'auto-launch';
 import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeTheme, shell } from 'electron';
-import DisplayUtils from 'src/main/utils/DisplayUtils';
-import { getEndpointHandlers, setUpDataEndpoints } from 'src/main/utils/Endpoints';
-import PositionUtils from 'src/main/utils/PositionUtils';
-import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 import { matchPath } from 'react-router-dom';
 import { EventEmitter } from 'events';
 import path from 'path';
+import DisplayUtils from 'src/main/utils/DisplayUtils';
+import { getEndpointHandlers, setUpDataEndpoints } from 'src/main/utils/Endpoints';
+import { showNotification } from 'src/main/utils/NotificationUtils';
+import PositionUtils from 'src/main/utils/PositionUtils';
+import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 import StorageUtils, {
   MONITOR_CONFIG_FILE_PATH,
   PREFERENCE_FILE_PATH,
   LOG_FILE_PATH,
 } from 'src/main/utils/StorageUtils';
 import 'src/main/utils/LogUtils';
-import {showNotification} from 'src/main/utils/NotificationUtils';
-
 let mainWindow;
+
 const appBaseDir = __dirname;
 const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');

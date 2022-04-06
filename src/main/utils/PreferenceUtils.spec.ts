@@ -1,5 +1,4 @@
 import PreferenceUtils from 'src/main/utils/PreferenceUtils';
-import DisplayUtils from 'src/main/utils/DisplayUtils';
 import StorageUtils, {
   MONITOR_CONFIG_FILE_PATH,
   PREFERENCE_FILE_PATH,

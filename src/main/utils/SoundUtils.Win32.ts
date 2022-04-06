@@ -1,5 +1,5 @@
-import { executeBash } from 'src/main/utils/ShellUtils';
 import path from 'path';
+import { executeBash } from 'src/main/utils/ShellUtils';
 
 const _getVolumeHelperBinary = async () => path.join(process['resourcesPath'], `win32_volume_helper.exe`);
 
