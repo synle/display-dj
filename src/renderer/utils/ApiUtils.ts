@@ -4,6 +4,7 @@ import {
   SingleMonitorUpdateInput,
   BatchMonitorUpdateInput,
   Preference,
+  VolumeInput,
 } from 'src/types.d';
 
 const ApiUtils = {
@@ -34,19 +35,10 @@ const ApiUtils = {
         darkMode,
       }),
     }),
-  updateVolume: (volume: number) =>
+  updateVolume: (volume: VolumeInput) =>
     fetch<void>(`/api/configs/volume`, {
       method: 'put',
-      body: JSON.stringify({
-        volume,
-      }),
-    }),
-  updateMuted: (isMuted: boolean) =>
-    fetch<void>(`/api/configs/volume`, {
-      method: 'put',
-      body: JSON.stringify({
-        isMuted,
-      }),
+      body: JSON.stringify(volume),
     }),
   updateAppPosition: () =>
     fetch<void>(`/api/configs/appPosition`, {
