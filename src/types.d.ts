@@ -30,6 +30,10 @@ type BrightnessPreset = {
   level: number;
 };
 
+type VolumePreset = {
+  level: number;
+};
+
 type KeyBinding = {
   key: string;
   command: Command[] | Command;
@@ -81,6 +85,7 @@ export type Preference = {
   showIndividualDisplays: boolean;
   brightnessDelta: number;
   brightnessPresets: BrightnessPreset[];
+  volumePresets: VolumePreset[];
   keyBindings: KeyBinding[];
 };
 

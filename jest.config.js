@@ -12,7 +12,7 @@ module.exports = {
   moduleDirectories: ['node_modules', '.'],
   globals: {
     'ts-jest':{
-      tsConfig: 'tsconfig-electron.json'
+      tsconfig: 'tsconfig-electron.json'
     }
   }
 };
