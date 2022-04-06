@@ -18,7 +18,6 @@ import {
   useToggleDarkMode,
   useUpdateAppPosition,
   useUpdateVolume,
-  useUpdateMuted,
   QUERY_KEY_CONFIGS,
   QUERY_KEY_APP_STATE,
 } from 'src/renderer/hooks';
@@ -185,14 +184,10 @@ type MonitorBrightnessSettingProps = {
   idx: number;
 };
 function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
-  const [mode, setMode] = useState<string>('mode/read');
-  const [name, setName] = useState('');
   const { monitor } = props;
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
 
   const isLaptop = monitor.type === 'laptop_monitor';
-
-  const isSavingName = mode === 'mode/saving';
 
   const onBrightnessChange = async (brightness: number) => {
     await updateMonitor({
@@ -201,48 +196,10 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
     });
   };
 
-  const onDisplayNameChange = async (e: React.SyntheticEvent) => {
-    e.preventDefault();
-    setMode('mode/saving');
-
-    let nameToUse = (name || '').trim() || `Monitor #${props.idx}`;
-
-    await updateMonitor({
-      id: monitor.id,
-      name: nameToUse,
-    });
-
-    setMode('mode/read');
-  };
-
-  useEffect(() => {
-    setName(monitor.name);
-  }, [monitor.name]);
-
   return (
     <>
       <div className='field'>
-        {mode !== 'mode/read' ? (
-          <form onSubmit={onDisplayNameChange}>
-            <input
-              className='field__value'
-              value={name}
-              placeholder='Enter a display name'
-              autoFocus={true}
-              onInput={(e) => setName((e.target as HTMLInputElement).value)}
-              onBlur={onDisplayNameChange}
-              required
-              disabled={isSavingName}
-              type='text'
-            />
-          </form>
-        ) : (
-          <div className='field__value field__value-readonly'>
-            <a onClick={() => setMode('mode/edit')} title='Monitor Name' href='#'>
-              {monitor.name}
-            </a>
-          </div>
-        )}
+        <MonitorNameInput monitor={monitor} idx={props.idx} />
       </div>
       <div className='field' title='Monitor Brightness'>
         {isLaptop ? (
@@ -304,6 +261,55 @@ function AllMonitorBrightnessSetting(props: AllMonitorBrightnessSettingProps) {
   );
 }
 
+function MonitorNameInput(props: MonitorBrightnessSettingProps) {
+  const [mode, setMode] = useState<string>('mode/read');
+  const [name, setName] = useState('');
+  const { monitor } = props;
+  const { mutateAsync: updateMonitor } = useUpdateMonitor();
+
+  const isSavingName = mode === 'mode/saving';
+
+  const onDisplayNameChange = async (e: React.SyntheticEvent) => {
+    e.preventDefault();
+    setMode('mode/saving');
+
+    let nameToUse = (name || '').trim() || `Monitor #${props.idx}`;
+
+    await updateMonitor({
+      id: monitor.id,
+      name: nameToUse,
+    });
+
+    setMode('mode/read');
+  };
+
+  useEffect(() => {
+    setName(monitor.name);
+  }, [monitor.name]);
+
+  return mode !== 'mode/read' ? (
+    <form onSubmit={onDisplayNameChange}>
+      <input
+        className='field__value'
+        value={name}
+        placeholder='Enter a display name'
+        autoFocus={true}
+        onInput={(e) => setName((e.target as HTMLInputElement).value)}
+        onBlur={onDisplayNameChange}
+        required
+        disabled={isSavingName}
+        type='text'
+      />
+    </form>
+  ) : (
+    <div className='field__value field__value-readonly'>
+      <a onClick={() => setMode('mode/edit')} title='Monitor Name' href='#'>
+        {monitor.name}
+      </a>
+    </div>
+  );
+}
+
 type VolumeSettingProps = {
   volume: Volume;
 };
@@ -311,24 +317,28 @@ function VolumeSetting(props: VolumeSettingProps) {
   const [volume, setVolume] = useState<Volume>(props.volume);
 
   const { mutateAsync: updateVolume } = useUpdateVolume();
-  const { mutateAsync: updateMuted } = useUpdateMuted();
 
   const onChange = async (newValue: number) => {
-    setVolume({
+    const newVolume = {
       ...volume,
       value: newValue,
       muted: newValue === 0,
-    });
+    };
 
-    await updateVolume(newValue);
+    setVolume(newVolume);
+
+    await updateVolume(newVolume);
   };
 
   const onSetMuted = async () => {
-    setVolume({
+    const newVolume = {
       ...volume,
       muted: !volume.muted,
-    });
-    await updateMuted(!volume.muted);
+    };
+
+    setVolume(newVolume);
+
+    await updateVolume(newVolume);
   };
 
   useEffect(() => {
@@ -390,7 +400,7 @@ type SliderProps = {
 function Slider(props: SliderProps) {
   const { value, onInput, className, placeholder, disabled } = props;
 
-  const debouncedOnInput = useMemo(() => debounce(onInput, 500), []);
+  const debouncedOnInput = useMemo(() => debounce(onInput, 400), []);
 
   return (
     <input
