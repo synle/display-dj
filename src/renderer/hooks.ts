@@ -5,7 +5,7 @@ import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import LaptopSvg from 'src/renderer/svg/laptop.svg';
 import ToggleSvg from 'src/renderer/svg/toggle.svg';
 import './index.scss';
-import { Monitor, SingleMonitorUpdateInput, UIAppState } from 'src/types.d';
+import { Monitor, SingleMonitorUpdateInput, UIAppState, VolumeInput } from 'src/types.d';
 
 // react query store
 export const QUERY_KEY_CONFIGS = 'configs';
@@ -74,19 +74,10 @@ export function useToggleDarkMode() {
 
 export function useUpdateVolume() {
   const queryClient = useQueryClient();
-  return useMutation<void, void, number>(ApiUtils.updateVolume, {
+  return useMutation<void, void, VolumeInput>(ApiUtils.updateVolume, {
     onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
   });
 }
-
-export function useUpdateMuted() {
-  const queryClient = useQueryClient();
-  return useMutation<void, void, boolean>(ApiUtils.updateMuted, {
-    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
-  });
-}
-
-
 
 // misc
 export function useUpdateAppPosition() {
