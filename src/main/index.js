@@ -17,6 +17,7 @@ import 'src/main/utils/LogUtils';
 let mainWindow;
 
 const appBaseDir = __dirname;
+
 const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
 
