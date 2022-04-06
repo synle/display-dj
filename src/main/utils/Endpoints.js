@@ -134,8 +134,6 @@ export function setUpDataEndpoints() {
       });
     }
   });
-
-
   addDataEndpoint('put', '/api/configs/volume', async (req, res) => {
     try {
       if(req.body.isMuted !== undefined){
