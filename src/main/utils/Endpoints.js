@@ -100,6 +100,8 @@ export function setUpDataEndpoints() {
         delete monitor.brightness;
       }
 
+      console.trace(`updateMonitor`, monitor);
+
       res.status(200).json(await DisplayUtils.updateMonitor(monitor));
     } catch (err) {
       res.status(500).json({
@@ -113,6 +115,9 @@ export function setUpDataEndpoints() {
   addDataEndpoint('put', '/api/configs/monitors', async (req, res) => {
     try {
       const newBrightness = parseInt(req.body.brightness) || 0;
+
+      console.trace(`batchUpdateBrightness`, newBrightness);
+
       res.status(200).json(await DisplayUtils.batchUpdateBrightness(newBrightness));
     } catch (err) {
       res.status(500).json({
@@ -126,6 +131,8 @@ export function setUpDataEndpoints() {
     try {
       const isDarkModeOn = req.body.darkMode === true;
 
+      console.trace(`Update darkMode`, isDarkModeOn);
+
       res.status(200).json(await DisplayUtils.updateDarkMode(isDarkModeOn));
     } catch (err) {
       res.status(500).json({
@@ -136,28 +143,21 @@ export function setUpDataEndpoints() {
   });
   addDataEndpoint('put', '/api/configs/volume', async (req, res) => {
     try {
-      if(req.body.isMuted !== undefined){
-        await SoundUtils.setMuted(req.body.isMuted === true);
-        return res.status(204).send();
-      }
-      if(parseInt(req.body.volume) >= 0) {
-        const volume = Math.min(parseInt(req.body.volume), 100);
+      let muted = req.body.muted;
+      let volume = parseInt(req.body.value);
+
+      console.trace(`Update volume`, volume, muted);
+
+      if(muted !== undefined && !isNaN(volume)){
         const promises = [];
-        if(volume > 0){
-          // adjust non muted volume
-           promises.push(SoundUtils.setMuted(false));
-           promises.push(SoundUtils.setVolume(volume));
-        } else {
-          // adjust volume is muted when value = 0
-           promises.push(SoundUtils.setMuted(true));
-        }
+        promises.push(SoundUtils.setMuted(muted === true));
+        promises.push(SoundUtils.setVolume(volume));
 
         await Promise.all(promises);
-
-        return res.status(204).send();
+        res.status(204).send();
+      } else {
+        res.status(400).send('This API requires volume or isMuted in the body');
       }
-
-      res.status(400).send('This API requires volume or isMuted in the body');
     } catch (err) {
       res.status(500).json({
         error: `Failed to update darkmode config: ` + JSON.stringify(err),
