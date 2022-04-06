@@ -199,7 +199,7 @@ function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   return (
     <>
       <div className='field'>
-        <MonitorNameInput monitor={monitor} idx={props.idx}/>
+        <MonitorNameInput monitor={monitor} idx={props.idx} />
       </div>
       <div className='field' title='Monitor Brightness'>
         {isLaptop ? (
@@ -288,26 +288,26 @@ function MonitorNameInput(props: MonitorBrightnessSettingProps) {
   }, [monitor.name]);
 
   return mode !== 'mode/read' ? (
-          <form onSubmit={onDisplayNameChange}>
-            <input
-              className='field__value'
-              value={name}
-              placeholder='Enter a display name'
-              autoFocus={true}
-              onInput={(e) => setName((e.target as HTMLInputElement).value)}
-              onBlur={onDisplayNameChange}
-              required
-              disabled={isSavingName}
-              type='text'
-            />
-          </form>
-        ) : (
-          <div className='field__value field__value-readonly'>
-            <a onClick={() => setMode('mode/edit')} title='Monitor Name' href='#'>
-              {monitor.name}
-            </a>
-          </div>
-        )
+    <form onSubmit={onDisplayNameChange}>
+      <input
+        className='field__value'
+        value={name}
+        placeholder='Enter a display name'
+        autoFocus={true}
+        onInput={(e) => setName((e.target as HTMLInputElement).value)}
+        onBlur={onDisplayNameChange}
+        required
+        disabled={isSavingName}
+        type='text'
+      />
+    </form>
+  ) : (
+    <div className='field__value field__value-readonly'>
+      <a onClick={() => setMode('mode/edit')} title='Monitor Name' href='#'>
+        {monitor.name}
+      </a>
+    </div>
+  );
 }
 
 type VolumeSettingProps = {
@@ -331,10 +331,10 @@ function VolumeSetting(props: VolumeSettingProps) {
   };
 
   const onSetMuted = async () => {
-    const newVolume ={
+    const newVolume = {
       ...volume,
       muted: !volume.muted,
-    }
+    };
 
     setVolume(newVolume);
 
