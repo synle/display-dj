@@ -349,7 +349,6 @@ function VolumeSetting(props: VolumeSettingProps) {
           <VolumeIcon volume={volume} />
         </span>
         <Slider
-          key={volume.value}
           className='field__value'
           placeholder='Volume'
           value={volume.value}
@@ -391,7 +390,7 @@ type SliderProps = {
 function Slider(props: SliderProps) {
   const { value, onInput, className, placeholder, disabled } = props;
 
-  const debouncedOnInput = useMemo(() => debounce(onInput, 200), []);
+  const debouncedOnInput = useMemo(() => debounce(onInput, 500), []);
 
   return (
     <input
