@@ -9,21 +9,28 @@ const DEFAULT_PREFERENCES: Preference = {
     { level: 50 },
     { level: 100 },
   ],
+  volumePresets: [
+    { level: 0 },
+    { level: 50 },
+    { level: 100 },
+  ],
   keyBindings: [
     { key: 'Shift+Escape', command: ['command/changeDarkMode/toggle'] },
     {
       key: 'Shift+F1',
       command: ['command/changeDarkMode/dark', 'command/changeBrightness/10'],
-      notification: 'Switching to Dark profile',
+      notification: 'Switching to Dark Profile',
     },
     {
       key: 'Shift+F2',
       command: ['command/changeDarkMode/light', 'command/changeBrightness/100'],
-      notification: 'Switching to Light profile',
+      notification: 'Switching to Light Profile',
     },
     { key: 'Shift+F3', command: ['command/changeBrightness/0'], },
     { key: 'Shift+F4', command: ['command/changeBrightness/50'], },
     { key: 'Shift+F5', command: ['command/changeBrightness/100'], },
+    { key: 'Shift+F11', command: ['command/changeVolume/0'],notification: 'Volume is Muted', },
+    { key: 'Shift+F12', command: ['command/changeVolume/100'],notification: 'Volume is 100%', },
   ],
 };
 
@@ -73,6 +80,9 @@ const PreferenceUtils = {
   },
   getBrightnessPresets: async() => {
     return (await PreferenceUtils.get()).brightnessPresets;
+  },
+  getVolumePresets: async() => {
+    return (await PreferenceUtils.get()).volumePresets;
   }
 };
 

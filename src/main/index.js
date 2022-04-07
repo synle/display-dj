@@ -8,6 +8,7 @@ import { getEndpointHandlers, setUpDataEndpoints } from 'src/main/utils/Endpoint
 import { showNotification } from 'src/main/utils/NotificationUtils';
 import PositionUtils from 'src/main/utils/PositionUtils';
 import PreferenceUtils from 'src/main/utils/PreferenceUtils';
+import SoundUtils from 'src/main/utils/SoundUtils';
 import StorageUtils, {
   MONITOR_CONFIG_FILE_PATH,
   PREFERENCE_FILE_PATH,
@@ -19,6 +20,7 @@ let mainWindow;
 const appBaseDir = __dirname;
 
 const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
+
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
 
 function createWindow() {
@@ -91,6 +93,7 @@ async function createTray() {
   });
 
   const brightnessPresets = await PreferenceUtils.getBrightnessPresets();
+  const volumePresets = await PreferenceUtils.getVolumePresets();
 
   const contextMenu = Menu.buildFromTemplate([
     ...brightnessPresets.map(brightnessPreset => ({
@@ -108,6 +111,13 @@ async function createTray() {
       label: `Use Dark Mode`,
       click: async () => global.emitAppEvent({ command: 'command/changeDarkMode/dark' }),
     },
+    {
+      type: 'separator',
+    },
+    ...volumePresets.map(volumePreset => ({
+      label: `Change volume to ${volumePreset.level}%`,
+      click: async () => global.emitAppEvent({ command: `command/changeVolume/${volumePreset.level}` }),
+    })),
     {
       type: 'separator',
     },
@@ -250,7 +260,12 @@ async function setupCommandChannel() {
           break;
       }
 
-      await DisplayUtils.batchUpdateBrightness(allMonitorBrightness, delta);
+      if(!isNaN(allMonitorBrightness) && allMonitorBrightness >= 0 && allMonitorBrightness <= 100){
+        await DisplayUtils.batchUpdateBrightness(allMonitorBrightness, delta);
+      } else {
+        console.trace(`changeVolume failed due to invalid volume`, allMonitorBrightness, delta);
+      }
+
       return;
     }
 
@@ -269,6 +284,21 @@ async function setupCommandChannel() {
       }
 
       await DisplayUtils.updateDarkMode(darkModeToUse);
+      return;
+    }
+
+    if (command.includes(`command/changeVolume`)) {
+      const volume = parseInt(command.replace('command/changeVolume/', ''));
+
+      if(!isNaN(volume) && volume >= 0 && volume <= 100){
+        const promises = [];
+        promises.push(SoundUtils.setMuted(volume === 0));
+        promises.push(SoundUtils.setVolume(volume));
+        await Promise.all(promises)
+      } else {
+        console.trace(`changeVolume failed due to invalid volume`, volume);
+      }
+
       return;
     }
 
