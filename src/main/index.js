@@ -14,6 +14,7 @@ import StorageUtils, {
   PREFERENCE_FILE_PATH,
   LOG_FILE_PATH,
 } from 'src/main/utils/StorageUtils';
+import {getJSON}from 'src/main/utils/RestUtils';
 import 'src/main/utils/LogUtils';
 let mainWindow;
 
@@ -236,7 +237,7 @@ async function setupCommandChannel() {
           locationToUse = 'https://github.com/synle/display-dj/issues/new';
           break;
         case 'command/openExternal/link/aboutUs':
-          locationToUse = 'https://github.com/synle/display-dj';
+          locationToUse = 'https://synle.github.io/display-dj/';
           break;
         case 'command/openExternal/link/downloadNewVersion':
           locationToUse = process.platform === 'darwin' ? MAC_DOWNLOAD_LINK : WINDOWS_DOWNLOAD_LINK;
@@ -283,9 +284,19 @@ function _getTrayIcon() {
   return nativeTheme.shouldUseDarkColors ? DARK_ICON : LIGHT_ICON;
 }
 
+async function _getLatestAppVersion(){
+  try{
+    const {version} = await getJSON(`https://synle.github.io/display-dj/release.json`);
+    return version;
+  } catch(err){
+    return '';
+  }
+}
+
 async function _getContextMenu(){
   const brightnessPresets = await PreferenceUtils.getBrightnessPresets();
   const volumePresets = await PreferenceUtils.getVolumePresets();
+  const latestAppVersion = await _getLatestAppVersion();
 
   const contextMenu = Menu.buildFromTemplate([
     ...brightnessPresets.map(brightnessPreset => ({
@@ -338,9 +349,10 @@ async function _getContextMenu(){
       click: async () => global.emitAppEvent({ command: 'command/openExternal/link/aboutUs' }),
     },
     {
-      label: `New Version Available`,
+      label: `New Version Available (${latestAppVersion})`,
       click: async () => global.emitAppEvent({ command: 'command/openExternal/link/downloadNewVersion' }),
-    }
+      visible: await latestAppVersion !== process.env.APP_VERSION
+    },
     {
       type: 'separator',
     },
