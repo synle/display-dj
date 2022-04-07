@@ -22,8 +22,6 @@ jobs:
           tag_name: ${{ steps.package-version.outputs.current-version }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: git push origin --delete beta
-        continue-on-error: true
       - uses: actions/create-release@v1
         id: create_release
         env:
