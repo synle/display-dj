@@ -41,7 +41,7 @@ describe('PreferenceUtils', () => {
               "command/changeBrightness/10",
             ],
             "key": "Shift+F1",
-            "notification": "Switching to Dark profile",
+            "notification": "Switching to Dark Profile",
           },
           Object {
             "command": Array [
@@ -49,7 +49,7 @@ describe('PreferenceUtils', () => {
               "command/changeBrightness/100",
             ],
             "key": "Shift+F2",
-            "notification": "Switching to Light profile",
+            "notification": "Switching to Light Profile",
           },
           Object {
             "command": Array [
@@ -69,8 +69,33 @@ describe('PreferenceUtils', () => {
             ],
             "key": "Shift+F5",
           },
+          Object {
+            "command": Array [
+              "command/changeVolume/0",
+            ],
+            "key": "Shift+F11",
+            "notification": "Volume is Muted",
+          },
+          Object {
+            "command": Array [
+              "command/changeVolume/100",
+            ],
+            "key": "Shift+F12",
+            "notification": "Volume is 100%",
+          },
         ],
         "showIndividualDisplays": false,
+        "volumePresets": Array [
+          Object {
+            "level": 0,
+          },
+          Object {
+            "level": 50,
+          },
+          Object {
+            "level": 100,
+          },
+        ],
       }
     `);
   });
@@ -91,7 +116,7 @@ describe('PreferenceUtils', () => {
             "command/changeBrightness/10",
           ],
           "key": "Shift+F1",
-          "notification": "Switching to Dark profile",
+          "notification": "Switching to Dark Profile",
         },
         Object {
           "command": Array [
@@ -99,7 +124,7 @@ describe('PreferenceUtils', () => {
             "command/changeBrightness/100",
           ],
           "key": "Shift+F2",
-          "notification": "Switching to Light profile",
+          "notification": "Switching to Light Profile",
         },
         Object {
           "command": Array [
@@ -119,12 +144,43 @@ describe('PreferenceUtils', () => {
           ],
           "key": "Shift+F5",
         },
+        Object {
+          "command": Array [
+            "command/changeVolume/0",
+          ],
+          "key": "Shift+F11",
+          "notification": "Volume is Muted",
+        },
+        Object {
+          "command": Array [
+            "command/changeVolume/100",
+          ],
+          "key": "Shift+F12",
+          "notification": "Volume is 100%",
+        },
       ]
     `);
   });
 
   test('getBrightnessPresets', async () => {
     const actual = await PreferenceUtils.getBrightnessPresets();
+    expect(actual).toMatchInlineSnapshot(`
+      Array [
+        Object {
+          "level": 0,
+        },
+        Object {
+          "level": 50,
+        },
+        Object {
+          "level": 100,
+        },
+      ]
+    `);
+  });
+
+  test('getVolumePresets', async () => {
+    const actual = await PreferenceUtils.getVolumePresets();
     expect(actual).toMatchInlineSnapshot(`
       Array [
         Object {
@@ -173,7 +229,7 @@ describe('PreferenceUtils', () => {
               "command/changeBrightness/10",
             ],
             "key": "Shift+F1",
-            "notification": "Switching to Dark profile",
+            "notification": "Switching to Dark Profile",
           },
           Object {
             "command": Array [
@@ -181,7 +237,7 @@ describe('PreferenceUtils', () => {
               "command/changeBrightness/100",
             ],
             "key": "Shift+F2",
-            "notification": "Switching to Light profile",
+            "notification": "Switching to Light Profile",
           },
           Object {
             "command": Array [
@@ -201,8 +257,33 @@ describe('PreferenceUtils', () => {
             ],
             "key": "Shift+F5",
           },
+          Object {
+            "command": Array [
+              "command/changeVolume/0",
+            ],
+            "key": "Shift+F11",
+            "notification": "Volume is Muted",
+          },
+          Object {
+            "command": Array [
+              "command/changeVolume/100",
+            ],
+            "key": "Shift+F12",
+            "notification": "Volume is 100%",
+          },
         ],
         "showIndividualDisplays": false,
+        "volumePresets": Array [
+          Object {
+            "level": 0,
+          },
+          Object {
+            "level": 50,
+          },
+          Object {
+            "level": 100,
+          },
+        ],
       }
     `);
   });

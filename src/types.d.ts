@@ -10,6 +10,10 @@ type Command =
   | 'command/changeBrightness/10'
   | 'command/changeBrightness/50'
   | 'command/changeBrightness/100'
+  // volumes commands
+  | 'command/changeVolume/0'
+  | 'command/changeVolume/50'
+  | 'command/changeVolume/100'
   // dark mode commands
   | 'command/changeDarkMode/toggle'
   | 'command/changeDarkMode/dark'
@@ -23,6 +27,10 @@ type Command =
 
 type BrightnessPreset = {
   which?: string;
+  level: number;
+};
+
+type VolumePreset = {
   level: number;
 };
 
@@ -77,6 +85,7 @@ export type Preference = {
   showIndividualDisplays: boolean;
   brightnessDelta: number;
   brightnessPresets: BrightnessPreset[];
+  volumePresets: VolumePreset[];
   keyBindings: KeyBinding[];
 };
 
