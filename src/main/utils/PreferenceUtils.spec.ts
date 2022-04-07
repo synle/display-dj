@@ -73,14 +73,14 @@ describe('PreferenceUtils', () => {
             "command": Array [
               "command/changeVolume/0",
             ],
-            "key": "Shift+F11",
+            "key": "Shift+F6",
             "notification": "Volume is Muted",
           },
           Object {
             "command": Array [
               "command/changeVolume/100",
             ],
-            "key": "Shift+F12",
+            "key": "Shift+F7",
             "notification": "Volume is 100%",
           },
         ],
@@ -148,14 +148,14 @@ describe('PreferenceUtils', () => {
           "command": Array [
             "command/changeVolume/0",
           ],
-          "key": "Shift+F11",
+          "key": "Shift+F6",
           "notification": "Volume is Muted",
         },
         Object {
           "command": Array [
             "command/changeVolume/100",
           ],
-          "key": "Shift+F12",
+          "key": "Shift+F7",
           "notification": "Volume is 100%",
         },
       ]
@@ -261,14 +261,14 @@ describe('PreferenceUtils', () => {
             "command": Array [
               "command/changeVolume/0",
             ],
-            "key": "Shift+F11",
+            "key": "Shift+F6",
             "notification": "Volume is Muted",
           },
           Object {
             "command": Array [
               "command/changeVolume/100",
             ],
-            "key": "Shift+F12",
+            "key": "Shift+F7",
             "notification": "Volume is 100%",
           },
         ],
