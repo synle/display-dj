@@ -113,6 +113,8 @@ Key Bindings' command can be an array in case you want to mix and match multiple
 | Shift + F3     | Change brightness to 0%                         |
 | Shift + F4     | Change brightness to 50%                        |
 | Shift + F5     | Change brightness to 100%                       |
+| Shift + F6     | Change volume to 0% (Muted)                     |
+| Shift + F7     | Change volume to 100%                           |
 
 ### Preferences / Key Bindings
 
@@ -135,6 +137,11 @@ command/changeBrightness/100
 command/changeDarkMode/toggle
 command/changeDarkMode/dark
 command/changeDarkMode/light
+
+# volumes commands
+command/changeVolume/0
+command/changeVolume/50
+command/changeVolume/100
 ```
 
 #### Sample preferences file

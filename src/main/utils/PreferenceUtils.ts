@@ -29,8 +29,8 @@ const DEFAULT_PREFERENCES: Preference = {
     { key: 'Shift+F3', command: ['command/changeBrightness/0'], },
     { key: 'Shift+F4', command: ['command/changeBrightness/50'], },
     { key: 'Shift+F5', command: ['command/changeBrightness/100'], },
-    { key: 'Shift+F11', command: ['command/changeVolume/0'],notification: 'Volume is Muted', },
-    { key: 'Shift+F12', command: ['command/changeVolume/100'],notification: 'Volume is 100%', },
+    { key: 'Shift+F6', command: ['command/changeVolume/0'],notification: 'Volume is Muted', },
+    { key: 'Shift+F7', command: ['command/changeVolume/100'],notification: 'Volume is 100%', },
   ],
 };
 
