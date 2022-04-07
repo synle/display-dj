@@ -1,5 +1,5 @@
 import AutoLaunch from 'auto-launch';
-import { BrowserWindow, Menu, Tray, app, dialog, globalShortcut, ipcMain, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, shell, Tray } from 'electron';
 import { matchPath } from 'react-router-dom';
 import { EventEmitter } from 'events';
 import path from 'path';
@@ -21,6 +21,7 @@ let mainWindow;
 const appBaseDir = __dirname;
 
 const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
+
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
 const MAC_DOWNLOAD_LINK = `https://github.com/synle/display-dj/releases/latest/download/display-dj-darwin.dmg`;
 const WINDOWS_DOWNLOAD_LINK = `https://github.com/synle/display-dj/releases/latest/download/display-dj-setup.exe`;
