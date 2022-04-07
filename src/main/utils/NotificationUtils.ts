@@ -1,6 +1,5 @@
 import { Notification } from 'electron';
 import { debounce } from 'src/renderer/utils/CommonUtils';
-
 let lastNotification : Notification | undefined;
 
 export function dismissLastNotification(){
