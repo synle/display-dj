@@ -8,17 +8,18 @@ import { getEndpointHandlers, setUpDataEndpoints } from 'src/main/utils/Endpoint
 import { showNotification } from 'src/main/utils/NotificationUtils';
 import PositionUtils from 'src/main/utils/PositionUtils';
 import PreferenceUtils from 'src/main/utils/PreferenceUtils';
+import { getJSON } from 'src/main/utils/RestUtils';
 import SoundUtils from 'src/main/utils/SoundUtils';
 import StorageUtils, {
   MONITOR_CONFIG_FILE_PATH,
   PREFERENCE_FILE_PATH,
   LOG_FILE_PATH,
 } from 'src/main/utils/StorageUtils';
-import {getJSON}from 'src/main/utils/RestUtils';
 import 'src/main/utils/LogUtils';
 let mainWindow;
 
 const appBaseDir = __dirname;
+
 const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
 const MAC_DOWNLOAD_LINK = `https://github.com/synle/display-dj/releases/latest/download/display-dj-darwin.dmg`;
