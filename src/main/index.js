@@ -18,10 +18,10 @@ import 'src/main/utils/LogUtils';
 let mainWindow;
 
 const appBaseDir = __dirname;
-
 const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
-
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
+const MAC_DOWNLOAD_LINK = `https://github.com/synle/display-dj/releases/latest/download/display-dj-darwin.dmg`;
+const WINDOWS_DOWNLOAD_LINK = `https://github.com/synle/display-dj/releases/latest/download/display-dj-setup.exe`;
 
 function createWindow() {
   // Create the browser window.
@@ -83,101 +83,17 @@ async function createTray() {
     } catch (err) {}
   });
 
-  tray.on('right-click', function (event) {
+  let contextMenu = await _getContextMenu();
+  tray.on('right-click', async function (event) {
     // when clicked on to open menu or context menu
     // we will reset keybindings
     setUpShortcuts();
 
     tray.popUpContextMenu(contextMenu);
     mainWindow.hide();
+
+    contextMenu = await _getContextMenu();
   });
-
-  const brightnessPresets = await PreferenceUtils.getBrightnessPresets();
-  const volumePresets = await PreferenceUtils.getVolumePresets();
-
-  const contextMenu = Menu.buildFromTemplate([
-    ...brightnessPresets.map(brightnessPreset => ({
-      label: `Change brightness to ${brightnessPreset.level}%`,
-      click: async () => global.emitAppEvent({ command: `command/changeBrightness/${brightnessPreset.level}` }),
-    })),
-    {
-      type: 'separator',
-    },
-    {
-      label: `Use Light Mode`,
-      click: async () => global.emitAppEvent({ command: 'command/changeDarkMode/light' }),
-    },
-    {
-      label: `Use Dark Mode`,
-      click: async () => global.emitAppEvent({ command: 'command/changeDarkMode/dark' }),
-    },
-    {
-      type: 'separator',
-    },
-    ...volumePresets.map(volumePreset => ({
-      label: `Change volume to ${volumePreset.level}%`,
-      click: async () => global.emitAppEvent({ command: `command/changeVolume/${volumePreset.level}` }),
-    })),
-    {
-      type: 'separator',
-    },
-    {
-      label: `Open Monitor Configs`,
-      click: async () =>
-        global.emitAppEvent({ command: 'command/openExternal/file/monitorConfigs' }),
-    },
-    {
-      label: `Open App Preferences`,
-      click: async () => global.emitAppEvent({ command: 'command/openExternal/file/preferences' }),
-    },
-    {
-      label: `Open Dev Logs`,
-      click: async () => global.emitAppEvent({ command: 'command/openExternal/file/devLogs' }),
-    },
-    {
-      type: 'separator',
-    },
-    {
-      label: `File a bug`,
-      click: async () => global.emitAppEvent({ command: 'command/openExternal/link/bugReport' }),
-    },
-    {
-      label: `About display-dj (${process.env.APP_VERSION})`,
-      click: async () => global.emitAppEvent({ command: 'command/openExternal/link/aboutUs' }),
-    },
-    {
-      type: 'separator',
-    },
-    {
-      label: `Reset`,
-      click: async () => {
-        try {
-          const buttons = ['Yes', 'No'];
-          const responseResult = await dialog.showMessageBox({
-            buttons,
-            message: 'Do you want to reset all monitor configs and preferences?',
-          });
-
-          if (responseResult.response === buttons.indexOf('Yes')) {
-            console.trace('Continue with Reset application configs and preferences');
-            global.emitAppEvent({ command: 'command/reset' });
-            return;
-          }
-        } catch (err) {}
-        console.trace('Skip reset application configs and preferences');
-      },
-    },
-    {
-      type: 'separator',
-    },
-    {
-      label: `Exit`,
-      click: async () => {
-        app.quit();
-        process.exit();
-      },
-    },
-  ]);
 }
 
 async function setUpShortcuts() {
@@ -322,6 +238,9 @@ async function setupCommandChannel() {
         case 'command/openExternal/link/aboutUs':
           locationToUse = 'https://github.com/synle/display-dj';
           break;
+        case 'command/openExternal/link/downloadNewVersion':
+          locationToUse = process.platform === 'darwin' ? MAC_DOWNLOAD_LINK : WINDOWS_DOWNLOAD_LINK;
+          break;
       }
 
       shell.openExternal(`${protocol}${locationToUse}`);
@@ -362,6 +281,101 @@ async function synchronizeBrightness() {
 
 function _getTrayIcon() {
   return nativeTheme.shouldUseDarkColors ? DARK_ICON : LIGHT_ICON;
+}
+
+async function _getContextMenu(){
+  const brightnessPresets = await PreferenceUtils.getBrightnessPresets();
+  const volumePresets = await PreferenceUtils.getVolumePresets();
+
+  const contextMenu = Menu.buildFromTemplate([
+    ...brightnessPresets.map(brightnessPreset => ({
+      label: `Change brightness to ${brightnessPreset.level}%`,
+      click: async () => global.emitAppEvent({ command: `command/changeBrightness/${brightnessPreset.level}` }),
+    })),
+    {
+      type: 'separator',
+    },
+    {
+      label: `Use Light Mode`,
+      click: async () => global.emitAppEvent({ command: 'command/changeDarkMode/light' }),
+    },
+    {
+      label: `Use Dark Mode`,
+      click: async () => global.emitAppEvent({ command: 'command/changeDarkMode/dark' }),
+    },
+    {
+      type: 'separator',
+    },
+    ...volumePresets.map(volumePreset => ({
+      label: `Change volume to ${volumePreset.level}%`,
+      click: async () => global.emitAppEvent({ command: `command/changeVolume/${volumePreset.level}` }),
+    })),
+    {
+      type: 'separator',
+    },
+    {
+      label: `Open Monitor Configs`,
+      click: async () =>
+        global.emitAppEvent({ command: 'command/openExternal/file/monitorConfigs' }),
+    },
+    {
+      label: `Open App Preferences`,
+      click: async () => global.emitAppEvent({ command: 'command/openExternal/file/preferences' }),
+    },
+    {
+      label: `Open Dev Logs`,
+      click: async () => global.emitAppEvent({ command: 'command/openExternal/file/devLogs' }),
+    },
+    {
+      type: 'separator',
+    },
+    {
+      label: `File a bug`,
+      click: async () => global.emitAppEvent({ command: 'command/openExternal/link/bugReport' }),
+    },
+    {
+      label: `About display-dj (${process.env.APP_VERSION})`,
+      click: async () => global.emitAppEvent({ command: 'command/openExternal/link/aboutUs' }),
+    },
+    {
+      label: `New Version Available`,
+      click: async () => global.emitAppEvent({ command: 'command/openExternal/link/downloadNewVersion' }),
+    }
+    {
+      type: 'separator',
+    },
+    {
+      label: `Reset`,
+      click: async () => {
+        try {
+          const buttons = ['Yes', 'No'];
+          const responseResult = await dialog.showMessageBox({
+            buttons,
+            message: 'Do you want to reset all monitor configs and preferences?',
+          });
+
+          if (responseResult.response === buttons.indexOf('Yes')) {
+            console.trace('Continue with Reset application configs and preferences');
+            global.emitAppEvent({ command: 'command/reset' });
+            return;
+          }
+        } catch (err) {}
+        console.trace('Skip reset application configs and preferences');
+      },
+    },
+    {
+      type: 'separator',
+    },
+    {
+      label: `Exit`,
+      click: async () => {
+        app.quit();
+        process.exit();
+      },
+    },
+  ]);
+
+  return contextMenu;
 }
 
 // This method will be called when Electron has finished
