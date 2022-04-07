@@ -56,18 +56,21 @@ describe('PreferenceUtils', () => {
               "command/changeBrightness/0",
             ],
             "key": "Shift+F3",
+            "notification": "Brightness is 0%",
           },
           Object {
             "command": Array [
               "command/changeBrightness/50",
             ],
             "key": "Shift+F4",
+            "notification": "Brightness is 50%",
           },
           Object {
             "command": Array [
               "command/changeBrightness/100",
             ],
             "key": "Shift+F5",
+            "notification": "Brightness is 100%",
           },
           Object {
             "command": Array [
@@ -131,18 +134,21 @@ describe('PreferenceUtils', () => {
             "command/changeBrightness/0",
           ],
           "key": "Shift+F3",
+          "notification": "Brightness is 0%",
         },
         Object {
           "command": Array [
             "command/changeBrightness/50",
           ],
           "key": "Shift+F4",
+          "notification": "Brightness is 50%",
         },
         Object {
           "command": Array [
             "command/changeBrightness/100",
           ],
           "key": "Shift+F5",
+          "notification": "Brightness is 100%",
         },
         Object {
           "command": Array [
@@ -244,18 +250,21 @@ describe('PreferenceUtils', () => {
               "command/changeBrightness/0",
             ],
             "key": "Shift+F3",
+            "notification": "Brightness is 0%",
           },
           Object {
             "command": Array [
               "command/changeBrightness/50",
             ],
             "key": "Shift+F4",
+            "notification": "Brightness is 50%",
           },
           Object {
             "command": Array [
               "command/changeBrightness/100",
             ],
             "key": "Shift+F5",
+            "notification": "Brightness is 100%",
           },
           Object {
             "command": Array [
