@@ -1,10 +1,9 @@
 import DisplayAdapter from 'src/main/utils/DisplayAdapter';
+import { Monitor, SingleMonitorUpdateInput } from 'src/types.d';
 import StorageUtils, {
   MONITOR_CONFIG_FILE_PATH,
   PREFERENCE_FILE_PATH,
 } from 'src/main/utils/StorageUtils';
-import { Monitor, SingleMonitorUpdateInput } from 'src/types.d';
-
 function _getMonitorConfigs(): Record<string, Monitor> {
   return StorageUtils.readJSON(MONITOR_CONFIG_FILE_PATH) || {};
 }
