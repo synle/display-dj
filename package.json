@@ -17,7 +17,7 @@
     "dev-ui": "webpack --watch --config webpack-ui.js",
     "dev": "concurrently \"npm run dev-ui\"",
     "lint": "eslint -c .eslintrc --ext .ts ./src",
-    "fix-import": "npx import-fixer --groupImport --aggressive --transformRelativeImport",
+    "fix-import": "npx import-fixer --groupImport --aggressive --transformRelativeImport --importQuote=single",
     "preformat": "npm run fix-import",
     "format": "concurrently \"npm run format-js\" \"npm run format-html\"",
     "format-js": "npx prettier --config ./.prettierrc --write **/*.{ts,tsx,js,jsx,scss,yml,html,json,md}",
