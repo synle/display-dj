@@ -1,11 +1,7 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from 'react-query';
 import ApiUtils from 'src/renderer/utils/ApiUtils';
+import { Monitor, UIAppState, VolumeInput } from 'src/types.d';
 import { LAPTOP_BUILT_IN_DISPLAY_ID } from 'src/constants';
-import MonitorSvg from 'src/renderer/svg/monitor.svg';
-import LaptopSvg from 'src/renderer/svg/laptop.svg';
-import ToggleSvg from 'src/renderer/svg/toggle.svg';
-import { Monitor, SingleMonitorUpdateInput, UIAppState, VolumeInput } from 'src/types.d';
-
 // react query store
 export const QUERY_KEY_CONFIGS = 'configs';
 
