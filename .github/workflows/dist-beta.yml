@@ -1,4 +1,4 @@
-name: package-electron-stable
+name: dist-beta
 
 on:
   workflow_dispatch:
@@ -19,20 +19,22 @@ jobs:
       - uses: dev-drprasad/delete-tag-and-release@v0.2.0
         with:
           delete_release: true
-          tag_name: ${{ steps.package-version.outputs.current-version }}
+          tag_name: beta
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: git push origin --delete beta
+        continue-on-error: true
       - uses: actions/create-release@v1
         id: create_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.package-version.outputs.current-version }}
-          release_name: ${{ steps.package-version.outputs.current-version }}
+          tag_name: beta
+          release_name: beta
           body: |
             Version: ${{ steps.package-version.outputs.current-version }}
           draft: false
-          prerelease: false
+          prerelease: true
 
   build_windows:
     needs: [create_release]
@@ -74,21 +76,6 @@ jobs:
           asset_name: display-dj-darwin.dmg
           asset_content_type: application/octet-stream
 
-  publish:
-    needs: [create_release, build_windows, build_macos]
-    runs-on: ubuntu-latest
-    timeout-minutes: 4
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          ref: ${{ github.head_ref }}
-      - run: npm version --no-git-tag-version patch
-      - run: |
-          echo "{ \"version\": \"${{ needs.create_release.outputs.package_version }}\" }" > release.json
-      - uses: EndBug/add-and-commit@v8
-        with:
-          message: 'CI / CD - New Release ${{needs.create_release.outputs.package_version}}'
-
   roll_back:
     if: failure()
     needs: [create_release, build_windows, build_macos]
@@ -101,6 +88,6 @@ jobs:
       - uses: dev-drprasad/delete-tag-and-release@v0.2.0
         with:
           delete_release: true
-          tag_name: ${{ steps.package-version.outputs.current-version }}
+          tag_name: 'beta'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
