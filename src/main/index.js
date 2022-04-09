@@ -25,6 +25,7 @@ const DARK_ICON = path.join(appBaseDir, 'icon-dark.png');
 const LIGHT_ICON = path.join(appBaseDir, 'icon-light.png');
 
 const MAC_DOWNLOAD_LINK = `https://github.com/synle/display-dj/releases/latest/download/display-dj-darwin.dmg`;
+
 const WINDOWS_DOWNLOAD_LINK = `https://github.com/synle/display-dj/releases/latest/download/display-dj-setup.exe`;
 
 function createWindow() {
