@@ -1,4 +1,4 @@
-[![main-build](https://github.com/synle/display-dj/actions/workflows/main-build.yml/badge.svg)](https://github.com/synle/display-dj/actions/workflows/main-build.yml)
+[![build-main](https://github.com/synle/display-dj/actions/workflows/build-main.yml/badge.svg)](https://github.com/synle/display-dj/actions/workflows/build-main.yml)
 
 # [display-dj](https://synle.github.io/display-dj/)
 
