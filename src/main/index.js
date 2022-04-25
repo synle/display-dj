@@ -394,6 +394,22 @@ async function _getContextMenu(){
   return contextMenu;
 }
 
+/**
+ * @return None - Hide the dock icon for Mac...
+ */
+async function setupDockIcon(){
+  switch(process.platform){
+    case 'darwin':
+      try{
+        app.dock.hide();
+        console.debug('Hide dock icon success');
+      } catch(err){
+        console.error('Hide dock icon failed with error', err);
+      }
+      break;
+  }
+}
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -408,6 +424,7 @@ app.on('ready', async () => {
   await createTray();
   await setupAutolaunch();
   await setUpShortcuts();
+  await setupDockIcon();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
