@@ -1,3 +1,4 @@
+import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 import StorageUtils, { LOG_FILE_PATH } from 'src/main/utils/StorageUtils';
 
 function _appendLogToFile(...data) {
@@ -46,30 +47,45 @@ String.prototype.red = function () {
   return `\x1b[31m${this}\x1b[0m`;
 };
 
-const origConsole = console.log;
-console.log = (...data) => {
-  origConsole('[LOG]'.green(), ...data);
+async function _initializeLogUtils(){
+  const preferences = await PreferenceUtils.get();
+  if(preferences.logging === true){
+    // enable logging
+    const origConsole = console.log;
+    console.log = (...data) => {
+      origConsole('[LOG]'.green(), ...data);
 
-  _appendLogToFile(`[LOG]`, ...data);
-};
+      _appendLogToFile(`[LOG]`, ...data);
+    };
 
-console.info = (...data) => {
-  origConsole('[INFO]'.green(), ...data);
+    console.info = (...data) => {
+      origConsole('[INFO]'.green(), ...data);
 
-  _appendLogToFile(`[INFO]`, ...data);
-};
-console.error = (...data) => {
-  origConsole('[ERROR]'.red(), ...data);
+      _appendLogToFile(`[INFO]`, ...data);
+    };
+    console.error = (...data) => {
+      origConsole('[ERROR]'.red(), ...data);
 
-  _appendLogToFile(`[ERROR]`, ...data);
-};
-console.debug = (...data) => {
-  origConsole('[DEBUG]'.yellow(), ...data);
+      _appendLogToFile(`[ERROR]`, ...data);
+    };
+    console.debug = (...data) => {
+      origConsole('[DEBUG]'.yellow(), ...data);
 
-  _appendLogToFile(`[DEBUG]`, ...data);
-};
-console.trace = (...data) => {
-  origConsole('[TRACE]'.blue(), ...data);
+      _appendLogToFile(`[DEBUG]`, ...data);
+    };
+    console.trace = (...data) => {
+      origConsole('[TRACE]'.blue(), ...data);
 
-  _appendLogToFile(`[TRACE]`, ...data);
-};
+      _appendLogToFile(`[TRACE]`, ...data);
+    };
+  } else {
+    // disable logging
+    console.log = () => {}
+    console.info = () => {}
+    console.error = () => {}
+    console.debug = () => {}
+    console.trace = () => {}
+  }
+}
+
+_initializeLogUtils();
