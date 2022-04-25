@@ -68,7 +68,6 @@ export type AppConfig = {
   volume: Volume;
   env: string;
   version: string;
-  logging: boolean;
   platform: 'win32' | 'darwin';
 };
 
@@ -84,6 +83,7 @@ export type IDisplayAdapter = {
 
 export type Preference = {
   showIndividualDisplays: boolean;
+  logging: boolean;
   brightnessDelta: number;
   brightnessPresets: BrightnessPreset[];
   volumePresets: VolumePreset[];
