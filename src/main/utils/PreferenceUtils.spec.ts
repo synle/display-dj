@@ -87,6 +87,7 @@ describe('PreferenceUtils', () => {
             "notification": "Volume is 100%",
           },
         ],
+        "logging": false,
         "showIndividualDisplays": false,
         "volumePresets": Array [
           Object {
@@ -281,6 +282,7 @@ describe('PreferenceUtils', () => {
             "notification": "Volume is 100%",
           },
         ],
+        "logging": false,
         "showIndividualDisplays": false,
         "volumePresets": Array [
           Object {

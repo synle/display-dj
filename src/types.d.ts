@@ -83,6 +83,7 @@ export type IDisplayAdapter = {
 
 export type Preference = {
   showIndividualDisplays: boolean;
+  logging: boolean;
   brightnessDelta: number;
   brightnessPresets: BrightnessPreset[];
   volumePresets: VolumePreset[];
