@@ -68,6 +68,7 @@ export type AppConfig = {
   volume: Volume;
   env: string;
   version: string;
+  logging: boolean;
   platform: 'win32' | 'darwin';
 };
 

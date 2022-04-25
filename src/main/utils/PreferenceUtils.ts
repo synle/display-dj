@@ -3,6 +3,7 @@ import { Preference } from 'src/types.d';
 
 const DEFAULT_PREFERENCES: Preference = {
   showIndividualDisplays: false,
+  logging: false,
   brightnessDelta: 25,
   brightnessPresets: [
     { level: 0 },
