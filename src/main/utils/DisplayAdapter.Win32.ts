@@ -1,7 +1,6 @@
 import path from 'path';
-import { executePowershell } from 'src/main/utils/ShellUtils';
 import { IDisplayAdapter, Monitor } from 'src/types.d';
-import cp from 'child_process';
+import ChildProcess from 'child_process';
 // source: https://github.com/hensm/node-ddcci
 const _getDdcciScript = async () => path.join(process['resourcesPath'], `win32_ddcci.js`);
 
@@ -15,7 +14,7 @@ let EXTERNAL_DISPLAY_MONITOR_IDS = new Set<string>()
 function _getBrightnessBuiltin(): Promise<number> {
   return new Promise(async (resolve, reject) => {
     let shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness).CurrentBrightness`;
-    const brightness = parseInt(await executePowershell(shellToRun));
+    const brightness = parseInt(await _sendMessageToBackgroundScript('customScript', shellToRun));
     resolve(brightness);
   });
 }
@@ -26,7 +25,7 @@ function _getBrightnessBuiltin(): Promise<number> {
  */
 async function _setBrightnessBuiltin(newBrightness: number): Promise<void> {
   let shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1,${newBrightness})`;
-  await executePowershell(shellToRun);
+  return _sendMessageToBackgroundScript('customScript', shellToRun);
 }
 
 function _getBrightnessDccCi(targetMonitorId: string): Promise<number> {
@@ -41,17 +40,17 @@ async function _setBrightnessDccCi(targetMonitorId: string, newBrightness: numbe
   return _sendMessageToBackgroundScript('setBrightness', targetMonitorId, newBrightness);
 }
 
-async function _sendMessageToBackgroundScript(command : 'getBrightness'| 'setBrightness' | 'getMonitorList', ...extra: any) : Promise<any>{
+async function _sendMessageToBackgroundScript(command : 'customScript' | 'getBrightness'| 'setBrightness' | 'getMonitorList', ...extra: any) : Promise<any>{
   return new Promise(async (resolve, reject) => {
-    const childProcess = cp.fork(await _getDdcciScript());
+    const targetChildProcess = ChildProcess.fork(await _getDdcciScript());
 
-    childProcess.on('message', function(response: any) {
+    targetChildProcess.on('message', function(response: any) {
       console.debug(`ddcci child process returned`, command, response);
       const {success, data} = response;
       success === true ? resolve(data) : reject();
     });
 
-    childProcess.send([process['resourcesPath'], command, ...extra]);
+    targetChildProcess.send([process['resourcesPath'], command, ...extra]);
   })
 }
 
@@ -142,7 +141,7 @@ const DisplayAdapter: IDisplayAdapter = {
       );
 
     return new Promise(async (resolve) => {
-      const msg = await executePowershell(shellToRun);
+      const msg : string= await _sendMessageToBackgroundScript('customScript', shellToRun);
       const lines = msg
         .toString()
         .split('\n')
@@ -171,7 +170,7 @@ const DisplayAdapter: IDisplayAdapter = {
         /\//g,
         '\\',
       );
-    await executePowershell(shellToRun);
+    await _sendMessageToBackgroundScript('customScript', shellToRun);
   },
 };
 
