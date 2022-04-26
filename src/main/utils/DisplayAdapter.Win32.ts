@@ -1,8 +1,7 @@
 import path from 'path';
-import cp from 'child_process';
 import { executePowershell } from 'src/main/utils/ShellUtils';
 import { IDisplayAdapter, Monitor } from 'src/types.d';
-
+import cp from 'child_process';
 // source: https://github.com/hensm/node-ddcci
 const _getDdcciScript = async () => path.join(process['resourcesPath'], `win32_ddcci.js`);
 
