@@ -5,13 +5,21 @@
 //
 // having it as a separate script will make sure the initiation
 // of the ddcci works properly in windows
-const ddcci = require("@hensm/ddcci");
+let ddcci;
+
+const path = require('path');
 
 process.on('message', async function(msg) {
-  const command = msg[0];
-  const targetMonitorId = msg[1];
-  const newBrightness = parseInt(msg[2]);
+  try {
+    ddcci = require("@hensm/ddcci");
+  }
+  catch(err){
+    ddcci = require(path.join(msg[0], "/app/node_modules/@hensm/ddcci"));
+  }
 
+  const command = msg[1];
+  const targetMonitorId = msg[2];
+  const newBrightness = parseInt(msg[3]);
 
   try{
     let res;
