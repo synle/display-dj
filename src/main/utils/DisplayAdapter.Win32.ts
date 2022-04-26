@@ -1,9 +1,10 @@
 import path from 'path';
 import cp from 'child_process';
-import * as ddcci from '@hensm/ddcci';
 import { executePowershell } from 'src/main/utils/ShellUtils';
 import { IDisplayAdapter, Monitor } from 'src/types.d';
+
 // source: https://github.com/hensm/node-ddcci
+const _getDdcciScript = async () => path.join(process['resourcesPath'], `win32_ddcci.js`);
 
 /**
  * get current laptop brightness. more info here
@@ -33,7 +34,7 @@ function _getBrightnessDccCi(targetMonitorId: string): Promise<number> {
 
     while (--retry > 0) {
       try {
-        const res = await ddcci.getBrightness(targetMonitorId);
+        const res = await _sendMessageToBackgroundScript('getBrightness', targetMonitorId);
         resolve(res);
       } catch (err) {
         error = err;
@@ -44,22 +45,30 @@ function _getBrightnessDccCi(targetMonitorId: string): Promise<number> {
   });
 }
 
+async function _getMonitorList(){
+  return _sendMessageToBackgroundScript('getMonitorList');
+}
+
 async function _setBrightnessDccCi(targetMonitorId: string, newBrightness: number): Promise<void> {
-  // await ddcci.setBrightness(targetMonitorId, newBrightness);
-  const scriptPath = path.join(process['resourcesPath'], `win32_ddcci.js`)
+  return _sendMessageToBackgroundScript('setBrightness', targetMonitorId, newBrightness);
+}
 
-  const childProcess = cp.fork(scriptPath);
+async function _sendMessageToBackgroundScript(command : 'getBrightness'| 'setBrightness' | 'getMonitorList', ...extra: any) : Promise<any>{
+  return new Promise(async (resolve, reject) => {
+    const childProcess = cp.fork(await _getDdcciScript());
 
-  childProcess.on('message', function(m) {
-    console.log('PARENT got message:', m);
-  });
+    childProcess.on('message', function(response: any) {
+      const {success, data} = response;
+      success === true ? resolve(data) : reject();
+    });
 
-  childProcess.send([targetMonitorId, newBrightness]);
+    childProcess.send([command, ...extra]);
+  })
 }
 
 const DisplayAdapter: IDisplayAdapter = {
   getMonitorList: async () => {
-    return ddcci.getMonitorList();
+    return _getMonitorList();
   },
   getMonitorType: async (targetMonitorId: string) => {
     try {
@@ -96,15 +105,13 @@ const DisplayAdapter: IDisplayAdapter = {
     // monitor is an external (DCC/CI)
     try {
       await _setBrightnessDccCi(targetMonitorId, newBrightness);
-      console.trace(`Update brightness with ddcci successfully`, targetMonitorId, newBrightness);
     } catch (err) {
       // monitor is a laptop
       console.trace(`Update brightness failed with ddcci, trying builtin method`, targetMonitorId, newBrightness);
       try {
         await _setBrightnessBuiltin(newBrightness);
-        console.trace(`Update brightness with ddcci successfully`, targetMonitorId, newBrightness);
       } catch (err) {
-        console.trace(`Update brightness failed`, targetMonitorId, newBrightness);
+        console.error(`Update brightness failed`, targetMonitorId, newBrightness);
       }
     }
   },

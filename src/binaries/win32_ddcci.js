@@ -1,42 +1,66 @@
+// NOTE: refer to this PR: https://github.com/synle/display-dj/pull/65
+// why do we need to keep this as a separate script?
+// the problem is node ddcci doesn't work for some devices
+// when you disconnect and reconnect
+//
+// having it as a separate script will make sure the initiation
+// of the ddcci works properly in windows
 const ddcci = require("@hensm/ddcci");
 
-console.log('Child Process Spawned')
+process.on('message', async function(msg) {
+  const command = msg[0];
+  const targetMonitorId = msg[1];
+  const newBrightness = parseInt(msg[2]);
 
-process.on('message', function(msg) {
-  console.log('Child received message', msg);
 
-  const monitorIdToChange = msg[0];
-  const newBrightness = parseInt(msg[1]);
+  try{
+    let res;
+    switch(command){
+      case 'setBrightness':
+        res = await _setBrightness(targetMonitorId, newBrightness);
+        break;
 
-  _changeBrightness(monitorIdToChange, newBrightness);
-  process.send('ChildMessage');
+      case 'getBrightness':
+        res = await _getBrightness(targetMonitorId);
+        break;
+
+      case 'getMonitorList':
+        res = await _getMonitorList();
+        break;
+
+      default:
+        throw `Not supported command - ${command}`
+        break;
+    }
+    process.send({success: true, data: res});
+  } catch(error){
+    process.send({success: false, error});
+  }
 });
 
-function _changeBrightness(){
-  console.log('monitorIdToChange', monitorIdToChange)
-  console.log('newBrightness', newBrightness)
-
+function _setBrightness(targetMonitorId, newBrightness){
   if(isNaN(newBrightness) || newBrightness < 0 || newBrightness > 100){
-    console.log('No data', process.argv)
-    process.exit(1);
+    throw 'newBrightness needs to be a number between 0 and 100'
   }
 
   for (const monitorId of ddcci.getMonitorList()) {
-    console.log('monitorId', monitorId)
-    if(monitorId === monitorIdToChange){
+    if(monitorId === targetMonitorId){
       try{
-        ddcci.setBrightness(monitorId, newBrightness);
-        console.log('Successfully set brightness for monitor', monitorIdToChange, newBrightness);
-        process.exit(0);
+        return ddcci.setBrightness(monitorId, newBrightness);
       } catch(err){
-        console.log('Failed to set brightness for monitor', monitorIdToChange, newBrightness, err);
-        process.exit(1);
+        throw err;
       }
 
     }
   }
 
-  console.log('Monitor ID not found');
-  process.exit(1);
+  throw `targetMonitorId (${targetMonitorId}) not found`;
 }
 
+function _getBrightness(targetMonitorId){
+  return ddcci.getBrightness(targetMonitorId);
+}
+
+function _getMonitorList(){
+  return ddcci.getMonitorList();
+}
