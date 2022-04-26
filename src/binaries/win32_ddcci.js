@@ -19,9 +19,9 @@ process.on('message', async function(msg) {
   }
   catch(err){
     // otherwise, will look into it from the msg[0] = process['resourcesPath']
-    // ddcci = require(path.join(msg[0], "@hensm/ddcci"));
-    // ddcci = require(path.join("C:/Users/lengu/AppData/Local/DisplayDJ/app-1.6.3/resources", "@hensm/ddcci"))
-    ddcci = require("C:/Users/lengu/AppData/Local/DisplayDJ/app-1.6.3/resources/@hensm/ddcci")
+    // ddcci = require(path.join(msg[0], "node_modules/@hensm/ddcci"));
+    // ddcci = require("D:/git/display-dj/dist/node_modules/@hensm/ddcci")
+    ddcci = require("C:/Users/lengu/AppData/Local/DisplayDJ/app-1.6.4/resources/node_modules/@hensm/ddcci");
   }
 
   const command = msg[1];

@@ -22,6 +22,10 @@ function _zipDirectory(sourceDir, outPath) {
 }
 
 async function doDistWork() {
+  try{
+    fs.mkdirSync(`dist/display-dj-win32-x64/resources/node_modules`)
+  } catch(err){}
+
   try {
     switch (process.platform) {
       case 'win32':
@@ -38,7 +42,17 @@ async function doDistWork() {
 
         copyNestedDir(
           path.join(__dirname, `node_modules/@hensm`),
-          path.join(__dirname, `dist/display-dj-win32-x64/resources/@hensm`)
+          path.join(__dirname, `dist/display-dj-win32-x64/resources/node_modules/@hensm`)
+        );
+
+        copyNestedDir(
+          path.join(__dirname, `node_modules/bindings`),
+          path.join(__dirname, `dist/display-dj-win32-x64/resources/node_modules/bindings`)
+        );
+
+        copyNestedDir(
+          path.join(__dirname, `node_modules/node-addon-api`),
+          path.join(__dirname, `dist/display-dj-win32-x64/resources/node_modules/node-addon-api`)
         );
 
         const electronInstaller = require('electron-winstaller');
