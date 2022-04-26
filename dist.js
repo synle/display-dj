@@ -2,9 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const util = require('util');
-
 const child_process = require('child_process');
-const exec = util.promisify(require('child_process').exec);
 
 /**
  * @param {String} sourceDir: /some/folder/to/compress
@@ -26,7 +24,35 @@ function _zipDirectory(sourceDir, outPath) {
   });
 }
 
+function getOptionalPackageToInstall(){
+  switch (process.platform) {
+    case 'win32':
+      return ['@hensm/ddcci']
+
+    case 'darwin':
+      return [];
+  }
+}
+
 async function doDistWork() {
+  try{
+    fs.writeFileSync(
+      `./dist/display-dj-win32-x64/resources/package.json`,
+      `{}`
+    )
+
+    const packagesToInstall = getOptionalPackageToInstall();
+    if(packagesToInstall.length > 0){
+      child_process.execSync(
+        `npm i --no-package-lock --no-save ${packagesToInstall.join(' ')}`,
+        {
+          cwd: './dist/display-dj-win32-x64/resources',
+          stdio:[0,1,2]
+        }
+      );
+    }
+  } catch(err){}
+
   try {
     switch (process.platform) {
       case 'win32':
@@ -39,20 +65,6 @@ async function doDistWork() {
         fs.copyFileSync(
           path.join(__dirname, `src/binaries/win32_ddcci.js`),
           path.join(__dirname, `dist/display-dj-win32-x64/resources/win32_ddcci.js`)
-        );
-
-        fs.writeFileSync(
-          `./dist/display-dj-win32-x64/resources/package.json`,
-          `{}`
-        )
-
-        // install the ddci module
-        child_process.execSync(
-          `npm i --no-package-lock --no-save  @hensm/ddcci`,
-          {
-            cwd: './dist/display-dj-win32-x64/resources',
-            stdio:[0,1,2]
-          }
         );
 
         const electronInstaller = require('electron-winstaller');
