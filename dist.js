@@ -1,5 +1,7 @@
+// NOTE: this is the script that generates the bundle setup file
 const fs = require('fs');
 const path = require('path');
+const child_process = require('child_process');
 
 /**
  * @param {String} sourceDir: /some/folder/to/compress
@@ -21,7 +23,41 @@ function _zipDirectory(sourceDir, outPath) {
   });
 }
 
+function getOptionalPackageToInstall(){
+  switch (process.platform) {
+    case 'win32':
+      return ['@hensm/ddcci']
+
+    case 'darwin':
+      return [];
+  }
+}
+
 async function doDistWork() {
+  try{
+    fs.writeFileSync(
+      `./dist/display-dj-win32-x64/resources/package.json`,
+      `{}`
+    )
+  } catch(err){
+    console.log('Failed to create the dummy package.json')
+  }
+
+  try{
+    const packagesToInstall = getOptionalPackageToInstall();
+    if(packagesToInstall.length > 0){
+      child_process.execSync(
+        `npm i --no-package-lock --no-save ${packagesToInstall.join(' ')}`,
+        {
+          cwd: './dist/display-dj-win32-x64/resources',
+          stdio:[0,1,2]
+        }
+      );
+    }
+  } catch(err){
+    console.log('Failed to install optional dependencies')
+  }
+
   try {
     switch (process.platform) {
       case 'win32':
