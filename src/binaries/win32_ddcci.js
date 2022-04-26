@@ -49,6 +49,7 @@ process.on('message', async function(msg) {
   } catch(error){
     process.send({success: false, error});
   }
+  process.exit();
 });
 
 function _setBrightness(targetMonitorId, newBrightness){

@@ -5,6 +5,8 @@ import cp from 'child_process';
 // source: https://github.com/hensm/node-ddcci
 const _getDdcciScript = async () => path.join(process['resourcesPath'], `win32_ddcci.js`);
 
+let LAPTOP_DISPLAY_MONITOR_ID = '';
+
 /**
  * get current laptop brightness. more info here
  * https://docs.microsoft.com/en-us/windows/win32/wmicoreprov/wmimonitorbrightness
@@ -27,21 +29,7 @@ async function _setBrightnessBuiltin(newBrightness: number): Promise<void> {
 }
 
 function _getBrightnessDccCi(targetMonitorId: string): Promise<number> {
-  return new Promise(async (resolve, reject) => {
-    let retry = 3;
-    let error;
-
-    while (--retry > 0) {
-      try {
-        const res = await _sendMessageToBackgroundScript('getBrightness', targetMonitorId);
-        resolve(res);
-      } catch (err) {
-        error = err;
-      }
-    }
-
-    reject('Failed to get brightness: ' + error);
-  });
+  return _sendMessageToBackgroundScript('getBrightness', targetMonitorId);
 }
 
 async function _getMonitorList(){
@@ -71,6 +59,10 @@ const DisplayAdapter: IDisplayAdapter = {
     return _getMonitorList();
   },
   getMonitorType: async (targetMonitorId: string) => {
+    if(LAPTOP_DISPLAY_MONITOR_ID === targetMonitorId){
+      return 'laptop_monitor';
+    }
+
     try {
       const brightness = await _getBrightnessDccCi(targetMonitorId);
 
@@ -84,6 +76,7 @@ const DisplayAdapter: IDisplayAdapter = {
         const brightness = await _getBrightnessBuiltin();
 
         if (brightness >= 0 && brightness <= 100) {
+          LAPTOP_DISPLAY_MONITOR_ID = targetMonitorId;
           return 'laptop_monitor';
         }
       } catch (err) {}
@@ -93,12 +86,11 @@ const DisplayAdapter: IDisplayAdapter = {
   },
   getMonitorBrightness: async (targetMonitorId: string) => {
     try {
+      if(LAPTOP_DISPLAY_MONITOR_ID === targetMonitorId){
+         return _getBrightnessBuiltin();
+      }
       return _getBrightnessDccCi(targetMonitorId);
-    } catch (err) {
-      try {
-        return await _getBrightnessBuiltin();
-      } catch (err) {}
-    }
+    } catch (err) {}
     return 50;
   },
   updateMonitorBrightness: async (targetMonitorId: string, newBrightness: number) => {
