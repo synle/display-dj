@@ -1,3 +1,4 @@
+// NOTE: this is the script that generates the bundle setup file
 const fs = require('fs');
 const path = require('path');
 const util = require('util');
@@ -38,39 +39,6 @@ async function doDistWork() {
           path.join(__dirname, `src/binaries/win32_ddcci.js`),
           path.join(__dirname, `dist/display-dj-win32-x64/resources/win32_ddcci.js`)
         );
-
-        fs.writeFileSync(
-          `./dist/display-dj-win32-x64/resources/package.json`,
-          `{}`
-        )
-
-        //
-        await new Promise(async (resolve, reject) => {
-          const { stdout, stderr } = await exec(`
-            npm i --no-package-lock --no-save  @hensm/ddcci
-          `, {cwd: './dist/display-dj-win32-x64/resources'});
-          console.log('>>stdout', stdout)
-          console.log('>>stderr', stderr)
-          resolve();
-
-          //
-          // const {child} = exec(`
-          //   ls
-          // `); //
-
-          // child.stdout.on('data', function(data) {
-          //     console.log('>> stdout: ' + data);
-          // });
-          // child.stderr.on('data', function(data) {
-          //     console.log('>> stderr: ' + data);
-          // });
-          // child.on('close', function(code) {
-          //     console.log('>> closing code: ' + code);
-          // });
-
-        })
-
-        console.log('>> bundling')
 
         const electronInstaller = require('electron-winstaller');
         electronInstaller.createWindowsInstaller({
