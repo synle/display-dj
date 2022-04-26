@@ -26,7 +26,7 @@
     "test": "jest src",
     "prestart": "npm run build-dev",
     "start": "cross-env APP_MODE='dev' concurrently \"electron ./build/main.js\" \"npm run dev\"",
-    "dist": "sh dist.sh",
+    "dist": "node dist.js",
     "predist-win32": " npx electron-packager \"./\" --overwrite --asar --prune=true --out=\"dist\" --icon=./src/assets/icon.png --platform=win32",
     "dist-win32": "npm run dist",
     "predist-darwin": "npx electron-packager \"./\" --overwrite --asar --prune=true --out=\"dist\" --icon=./src/assets/icon.icns --platform=darwin",
