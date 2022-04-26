@@ -1,7 +1,6 @@
 // NOTE: this is the script that generates the bundle setup file
 const fs = require('fs');
 const path = require('path');
-const util = require('util');
 const child_process = require('child_process');
 
 /**
@@ -40,7 +39,11 @@ async function doDistWork() {
       `./dist/display-dj-win32-x64/resources/package.json`,
       `{}`
     )
+  } catch(err){
+    console.log('Failed to create the dummy package.json')
+  }
 
+  try{
     const packagesToInstall = getOptionalPackageToInstall();
     if(packagesToInstall.length > 0){
       child_process.execSync(
@@ -51,7 +54,9 @@ async function doDistWork() {
         }
       );
     }
-  } catch(err){}
+  } catch(err){
+    console.log('Failed to install optional dependencies')
+  }
 
   try {
     switch (process.platform) {
@@ -107,29 +112,5 @@ async function doDistWork() {
     console.log('Err', err);
   }
 }
-
-
-/**
- * https://stackoverflow.com/questions/13786160/copy-folder-recursively-in-node-js
- *
- * @param  {[type]} src  [description]
- * @param  {[type]} dest [description]
- * @return {[type]}      [description]
- */
-function copyNestedDir(src, dest) {
-  var exists = fs.existsSync(src);
-  var stats = exists && fs.statSync(src);
-  var isDirectory = exists && stats.isDirectory();
-  if (isDirectory) {
-    fs.mkdirSync(dest);
-    fs.readdirSync(src).forEach(function(childItemName) {
-      copyNestedDir(path.join(src, childItemName),
-                        path.join(dest, childItemName));
-    });
-  } else {
-    fs.copyFileSync(src, dest);
-  }
-};
-
 
 doDistWork();

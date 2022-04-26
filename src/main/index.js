@@ -413,10 +413,7 @@ async function setupDockIcon(){
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-console.debug('resourcesPath', process['resourcesPath'])
 app.on('ready', async () => {
-  console.debug('resourcesPath', process['resourcesPath'])
-
   // show the tray as soon as possible
   global.tray = new Tray((await DisplayUtils.getDarkMode()) === true ? DARK_ICON : LIGHT_ICON);
 
