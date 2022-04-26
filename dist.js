@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
 
 /**
  * @param {String} sourceDir: /some/folder/to/compress
@@ -22,10 +23,6 @@ function _zipDirectory(sourceDir, outPath) {
 }
 
 async function doDistWork() {
-  try{
-    fs.mkdirSync(`dist/display-dj-win32-x64/resources/node_modules`)
-  } catch(err){}
-
   try {
     switch (process.platform) {
       case 'win32':
@@ -40,20 +37,17 @@ async function doDistWork() {
           path.join(__dirname, `dist/display-dj-win32-x64/resources/win32_ddcci.js`)
         );
 
-        copyNestedDir(
-          path.join(__dirname, `node_modules/@hensm`),
-          path.join(__dirname, `dist/display-dj-win32-x64/resources/node_modules/@hensm`)
-        );
-
-        copyNestedDir(
-          path.join(__dirname, `node_modules/bindings`),
-          path.join(__dirname, `dist/display-dj-win32-x64/resources/node_modules/bindings`)
-        );
-
-        copyNestedDir(
-          path.join(__dirname, `node_modules/node-addon-api`),
-          path.join(__dirname, `dist/display-dj-win32-x64/resources/node_modules/node-addon-api`)
-        );
+        //
+        await new Promise((resolve, reject) => {
+          const child = exec(`
+            cd dist/display-dj-win32-x64/resources
+            pwd
+            npm i @hensm/ddcci
+          `, (error, stdout, stderr) =>  {
+            console.log('>>',error, stdout, stderr)
+            error ? resolve() : reject();
+          });
+        })
 
         const electronInstaller = require('electron-winstaller');
         electronInstaller.createWindowsInstaller({
