@@ -68,7 +68,7 @@ process.on('message', async function(msg) {
     }
     process.send({success: true, command, data: res});
   } catch(error){
-    process.send({success: false, command, error});
+    process.send({success: false, command, error: error.toString()});
   }
   process.exit();
 });

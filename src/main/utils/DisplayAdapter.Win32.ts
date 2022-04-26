@@ -1,5 +1,4 @@
 import path from 'path';
-import { executePowershell } from 'src/main/utils/ShellUtils';
 import { IDisplayAdapter, Monitor } from 'src/types.d';
 import ChildProcess from 'child_process';
 // source: https://github.com/hensm/node-ddcci
@@ -142,7 +141,7 @@ const DisplayAdapter: IDisplayAdapter = {
       );
 
     return new Promise(async (resolve) => {
-      const msg = await executePowershell(shellToRun);
+      const msg : string= await _sendMessageToBackgroundScript('customScript', shellToRun);
       const lines = msg
         .toString()
         .split('\n')
@@ -171,7 +170,7 @@ const DisplayAdapter: IDisplayAdapter = {
         /\//g,
         '\\',
       );
-    await executePowershell(shellToRun);
+    await _sendMessageToBackgroundScript('customScript', shellToRun);
   },
 };
 
