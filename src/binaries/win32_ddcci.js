@@ -8,6 +8,7 @@
 let ddcci;
 
 const path = require('path');
+const { spawn, exec } = require('child_process');
 
 process.on('message', async function(msg) {
   try {
@@ -41,13 +42,33 @@ process.on('message', async function(msg) {
         res = await _getMonitorList();
         break;
 
+      case 'customScript':
+        const shellToRun = msg[2];
+        res = await new Promise((resolve, reject) => {
+          const child = spawn('powershell.exe', ['-Command', shellToRun]);
+
+          let data = '';
+          child.stdout.on('data', function (msg) {
+            data += msg.toString();
+          });
+
+          child.on('exit', function (exitCode) {
+            if (parseInt(exitCode) !== 0) {
+              reject(exitCode);
+            } else {
+              resolve(data);
+            }
+          });
+        });
+        break;
+
       default:
         throw `Not supported command - ${command}`
         break;
     }
-    process.send({success: true, data: res});
+    process.send({success: true, command, data: res});
   } catch(error){
-    process.send({success: false, error});
+    process.send({success: false, command, error: error.toString()});
   }
   process.exit();
 });
