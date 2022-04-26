@@ -6,7 +6,7 @@ import { exec } from 'child_process';
 // Source: http://chopmo.dk/2017/01/12/control-monitor-brightness-from-osx.html
 // Source: https://github.com/kfix/ddcctl
 // Why 2 separate packages for brightness : refer to this https://github.com/nriley/brightness/issues/11
-const ID_BUILT_IN_DISPLAY = 'built-in-mac-display';
+const LAPTOP_DISPLAY_MONITOR_ID = 'built-in-mac-display';
 let _cacheTime = 0;
 let _cache: Record<string, any> = {
   whichDisplayLaptopBuiltin: undefined,
@@ -23,7 +23,7 @@ function getCache() {
 }
 async function _findWhichExternalDisplayById(targetMonitorId: string) {
   const monitorIds = (await _getMonitorList()).filter(
-    (monitorId) => monitorId !== ID_BUILT_IN_DISPLAY,
+    (monitorId) => monitorId !== LAPTOP_DISPLAY_MONITOR_ID,
   );
   for (let idx = 0; idx < monitorIds.length; idx++) {
     const monitorId = monitorIds[idx];
@@ -73,7 +73,7 @@ async function _getMonitorList(): Promise<string[]> {
           .split('\n')
           .filter((line) => line.indexOf('D:') === 0)
           .map((line, idx) => line.replace('D:', '').trim());
-        monitors.unshift(ID_BUILT_IN_DISPLAY);
+        monitors.unshift(LAPTOP_DISPLAY_MONITOR_ID);
 
         getCache().allMonitorList = monitors;
 
@@ -91,7 +91,7 @@ async function _getUpdateBrightnessShellScript(
 ): Promise<string> {
   return new Promise(async (resolve, reject) => {
     try {
-      if (targetMonitorId === ID_BUILT_IN_DISPLAY) {
+      if (targetMonitorId === LAPTOP_DISPLAY_MONITOR_ID) {
         // for built in display
         const whichDisplay = await _findWhichBuiltinDisplayById();
         return resolve(`${await _getBrightnessBinary()} -d ${whichDisplay} ${newBrightness / 100}`);
@@ -117,12 +117,12 @@ const _getBrightnessBinary = async () => path.join(process['resourcesPath'], `br
 const DisplayAdapter: IDisplayAdapter = {
   getMonitorList: _getMonitorList,
   getMonitorType: async (targetMonitorId: string) => {
-    return targetMonitorId === ID_BUILT_IN_DISPLAY ? 'laptop_monitor' : 'external_monitor';
+    return targetMonitorId === LAPTOP_DISPLAY_MONITOR_ID ? 'laptop_monitor' : 'external_monitor';
   },
   getMonitorBrightness: async (targetMonitorId: string) => {
     return new Promise(async (resolve, reject) => {
       try {
-        if (targetMonitorId === ID_BUILT_IN_DISPLAY) {
+        if (targetMonitorId === LAPTOP_DISPLAY_MONITOR_ID) {
           // for built in display
           const whichDisplay = await _findWhichBuiltinDisplayById();
           const shellToRun = `${await _getBrightnessBinary()} -l`;
