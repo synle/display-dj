@@ -13,10 +13,15 @@ process.on('message', async function(msg) {
   try {
     // first attempt to find ddcci as part of the dev mode (pure third party require)
     ddcci = require("@hensm/ddcci");
+    if(!ddcci){
+      throw 'Cannot find local node module for ddcci'
+    }
   }
   catch(err){
     // otherwise, will look into it from the msg[0] = process['resourcesPath']
-    ddcci = require(path.join(msg[0], "@hensm/ddcci"));
+    // ddcci = require(path.join(msg[0], "@hensm/ddcci"));
+    // ddcci = require(path.join("C:/Users/lengu/AppData/Local/DisplayDJ/app-1.6.3/resources", "@hensm/ddcci"))
+    ddcci = require("C:/Users/lengu/AppData/Local/DisplayDJ/app-1.6.3/resources/@hensm/ddcci")
   }
 
   const command = msg[1];
