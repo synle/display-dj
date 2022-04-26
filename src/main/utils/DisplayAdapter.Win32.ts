@@ -57,11 +57,12 @@ async function _sendMessageToBackgroundScript(command : 'getBrightness'| 'setBri
     const childProcess = cp.fork(await _getDdcciScript());
 
     childProcess.on('message', function(response: any) {
+      console.debug(`ddcci child process returned`, command, response);
       const {success, data} = response;
       success === true ? resolve(data) : reject();
     });
 
-    childProcess.send([command, ...extra]);
+    childProcess.send([process['resourcesPath'], command, ...extra]);
   })
 }
 
