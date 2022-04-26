@@ -11,10 +11,12 @@ const path = require('path');
 
 process.on('message', async function(msg) {
   try {
+    // first attempt to find ddcci as part of the dev mode (pure third party require)
     ddcci = require("@hensm/ddcci");
   }
   catch(err){
-    ddcci = require(path.join(msg[0], "/app/node_modules/@hensm/ddcci"));
+    // otherwise, will look into it from the msg[0] = process['resourcesPath']
+    ddcci = require(path.join(msg[0], "@hensm/ddcci"));
   }
 
   const command = msg[1];

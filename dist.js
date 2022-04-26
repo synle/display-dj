@@ -36,6 +36,11 @@ async function doDistWork() {
           path.join(__dirname, `dist/display-dj-win32-x64/resources/win32_ddcci.js`)
         );
 
+        copyNestedDir(
+          path.join(__dirname, `node_modules/@hensm`),
+          path.join(__dirname, `dist/display-dj-win32-x64/resources/@hensm`)
+        );
+
         const electronInstaller = require('electron-winstaller');
         electronInstaller.createWindowsInstaller({
           appDirectory: path.join(__dirname, 'dist', 'display-dj-win32-x64'),
@@ -76,5 +81,29 @@ async function doDistWork() {
     console.log('Err', err);
   }
 }
+
+
+/**
+ * https://stackoverflow.com/questions/13786160/copy-folder-recursively-in-node-js
+ *
+ * @param  {[type]} src  [description]
+ * @param  {[type]} dest [description]
+ * @return {[type]}      [description]
+ */
+function copyNestedDir(src, dest) {
+  var exists = fs.existsSync(src);
+  var stats = exists && fs.statSync(src);
+  var isDirectory = exists && stats.isDirectory();
+  if (isDirectory) {
+    fs.mkdirSync(dest);
+    fs.readdirSync(src).forEach(function(childItemName) {
+      copyNestedDir(path.join(src, childItemName),
+                        path.join(dest, childItemName));
+    });
+  } else {
+    fs.copyFileSync(src, dest);
+  }
+};
+
 
 doDistWork();
