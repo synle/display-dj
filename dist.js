@@ -31,6 +31,11 @@ async function doDistWork() {
           path.join(__dirname, `dist/display-dj-win32-x64/resources/win32_volume_helper.exe`)
         );
 
+        fs.copyFileSync(
+          path.join(__dirname, `src/binaries/win32_ddcci.js`),
+          path.join(__dirname, `dist/display-dj-win32-x64/resources/win32_ddcci.js`)
+        );
+
         const electronInstaller = require('electron-winstaller');
         electronInstaller.createWindowsInstaller({
           appDirectory: path.join(__dirname, 'dist', 'display-dj-win32-x64'),
