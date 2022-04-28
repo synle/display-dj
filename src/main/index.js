@@ -1,8 +1,8 @@
 import AutoLaunch from 'auto-launch';
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, shell, Tray } from 'electron';
-import { matchPath } from 'react-router-dom';
 import { EventEmitter } from 'events';
 import path from 'path';
+import { matchPath } from 'react-router-dom';
 import DisplayUtils from 'src/main/utils/DisplayUtils';
 import { getEndpointHandlers, setUpDataEndpoints } from 'src/main/utils/Endpoints';
 import { showNotification } from 'src/main/utils/NotificationUtils';
@@ -10,11 +10,7 @@ import PositionUtils from 'src/main/utils/PositionUtils';
 import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 import { getJSON } from 'src/main/utils/RestUtils';
 import SoundUtils from 'src/main/utils/SoundUtils';
-import StorageUtils, {
-  MONITOR_CONFIG_FILE_PATH,
-  PREFERENCE_FILE_PATH,
-  LOG_FILE_PATH,
-} from 'src/main/utils/StorageUtils';
+import { LOG_FILE_PATH, MONITOR_CONFIG_FILE_PATH, PREFERENCE_FILE_PATH } from 'src/main/utils/StorageUtils';
 import 'src/main/utils/LogUtils';
 let mainWindow;
 
