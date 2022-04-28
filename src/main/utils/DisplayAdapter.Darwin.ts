@@ -1,8 +1,8 @@
+import { exec } from 'child_process';
 import darkMode from 'dark-mode';
 import path from 'path';
 import { executeBash } from 'src/main/utils/ShellUtils';
 import { IDisplayAdapter, Monitor } from 'src/types.d';
-import { exec } from 'child_process';
 // Source: http://chopmo.dk/2017/01/12/control-monitor-brightness-from-osx.html
 // Source: https://github.com/kfix/ddcctl
 // Why 2 separate packages for brightness : refer to this https://github.com/nriley/brightness/issues/11

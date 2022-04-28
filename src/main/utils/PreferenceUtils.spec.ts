@@ -1,8 +1,5 @@
 import PreferenceUtils from 'src/main/utils/PreferenceUtils';
-import StorageUtils, {
-  MONITOR_CONFIG_FILE_PATH,
-  PREFERENCE_FILE_PATH,
-} from 'src/main/utils/StorageUtils';
+import StorageUtils, { MONITOR_CONFIG_FILE_PATH, PREFERENCE_FILE_PATH } from 'src/main/utils/StorageUtils';
 
 describe('PreferenceUtils', () => {
   beforeAll(async () => {

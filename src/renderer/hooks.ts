@@ -1,7 +1,6 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from 'react-query';
 import ApiUtils from 'src/renderer/utils/ApiUtils';
 import { Monitor, UIAppState, VolumeInput } from 'src/types.d';
-import { LAPTOP_BUILT_IN_DISPLAY_ID } from 'src/constants';
 // react query store
 export const QUERY_KEY_CONFIGS = 'configs';
 

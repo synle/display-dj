@@ -1,21 +1,9 @@
 import { MonitorNameInput } from 'src/renderer/components/MonitorNameInput';
 import { Slider } from 'src/renderer/components/Slider';
+import { useUpdateMonitor } from 'src/renderer/hooks';
 import LaptopSvg from 'src/renderer/svg/laptop.svg';
 import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import { Monitor } from 'src/types.d';
-import { LAPTOP_BUILT_IN_DISPLAY_ID } from 'src/constants';
-import {
-  useBatchUpdateMonitors,
-  usePreferences,
-  useUpdatePreferences,
-  useConfigs,
-  useUpdateMonitor,
-  useToggleDarkMode,
-  useUpdateAppPosition,
-  useUpdateVolume,
-  QUERY_KEY_CONFIGS,
-  QUERY_KEY_APP_STATE,
-} from 'src/renderer/hooks';
 
 type MonitorBrightnessSettingProps = {
   monitor: Monitor;
