@@ -1,6 +1,5 @@
 import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 import StorageUtils, { LOG_FILE_PATH } from 'src/main/utils/StorageUtils';
-
 function _appendLogToFile(...data) {
   const logLine = `[${new Date().toLocaleString()}] ${_serializeLogData(...data)}\n`;
 
