@@ -46,13 +46,6 @@ export function useConfigs() {
   return useQuery(QUERY_KEY_CONFIGS, ApiUtils.getConfigs);
 }
 
-export function useRefreshConfigs() {
-  const queryClient = useQueryClient();
-  return useMutation(async () => {}, {
-    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_PREFERENCE),
-  });
-}
-
 export function useUpdateMonitor() {
   const queryClient = useQueryClient();
   return useMutation(ApiUtils.updateMonitor, {
