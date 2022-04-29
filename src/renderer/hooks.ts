@@ -23,7 +23,7 @@ export function useUpdateAppState() {
       _appState = { ..._appState, ...newAppState };
     },
     {
-      onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
+      onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_APP_STATE),
     },
   );
 }
@@ -40,9 +40,17 @@ export function useUpdatePreferences() {
     onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_PREFERENCE),
   });
 }
+
 // configs
 export function useConfigs() {
   return useQuery(QUERY_KEY_CONFIGS, ApiUtils.getConfigs);
+}
+
+export function useRefreshConfigs() {
+  const queryClient = useQueryClient();
+  return useMutation(async () => {}, {
+    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_PREFERENCE),
+  });
 }
 
 export function useUpdateMonitor() {

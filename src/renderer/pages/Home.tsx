@@ -5,8 +5,9 @@ import { Header } from 'src/renderer/components/Header';
 import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightnessSetting';
 import { MonitorBrightnessSettingForm } from 'src/renderer/components/MonitorBrightnessSettingForm';
 import { VolumeSetting } from 'src/renderer/components/VolumeSetting';
-import { useConfigs, usePreferences, useUpdateAppPosition } from 'src/renderer/hooks';
+import { useConfigs, usePreferences, useUpdateAppPosition, useRefreshConfigs } from 'src/renderer/hooks';
 import { Monitor, Volume } from 'src/types.d';
+
 // react components
 type HomeProps = {};
 
@@ -14,6 +15,7 @@ export function Home(props: HomeProps) {
   const { isLoading: loadingConfigs, data: configs, refetch } = useConfigs();
   const { isLoading: loadingPrefs, data: preference } = usePreferences();
   const { mutateAsync: updateAppPosition } = useUpdateAppPosition();
+  const { mutateAsync: refreshConfigs } = useRefreshConfigs();
 
   useEffect(() => {
     const config = { childList: true, subtree: true };
@@ -25,6 +27,7 @@ export function Home(props: HomeProps) {
     // update position and refetched and the page is visible
     const onVisibilityChange = () => {
       updateAppPosition();
+      refreshConfigs();
       refetch();
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
