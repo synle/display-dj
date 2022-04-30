@@ -442,7 +442,7 @@ async function setupDockIcon(){
 function _sendRefetchEventToFrontEnd(type: 'all' | 'preferences' | 'configs' = 'all'){
   const eventName = 'mainAppEvent/refetch';
   if(mainWindow){
-    mainWindow.webContents.send(eventName, eventData);
+    mainWindow.webContents.send(eventName, {type});
   }
 }
 // This method will be called when Electron has finished
