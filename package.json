@@ -1,7 +1,7 @@
 {
   "name": "display-dj",
   "private": true,
-  "version": "1.6.9",
+  "version": "1.6.10",
   "description": "A cross platform desktop application that supports brightness adjustment for integrated laptop monitor as well as external monitors and dark mode toggle supporting Windows and MacOSX at the moment.",
   "scripts": {
     "clean-dist": "rimraf dist",
@@ -20,8 +20,8 @@
     "fix-import": "npx import-fixer --groupImport --aggressive --transformRelativeImport --importQuote=single",
     "preformat": "npm run fix-import",
     "format": "concurrently \"npm run format-js\" \"npm run format-html\"",
-    "format-js": "npx prettier --config ./.prettierrc --write **/*.{ts,tsx,js,jsx,scss,yml,html,json,md}",
-    "format-html": "npx prettier --config ./.prettierrc --parser html --write **/*.svg",
+    "format-js": "npx prettier --config ./.prettierrc --write **/**/**/**/**/*.{ts,tsx,js,jsx,scss,yml,html,json,md}",
+    "format-html": "npx prettier --config ./.prettierrc --parser html --write **/**/**/**/**/*.svg",
     "test-ci": "cross-env CI=true npm test",
     "test": "jest src",
     "prestart": "npm run build-dev",

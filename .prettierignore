@@ -4,3 +4,6 @@
 *.spec.jsx
 build
 dist
+./node_modules
+./coverage
+./display-dj

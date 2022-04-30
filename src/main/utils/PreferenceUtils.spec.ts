@@ -16,7 +16,7 @@ describe('PreferenceUtils', () => {
         "brightnessDelta": 25,
         "brightnessPresets": Array [
           Object {
-            "level": 0,
+            "level": 5,
           },
           Object {
             "level": 50,
@@ -35,7 +35,7 @@ describe('PreferenceUtils', () => {
           Object {
             "command": Array [
               "command/changeDarkMode/dark",
-              "command/changeBrightness/10",
+              "command/changeBrightness/5",
             ],
             "key": "Shift+F1",
             "notification": "Switching to Dark Profile",
@@ -50,10 +50,10 @@ describe('PreferenceUtils', () => {
           },
           Object {
             "command": Array [
-              "command/changeBrightness/0",
+              "command/changeBrightness/5",
             ],
             "key": "Shift+F3",
-            "notification": "Brightness is 0%",
+            "notification": "Brightness is 5%",
           },
           Object {
             "command": Array [
@@ -114,7 +114,7 @@ describe('PreferenceUtils', () => {
         Object {
           "command": Array [
             "command/changeDarkMode/dark",
-            "command/changeBrightness/10",
+            "command/changeBrightness/5",
           ],
           "key": "Shift+F1",
           "notification": "Switching to Dark Profile",
@@ -129,10 +129,10 @@ describe('PreferenceUtils', () => {
         },
         Object {
           "command": Array [
-            "command/changeBrightness/0",
+            "command/changeBrightness/5",
           ],
           "key": "Shift+F3",
-          "notification": "Brightness is 0%",
+          "notification": "Brightness is 5%",
         },
         Object {
           "command": Array [
@@ -171,7 +171,7 @@ describe('PreferenceUtils', () => {
     expect(actual).toMatchInlineSnapshot(`
       Array [
         Object {
-          "level": 0,
+          "level": 5,
         },
         Object {
           "level": 50,
@@ -211,7 +211,7 @@ describe('PreferenceUtils', () => {
         "brightnessDelta": 30,
         "brightnessPresets": Array [
           Object {
-            "level": 0,
+            "level": 5,
           },
           Object {
             "level": 50,
@@ -230,7 +230,7 @@ describe('PreferenceUtils', () => {
           Object {
             "command": Array [
               "command/changeDarkMode/dark",
-              "command/changeBrightness/10",
+              "command/changeBrightness/5",
             ],
             "key": "Shift+F1",
             "notification": "Switching to Dark Profile",
@@ -245,10 +245,10 @@ describe('PreferenceUtils', () => {
           },
           Object {
             "command": Array [
-              "command/changeBrightness/0",
+              "command/changeBrightness/5",
             ],
             "key": "Shift+F3",
-            "notification": "Brightness is 0%",
+            "notification": "Brightness is 5%",
           },
           Object {
             "command": Array [
