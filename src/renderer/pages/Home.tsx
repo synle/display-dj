@@ -1,3 +1,4 @@
+import { ipcRenderer } from 'electron';
 import { useEffect } from 'react';
 import { AllMonitorBrightnessSetting } from 'src/renderer/components/AllMonitorBrightnessSetting';
 import { DarkModeSettingForm } from 'src/renderer/components/DarkModeSettingForm';
@@ -11,8 +12,12 @@ import { Monitor, Volume } from 'src/types.d';
 type HomeProps = {};
 
 export function Home(props: HomeProps) {
-  const { isLoading: loadingConfigs, data: configs, refetch } = useConfigs();
-  const { isLoading: loadingPrefs, data: preference } = usePreferences();
+  const { isLoading: loadingConfigs, data: configs, refetch: refetchConfigs } = useConfigs();
+  const {
+    isLoading: loadingPrefs,
+    data: preference,
+    refetch: refetchPreferences,
+  } = usePreferences();
   const { mutateAsync: updateAppPosition } = useUpdateAppPosition();
 
   useEffect(() => {
@@ -23,12 +28,22 @@ export function Home(props: HomeProps) {
     observer.observe(document.body, config);
 
     // update position and refetched and the page is visible
-    const onVisibilityChange = () => {
-      updateAppPosition();
-      refetch();
+    const onVisibilityChange = (e: any) => {
+      if (document.visibilityState !== 'visible') {
+        // if the dom is visible, then let's position and update configs
+        updateAppPosition();
+        refetchConfigs();
+        refetchPreferences();
+      }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
+    // update states
+    ipcRenderer.on('mainAppEvent/refetch', function () {
+      console.log('[ipcRenderer] [Event] mainAppEvent/refetch');
+      refetchConfigs();
+      refetchPreferences();
+    });
     return () => {
       observer.disconnect();
       document.removeEventListener('visibilitychange', onVisibilityChange);

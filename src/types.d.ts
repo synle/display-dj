@@ -7,6 +7,7 @@ type Command =
   | 'command/changeBrightness/down'
   | 'command/changeBrightness/up'
   | 'command/changeBrightness/0'
+  | 'command/changeBrightness/5'
   | 'command/changeBrightness/10'
   | 'command/changeBrightness/50'
   | 'command/changeBrightness/100'
@@ -23,7 +24,8 @@ type Command =
   | 'command/openExternal/file/preferences'
   | 'command/openExternal/file/devLogs'
   | 'command/openExternal/link/bugReport'
-  | 'command/openExternal/link/aboutUs';
+  | 'command/openExternal/link/aboutUs'
+  | string;
 
 type BrightnessPreset = {
   which?: string;

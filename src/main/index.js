@@ -183,6 +183,7 @@ async function setupCommandChannel() {
         console.trace(`changeVolume failed due to invalid volume`, allMonitorBrightness, delta);
       }
 
+      _sendRefetchEventToFrontEnd();
       return;
     }
 
@@ -201,6 +202,7 @@ async function setupCommandChannel() {
       }
 
       await DisplayUtils.updateDarkMode(darkModeToUse);
+      _sendRefetchEventToFrontEnd();
       return;
     }
 
@@ -212,6 +214,7 @@ async function setupCommandChannel() {
         promises.push(SoundUtils.setMuted(volume === 0));
         promises.push(SoundUtils.setVolume(volume));
         await Promise.all(promises)
+        _sendRefetchEventToFrontEnd();
       } else {
         console.trace(`changeVolume failed due to invalid volume`, volume);
       }
@@ -251,6 +254,7 @@ async function setupCommandChannel() {
     if (command.includes(`command/reset`)) {
       await DisplayUtils.reset();
       await setUpShortcuts(); // call this to reset keyboard shortcut
+      _sendRefetchEventToFrontEnd();
       return;
     }
   });
@@ -299,27 +303,39 @@ async function _getContextMenu(){
   const latestAppVersion = await _getLatestAppVersion();
 
   const contextMenu = Menu.buildFromTemplate([
-    ...brightnessPresets.map(brightnessPreset => ({
-      label: `Change brightness to ${brightnessPreset.level}%`,
-      click: async () => global.emitAppEvent({ command: `command/changeBrightness/${brightnessPreset.level}` }),
-    })),
-    {
-      type: 'separator',
-    },
     {
       label: `Use Light Mode`,
-      click: async () => global.emitAppEvent({ command: 'command/changeDarkMode/light' }),
+      click: async () => {
+        global.emitAppEvent({ command: 'command/changeDarkMode/light' })
+        showNotification(`Turn on Light Mode`);
+      },
     },
     {
       label: `Use Dark Mode`,
-      click: async () => global.emitAppEvent({ command: 'command/changeDarkMode/dark' }),
+      click: async () => {
+        global.emitAppEvent({ command: 'command/changeDarkMode/dark' })
+        showNotification(`Turn on Dark Mode`);
+      },
     },
+    {
+      type: 'separator',
+    },
+    ...brightnessPresets.map(brightnessPreset => ({
+      label: `Change brightness to ${brightnessPreset.level}%`,
+      click: async () => {
+        global.emitAppEvent({ command: `command/changeBrightness/${brightnessPreset.level}` })
+        showNotification(`Brightness of all monitors changed to ${brightnessPreset.level}%`);
+      },
+    })),
     {
       type: 'separator',
     },
     ...volumePresets.map(volumePreset => ({
       label: `Change volume to ${volumePreset.level}%`,
-      click: async () => global.emitAppEvent({ command: `command/changeVolume/${volumePreset.level}` }),
+      click: async () => {
+        global.emitAppEvent({ command: `command/changeVolume/${volumePreset.level}` })
+        showNotification(`Volume changed to ${volumePreset.level}%`);
+      },
     })),
     {
       type: 'separator',
@@ -406,6 +422,11 @@ async function setupDockIcon(){
   }
 }
 
+function _sendRefetchEventToFrontEnd(eventName = 'mainAppEvent/refetch', eventData = {}){
+    if(mainWindow){
+      mainWindow.webContents.send(eventName, eventData);
+    }
+  }
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.

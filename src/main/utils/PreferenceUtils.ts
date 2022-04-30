@@ -1,12 +1,14 @@
 import StorageUtils, { PREFERENCE_FILE_PATH } from 'src/main/utils/StorageUtils';
 import { Preference } from 'src/types.d';
 
+const MIN_BRIGHTNESS = 5;// NOTE : here if we set it to 0, some monitors / laptops will turn off the backlit entirely and make it unusable...
+
 const DEFAULT_PREFERENCES: Preference = {
   showIndividualDisplays: false,
   logging: false,
   brightnessDelta: 25,
   brightnessPresets: [
-    { level: 0 },
+    { level: MIN_BRIGHTNESS },
     { level: 50 },
     { level: 100 },
   ],
@@ -16,22 +18,22 @@ const DEFAULT_PREFERENCES: Preference = {
     { level: 100 },
   ],
   keyBindings: [
-    { key: 'Shift+Escape', command: ['command/changeDarkMode/toggle'] },
+    { key: `Shift+Escape`, command: [`command/changeDarkMode/toggle`] },
     {
-      key: 'Shift+F1',
-      command: ['command/changeDarkMode/dark', 'command/changeBrightness/10'],
-      notification: 'Switching to Dark Profile',
+      key: `Shift+F1`,
+      command: [`command/changeDarkMode/dark`, `command/changeBrightness/${MIN_BRIGHTNESS}`],
+      notification: `Switching to Dark Profile`,
     },
     {
-      key: 'Shift+F2',
-      command: ['command/changeDarkMode/light', 'command/changeBrightness/100'],
-      notification: 'Switching to Light Profile',
+      key: `Shift+F2`,
+      command: [`command/changeDarkMode/light`, `command/changeBrightness/100`],
+      notification: `Switching to Light Profile`,
     },
-    { key: 'Shift+F3', command: ['command/changeBrightness/0'], notification: 'Brightness is 0%',},
-    { key: 'Shift+F4', command: ['command/changeBrightness/50'],notification: 'Brightness is 50%', },
-    { key: 'Shift+F5', command: ['command/changeBrightness/100'], notification: 'Brightness is 100%',},
-    { key: 'Shift+F6', command: ['command/changeVolume/0'],notification: 'Volume is Muted', },
-    { key: 'Shift+F7', command: ['command/changeVolume/100'],notification: 'Volume is 100%', },
+    { key: `Shift+F3`, command: [`command/changeBrightness/${MIN_BRIGHTNESS}`], notification: `Brightness is ${MIN_BRIGHTNESS}%`,},
+    { key: `Shift+F4`, command: [`command/changeBrightness/50`],notification: `Brightness is 50%`, },
+    { key: `Shift+F5`, command: [`command/changeBrightness/100`], notification: `Brightness is 100%`,},
+    { key: `Shift+F6`, command: [`command/changeVolume/0`],notification: `Volume is Muted`, },
+    { key: `Shift+F7`, command: [`command/changeVolume/100`],notification: `Volume is 100%`, },
   ],
 };
 
