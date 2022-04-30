@@ -305,25 +305,37 @@ async function _getContextMenu(){
   const contextMenu = Menu.buildFromTemplate([
     ...brightnessPresets.map(brightnessPreset => ({
       label: `Change brightness to ${brightnessPreset.level}%`,
-      click: async () => global.emitAppEvent({ command: `command/changeBrightness/${brightnessPreset.level}` }),
+      click: async () => {
+        global.emitAppEvent({ command: `command/changeBrightness/${brightnessPreset.level}` })
+        showNotification(`Brightness of all monitors changed to ${brightnessPreset.level}%`);
+      },
     })),
     {
       type: 'separator',
     },
     {
       label: `Use Light Mode`,
-      click: async () => global.emitAppEvent({ command: 'command/changeDarkMode/light' }),
+      click: async () => {
+        global.emitAppEvent({ command: 'command/changeDarkMode/light' })
+        showNotification(`Turn on Light Mode`);
+      },
     },
     {
       label: `Use Dark Mode`,
-      click: async () => global.emitAppEvent({ command: 'command/changeDarkMode/dark' }),
+      click: async () => {
+        global.emitAppEvent({ command: 'command/changeDarkMode/dark' })
+        showNotification(`Turn on Dark Mode`);
+      },
     },
     {
       type: 'separator',
     },
     ...volumePresets.map(volumePreset => ({
       label: `Change volume to ${volumePreset.level}%`,
-      click: async () => global.emitAppEvent({ command: `command/changeVolume/${volumePreset.level}` }),
+      click: async () => {
+        global.emitAppEvent({ command: `command/changeVolume/${volumePreset.level}` })
+        showNotification(`Volume changed to ${volumePreset.level}%`);
+      },
     })),
     {
       type: 'separator',
