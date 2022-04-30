@@ -28,7 +28,7 @@ export function Home(props: HomeProps) {
     observer.observe(document.body, config);
 
     // update position and refetched and the page is visible
-    const onVisibilityChange = (e: any) => {
+    const onVisibilityChange = () => {
       if (document.visibilityState !== 'visible') {
         // if the dom is visible, then let's position and update configs
         updateAppPosition();
@@ -39,8 +39,8 @@ export function Home(props: HomeProps) {
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     // update states
-    ipcRenderer.on('mainAppEvent/refetch', function () {
-      console.log('[ipcRenderer] [Event] mainAppEvent/refetch');
+    ipcRenderer.on('mainAppEvent/refetch', function (e, msg) {
+      console.log('[ipcRenderer] [Event] mainAppEvent/refetch', e, msg);
       refetchConfigs();
       refetchPreferences();
     });
