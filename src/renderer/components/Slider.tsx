@@ -9,12 +9,14 @@ type SliderProps = {
   disabled?: boolean;
 };
 
+const DEBOUNCE_TIME_MS = 200;
+
 export function Slider(props: SliderProps) {
   const [tempVal, setTempVal] = useState(0);
 
   const { value, onInput, className, placeholder, disabled } = props;
 
-  const debouncedOnInput = useMemo(() => debounce(onInput, 400), []);
+  const debouncedOnInput = useMemo(() => debounce(onInput, DEBOUNCE_TIME_MS), []);
 
   const onChange = (e: React.FormEvent<HTMLInputElement>) => {
     setTempVal(parseInt((e.target as HTMLInputElement).value) || 0);
