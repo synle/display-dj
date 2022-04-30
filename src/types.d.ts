@@ -24,7 +24,8 @@ type Command =
   | 'command/openExternal/file/preferences'
   | 'command/openExternal/file/devLogs'
   | 'command/openExternal/link/bugReport'
-  | 'command/openExternal/link/aboutUs';
+  | 'command/openExternal/link/aboutUs'
+  | string;
 
 type BrightnessPreset = {
   which?: string;
