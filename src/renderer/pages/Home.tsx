@@ -32,7 +32,7 @@ export function Home(props: HomeProps) {
       if (document.visibilityState !== 'visible') {
         // if the dom is visible, then let's position and update configs
         updateAppPosition();
-        _onRefetch(null, {type : 'all'});
+        _onRefetch(null, { type: 'all' });
       }
     };
     document.addEventListener('visibilitychange', _onVisibilityChange);
@@ -41,7 +41,7 @@ export function Home(props: HomeProps) {
     const _onRefetch = (e: any, msg: any) => {
       console.log('[ipcRenderer] [Event] mainAppEvent/refetch', msg);
 
-      switch(msg.type){
+      switch (msg.type) {
         case 'configs':
           refetchConfigs();
           break;
@@ -54,12 +54,12 @@ export function Home(props: HomeProps) {
           refetchPreferences();
           break;
       }
-    }
+    };
     ipcRenderer.on('mainAppEvent/refetch', _onRefetch);
     return () => {
       observer.disconnect();
       document.removeEventListener('visibilitychange', _onVisibilityChange);
-      ipcRenderer.removeListener('mainAppEvent/refetch', _onRefetch)
+      ipcRenderer.removeListener('mainAppEvent/refetch', _onRefetch);
     };
   }, []);
 
