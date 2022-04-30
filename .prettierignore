@@ -2,10 +2,10 @@
 *.spec.jsx
 *.spec.jsx
 *.spec.ts
-./_layouts/default.html
-./coverage
-./display-dj
-./node_modules
-./public/vs
+_layouts/default.html
 build
+coverage
+display-dj
 dist
+node_modules
+public/vs
