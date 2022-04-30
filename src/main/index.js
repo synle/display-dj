@@ -303,16 +303,6 @@ async function _getContextMenu(){
   const latestAppVersion = await _getLatestAppVersion();
 
   const contextMenu = Menu.buildFromTemplate([
-    ...brightnessPresets.map(brightnessPreset => ({
-      label: `Change brightness to ${brightnessPreset.level}%`,
-      click: async () => {
-        global.emitAppEvent({ command: `command/changeBrightness/${brightnessPreset.level}` })
-        showNotification(`Brightness of all monitors changed to ${brightnessPreset.level}%`);
-      },
-    })),
-    {
-      type: 'separator',
-    },
     {
       label: `Use Light Mode`,
       click: async () => {
@@ -327,6 +317,16 @@ async function _getContextMenu(){
         showNotification(`Turn on Dark Mode`);
       },
     },
+    {
+      type: 'separator',
+    },
+    ...brightnessPresets.map(brightnessPreset => ({
+      label: `Change brightness to ${brightnessPreset.level}%`,
+      click: async () => {
+        global.emitAppEvent({ command: `command/changeBrightness/${brightnessPreset.level}` })
+        showNotification(`Brightness of all monitors changed to ${brightnessPreset.level}%`);
+      },
+    })),
     {
       type: 'separator',
     },
