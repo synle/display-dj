@@ -42,6 +42,7 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
           className='field__value'
           placeholder='brightness'
           value={monitor.brightness}
+          key={monitor.brightness}
           onInput={(e) => onBrightnessChange(parseInt((e.target as HTMLInputElement).value) || 0)}
         />
       </div>
