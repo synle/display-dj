@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { debounce } from 'src/renderer/utils/CommonUtils';
 
 type SliderProps = {
@@ -21,19 +21,19 @@ export function Slider(props: SliderProps) {
   const onChange = (e: React.FormEvent<HTMLInputElement>) => {
     setTempVal(parseInt((e.target as HTMLInputElement).value) || 0);
     debouncedOnInput(e);
-  }
+  };
 
   useEffect(() => {
     let newValue = value;
-    if(newValue === undefined || newValue <= 0){
+    if (newValue === undefined || newValue <= 0) {
       newValue = 0;
     }
 
-    if(newValue > 100){
+    if (newValue > 100) {
       newValue = 100;
     }
     setTempVal(newValue);
-  }, [value])
+  }, [value]);
 
   return (
     <input

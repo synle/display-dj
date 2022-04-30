@@ -1,3 +1,4 @@
+import { ipcRenderer } from 'electron';
 import { useEffect } from 'react';
 import { AllMonitorBrightnessSetting } from 'src/renderer/components/AllMonitorBrightnessSetting';
 import { DarkModeSettingForm } from 'src/renderer/components/DarkModeSettingForm';
@@ -7,14 +8,16 @@ import { MonitorBrightnessSettingForm } from 'src/renderer/components/MonitorBri
 import { VolumeSetting } from 'src/renderer/components/VolumeSetting';
 import { useConfigs, usePreferences, useUpdateAppPosition } from 'src/renderer/hooks';
 import { Monitor, Volume } from 'src/types.d';
-import { ipcRenderer } from 'electron';
-
 // react components
 type HomeProps = {};
 
 export function Home(props: HomeProps) {
   const { isLoading: loadingConfigs, data: configs, refetch: refetchConfigs } = useConfigs();
-  const { isLoading: loadingPrefs, data: preference, refetch: refetchPreferences } = usePreferences();
+  const {
+    isLoading: loadingPrefs,
+    data: preference,
+    refetch: refetchPreferences,
+  } = usePreferences();
   const { mutateAsync: updateAppPosition } = useUpdateAppPosition();
 
   useEffect(() => {
@@ -37,12 +40,10 @@ export function Home(props: HomeProps) {
 
     // update states
     ipcRenderer.on('mainAppEvent/refetch', function () {
-      console.log('[ipcRenderer] [Event] mainAppEvent/refetch')
+      console.log('[ipcRenderer] [Event] mainAppEvent/refetch');
       refetchConfigs();
       refetchPreferences();
     });
-
-
     return () => {
       observer.disconnect();
       document.removeEventListener('visibilitychange', onVisibilityChange);
