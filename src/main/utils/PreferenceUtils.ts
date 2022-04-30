@@ -6,7 +6,7 @@ const DEFAULT_PREFERENCES: Preference = {
   logging: false,
   brightnessDelta: 25,
   brightnessPresets: [
-    { level: 0 },
+    { level: 5 },// NOTE : here if we set it to 0, some monitors / laptops will turn off the backlit entirely and make it unusable...
     { level: 50 },
     { level: 100 },
   ],
@@ -19,7 +19,7 @@ const DEFAULT_PREFERENCES: Preference = {
     { key: 'Shift+Escape', command: ['command/changeDarkMode/toggle'] },
     {
       key: 'Shift+F1',
-      command: ['command/changeDarkMode/dark', 'command/changeBrightness/10'],
+      command: ['command/changeDarkMode/dark', 'command/changeBrightness/5'],
       notification: 'Switching to Dark Profile',
     },
     {
@@ -27,7 +27,7 @@ const DEFAULT_PREFERENCES: Preference = {
       command: ['command/changeDarkMode/light', 'command/changeBrightness/100'],
       notification: 'Switching to Light Profile',
     },
-    { key: 'Shift+F3', command: ['command/changeBrightness/0'], notification: 'Brightness is 0%',},
+    { key: 'Shift+F3', command: ['command/changeBrightness/5'], notification: 'Brightness is 5%',},
     { key: 'Shift+F4', command: ['command/changeBrightness/50'],notification: 'Brightness is 50%', },
     { key: 'Shift+F5', command: ['command/changeBrightness/100'], notification: 'Brightness is 100%',},
     { key: 'Shift+F6', command: ['command/changeVolume/0'],notification: 'Volume is Muted', },
