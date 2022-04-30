@@ -7,13 +7,14 @@ import { MonitorBrightnessSettingForm } from 'src/renderer/components/MonitorBri
 import { VolumeSetting } from 'src/renderer/components/VolumeSetting';
 import { useConfigs, usePreferences, useUpdateAppPosition } from 'src/renderer/hooks';
 import { Monitor, Volume } from 'src/types.d';
+import { ipcRenderer } from 'electron';
 
 // react components
 type HomeProps = {};
 
 export function Home(props: HomeProps) {
-  const { isLoading: loadingConfigs, data: configs, refetch } = useConfigs();
-  const { isLoading: loadingPrefs, data: preference } = usePreferences();
+  const { isLoading: loadingConfigs, data: configs, refetch: refetchConfigs } = useConfigs();
+  const { isLoading: loadingPrefs, data: preference, refetch: refetchPreferences } = usePreferences();
   const { mutateAsync: updateAppPosition } = useUpdateAppPosition();
 
   useEffect(() => {
@@ -28,10 +29,18 @@ export function Home(props: HomeProps) {
       if (document.visibilityState !== 'visible') {
         // if the dom is visible, then let's position and update configs
         updateAppPosition();
-        refetch();
+        refetchConfigs();
+        refetchPreferences();
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
+
+    // update states
+    ipcRenderer.on('mainAppEvent/refetch', function () {
+      refetchConfigs();
+      refetchPreferences();
+    });
+
 
     return () => {
       observer.disconnect();
