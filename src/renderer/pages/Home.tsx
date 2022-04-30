@@ -37,6 +37,7 @@ export function Home(props: HomeProps) {
 
     // update states
     ipcRenderer.on('mainAppEvent/refetch', function () {
+      console.log('[ipcRenderer] [Event] mainAppEvent/refetch')
       refetchConfigs();
       refetchPreferences();
     });

@@ -183,6 +183,7 @@ async function setupCommandChannel() {
         console.trace(`changeVolume failed due to invalid volume`, allMonitorBrightness, delta);
       }
 
+      _sendRefetchEventToFrontEnd();
       return;
     }
 
@@ -201,6 +202,7 @@ async function setupCommandChannel() {
       }
 
       await DisplayUtils.updateDarkMode(darkModeToUse);
+      _sendRefetchEventToFrontEnd();
       return;
     }
 
@@ -212,6 +214,7 @@ async function setupCommandChannel() {
         promises.push(SoundUtils.setMuted(volume === 0));
         promises.push(SoundUtils.setVolume(volume));
         await Promise.all(promises)
+        _sendRefetchEventToFrontEnd();
       } else {
         console.trace(`changeVolume failed due to invalid volume`, volume);
       }
@@ -251,6 +254,7 @@ async function setupCommandChannel() {
     if (command.includes(`command/reset`)) {
       await DisplayUtils.reset();
       await setUpShortcuts(); // call this to reset keyboard shortcut
+      _sendRefetchEventToFrontEnd();
       return;
     }
   });
@@ -405,6 +409,13 @@ async function setupDockIcon(){
       break;
   }
 }
+
+function _sendRefetchEventToFrontEnd(eventName = 'mainAppEvent/refetch', eventData = {}){
+    if(mainWindow){
+      mainWindow.webContents.send(eventName, eventData);
+    }
+  }
+
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
