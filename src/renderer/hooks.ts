@@ -34,11 +34,7 @@ export function usePreferences() {
 }
 
 export function useUpdatePreferences() {
-  const queryClient = useQueryClient();
-
-  return useMutation(ApiUtils.updatePreferences, {
-    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_PREFERENCE),
-  });
+  return useMutation(ApiUtils.updatePreferences);
 }
 
 // configs
@@ -47,31 +43,19 @@ export function useConfigs() {
 }
 
 export function useUpdateMonitor() {
-  const queryClient = useQueryClient();
-  return useMutation(ApiUtils.updateMonitor, {
-    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
-  });
+  return useMutation(ApiUtils.updateMonitor);
 }
 
 export function useBatchUpdateMonitors() {
-  const queryClient = useQueryClient();
-  return useMutation(ApiUtils.batchUpdateMonitors, {
-    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
-  });
+  return useMutation(ApiUtils.batchUpdateMonitors);
 }
 
 export function useToggleDarkMode() {
-  const queryClient = useQueryClient();
-  return useMutation(ApiUtils.updateDarkMode, {
-    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
-  });
+  return useMutation(ApiUtils.updateDarkMode);
 }
 
 export function useUpdateVolume() {
-  const queryClient = useQueryClient();
-  return useMutation<void, void, VolumeInput>(ApiUtils.updateVolume, {
-    onSuccess: () => queryClient.invalidateQueries(QUERY_KEY_CONFIGS),
-  });
+  return useMutation<void, void, VolumeInput>(ApiUtils.updateVolume);
 }
 
 // misc

@@ -28,25 +28,38 @@ export function Home(props: HomeProps) {
     observer.observe(document.body, config);
 
     // update position and refetched and the page is visible
-    const onVisibilityChange = (e: any) => {
+    const _onVisibilityChange = () => {
       if (document.visibilityState !== 'visible') {
         // if the dom is visible, then let's position and update configs
         updateAppPosition();
-        refetchConfigs();
-        refetchPreferences();
+        _onRefetch(null, { type: 'all' });
       }
     };
-    document.addEventListener('visibilitychange', onVisibilityChange);
+    document.addEventListener('visibilitychange', _onVisibilityChange);
 
     // update states
-    ipcRenderer.on('mainAppEvent/refetch', function () {
-      console.log('[ipcRenderer] [Event] mainAppEvent/refetch');
-      refetchConfigs();
-      refetchPreferences();
-    });
+    const _onRefetch = (e: any, msg: any) => {
+      console.log('[ipcRenderer] [Event] mainAppEvent/refetch', msg);
+
+      switch (msg.type) {
+        case 'configs':
+          refetchConfigs();
+          break;
+        case 'preferences':
+          refetchPreferences();
+          break;
+        case 'all':
+        default:
+          refetchConfigs();
+          refetchPreferences();
+          break;
+      }
+    };
+    ipcRenderer.on('mainAppEvent/refetch', _onRefetch);
     return () => {
       observer.disconnect();
-      document.removeEventListener('visibilitychange', onVisibilityChange);
+      document.removeEventListener('visibilitychange', _onVisibilityChange);
+      ipcRenderer.removeListener('mainAppEvent/refetch', _onRefetch);
     };
   }, []);
 
