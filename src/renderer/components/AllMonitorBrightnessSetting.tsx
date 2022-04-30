@@ -37,6 +37,7 @@ export function AllMonitorBrightnessSetting(props: AllMonitorBrightnessSettingPr
           className='field__value'
           placeholder='brightness'
           value={allBrightness}
+          key={allBrightness}
           onInput={(e) => onChange(parseInt((e.target as HTMLInputElement).value) || 0)}
         />
       </div>

@@ -57,6 +57,7 @@ export function VolumeSetting(props: VolumeSettingProps) {
           className='field__value'
           placeholder='Volume'
           value={volume.value}
+          key={volume.value}
           onInput={(e) => onChange(parseInt((e.target as HTMLInputElement).value) || 0)}
         />
       </div>
