@@ -1,4 +1,4 @@
-import { spawn, exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 
 export function executePowershell(shellToRun: string, delay = 25): Promise<string> {
   return new Promise((resolve, reject) => {
