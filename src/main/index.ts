@@ -1,3 +1,4 @@
+// @ts-nocheck
 import AutoLaunch from 'auto-launch';
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, shell, Tray } from 'electron';
 import { EventEmitter } from 'events';
@@ -160,6 +161,22 @@ async function setupCommandChannel() {
   global.subscribeAppEvent(async (data) => {
     const { command } = data;
 
+    if(command.includes(`command/refetch`)){
+      switch (command) {
+        case 'command/refetch/preferences':
+          _sendRefetchEventToFrontEnd('preferences');
+          break;
+        case 'command/refetch/configs':
+          _sendRefetchEventToFrontEnd('configs');
+          break;
+        default:
+          _sendRefetchEventToFrontEnd('all');
+          break;
+      }
+
+      return;
+    }
+
     if (command.includes(`command/changeBrightness`)) {
       // these commands are change brightness
       let delta = preferences.brightnessDelta;
@@ -183,7 +200,7 @@ async function setupCommandChannel() {
         console.trace(`changeVolume failed due to invalid volume`, allMonitorBrightness, delta);
       }
 
-      _sendRefetchEventToFrontEnd();
+      _sendRefetchEventToFrontEnd('configs');
       return;
     }
 
@@ -202,7 +219,7 @@ async function setupCommandChannel() {
       }
 
       await DisplayUtils.updateDarkMode(darkModeToUse);
-      _sendRefetchEventToFrontEnd();
+      _sendRefetchEventToFrontEnd('configs');
       return;
     }
 
@@ -214,7 +231,7 @@ async function setupCommandChannel() {
         promises.push(SoundUtils.setMuted(volume === 0));
         promises.push(SoundUtils.setVolume(volume));
         await Promise.all(promises)
-        _sendRefetchEventToFrontEnd();
+        _sendRefetchEventToFrontEnd('configs');
       } else {
         console.trace(`changeVolume failed due to invalid volume`, volume);
       }
@@ -422,11 +439,12 @@ async function setupDockIcon(){
   }
 }
 
-function _sendRefetchEventToFrontEnd(eventName = 'mainAppEvent/refetch', eventData = {}){
-    if(mainWindow){
-      mainWindow.webContents.send(eventName, eventData);
-    }
+function _sendRefetchEventToFrontEnd(type: 'all' | 'preferences' | 'configs' = 'all'){
+  const eventName = 'mainAppEvent/refetch';
+  if(mainWindow){
+    mainWindow.webContents.send(eventName, {type});
   }
+}
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
