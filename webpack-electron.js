@@ -20,7 +20,7 @@ console.log('App Mode: ', process.env.APP_MODE)
 console.log('=====================')
 
 module.exports = {
-  entry: ['./src/main/index.js'],
+  entry: ['./src/main/index.ts'],
   output: {
     filename: 'main.js',
     path: path.resolve(__dirname, 'build'),
