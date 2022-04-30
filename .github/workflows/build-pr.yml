@@ -23,7 +23,6 @@ jobs:
           registry-url: https://registry.npmjs.org/
       - run: npm install --no-optional
       - run: npm run format
-        continue-on-error: true
       - run: npm run build-dev
       - run: npm run test-ci
       - run: npm run dist-darwin

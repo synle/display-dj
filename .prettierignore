@@ -1,9 +1,11 @@
 *.spec.js
 *.spec.jsx
-*.spec.ts
 *.spec.jsx
+*.spec.ts
+_layouts/default.html
 build
+coverage
+display-dj
 dist
-./node_modules
-./coverage
-./display-dj
+node_modules
+public/vs
