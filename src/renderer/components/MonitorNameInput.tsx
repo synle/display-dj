@@ -26,12 +26,11 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
       id: monitor.id,
       name: nameToUse,
     });
-
-    setMode('mode/read');
   };
 
   useEffect(() => {
     setName(monitor.name);
+    setMode('mode/read');
   }, [monitor.name]);
 
   return mode !== 'mode/read' ? (
