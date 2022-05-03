@@ -188,7 +188,7 @@ $loadingSize: 13px;
   height: $loadingSize;
 }
 .loading:after {
-  content: " ";
+  content: ' ';
   display: block;
   width: $loadingSize - 2px;
   height: $loadingSize - 2px;
