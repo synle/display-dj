@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightnessSetting';
 import { useUpdateMonitor } from 'src/renderer/hooks';
+import { Loading } from 'src/renderer/components/Loading';
 import { Monitor } from 'src/types.d';
 
 type MonitorBrightnessSettingProps = {
@@ -8,8 +9,10 @@ type MonitorBrightnessSettingProps = {
   idx: number;
 };
 
+type InputMode = 'mode/read' | 'mode/saving' | 'mode/edit';
+
 export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
-  const [mode, setMode] = useState<string>('mode/read');
+  const [mode, setMode] = useState<InputMode>('mode/read');
   const [name, setName] = useState('');
   const { monitor } = props;
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
@@ -40,8 +43,19 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
     setMode('mode/read');
   }, [monitor.name]);
 
-  return mode !== 'mode/read' ? (
-    <form onSubmit={onDisplayNameChange}>
+
+
+  switch(mode){
+    case 'mode/read':
+    return <div className='field__value field__value-readonly'>
+      <a onClick={() => setMode('mode/edit')} title='Monitor Name' href='#'>
+        {monitor.name}
+      </a>
+    </div>
+
+
+    case 'mode/edit':
+      return <form onSubmit={onDisplayNameChange}>
       <input
         className='field__value'
         value={name}
@@ -54,11 +68,13 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
         type='text'
       />
     </form>
-  ) : (
-    <div className='field__value field__value-readonly'>
-      <a onClick={() => setMode('mode/edit')} title='Monitor Name' href='#'>
-        {monitor.name}
-      </a>
+
+    case 'mode/saving':
+    return <div className='field__value field__value-readonly' style={{fontWeight: '300'}}>
+      <Loading style={{marginRight: '10px'}}/>
+      <span style={{marginRight: '5px'}}>Saving</span>
+      <strong>"{name}"</strong>
+      <span>...</span>
     </div>
-  );
+  }
 }

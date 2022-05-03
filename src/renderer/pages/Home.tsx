@@ -8,7 +8,8 @@ import { MonitorBrightnessSettingForm } from 'src/renderer/components/MonitorBri
 import { VolumeSetting } from 'src/renderer/components/VolumeSetting';
 import { useConfigs, usePreferences, useUpdateAppPosition } from 'src/renderer/hooks';
 import { Monitor, Volume } from 'src/types.d';
-// react components
+import { Loading } from 'src/renderer/components/Loading';
+
 type HomeProps = {};
 
 export function Home(props: HomeProps) {
@@ -68,7 +69,10 @@ export function Home(props: HomeProps) {
     return (
       <>
         <Header configs={configs} preference={preference} />
-        <h3>Loading... Please wait...</h3>
+        <h3>
+          <Loading style={{marginRight: '10px'}}/>
+          Loading, please wait...
+        </h3>
       </>
     );
   }
