@@ -18,9 +18,16 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
 
   const onDisplayNameChange = async (e: React.SyntheticEvent) => {
     e.preventDefault();
-    setMode('mode/saving');
-
     let nameToUse = (name || '').trim() || `Monitor #${props.idx}`;
+
+    if(nameToUse === monitor.name){
+      // ignore if name is the same and not changed
+      setMode('mode/read');
+      return;
+    }
+
+    setName(nameToUse);
+    setMode('mode/saving');
 
     await updateMonitor({
       id: monitor.id,
