@@ -3,12 +3,13 @@ import { useEffect } from 'react';
 import { AllMonitorBrightnessSetting } from 'src/renderer/components/AllMonitorBrightnessSetting';
 import { DarkModeSettingForm } from 'src/renderer/components/DarkModeSettingForm';
 import { Header } from 'src/renderer/components/Header';
+import { Loading } from 'src/renderer/components/Loading';
 import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightnessSetting';
 import { MonitorBrightnessSettingForm } from 'src/renderer/components/MonitorBrightnessSettingForm';
 import { VolumeSetting } from 'src/renderer/components/VolumeSetting';
 import { useConfigs, usePreferences, useUpdateAppPosition } from 'src/renderer/hooks';
 import { Monitor, Volume } from 'src/types.d';
-// react components
+
 type HomeProps = {};
 
 export function Home(props: HomeProps) {
@@ -68,7 +69,10 @@ export function Home(props: HomeProps) {
     return (
       <>
         <Header configs={configs} preference={preference} />
-        <h3>Loading... Please wait...</h3>
+        <h3>
+          <Loading style={{ marginRight: '10px' }} />
+          Loading, please wait...
+        </h3>
       </>
     );
   }
