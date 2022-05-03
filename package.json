@@ -69,7 +69,7 @@
     "@svgr/webpack": "^6.2.1",
     "@types/jest": "^27.4.1",
     "@types/react": "^17.0.43",
-    "@types/react-dom": "^17.0.13",
+    "@types/react-dom": "^18.0.3",
     "archiver": "^5.3.0",
     "babel-loader": "^8.2.4",
     "concurrently": "^7.0.0",
