@@ -9,7 +9,7 @@ module.exports = {
     "^src/(.*)": "<rootDir>/src/$1"
   },
   collectCoverage: true,
-  moduleDirectories: ['node_modules', '.'],
+  moduleDirectories: ['node_modules', '<rootDir>'],
   globals: {
     'ts-jest':{
       tsconfig: 'tsconfig-electron.json'
