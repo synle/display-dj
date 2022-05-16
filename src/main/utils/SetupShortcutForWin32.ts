@@ -1,10 +1,9 @@
 // @ts-nocheck
+import { app } from 'electron';
+
 
 // NOTE: this section applicable for windows only and used to create the shortcut for windows OS
 // This is the limitation of electron-winstaller instead of electron-builder which is much cleaner
-
-import { app } from 'electron';
-
 const delay = 1000;
 
 function _handleSquirrelEventForWindows() {

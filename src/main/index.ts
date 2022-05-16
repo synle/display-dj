@@ -1,5 +1,4 @@
 // @ts-nocheck
-require('src/main/utils/SetupShortcutForWin32'); // this is to set up the icon shortcut for win32
 import AutoLaunch from 'auto-launch';
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, shell, Tray } from 'electron';
 import { EventEmitter } from 'events';
@@ -13,7 +12,9 @@ import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 import { getJSON } from 'src/main/utils/RestUtils';
 import SoundUtils from 'src/main/utils/SoundUtils';
 import { LOG_FILE_PATH, MONITOR_CONFIG_FILE_PATH, PREFERENCE_FILE_PATH } from 'src/main/utils/StorageUtils';
+import 'src/main/utils/SetupShortcutForWin32'; // this is to set up the icon shortcut for win32
 import 'src/main/utils/LogUtils';
+
 let mainWindow;
 
 const appBaseDir = __dirname;
