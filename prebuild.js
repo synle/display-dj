@@ -15,6 +15,7 @@ switch (process.platform) {
     packages = `
       @hensm/ddcci
       electron-winstaller
+      electron-squirrel-startup
     `;
     files.push([`src/main/utils/DisplayAdapter.Win32.ts`, DEST_IMPL_DISPLAY_UTILS]);
     files.push([`src/main/utils/SoundUtils.Win32.ts`, DEST_IMPL_SOUND_UTILS]);

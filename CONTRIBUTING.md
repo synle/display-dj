@@ -19,13 +19,13 @@ This application requires `ddcctl` (for external display) and `brightness` (for 
 After all the dependencies have been installed, the application can be started using the following command.
 
 ```bash
-npm install --no-optional && npm start
+npm install --no-optional ; npm start
 ```
 
 ### Running the unit tests
 
 ```bash
-npm run build && npm test
+npm run build ; npm test
 ```
 
 ### Reset Jest Test Snapshots
