@@ -6,10 +6,14 @@ import { Monitor } from 'src/types.d';
 import Link from '@mui/material/Link';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import InputAdornment from '@mui/material/InputAdornment';
+import LaptopChromebookIcon from '@mui/icons-material/LaptopChromebook';
+import MonitorIcon from '@mui/icons-material/Monitor';
 
 type MonitorBrightnessSettingProps = {
   monitor: Monitor;
   idx: number;
+  isLaptop: boolean;
 };
 
 type InputMode = 'mode/read' | 'mode/saving' | 'mode/edit';
@@ -45,13 +49,27 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
     setName(monitor.name);
     setMode('mode/read');
   }, [monitor.name]);
+
+  const monitorTypeIcon = props.isLaptop ? <LaptopChromebookIcon /> : <MonitorIcon />;
+
   switch (mode) {
     case 'mode/read':
       return (
         <div className='field__value field__value-readonly'>
-          <Link onClick={() => setMode('mode/edit')} title='Monitor Name' underline='none'>
-            {monitor.name}
-          </Link>
+          <TextField
+            variant="outlined"
+            size='small'
+            fullWidth
+            value={name}
+            disabled={true}
+            onClick={() => setMode('mode/edit')}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  {monitorTypeIcon}
+                </InputAdornment>
+              ),
+            }} />
         </div>
       );
     case 'mode/edit':
@@ -68,7 +86,14 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
             onInput={(e) => setName((e.target as HTMLInputElement).value)}
             onBlur={onDisplayNameChange}
             required
-            disabled={isSavingName} />
+            disabled={isSavingName}
+            InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              {monitorTypeIcon}
+            </InputAdornment>
+          ),
+        }} />
         </form>
       );
 

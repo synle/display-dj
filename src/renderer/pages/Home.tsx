@@ -1,5 +1,5 @@
 import { ipcRenderer } from 'electron';
-import { useEffect } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { AllMonitorBrightnessSetting } from 'src/renderer/components/AllMonitorBrightnessSetting';
 import { DarkModeSettingForm } from 'src/renderer/components/DarkModeSettingForm';
 import { Header } from 'src/renderer/components/Header';
