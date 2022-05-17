@@ -3,6 +3,7 @@ import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightn
 import { Slider } from 'src/renderer/components/Slider';
 import { useBatchUpdateMonitors } from 'src/renderer/hooks';
 import { Monitor } from 'src/types.d';
+import Brightness7Icon from '@mui/icons-material/Brightness7';
 
 type AllMonitorBrightnessSettingProps = {
   monitors: Monitor[];
@@ -25,13 +26,8 @@ export function AllMonitorBrightnessSetting(props: AllMonitorBrightnessSettingPr
   return (
     <>
       <div className='field'>
-        <div className='field__value field__value-readonly' title='All Monitors'>
-          All Monitors ({monitors.length})
-        </div>
-      </div>
-      <div className='field'>
         <span className='field__icon' title='All Monitor Brightness'>
-          🔆
+          <Brightness7Icon />
         </span>
         <Slider
           className='field__value'

@@ -9,6 +9,7 @@ import { MonitorBrightnessSettingForm } from 'src/renderer/components/MonitorBri
 import { VolumeSetting } from 'src/renderer/components/VolumeSetting';
 import { useConfigs, usePreferences, useUpdateAppPosition } from 'src/renderer/hooks';
 import { Monitor, Volume } from 'src/types.d';
+import Typography from '@mui/material/Typography';
 
 type HomeProps = {};
 
@@ -69,10 +70,10 @@ export function Home(props: HomeProps) {
     return (
       <>
         <Header configs={configs} preference={preference} />
-        <h3>
+        <Typography variant='subtitle1'>
           <Loading style={{ marginRight: '10px' }} />
           Loading, please wait...
-        </h3>
+        </Typography>
       </>
     );
   }

@@ -1,6 +1,9 @@
 import { useUpdatePreferences } from 'src/renderer/hooks';
-import ToggleSvg from 'src/renderer/svg/toggle.svg';
 import { Preference } from 'src/types.d';
+import IconButton from '@mui/material/IconButton';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import Tooltip from '@mui/material/Tooltip';
 
 type ToggleAllDisplayProps = {
   preference: Preference;
@@ -16,15 +19,16 @@ export function ToggleAllDisplay(props: ToggleAllDisplayProps) {
   };
 
   return (
-    <span
-      className='iconBtn'
-      onClick={onToggleAll}
-      title={
+    <IconButton onClick={onToggleAll}
+    title={
+      preference.showIndividualDisplays ? 'Collapse and control all displays'
+      : 'Expand and control individual displays / monitors'
+    }>
+      {
         preference.showIndividualDisplays
-          ? 'Collapse individual displays brightness'
-          : 'Expand individual displays brightness'
-      }>
-      <ToggleSvg />
-    </span>
+          ? <ExpandMoreIcon />
+          : <ExpandLessIcon />
+      }
+    </IconButton>
   );
 }
