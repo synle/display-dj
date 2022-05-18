@@ -14,16 +14,14 @@ type DarkModeSettingFormProps = {
 export function DarkModeSettingForm(props: DarkModeSettingFormProps) {
   const darkModeFromProps = props.darkMode === true;
   const [darkMode, setDarkMode] = useState<boolean>(darkModeFromProps);
+  const [disabled, setDisabled] = useState(false);
   const { mutateAsync: updateDarkMode } = useToggleDarkMode();
 
-  const onToggleDarkMode = async (newDarkMode: boolean | undefined) => {
-    if (newDarkMode === undefined) {
-      newDarkMode = !darkMode;
-    }
-
+  const onToggleDarkMode = async (newDarkMode: boolean) => {
     setDarkMode(newDarkMode);
-
+    setDisabled(true);
     await updateDarkMode(newDarkMode);
+    setDisabled(false);
   };
 
   useEffect(() => {
@@ -38,8 +36,14 @@ export function DarkModeSettingForm(props: DarkModeSettingFormProps) {
       size='small'
       fullWidth
       exclusive
+      disabled={disabled}
       value={darkModeVal}
-      onChange={(_e, val: string) => onToggleDarkMode(val === '1')}>
+      onChange={(_e, val: string) => {
+        if (val === null) {
+          return;
+        }
+        onToggleDarkMode(val === '1');
+      }}>
       <ToggleButton value='1'>
         <DarkModeIcon />{' '}
         <Typography variant='subtitle1' sx={{ ml: 1 }}>
