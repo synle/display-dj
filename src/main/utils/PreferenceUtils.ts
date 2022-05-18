@@ -17,6 +17,18 @@ const DEFAULT_PREFERENCES: Preference = {
     { level: 50 },
     { level: 100 },
   ],
+  profiles: [
+    {
+      name: 'Dark',
+      icon: 'dark',
+      brightness: 0,
+    },
+    {
+      name: 'Light',
+      icon: 'light',
+      brightness: 100,
+    }
+  ]
   keyBindings: [
     { key: `Shift+Escape`, command: [`command/changeDarkMode/toggle`] },
     {
