@@ -1,8 +1,8 @@
+import LaptopChromebookIcon from '@mui/icons-material/LaptopChromebook';
+import MonitorIcon from '@mui/icons-material/Monitor';
 import { MonitorNameInput } from 'src/renderer/components/MonitorNameInput';
 import { Slider } from 'src/renderer/components/Slider';
 import { useUpdateMonitor } from 'src/renderer/hooks';
-import LaptopSvg from 'src/renderer/svg/laptop.svg';
-import MonitorSvg from 'src/renderer/svg/monitor.svg';
 import { Monitor } from 'src/types.d';
 
 type MonitorBrightnessSettingProps = {
@@ -31,11 +31,11 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
       <div className='field' title='Monitor Brightness'>
         {isLaptop ? (
           <span title='Laptop Display' className='field__icon'>
-            <LaptopSvg />
+            <LaptopChromebookIcon />
           </span>
         ) : (
           <span title='Monitor Display' className='field__icon'>
-            <MonitorSvg />
+            <MonitorIcon />
           </span>
         )}
         <Slider
