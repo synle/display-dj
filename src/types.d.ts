@@ -84,9 +84,10 @@ export type IDisplayAdapter = {
 };
 
 export type Profile = {
-  name?: string,
-  icon?: 'dark' | 'light',
-  brightness?: number,
+  name?: string;
+  icon?: 'dark' | 'light';
+  brightness?: number;
+  volumes?: number;
   key?: string;
 }
 
@@ -96,7 +97,7 @@ export type Preference = {
   brightnessDelta: number;
   brightnessPresets: BrightnessPreset[];
   volumePresets: VolumePreset[];
-  profiles: Profile[];
+  profiles?: Profile[];
   keyBindings: KeyBinding[];
 };
 

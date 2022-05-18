@@ -21,14 +21,14 @@ const DEFAULT_PREFERENCES: Preference = {
     {
       name: 'Dark',
       icon: 'dark',
-      brightness: 0,
+      brightness: 10,
       key: `Shift+F1`,
     },
     {
       name: 'Light',
       icon: 'light',
       brightness: 100,
-      key: `Shift+F1`,
+      key: `Shift+F2`,
     }
   ],
   keyBindings: [

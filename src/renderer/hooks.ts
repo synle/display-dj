@@ -41,7 +41,12 @@ export function usePreferences() {
 }
 
 export function useUpdatePreferences() {
-  return useMutation(ApiUtils.updatePreferences);
+  const refetchPreferences = useRefetchPreferences();
+  return useMutation(ApiUtils.updatePreferences, {
+    onSuccess: async () => {
+      await refetchPreferences();
+    }
+  });
 }
 
 // configs
@@ -55,19 +60,39 @@ export function useConfigs() {
 }
 
 export function useUpdateMonitor() {
-  return useMutation(ApiUtils.updateMonitor);
+  const refetchConfigs = useRefetchConfigs();
+  return useMutation(ApiUtils.updateMonitor, {
+    onSuccess: async () => {
+      await refetchConfigs();
+    }
+  });
 }
 
 export function useBatchUpdateMonitors() {
-  return useMutation(ApiUtils.batchUpdateMonitors);
+  const refetchConfigs = useRefetchConfigs();
+  return useMutation(ApiUtils.batchUpdateMonitors, {
+    onSuccess: async () => {
+      await refetchConfigs();
+    }
+  });
 }
 
 export function useToggleDarkMode() {
-  return useMutation(ApiUtils.updateDarkMode);
+  const refetchConfigs = useRefetchConfigs();
+  return useMutation(ApiUtils.updateDarkMode, {
+    onSuccess: async () => {
+      await refetchConfigs();
+    }
+  });
 }
 
 export function useUpdateVolume() {
-  return useMutation<void, void, VolumeInput>(ApiUtils.updateVolume);
+  const refetchConfigs = useRefetchConfigs();
+  return useMutation<void, void, VolumeInput>(ApiUtils.updateVolume, {
+    onSuccess: async () => {
+      await refetchConfigs();
+    }
+  });
 }
 
 // misc
@@ -81,6 +106,7 @@ export function useRefetchConfigs(){
   return async () => {
     _config = await ApiUtils.getConfigs();
     queryClient.invalidateQueries(QUERY_KEY_CONFIGS)
+    queryClient.setQueryData(QUERY_KEY_CONFIGS, _config);
   };
 }
 
@@ -89,5 +115,6 @@ export function useRefetchPreferences(){
   return async () => {
     _preferences = await ApiUtils.getPreferences();
     queryClient.invalidateQueries(QUERY_KEY_PREFERENCE)
+    queryClient.setQueryData(QUERY_KEY_PREFERENCE, _preferences);
   };
 }
