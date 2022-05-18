@@ -10,6 +10,9 @@ import { MonitorBrightnessSettingForm } from 'src/renderer/components/MonitorBri
 import { VolumeSetting } from 'src/renderer/components/VolumeSetting';
 import { useConfigs, usePreferences, useUpdateAppPosition } from 'src/renderer/hooks';
 import { Monitor, Volume } from 'src/types.d';
+import Alert from '@mui/material/Alert';
+import Backdrop from '@mui/material/Backdrop';
+import CircularProgress from '@mui/material/CircularProgress';
 
 type HomeProps = {};
 
@@ -69,23 +72,21 @@ export function Home(props: HomeProps) {
   if (isLoading) {
     return (
       <>
-        <Header configs={configs} preference={preference} />
-        <Typography variant='subtitle1' className='flexAlignItems'>
-          <Loading style={{ marginRight: '10px' }} />
-          <strong>Loading, please wait...</strong>
-        </Typography>
+        <Backdrop
+          sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
+          open={true}
+        >
+          <Typography variant='subtitle1' className='flexAlignItems'>
+            <Loading style={{ marginRight: '10px' }} />
+            <strong>Loading, please wait...</strong>
+          </Typography>
+        </Backdrop>
       </>
     );
   }
 
   if (!configs || !preference) {
-    // TODO: add message for no data state
-    return (
-      <>
-        <Header configs={configs} preference={preference} />
-        <h3>Errors... Failed to get data...</h3>
-      </>
-    );
+    return null;
   }
 
   return (

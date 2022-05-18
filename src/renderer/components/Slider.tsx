@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import MuiSlider from '@mui/material/Slider';
 import { debounce } from 'src/renderer/utils/CommonUtils';
 
 type SliderProps = {
   value?: number;
-  onInput: (e: React.FormEvent<HTMLInputElement>) => void;
+  onInput: (newVal: number) => void;
   className?: string;
   placeholder?: string;
   disabled?: boolean;
 };
 
-const DEBOUNCE_TIME_MS = 200;
+const DEBOUNCE_TIME_MS = 800;
+
+const SLIDER_STEP = 10;
 
 export function Slider(props: SliderProps) {
   const [tempVal, setTempVal] = useState(0);
@@ -18,9 +21,9 @@ export function Slider(props: SliderProps) {
 
   const debouncedOnInput = useMemo(() => debounce(onInput, DEBOUNCE_TIME_MS), []);
 
-  const onChange = (e: React.FormEvent<HTMLInputElement>) => {
-    setTempVal(parseInt((e.target as HTMLInputElement).value) || 0);
-    debouncedOnInput(e);
+  const onChange = (newVal: number) => {
+    setTempVal(newVal);
+    debouncedOnInput(newVal);
   };
 
   useEffect(() => {
@@ -36,17 +39,15 @@ export function Slider(props: SliderProps) {
   }, [value]);
 
   return (
-    <input
-      type='range'
-      min='0'
-      max='100'
-      step='10'
+    <MuiSlider
+      size='small'
+      aria-label="Default"
+      valueLabelDisplay="auto"
       value={tempVal}
-      onInput={onChange}
-      className={className}
-      placeholder={placeholder}
-      disabled={disabled}
-      autoFocus={true}
-    />
+      onChange={(_e, val, _thumb) => onChange(val as number)}
+      min={0}
+      max={100}
+      step={SLIDER_STEP}
+      disabled={disabled} />
   );
 }
