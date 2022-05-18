@@ -6,19 +6,17 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 import { useEffect, useState } from 'react';
 import { useToggleDarkMode } from 'src/renderer/hooks';
+import { Profile } from 'src/types.d';
 
-type DarkModeSettingFormProps = {
-  darkMode: boolean;
+type ProfileSettingProps = {
+  profiles: Profile
 };
 
-export function DarkModeSettingForm(props: DarkModeSettingFormProps) {
-  const darkModeFromProps = props.darkMode === true;
-  const [darkMode, setDarkMode] = useState<boolean>(darkModeFromProps);
+export function ProfileSetting(props: ProfileSettingProps) {
   const [disabled, setDisabled] = useState(false);
   const { mutateAsync: updateDarkMode } = useToggleDarkMode();
 
   const onToggleDarkMode = async (newDarkMode: boolean) => {
-    setDarkMode(newDarkMode);
     setDisabled(true);
     await updateDarkMode(newDarkMode);
     setDisabled(false);

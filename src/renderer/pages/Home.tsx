@@ -3,7 +3,7 @@ import Typography from '@mui/material/Typography';
 import { ipcRenderer } from 'electron';
 import { useEffect } from 'react';
 import { AllMonitorBrightnessSetting } from 'src/renderer/components/AllMonitorBrightnessSetting';
-import { DarkModeSettingForm } from 'src/renderer/components/DarkModeSettingForm';
+import { ProfileSetting } from 'src/renderer/components/ProfileSetting';
 import { Header } from 'src/renderer/components/Header';
 import { Loading } from 'src/renderer/components/Loading';
 import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightnessSetting';
@@ -98,7 +98,7 @@ export function Home(props: HomeProps) {
         <AllMonitorBrightnessSetting monitors={configs.monitors} />
       )}
       {configs.volume.isDisabled === false && <VolumeSetting volume={configs.volume} />}
-      <DarkModeSettingForm darkMode={configs.darkMode} />
+      <ProfileSetting profiles={configs.profiles} />
     </>
   );
 }
