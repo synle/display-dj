@@ -1,6 +1,8 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from 'react-query';
 import ApiUtils from 'src/renderer/utils/ApiUtils';
 import { Monitor, UIAppState, VolumeInput } from 'src/types.d';
+import { AppConfig, BatchMonitorUpdateInput, Preference, SingleMonitorUpdateInput, VolumeInput } from 'src/types.d';
+
 // react query store
 export const QUERY_KEY_CONFIGS = 'configs';
 
@@ -10,6 +12,8 @@ export const QUERY_KEY_PREFERENCE = 'preferences';
 
 // app state (not used anymore, but left as is if we want to add new global state to the app)
 let _appState: UIAppState = {};
+let _config : AppConfig;
+let _preferences : Preference;
 
 export function useAppState() {
   return useQuery(QUERY_KEY_APP_STATE, () => _appState);
@@ -30,7 +34,12 @@ export function useUpdateAppState() {
 
 // preference
 export function usePreferences() {
-  return useQuery(QUERY_KEY_PREFERENCE, ApiUtils.getPreferences);
+  return useQuery(QUERY_KEY_PREFERENCE, async () => {
+    if(!_preferences){
+      _preferences = await ApiUtils.getPreferences();
+    }
+    return _preferences;
+  });
 }
 
 export function useUpdatePreferences() {
@@ -39,7 +48,12 @@ export function useUpdatePreferences() {
 
 // configs
 export function useConfigs() {
-  return useQuery(QUERY_KEY_CONFIGS, ApiUtils.getConfigs);
+  return useQuery(QUERY_KEY_CONFIGS, async () => {
+    if(!_config){
+      _config = await ApiUtils.getConfigs();
+    }
+    return _config;
+  });
 }
 
 export function useUpdateMonitor() {
@@ -66,11 +80,15 @@ export function useUpdateAppPosition() {
 
 // refetch
 export function useRefetchConfigs(){
-  const { refetch: refetchConfigs } = useConfigs();
-  return refetchConfigs;
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries(QUERY_KEY_CONFIGS)
+  };
 }
 
 export function useRefetchPreferences(){
-  const {refetch: refetchPreferences} = usePreferences();
-  return refetchPreferences
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries(QUERY_KEY_PREFERENCE)
+  };
 }
