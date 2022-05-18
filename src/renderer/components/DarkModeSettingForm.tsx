@@ -39,8 +39,10 @@ export function DarkModeSettingForm(props: DarkModeSettingFormProps) {
       disabled={disabled}
       value={darkModeVal}
       onChange={(_e, val: string) => {
-        if(val === null){return}
-        onToggleDarkMode(val === '1')
+        if (val === null) {
+          return;
+        }
+        onToggleDarkMode(val === '1');
       }}>
       <ToggleButton value='1'>
         <DarkModeIcon />{' '}

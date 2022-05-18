@@ -1,7 +1,6 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from 'react-query';
 import ApiUtils from 'src/renderer/utils/ApiUtils';
-import { Monitor, UIAppState, AppConfig, BatchMonitorUpdateInput, Preference, SingleMonitorUpdateInput, VolumeInput } from 'src/types.d';
-
+import { AppConfig, Monitor, Preference, UIAppState, VolumeInput } from 'src/types.d';
 // react query store
 export const QUERY_KEY_CONFIGS = 'configs';
 
@@ -75,8 +74,6 @@ export function useUpdateVolume() {
 export function useUpdateAppPosition() {
   return useMutation(ApiUtils.updateAppPosition);
 }
-
-
 // refetch
 export function useRefetchConfigs(){
   const queryClient = useQueryClient();

@@ -68,7 +68,8 @@ form {
     flex-grow: 1;
   }
 
-  > a, > button {
+  > a,
+  > button {
     flex-grow: 0 !important;
   }
 }

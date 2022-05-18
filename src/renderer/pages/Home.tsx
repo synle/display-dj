@@ -9,14 +9,20 @@ import { Loading } from 'src/renderer/components/Loading';
 import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightnessSetting';
 import { MonitorBrightnessSettingForm } from 'src/renderer/components/MonitorBrightnessSettingForm';
 import { VolumeSetting } from 'src/renderer/components/VolumeSetting';
-import { useConfigs, usePreferences, useUpdateAppPosition, useRefetchConfigs, useRefetchPreferences } from 'src/renderer/hooks';
+import {
+  useConfigs,
+  usePreferences,
+  useRefetchConfigs,
+  useRefetchPreferences,
+  useUpdateAppPosition,
+} from 'src/renderer/hooks';
 import { Monitor, Volume } from 'src/types.d';
 
 type HomeProps = {};
 
 export function Home(props: HomeProps) {
   const { isLoading: loadingConfigs, data: configs } = useConfigs();
-  const {isLoading: loadingPrefs,data: preference } = usePreferences();
+  const { isLoading: loadingPrefs, data: preference } = usePreferences();
   const { mutateAsync: updateAppPosition } = useUpdateAppPosition();
 
   const refetchConfigs = useRefetchConfigs();
