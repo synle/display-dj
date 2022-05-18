@@ -45,11 +45,6 @@ export function VolumeSetting(props: VolumeSettingProps) {
   return (
     <>
       <div className='field'>
-        <div className='field__value field__value-readonly' title='Volume'>
-          Volume
-        </div>
-      </div>
-      <div className='field'>
         <span className='field__icon iconBtn' title='Toggle Muted' onClick={onSetMuted}>
           <VolumeIcon volume={volume} />
         </span>

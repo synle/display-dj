@@ -1,5 +1,7 @@
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import IconButton from '@mui/material/IconButton';
 import { useUpdatePreferences } from 'src/renderer/hooks';
-import ToggleSvg from 'src/renderer/svg/toggle.svg';
 import { Preference } from 'src/types.d';
 
 type ToggleAllDisplayProps = {
@@ -16,15 +18,14 @@ export function ToggleAllDisplay(props: ToggleAllDisplayProps) {
   };
 
   return (
-    <span
-      className='iconBtn'
+    <IconButton
       onClick={onToggleAll}
       title={
         preference.showIndividualDisplays
-          ? 'Collapse individual displays brightness'
-          : 'Expand individual displays brightness'
+          ? 'Collapse and control all displays'
+          : 'Expand and control individual displays / monitors'
       }>
-      <ToggleSvg />
-    </span>
+      {preference.showIndividualDisplays ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+    </IconButton>
   );
 }
