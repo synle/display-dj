@@ -48,7 +48,9 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
   switch (mode) {
     case 'mode/read':
       return (
-        <Link onClick={() => setMode('mode/edit')} title='Monitor Name'>
+        <Link component="button" onClick={() => setMode('mode/edit')}
+         title='Monitor Name'
+         variant='subtitle1'>
           <strong>{monitor.name}</strong>
         </Link>
       );

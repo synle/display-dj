@@ -25,6 +25,7 @@ export function VolumeSetting(props: VolumeSettingProps) {
 
     setDisabled(true);
     await updateVolume(newVolume);
+    setDisabled(false);
   };
 
   const onSetMuted = async () => {
@@ -34,8 +35,6 @@ export function VolumeSetting(props: VolumeSettingProps) {
     };
 
     setVolume(newVolume);
-
-    setDisabled(true);
     await updateVolume(newVolume);
   };
 
