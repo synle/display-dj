@@ -39,7 +39,6 @@ html {
 
 header {
   display: flex;
-  margin-bottom: 0.25rem;
 
   > *:last-child {
     margin-left: auto;
@@ -61,9 +60,18 @@ a {
   flex-direction: row;
   align-items: center;
   min-height: 35px;
-  margin-bottom: 0.5rem;
+  margin-top: 0.5rem;
+
+  &__slider {
+    margin-left: 1rem;
+    margin-right: 1rem;
+  }
 
   > *:last-child {
     flex-grow: 1;
+  }
+
+  > a {
+    flex-grow: 0 !important;
   }
 }
