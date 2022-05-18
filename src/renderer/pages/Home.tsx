@@ -70,9 +70,9 @@ export function Home(props: HomeProps) {
     return (
       <>
         <Header configs={configs} preference={preference} />
-        <Typography variant='subtitle1'>
+        <Typography variant='subtitle1' className='flexAlignItems'>
           <Loading style={{ marginRight: '10px' }} />
-          Loading, please wait...
+          <strong>Loading, please wait...</strong>
         </Typography>
       </>
     );

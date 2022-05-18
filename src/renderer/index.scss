@@ -24,7 +24,7 @@ h6,
 
 html {
   font-size: 12px;
-  font-family: Arial;
+  font-family: Helvetica, Tahoma, Geneva, sans-serif;
   margin-inline: 1rem;
 }
 
@@ -38,8 +38,8 @@ html {
 }
 
 header {
-  margin-block: 1rem;
   display: flex;
+  margin-bottom: 0.25rem;
 
   > *:last-child {
     margin-left: auto;
@@ -60,7 +60,8 @@ a{
   display: flex;
   flex-direction: row;
   align-items: center;
-  margin-block: 1rem;
+  min-height: 35px;
+  margin-bottom: 0.5rem;
 
   > *:last-child {
     flex-grow: 1;

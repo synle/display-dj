@@ -48,11 +48,9 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
   switch (mode) {
     case 'mode/read':
       return (
-        <div className='field__value field__value-readonly'>
-          <Link onClick={() => setMode('mode/edit')} title='Monitor Name' underline='none'>
-            {monitor.name}
-          </Link>
-        </div>
+        <Link onClick={() => setMode('mode/edit')} title='Monitor Name'>
+          <strong>{monitor.name}</strong>
+        </Link>
       );
     case 'mode/edit':
       return (

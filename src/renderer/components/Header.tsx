@@ -12,7 +12,7 @@ export function Header(props: HeaderProps) {
 
   return (
     <header>
-      <Typography variant="h5" className='appName'>
+      <Typography variant="h5" className='flexAlignItems'>
         Display-DJ {configs?.version} {configs?.env !== 'production' ? configs?.env : ''}
       </Typography>
       {!preference ? null : <ToggleAllDisplay preference={preference} />}

@@ -12,8 +12,11 @@ export function Loading(props: LoadingProps) {
   className += ' loading';
   className = className.trim();
 
-  return <div className={className} style={style}>
-    <CircularProgress  size={20}/>
+  return <div className={className} style={{
+    ...style,
+    lineHeight: 'normal'
+  }}>
+    <CircularProgress size={15}/>
   </div>;
 }
 
