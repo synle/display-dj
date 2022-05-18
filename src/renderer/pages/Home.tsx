@@ -1,3 +1,4 @@
+import Backdrop from '@mui/material/Backdrop';
 import Typography from '@mui/material/Typography';
 import { ipcRenderer } from 'electron';
 import { useEffect } from 'react';
@@ -69,23 +70,18 @@ export function Home(props: HomeProps) {
   if (isLoading) {
     return (
       <>
-        <Header configs={configs} preference={preference} />
-        <Typography variant='subtitle1' className='flexAlignItems'>
-          <Loading style={{ marginRight: '10px' }} />
-          <strong>Loading, please wait...</strong>
-        </Typography>
+        <Backdrop sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }} open={true}>
+          <Typography variant='subtitle1' className='flexAlignItems'>
+            <Loading style={{ marginRight: '10px' }} />
+            <strong>Loading, please wait...</strong>
+          </Typography>
+        </Backdrop>
       </>
     );
   }
 
   if (!configs || !preference) {
-    // TODO: add message for no data state
-    return (
-      <>
-        <Header configs={configs} preference={preference} />
-        <h3>Errors... Failed to get data...</h3>
-      </>
-    );
+    return null;
   }
 
   return (

@@ -1,5 +1,6 @@
 import LaptopChromebookIcon from '@mui/icons-material/LaptopChromebook';
 import MonitorIcon from '@mui/icons-material/Monitor';
+import { useState } from 'react';
 import { MonitorNameInput } from 'src/renderer/components/MonitorNameInput';
 import { Slider } from 'src/renderer/components/Slider';
 import { useUpdateMonitor } from 'src/renderer/hooks';
@@ -13,14 +14,16 @@ type MonitorBrightnessSettingProps = {
 export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   const { monitor } = props;
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
-
+  const [disabled, setDisabled] = useState(false);
   const isLaptop = monitor.type === 'laptop_monitor';
 
   const onBrightnessChange = async (brightness: number) => {
+    setDisabled(true);
     await updateMonitor({
       id: monitor.id,
       brightness,
     });
+    setDisabled(false);
   };
 
   return (
@@ -38,13 +41,15 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
             <MonitorIcon />
           </span>
         )}
-        <Slider
-          className='field__value'
-          placeholder='brightness'
-          value={monitor.brightness}
-          key={monitor.brightness}
-          onInput={(e) => onBrightnessChange(parseInt((e.target as HTMLInputElement).value) || 0)}
-        />
+        <span className='field__slider'>
+          <Slider
+            className='field__value'
+            placeholder='brightness'
+            value={monitor.brightness}
+            onInput={onBrightnessChange}
+            disabled={disabled}
+          />
+        </span>
       </div>
     </>
   );

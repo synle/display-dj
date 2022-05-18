@@ -38,7 +38,7 @@ const ApiUtils = {
     fetch<void>(`/api/configs/appPosition`, {
       method: 'put',
       body: JSON.stringify({
-        height: document.body.clientHeight + 20,
+        height: document.body.clientHeight + 15,
       }),
     }),
 };

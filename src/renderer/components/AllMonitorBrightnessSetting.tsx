@@ -16,11 +16,14 @@ export function AllMonitorBrightnessSetting(props: AllMonitorBrightnessSettingPr
     100,
   );
   const [allBrightness, setAllBrightness] = useState(allBrightnessValueFromProps);
+  const [disabled, setDisabled] = useState(false);
   const { mutateAsync: batchUpdateMonitors } = useBatchUpdateMonitors();
 
   const onChange = async (brightness: number) => {
+    setDisabled(true);
     setAllBrightness(brightness);
     await batchUpdateMonitors({ brightness });
+    setDisabled(false);
   };
 
   return (
@@ -29,13 +32,15 @@ export function AllMonitorBrightnessSetting(props: AllMonitorBrightnessSettingPr
         <span className='field__icon' title='All Monitor Brightness'>
           <Brightness7Icon />
         </span>
-        <Slider
-          className='field__value'
-          placeholder='brightness'
-          value={allBrightness}
-          key={allBrightness}
-          onInput={(e) => onChange(parseInt((e.target as HTMLInputElement).value) || 0)}
-        />
+        <span className='field__slider'>
+          <Slider
+            className='field__value'
+            placeholder='brightness'
+            value={allBrightness}
+            onInput={onChange}
+            disabled={disabled}
+          />
+        </span>
       </div>
     </>
   );
