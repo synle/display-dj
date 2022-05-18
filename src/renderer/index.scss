@@ -64,6 +64,10 @@ form {
     margin-right: 1rem;
   }
 
+  &__button{
+    cursor: pointer;
+  }
+
   > *:last-child {
     flex-grow: 1;
   }
