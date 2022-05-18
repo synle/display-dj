@@ -1,3 +1,4 @@
+import CircularProgress from '@mui/material/CircularProgress';
 import { CSSProperties } from 'react';
 
 type LoadingProps = {
@@ -11,7 +12,16 @@ export function Loading(props: LoadingProps) {
   className += ' loading';
   className = className.trim();
 
-  return <div className={className} style={style}></div>;
+  return (
+    <div
+      className={className}
+      style={{
+        ...style,
+        lineHeight: 'normal',
+      }}>
+      <CircularProgress size={15} />
+    </div>
+  );
 }
 
 export default Loading;

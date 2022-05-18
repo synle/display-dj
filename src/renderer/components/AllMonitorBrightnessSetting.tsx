@@ -1,3 +1,4 @@
+import Brightness7Icon from '@mui/icons-material/Brightness7';
 import { useState } from 'react';
 import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightnessSetting';
 import { Slider } from 'src/renderer/components/Slider';
@@ -25,13 +26,8 @@ export function AllMonitorBrightnessSetting(props: AllMonitorBrightnessSettingPr
   return (
     <>
       <div className='field'>
-        <div className='field__value field__value-readonly' title='All Monitors'>
-          All Monitors ({monitors.length})
-        </div>
-      </div>
-      <div className='field'>
         <span className='field__icon' title='All Monitor Brightness'>
-          🔆
+          <Brightness7Icon />
         </span>
         <Slider
           className='field__value'

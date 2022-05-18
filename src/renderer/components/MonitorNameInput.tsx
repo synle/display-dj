@@ -1,3 +1,6 @@
+import Link from '@mui/material/Link';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import React, { useEffect, useState } from 'react';
 import { Loading } from 'src/renderer/components/Loading';
 import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightnessSetting';
@@ -45,37 +48,37 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
   switch (mode) {
     case 'mode/read':
       return (
-        <div className='field__value field__value-readonly'>
-          <a onClick={() => setMode('mode/edit')} title='Monitor Name' href='#'>
-            {monitor.name}
-          </a>
-        </div>
+        <Link onClick={() => setMode('mode/edit')} title='Monitor Name'>
+          <strong>{monitor.name}</strong>
+        </Link>
       );
     case 'mode/edit':
       return (
         <form onSubmit={onDisplayNameChange}>
-          <input
-            className='field__value'
-            value={name}
+          <TextField
+            variant='outlined'
+            size='small'
+            fullWidth
+            label='Enter a display name'
             placeholder='Enter a display name'
+            value={name}
             autoFocus={true}
             onInput={(e) => setName((e.target as HTMLInputElement).value)}
             onBlur={onDisplayNameChange}
             required
             disabled={isSavingName}
-            type='text'
           />
         </form>
       );
 
     case 'mode/saving':
       return (
-        <div className='field__value field__value-readonly' style={{ fontWeight: '300' }}>
+        <Typography variant='subtitle1' className='flexAlignItems'>
           <Loading style={{ marginRight: '10px' }} />
           <span style={{ marginRight: '5px' }}>Saving</span>
           <strong>"{name}"</strong>
           <span>...</span>
-        </div>
+        </Typography>
       );
   }
 }

@@ -1,3 +1,4 @@
+import Typography from '@mui/material/Typography';
 import { ipcRenderer } from 'electron';
 import { useEffect } from 'react';
 import { AllMonitorBrightnessSetting } from 'src/renderer/components/AllMonitorBrightnessSetting';
@@ -69,10 +70,10 @@ export function Home(props: HomeProps) {
     return (
       <>
         <Header configs={configs} preference={preference} />
-        <h3>
+        <Typography variant='subtitle1' className='flexAlignItems'>
           <Loading style={{ marginRight: '10px' }} />
-          Loading, please wait...
-        </h3>
+          <strong>Loading, please wait...</strong>
+        </Typography>
       </>
     );
   }
