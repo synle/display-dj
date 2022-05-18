@@ -62,7 +62,7 @@ a {
   min-height: 35px;
   margin-top: 0.5rem;
 
-  &__slider{
+  &__slider {
     margin-left: 1rem;
     margin-right: 1rem;
   }
@@ -71,7 +71,7 @@ a {
     flex-grow: 1;
   }
 
-  > a{
+  > a {
     flex-grow: 0 !important;
   }
 }

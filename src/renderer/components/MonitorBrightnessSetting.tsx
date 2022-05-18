@@ -1,10 +1,10 @@
 import LaptopChromebookIcon from '@mui/icons-material/LaptopChromebook';
 import MonitorIcon from '@mui/icons-material/Monitor';
+import { useState } from 'react';
 import { MonitorNameInput } from 'src/renderer/components/MonitorNameInput';
 import { Slider } from 'src/renderer/components/Slider';
 import { useUpdateMonitor } from 'src/renderer/hooks';
 import { Monitor } from 'src/types.d';
-import { useState } from 'react';
 
 type MonitorBrightnessSettingProps = {
   monitor: Monitor;

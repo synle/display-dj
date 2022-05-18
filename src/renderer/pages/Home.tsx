@@ -1,3 +1,4 @@
+import Backdrop from '@mui/material/Backdrop';
 import Typography from '@mui/material/Typography';
 import { ipcRenderer } from 'electron';
 import { useEffect } from 'react';
@@ -10,9 +11,6 @@ import { MonitorBrightnessSettingForm } from 'src/renderer/components/MonitorBri
 import { VolumeSetting } from 'src/renderer/components/VolumeSetting';
 import { useConfigs, usePreferences, useUpdateAppPosition } from 'src/renderer/hooks';
 import { Monitor, Volume } from 'src/types.d';
-import Alert from '@mui/material/Alert';
-import Backdrop from '@mui/material/Backdrop';
-import CircularProgress from '@mui/material/CircularProgress';
 
 type HomeProps = {};
 
@@ -72,10 +70,7 @@ export function Home(props: HomeProps) {
   if (isLoading) {
     return (
       <>
-        <Backdrop
-          sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
-          open={true}
-        >
+        <Backdrop sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }} open={true}>
           <Typography variant='subtitle1' className='flexAlignItems'>
             <Loading style={{ marginRight: '10px' }} />
             <strong>Loading, please wait...</strong>

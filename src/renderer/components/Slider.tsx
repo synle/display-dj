@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
 import MuiSlider from '@mui/material/Slider';
+import { useEffect, useMemo, useState } from 'react';
 import { debounce } from 'src/renderer/utils/CommonUtils';
 
 type SliderProps = {
@@ -41,13 +41,14 @@ export function Slider(props: SliderProps) {
   return (
     <MuiSlider
       size='small'
-      aria-label="Default"
-      valueLabelDisplay="auto"
+      aria-label='Default'
+      valueLabelDisplay='auto'
       value={tempVal}
       onChange={(_e, val, _thumb) => onChange(val as number)}
       min={0}
       max={100}
       step={SLIDER_STEP}
-      disabled={disabled} />
+      disabled={disabled}
+    />
   );
 }

@@ -34,12 +34,12 @@ export function AllMonitorBrightnessSetting(props: AllMonitorBrightnessSettingPr
         </span>
         <span className='field__slider'>
           <Slider
-          className='field__value'
-          placeholder='brightness'
-          value={allBrightness}
-          onInput={onChange}
-          disabled={disabled}
-        />
+            className='field__value'
+            placeholder='brightness'
+            value={allBrightness}
+            onInput={onChange}
+            disabled={disabled}
+          />
         </span>
       </div>
     </>
