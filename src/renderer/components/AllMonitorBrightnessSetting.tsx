@@ -26,10 +26,23 @@ export function AllMonitorBrightnessSetting(props: AllMonitorBrightnessSettingPr
     setDisabled(false);
   };
 
+  const onMinAndMaxBrightness = () => {
+    if (allBrightness === 0) {
+      // maximize brightness
+      onChange(100);
+    } else {
+      // minimize brightness
+      onChange(0);
+    }
+  };
+
   return (
     <>
       <div className='field'>
-        <span className='field__icon' title='All Monitor Brightness'>
+        <span
+          className='field__icon field__button'
+          title='Minimize or maximize brightness for all monitors'
+          onClick={onMinAndMaxBrightness}>
           <Brightness7Icon />
         </span>
         <span className='field__slider'>

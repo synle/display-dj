@@ -17,7 +17,7 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   const [disabled, setDisabled] = useState(false);
   const isLaptop = monitor.type === 'laptop_monitor';
 
-  const onBrightnessChange = async (brightness: number) => {
+  const onChange = async (brightness: number) => {
     setDisabled(true);
     await updateMonitor({
       id: monitor.id,
@@ -26,27 +26,34 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
     setDisabled(false);
   };
 
+  const onMinAndMaxBrightness = () => {
+    if (monitor.brightness === 0) {
+      // maximize brightness
+      onChange(100);
+    } else {
+      // minimize brightness
+      onChange(0);
+    }
+  };
+
   return (
     <>
       <div className='field'>
         <MonitorNameInput monitor={monitor} idx={props.idx} />
       </div>
       <div className='field' title='Monitor Brightness'>
-        {isLaptop ? (
-          <span title='Laptop Display' className='field__icon'>
-            <LaptopChromebookIcon />
-          </span>
-        ) : (
-          <span title='Monitor Display' className='field__icon'>
-            <MonitorIcon />
-          </span>
-        )}
+        <span
+          title='Minimize or maximize brightness for this monitor'
+          className='field__icon field__button'
+          onClick={onMinAndMaxBrightness}>
+          {isLaptop ? <LaptopChromebookIcon /> : <MonitorIcon />}
+        </span>
         <span className='field__slider'>
           <Slider
             className='field__value'
             placeholder='brightness'
             value={monitor.brightness}
-            onInput={onBrightnessChange}
+            onInput={onChange}
             disabled={disabled}
           />
         </span>
