@@ -10,6 +10,7 @@ type VolumeSettingProps = {
 
 export function VolumeSetting(props: VolumeSettingProps) {
   const [volume, setVolume] = useState<Volume>(props.volume);
+  const [disabled, setDisabled] = useState(false);
 
   const { mutateAsync: updateVolume } = useUpdateVolume();
 
@@ -22,6 +23,7 @@ export function VolumeSetting(props: VolumeSettingProps) {
 
     setVolume(newVolume);
 
+    setDisabled(true);
     await updateVolume(newVolume);
   };
 
@@ -33,6 +35,7 @@ export function VolumeSetting(props: VolumeSettingProps) {
 
     setVolume(newVolume);
 
+    setDisabled(true);
     await updateVolume(newVolume);
   };
 
@@ -40,6 +43,7 @@ export function VolumeSetting(props: VolumeSettingProps) {
     if (JSON.stringify(volume) !== JSON.stringify(props.volume)) {
       setVolume(props.volume);
     }
+    setDisabled(false);
   }, [props.volume]);
 
   return (
@@ -48,13 +52,15 @@ export function VolumeSetting(props: VolumeSettingProps) {
         <span className='field__icon iconBtn' title='Toggle Muted' onClick={onSetMuted}>
           <VolumeIcon volume={volume} />
         </span>
-        <Slider
-          className='field__value'
-          placeholder='Volume'
-          value={volume.value}
-          key={volume.value}
-          onInput={(e) => onChange(parseInt((e.target as HTMLInputElement).value) || 0)}
-        />
+        <span className='field__slider'>
+          <Slider
+            className='field__value'
+            placeholder='Volume'
+            value={volume.value}
+            onInput={onChange}
+            disabled={disabled}
+          />
+        </span>
       </div>
     </>
   );
