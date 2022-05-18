@@ -26,9 +26,18 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   return (
     <>
       <div className='field'>
-        <MonitorNameInput monitor={monitor} idx={props.idx} isLaptop={isLaptop} />
+        <MonitorNameInput monitor={monitor} idx={props.idx} />
       </div>
       <div className='field' title='Monitor Brightness'>
+        {isLaptop ? (
+          <span title='Laptop Display' className='field__icon'>
+            <LaptopChromebookIcon />
+          </span>
+        ) : (
+          <span title='Monitor Display' className='field__icon'>
+            <MonitorIcon />
+          </span>
+        )}
         <Slider
           className='field__value'
           placeholder='brightness'
