@@ -22,25 +22,17 @@ const DEFAULT_PREFERENCES: Preference = {
       name: 'Dark',
       icon: 'dark',
       brightness: 0,
+      key: `Shift+F1`,
     },
     {
       name: 'Light',
       icon: 'light',
       brightness: 100,
+      key: `Shift+F1`,
     }
-  ]
+  ],
   keyBindings: [
     { key: `Shift+Escape`, command: [`command/changeDarkMode/toggle`] },
-    {
-      key: `Shift+F1`,
-      command: [`command/changeDarkMode/dark`, `command/changeBrightness/${MIN_BRIGHTNESS}`],
-      notification: `Switching to Dark Profile`,
-    },
-    {
-      key: `Shift+F2`,
-      command: [`command/changeDarkMode/light`, `command/changeBrightness/100`],
-      notification: `Switching to Light Profile`,
-    },
     { key: `Shift+F3`, command: [`command/changeBrightness/${MIN_BRIGHTNESS}`], notification: `Brightness is ${MIN_BRIGHTNESS}%`,},
     { key: `Shift+F4`, command: [`command/changeBrightness/50`],notification: `Brightness is 50%`, },
     { key: `Shift+F5`, command: [`command/changeBrightness/100`], notification: `Brightness is 100%`,},

@@ -83,12 +83,20 @@ export type IDisplayAdapter = {
   updateDarkMode: (isDarkModeOn: boolean) => Promise<void>;
 };
 
+export type Profile = {
+  name?: string,
+  icon?: 'dark' | 'light',
+  brightness?: number,
+  key?: string;
+}
+
 export type Preference = {
   showIndividualDisplays: boolean;
   logging: boolean;
   brightnessDelta: number;
   brightnessPresets: BrightnessPreset[];
   volumePresets: VolumePreset[];
+  profiles: Profile[];
   keyBindings: KeyBinding[];
 };
 
