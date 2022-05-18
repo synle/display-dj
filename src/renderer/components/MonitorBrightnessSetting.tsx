@@ -27,14 +27,14 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   };
 
   const onMinAndMaxBrightness = () => {
-    if(monitor.brightness === 0){
+    if (monitor.brightness === 0) {
       // maximize brightness
       onChange(100);
     } else {
       // minimize brightness
       onChange(0);
     }
-  }
+  };
 
   return (
     <>
@@ -42,14 +42,11 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
         <MonitorNameInput monitor={monitor} idx={props.idx} />
       </div>
       <div className='field' title='Monitor Brightness'>
-        <span title='Minimize or maximize brightness for this monitor'
+        <span
+          title='Minimize or maximize brightness for this monitor'
           className='field__icon field__button'
           onClick={onMinAndMaxBrightness}>
-          {isLaptop ? (
-              <LaptopChromebookIcon />
-          ) : (
-              <MonitorIcon />
-          )}
+          {isLaptop ? <LaptopChromebookIcon /> : <MonitorIcon />}
         </span>
         <span className='field__slider'>
           <Slider

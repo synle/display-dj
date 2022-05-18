@@ -4,7 +4,6 @@ import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightn
 import { Slider } from 'src/renderer/components/Slider';
 import { useBatchUpdateMonitors } from 'src/renderer/hooks';
 import { Monitor } from 'src/types.d';
-import IconButton from '@mui/material/IconButton';
 
 type AllMonitorBrightnessSettingProps = {
   monitors: Monitor[];
@@ -28,22 +27,22 @@ export function AllMonitorBrightnessSetting(props: AllMonitorBrightnessSettingPr
   };
 
   const onMinAndMaxBrightness = () => {
-    if(allBrightness === 0){
+    if (allBrightness === 0) {
       // maximize brightness
       onChange(100);
     } else {
       // minimize brightness
       onChange(0);
     }
-  }
+  };
 
   return (
     <>
       <div className='field'>
         <span
-        className='field__icon field__button'
-        title='Minimize or maximize brightness for all monitors'
-        onClick={onMinAndMaxBrightness}>
+          className='field__icon field__button'
+          title='Minimize or maximize brightness for all monitors'
+          onClick={onMinAndMaxBrightness}>
           <Brightness7Icon />
         </span>
         <span className='field__slider'>
