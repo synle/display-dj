@@ -33,8 +33,10 @@ The challenge of work from home in the last 2 years with 2 young toddlers is tha
 
 ### Windows 11
 
-![image](https://user-images.githubusercontent.com/3792401/160289019-a5144339-8ca9-4b33-9d6a-f5677c31c2d1.png)
-![image](https://user-images.githubusercontent.com/3792401/160289031-9c6c8c4a-d694-4f17-8442-4d081421081b.png)
+![image](https://user-images.githubusercontent.com/3792401/168950427-56beacf0-253c-4b22-83ab-2e5b5c83603e.png)
+
+![image](https://user-images.githubusercontent.com/3792401/168950471-15589781-ee7f-442f-afa4-58c53e136abb.png)
+
 
 ### Mac OSX Monterey
 
@@ -53,11 +55,20 @@ The following version of OS has been tested and working.
 
 By default, we will give each display a name. You can rename the display to something more friendly by clicking on the name of the display and finish by hitting Enter key.
 
-![image](https://user-images.githubusercontent.com/3792401/159371503-32609f31-552a-49d4-97e8-285f906c7c94.png)
+![image](https://user-images.githubusercontent.com/3792401/168950532-1226367a-2ac1-410e-919f-1617880e07b9.png)
 
-![image](https://user-images.githubusercontent.com/3792401/159371522-18fb1947-ba3a-4042-a2a8-68b425dde6e2.png)
+![image](https://user-images.githubusercontent.com/3792401/168950578-91534cd6-27b5-4dda-a316-5770a7a33886.png)
 
-![image](https://user-images.githubusercontent.com/3792401/159371549-4f92a00e-2f14-4cee-b258-1af5440122d3.png)
+![image](https://user-images.githubusercontent.com/3792401/168950610-576cc751-14fa-4a6d-82bf-57874cafec04.png)
+
+
+### Toggling Dark Mode and Light Mode
+
+The toggle for dark and light mode is located at the bottom of the control, you can choose either dark mode or light mode. This change will update the system dark mode accordingly. So it's best to keep all your apps aware of the dark mode. So this way it will change the dark mode according to the app.
+
+![image](https://user-images.githubusercontent.com/3792401/168950728-42879834-7e8d-4f35-9011-48cc90faf029.png)
+
+![image](https://user-images.githubusercontent.com/3792401/168950873-b214eb37-410c-4018-8221-06c6b5ecdfc2.png)
 
 ### Monitor Configs
 
