@@ -62,3 +62,15 @@ export function useUpdateVolume() {
 export function useUpdateAppPosition() {
   return useMutation(ApiUtils.updateAppPosition);
 }
+
+
+// refetch
+export function useRefetchConfigs(){
+  const { refetch: refetchConfigs } = useConfigs();
+  return refetchConfigs;
+}
+
+export function useRefetchPreferences(){
+  const {refetch: refetchPreferences} = usePreferences();
+  return refetchPreferences
+}
