@@ -39,7 +39,6 @@ export function setUpDataEndpoints() {
   addDataEndpoint('put', '/api/preferences', async (req, res) => {
     try {
       res.status(200).json(await PreferenceUtils.patch(req.body));
-      global.emitAppEvent({ command: 'command/refetch/preferences' })
     } catch (err) {
       res.status(500).json({
         error: `Failed to update preference: ` + JSON.stringify(err),
@@ -104,7 +103,6 @@ export function setUpDataEndpoints() {
       console.trace(`updateMonitor`, monitor);
 
       res.status(200).json(await DisplayUtils.updateMonitor(monitor));
-      global.emitAppEvent({ command: 'command/refetch/configs' })
     } catch (err) {
       res.status(500).json({
         error: `Failed to update monitor config: ` + JSON.stringify(err),
@@ -121,7 +119,6 @@ export function setUpDataEndpoints() {
       console.trace(`batchUpdateBrightness`, newBrightness);
 
       res.status(200).json(await DisplayUtils.batchUpdateBrightness(newBrightness));
-      global.emitAppEvent({ command: 'command/refetch/configs' })
     } catch (err) {
       res.status(500).json({
         error: `Failed to update monitor config: ` + JSON.stringify(err),
@@ -137,7 +134,6 @@ export function setUpDataEndpoints() {
       console.trace(`Update darkMode`, isDarkModeOn);
 
       res.status(200).json(await DisplayUtils.updateDarkMode(isDarkModeOn));
-      global.emitAppEvent({ command: 'command/refetch/configs' })
     } catch (err) {
       res.status(500).json({
         error: `Failed to update darkmode config: ` + JSON.stringify(err),
@@ -159,7 +155,6 @@ export function setUpDataEndpoints() {
 
         await Promise.all(promises);
         res.status(204).send();
-        global.emitAppEvent({ command: 'command/refetch/configs' })
       } else {
         res.status(400).send('This API requires volume or isMuted in the body');
       }
