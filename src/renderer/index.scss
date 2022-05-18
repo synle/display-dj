@@ -26,6 +26,7 @@ html {
   font-size: 12px;
   font-family: Helvetica, Tahoma, Geneva, sans-serif;
   margin-inline: 1rem;
+  margin-block: 0.5rem;
 }
 
 * {
@@ -51,10 +52,6 @@ form {
   width: 100%;
 }
 
-a {
-  cursor: pointer;
-}
-
 .field {
   display: flex;
   flex-direction: row;
@@ -67,11 +64,16 @@ a {
     margin-right: 1rem;
   }
 
+  &__button {
+    cursor: pointer;
+  }
+
   > *:last-child {
     flex-grow: 1;
   }
 
-  > a {
+  > a,
+  > button {
     flex-grow: 0 !important;
   }
 }
