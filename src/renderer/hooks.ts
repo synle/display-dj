@@ -74,6 +74,7 @@ export function useUpdateVolume() {
 export function useUpdateAppPosition() {
   return useMutation(ApiUtils.updateAppPosition);
 }
+
 // refetch
 export function useRefetchConfigs(){
   const queryClient = useQueryClient();
