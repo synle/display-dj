@@ -1,8 +1,8 @@
+import VolumeMuteIcon from '@mui/icons-material/VolumeMute';
+import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import { useMemo } from 'react';
 import { VolumeSetting } from 'src/renderer/components/VolumeSetting';
 import { Volume } from 'src/types.d';
-import VolumeUpIcon from '@mui/icons-material/VolumeUp';
-import VolumeMuteIcon from '@mui/icons-material/VolumeMute';
 
 type VolumeSettingProps = {
   volume: Volume;
@@ -13,7 +13,7 @@ export function VolumeIcon(props: VolumeSettingProps) {
 
   const icon = useMemo(() => {
     if (volume.muted) {
-      return <VolumeMuteIcon />
+      return <VolumeMuteIcon />;
     }
 
     const { value } = volume;

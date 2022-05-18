@@ -1,5 +1,6 @@
+import Typography from '@mui/material/Typography';
 import { ipcRenderer } from 'electron';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect } from 'react';
 import { AllMonitorBrightnessSetting } from 'src/renderer/components/AllMonitorBrightnessSetting';
 import { DarkModeSettingForm } from 'src/renderer/components/DarkModeSettingForm';
 import { Header } from 'src/renderer/components/Header';
@@ -9,7 +10,6 @@ import { MonitorBrightnessSettingForm } from 'src/renderer/components/MonitorBri
 import { VolumeSetting } from 'src/renderer/components/VolumeSetting';
 import { useConfigs, usePreferences, useUpdateAppPosition } from 'src/renderer/hooks';
 import { Monitor, Volume } from 'src/types.d';
-import Typography from '@mui/material/Typography';
 
 type HomeProps = {};
 

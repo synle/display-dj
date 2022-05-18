@@ -1,6 +1,6 @@
+import Typography from '@mui/material/Typography';
 import { ToggleAllDisplay } from 'src/renderer/components/ToggleAllDisplay';
 import { AppConfig, Preference } from 'src/types.d';
-import Typography from '@mui/material/Typography';
 
 type HeaderProps = {
   configs?: AppConfig;
@@ -12,7 +12,7 @@ export function Header(props: HeaderProps) {
 
   return (
     <header>
-      <Typography variant="h5" className='flexAlignItems'>
+      <Typography variant='h5' className='flexAlignItems'>
         Display-DJ {configs?.version} {configs?.env !== 'production' ? configs?.env : ''}
       </Typography>
       {!preference ? null : <ToggleAllDisplay preference={preference} />}

@@ -1,11 +1,11 @@
+import Link from '@mui/material/Link';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import React, { useEffect, useState } from 'react';
 import { Loading } from 'src/renderer/components/Loading';
 import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightnessSetting';
 import { useUpdateMonitor } from 'src/renderer/hooks';
 import { Monitor } from 'src/types.d';
-import Link from '@mui/material/Link';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
 
 type MonitorBrightnessSettingProps = {
   monitor: Monitor;
@@ -56,7 +56,7 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
       return (
         <form onSubmit={onDisplayNameChange}>
           <TextField
-            variant="outlined"
+            variant='outlined'
             size='small'
             fullWidth
             label='Enter a display name'
@@ -66,7 +66,8 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
             onInput={(e) => setName((e.target as HTMLInputElement).value)}
             onBlur={onDisplayNameChange}
             required
-            disabled={isSavingName} />
+            disabled={isSavingName}
+          />
         </form>
       );
 

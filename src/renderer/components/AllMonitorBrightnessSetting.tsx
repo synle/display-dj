@@ -1,9 +1,9 @@
+import Brightness7Icon from '@mui/icons-material/Brightness7';
 import { useState } from 'react';
 import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightnessSetting';
 import { Slider } from 'src/renderer/components/Slider';
 import { useBatchUpdateMonitors } from 'src/renderer/hooks';
 import { Monitor } from 'src/types.d';
-import Brightness7Icon from '@mui/icons-material/Brightness7';
 
 type AllMonitorBrightnessSettingProps = {
   monitors: Monitor[];

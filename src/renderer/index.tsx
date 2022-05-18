@@ -1,10 +1,10 @@
-import ReactDOM from 'react-dom';
-import { useEffect, useState, useMemo } from 'react';
-import { QueryClient, QueryClientProvider } from 'react-query';
-import { Home } from 'src/renderer/pages/Home';
-import { ThemeProvider, createTheme, ThemeOptions } from '@mui/material/styles';
-import useMediaQuery from '@mui/material/useMediaQuery';
 import CssBaseline from '@mui/material/CssBaseline';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import ReactDOM from 'react-dom';
+import { QueryClient, QueryClientProvider } from 'react-query';
+import { useMemo } from 'react';
+import { Home } from 'src/renderer/pages/Home';
 import './index.scss';
 
 const DisplayDJFrontEndApp = () => {
@@ -20,11 +20,13 @@ const DisplayDJFrontEndApp = () => {
     [prefersDarkMode],
   );
 
-  return <ThemeProvider theme={theme}>
-  <CssBaseline />
-  <Home />
-  </ThemeProvider>
-}
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Home />
+    </ThemeProvider>
+  );
+};
 
 // render the main app
 const appQueryClient = new QueryClient();
