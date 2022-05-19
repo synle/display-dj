@@ -104,6 +104,7 @@ export function useUpdateAppPosition() {
 export function useRefetchConfigs(){
   const queryClient = useQueryClient();
   return async () => {
+    console.log('>> Refetch Configs')
     _config = await ApiUtils.getConfigs();
     queryClient.invalidateQueries(QUERY_KEY_CONFIGS)
     queryClient.setQueryData(QUERY_KEY_CONFIGS, _config);
@@ -113,6 +114,7 @@ export function useRefetchConfigs(){
 export function useRefetchPreferences(){
   const queryClient = useQueryClient();
   return async () => {
+    console.log('>> Refetch preferences')
     _preferences = await ApiUtils.getPreferences();
     queryClient.invalidateQueries(QUERY_KEY_PREFERENCE)
     queryClient.setQueryData(QUERY_KEY_PREFERENCE, _preferences);

@@ -1,5 +1,6 @@
 import Link from '@mui/material/Link';
 import TextField from '@mui/material/TextField';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import React, { useEffect, useState } from 'react';
 import { Loading } from 'src/renderer/components/Loading';
@@ -48,13 +49,11 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
   switch (mode) {
     case 'mode/read':
       return (
-        <Link
-          component='button'
-          onClick={() => setMode('mode/edit')}
-          title='Monitor Name'
-          variant='subtitle1'>
-          <strong>{monitor.name}</strong>
-        </Link>
+        <Tooltip arrow title='Edit Monitor Name'>
+          <Link component='button' onClick={() => setMode('mode/edit')} variant='subtitle1'>
+            <strong>{monitor.name}</strong>
+          </Link>
+        </Tooltip>
       );
     case 'mode/edit':
       return (
