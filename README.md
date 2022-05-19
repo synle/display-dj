@@ -201,7 +201,7 @@ Preferences file are located at:
 - [x] Create a basic build pipeline.
 - [x] Support external monitors brightness.
 - [x] Support laptop brightness.
-- [ ] Support for windows 10.
+- [x] Support for windows 10.
 - [ ] Support for linux (is this possible?).
 - [x] Support for mac (possible with some quirks).
 - [ ] Support for vertical task bar or top placement taskbar.
@@ -214,7 +214,7 @@ Preferences file are located at:
 - [x] Windows build - Properly package the build as `exe` file instead of plain zipped files.
 - [x] Mac build - Properly package the build as `dmg` file instead of plain zipped files.
 - [x] Properly hookup the icons for mac.
-- [ ] Properly set up CI/CD pipeline for releases and main page content.
+- [x] Properly set up CI/CD pipeline for releases and main page content.
 - [x] MacOSX - Fix an issue where the positioning of the app is misplaced in the main display regardless of mouse click.
 - [x] Support changing contrast (is this possible?).
 
