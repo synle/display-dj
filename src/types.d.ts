@@ -28,7 +28,12 @@ type Command =
   | string;
 
 type BrightnessPreset = {
-  which?: string;
+  // TODO: this is not supported, preset will apply to all monitors...
+  // which?: string;
+  /**
+   * whether or not this brightness preset will be associated with the dark or light mode
+   */
+  syncedWithMode?: 'light' | 'dark';
   level: number;
 };
 
