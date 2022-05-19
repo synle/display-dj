@@ -16,13 +16,15 @@ describe('PreferenceUtils', () => {
         "brightnessDelta": 25,
         "brightnessPresets": Array [
           Object {
-            "level": 5,
+            "level": 10,
+            "syncedWithMode": "dark",
           },
           Object {
             "level": 50,
           },
           Object {
             "level": 100,
+            "syncedWithMode": "light",
           },
         ],
         "keyBindings": Array [
@@ -35,7 +37,7 @@ describe('PreferenceUtils', () => {
           Object {
             "command": Array [
               "command/changeDarkMode/dark",
-              "command/changeBrightness/5",
+              "command/changeBrightness/10",
             ],
             "key": "Shift+F1",
             "notification": "Switching to Dark Profile",
@@ -50,10 +52,10 @@ describe('PreferenceUtils', () => {
           },
           Object {
             "command": Array [
-              "command/changeBrightness/5",
+              "command/changeBrightness/10",
             ],
             "key": "Shift+F3",
-            "notification": "Brightness is 5%",
+            "notification": "Brightness is 10%",
           },
           Object {
             "command": Array [
@@ -114,7 +116,7 @@ describe('PreferenceUtils', () => {
         Object {
           "command": Array [
             "command/changeDarkMode/dark",
-            "command/changeBrightness/5",
+            "command/changeBrightness/10",
           ],
           "key": "Shift+F1",
           "notification": "Switching to Dark Profile",
@@ -129,10 +131,10 @@ describe('PreferenceUtils', () => {
         },
         Object {
           "command": Array [
-            "command/changeBrightness/5",
+            "command/changeBrightness/10",
           ],
           "key": "Shift+F3",
-          "notification": "Brightness is 5%",
+          "notification": "Brightness is 10%",
         },
         Object {
           "command": Array [
@@ -171,13 +173,15 @@ describe('PreferenceUtils', () => {
     expect(actual).toMatchInlineSnapshot(`
       Array [
         Object {
-          "level": 5,
+          "level": 10,
+          "syncedWithMode": "dark",
         },
         Object {
           "level": 50,
         },
         Object {
           "level": 100,
+          "syncedWithMode": "light",
         },
       ]
     `);
@@ -211,13 +215,15 @@ describe('PreferenceUtils', () => {
         "brightnessDelta": 30,
         "brightnessPresets": Array [
           Object {
-            "level": 5,
+            "level": 10,
+            "syncedWithMode": "dark",
           },
           Object {
             "level": 50,
           },
           Object {
             "level": 100,
+            "syncedWithMode": "light",
           },
         ],
         "keyBindings": Array [
@@ -230,7 +236,7 @@ describe('PreferenceUtils', () => {
           Object {
             "command": Array [
               "command/changeDarkMode/dark",
-              "command/changeBrightness/5",
+              "command/changeBrightness/10",
             ],
             "key": "Shift+F1",
             "notification": "Switching to Dark Profile",
@@ -245,10 +251,10 @@ describe('PreferenceUtils', () => {
           },
           Object {
             "command": Array [
-              "command/changeBrightness/5",
+              "command/changeBrightness/10",
             ],
             "key": "Shift+F3",
-            "notification": "Brightness is 5%",
+            "notification": "Brightness is 10%",
           },
           Object {
             "command": Array [
