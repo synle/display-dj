@@ -69,6 +69,11 @@ export type VolumeInput = {
 
 export type Volume = Required<VolumeInput> & { isDisabled?: boolean };
 
+export type TimeOfDayDarkMode = {
+  fromHour: number;
+  toHour: number;
+}
+
 export type AppConfig = {
   monitors: Monitor[];
   darkMode: boolean;
@@ -95,6 +100,7 @@ export type Preference = {
   brightnessPresets: BrightnessPreset[];
   volumePresets: VolumePreset[];
   keyBindings: KeyBinding[];
+  timeOfDayDarkMode?: TimeOfDayDarkMode;
 };
 
 export type UIAppState = {};

@@ -442,12 +442,53 @@ async function setupDockIcon(){
   }
 }
 
+function setupIntervalTimeOfDayChange(){
+  let darkModeTriggerTime : number = 0;
+
+  setInterval(async () => {
+    const preferences = await PreferenceUtils.get();
+    const timeOfDayDarkMode = preferences.timeOfDayDarkMode;
+    if(!timeOfDayDarkMode){
+      return;
+    }
+
+    const currentHour = new Date().getHours();
+    const currentDarkMode = (await DisplayUtils.getDarkMode()) === true;
+
+    // timeOfDayDarkMode
+    const fromDarkHours = timeOfDayDarkMode.fromHour;
+    const toDarkHours = timeOfDayDarkMode.toHour;
+    const expactedDurationHours = toDarkHours + 24 - fromDarkHours;
+
+    console.verbose('>> pinging', new Date().toLocaleString(), expactedDurationHours, Date.now() - darkModeTriggerTime, expactedDurationHours * 3600000);
+
+    if(currentDarkMode === false){
+      // light mode turns to dark mode
+      if(currentHour >= fromDarkHours){
+        // turn on dark mode
+        DisplayUtils.updateDarkMode(true);
+        console.verbose('>> timeof day change - DARK', new Date().toLocaleString());
+        darkModeTriggerTime = Date.now();
+      }
+    } else {
+      // dark mode turns to light mode
+      if(Date.now() - darkModeTriggerTime >= expactedDurationHours * 3600000 ){
+        // turn off dark mode
+        DisplayUtils.updateDarkMode(false);
+        console.verbose('>> timeof day change - LIGHT', new Date().toLocaleString());
+      }
+    }
+  }, 10000) ;// run this every minute
+  // 1000 * 60
+}
+
 function _sendRefetchEventToFrontEnd(type: 'all' | 'preferences' | 'configs' = 'all'){
   const eventName = 'mainAppEvent/refetch';
   if(mainWindow){
     mainWindow.webContents.send(eventName, {type});
   }
 }
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -462,6 +503,7 @@ app.on('ready', async () => {
   await createTray();
   await setupAutolaunch();
   await setUpShortcuts();
+  await setupIntervalTimeOfDayChange();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common

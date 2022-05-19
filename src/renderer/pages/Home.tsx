@@ -9,6 +9,7 @@ import { Loading } from 'src/renderer/components/Loading';
 import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightnessSetting';
 import { MonitorBrightnessSettingForm } from 'src/renderer/components/MonitorBrightnessSettingForm';
 import { VolumeSetting } from 'src/renderer/components/VolumeSetting';
+import { TimeOfDayProfileSettings } from 'src/renderer/components/TimeOfDayProfileSettings';
 import {
   useConfigs,
   usePreferences,
@@ -105,6 +106,7 @@ export function Home(props: HomeProps) {
       )}
       {configs.volume.isDisabled === false && <VolumeSetting volume={configs.volume} />}
       <DarkModeSettingForm darkMode={configs.darkMode} />
+      <TimeOfDayProfileSettings />
     </>
   );
 }

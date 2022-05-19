@@ -79,11 +79,13 @@ async function _initializeLogUtils(){
     };
   } else {
     // disable logging
+    const origConsole = console.log;
     console.log = () => {}
     console.info = () => {}
     console.error = () => {}
     console.debug = () => {}
     console.trace = () => {}
+    console.verbose = origConsole
   }
 }
 

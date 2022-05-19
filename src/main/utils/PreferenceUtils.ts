@@ -35,6 +35,10 @@ const DEFAULT_PREFERENCES: Preference = {
     { key: `Shift+F6`, command: [`command/changeVolume/0`],notification: `Volume is Muted`, },
     { key: `Shift+F7`, command: [`command/changeVolume/100`],notification: `Volume is 100%`, },
   ],
+  timeOfDayDarkMode:{
+    fromHour: 16,
+    toHour: 6
+  }
 };
 
 const PreferenceUtils = {
