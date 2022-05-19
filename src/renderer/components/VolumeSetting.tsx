@@ -1,10 +1,10 @@
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 import { useEffect, useState } from 'react';
 import { Slider } from 'src/renderer/components/Slider';
 import { VolumeIcon } from 'src/renderer/components/VolumeIcon';
 import { useUpdateVolume } from 'src/renderer/hooks';
 import { Volume } from 'src/types.d';
-import IconButton from '@mui/material/IconButton';
-import Tooltip from '@mui/material/Tooltip';
 
 type VolumeSettingProps = {
   volume: Volume;
@@ -52,9 +52,10 @@ export function VolumeSetting(props: VolumeSettingProps) {
       <div className='field'>
         <span className='field__icon'>
           <Tooltip arrow title='Toggle Muted'>
-          <IconButton  onClick={onSetMuted}>
-            <VolumeIcon volume={volume} />
-          </IconButton></Tooltip>
+            <IconButton onClick={onSetMuted}>
+              <VolumeIcon volume={volume} />
+            </IconButton>
+          </Tooltip>
         </span>
         <span className='field__slider'>
           <Slider
