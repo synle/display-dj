@@ -131,12 +131,33 @@ export function setUpDataEndpoints() {
     try {
       const isDarkModeOn = req.body.darkMode === true;
 
-      console.trace(`Update darkMode`, isDarkModeOn);
+      let preferredBrightness;
+      const preferences = await PreferenceUtils.get();
+      for(const brightnessPreset of preferences.brightnessPresets){
+        if(isDarkModeOn){
+          if(brightnessPreset.syncedWithMode === 'dark'){
+            preferredBrightness = brightnessPreset.level;
+            break;
+          }
+        } else {
+          if(brightnessPreset.syncedWithMode === 'light'){
+            preferredBrightness = brightnessPreset.level;
+            break;
+          }
+        }
+      }
 
-      res.status(200).json(await DisplayUtils.updateDarkMode(isDarkModeOn));
+      console.trace(`Update darkMode`, isDarkModeOn, preferredBrightness);
+
+      const promisesUpdates = [
+        DisplayUtils.updateDarkMode(isDarkModeOn),
+        preferredBrightness ? DisplayUtils.batchUpdateBrightness(preferredBrightness) : Promise.resolve(),
+      ];
+
+      res.status(200).json(await Promise.all(promisesUpdates));
     } catch (err) {
       res.status(500).json({
-        error: `Failed to update darkmode config: ` + JSON.stringify(err),
+        error: `Failed to update darkMode config: ` + JSON.stringify(err),
         stack: err.stack,
       });
     }

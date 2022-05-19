@@ -1,16 +1,16 @@
 import StorageUtils, { PREFERENCE_FILE_PATH } from 'src/main/utils/StorageUtils';
 import { Preference } from 'src/types.d';
 
-const MIN_BRIGHTNESS = 5;// NOTE : here if we set it to 0, some monitors / laptops will turn off the backlit entirely and make it unusable...
+const MIN_BRIGHTNESS = 10;// NOTE : here if we set it to 0, some monitors / laptops will turn off the backlit entirely and make it unusable...
 
 const DEFAULT_PREFERENCES: Preference = {
   showIndividualDisplays: false,
   logging: false,
   brightnessDelta: 25,
   brightnessPresets: [
-    { level: MIN_BRIGHTNESS },
+    { level: MIN_BRIGHTNESS, syncedWithMode: 'dark', },
     { level: 50 },
-    { level: 100 },
+    { level: 100, syncedWithMode: 'light', },
   ],
   volumePresets: [
     { level: 0 },
