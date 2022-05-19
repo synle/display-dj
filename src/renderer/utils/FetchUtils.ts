@@ -25,8 +25,7 @@ function _doFetch(input: string, options: RequestInit) {
       } catch (err) {}
 
       console.log(
-        '>> Network',
-        ok ? 'Success' : 'Error:',
+        ok ? '>> Net Success' : 'Net Error:',
         status,
         options?.method || 'get',
         url,

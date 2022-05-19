@@ -151,7 +151,7 @@ export function setUpDataEndpoints() {
 
       const promisesUpdates = [
         DisplayUtils.updateDarkMode(isDarkModeOn),
-        preferredBrightness ? DisplayUtils.batchUpdateBrightness(preferredBrightness) : Promise.resolve(),
+        preferredBrightness >= 0 && preferredBrightness <= 100 ? DisplayUtils.batchUpdateBrightness(preferredBrightness) : Promise.resolve(),
       ];
 
       res.status(200).json(await Promise.all(promisesUpdates));
