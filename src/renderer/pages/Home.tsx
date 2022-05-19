@@ -75,8 +75,14 @@ export function Home(props: HomeProps) {
   if (isLoading) {
     return (
       <>
-        <Backdrop sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }} open={true}>
-          <Typography variant='subtitle1' className='flexAlignItems'>
+        <Backdrop
+          sx={{
+            background: (theme) => theme.palette.background.paper,
+            color: (theme) => theme.palette.text.primary,
+            zIndex: (theme) => theme.zIndex.drawer + 1,
+          }}
+          open={true}>
+          <Typography variant='h6' className='flexAlignItems'>
             <Loading style={{ marginRight: '10px' }} />
             <strong>Loading, please wait...</strong>
           </Typography>

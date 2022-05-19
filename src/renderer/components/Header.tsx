@@ -1,3 +1,6 @@
+import { Loading } from 'src/renderer/components/Loading';
+import { useEffect, useState } from 'react';
+import Backdrop from '@mui/material/Backdrop';
 import Typography from '@mui/material/Typography';
 import { ToggleAllDisplay } from 'src/renderer/components/ToggleAllDisplay';
 import { useRefetchConfigs, useRefetchPreferences } from 'src/renderer/hooks';
@@ -10,16 +13,21 @@ type HeaderProps = {
 
 export function Header(props: HeaderProps) {
   const { configs, preference } = props;
+  const [disabled, setDisabled] = useState(false);
 
   const refetchConfigs = useRefetchConfigs();
   const refetchPreferences = useRefetchPreferences();
 
-  const onRefresh = () => {
-    refetchConfigs();
-    refetchPreferences();
+  const onRefresh = async () => {
+    setDisabled(true);
+    await Promise.all([refetchConfigs(),
+        refetchPreferences()
+        ])
+    setDisabled(false);
   };
 
   return (
+    <>
     <header>
       <Typography variant='h5' className='flexAlignItems' onClick={onRefresh}>
         <strong>
@@ -28,5 +36,19 @@ export function Header(props: HeaderProps) {
       </Typography>
       {!preference ? null : <ToggleAllDisplay preference={preference} />}
     </header>
+    {/*backdrop*/}
+    <Backdrop
+          sx={{
+            background: (theme) => theme.palette.background.paper,
+            color: (theme) => theme.palette.text.primary,
+            zIndex: (theme) => theme.zIndex.drawer + 1,
+          }}
+          open={disabled}>
+          <Typography variant='h6' className='flexAlignItems'>
+            <Loading style={{ marginRight: '10px' }} />
+            <strong>Refreshing...</strong>
+          </Typography>
+        </Backdrop>
+    </>
   );
 }
