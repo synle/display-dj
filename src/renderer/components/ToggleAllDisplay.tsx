@@ -18,7 +18,8 @@ export function ToggleAllDisplay(props: ToggleAllDisplayProps) {
   };
 
   return (
-    <IconButton size='small'
+    <IconButton
+      size='small'
       onClick={onToggleAll}
       title={
         preference.showIndividualDisplays
