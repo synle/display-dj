@@ -46,7 +46,7 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
       <div className='field' title='Monitor Brightness'>
         <span className='field__icon'>
           <Tooltip arrow title='Minimize or maximize brightness for this monitor'>
-            <IconButton onClick={onMinAndMaxBrightness}>
+            <IconButton size='small' onClick={onMinAndMaxBrightness}>
               {isLaptop ? <LaptopChromebookIcon /> : <MonitorIcon />}
             </IconButton>
           </Tooltip>
