@@ -162,6 +162,30 @@ export function setUpDataEndpoints() {
       });
     }
   });
+
+  addDataEndpoint('put', '/api/configs/profile', async (req, res) => {
+    try {
+      const profile = req.body;
+
+      console.trace(`Apply Profile`, Profile);
+
+      const {level, darkMode, volume} = profile;
+
+      const promisesUpdates = [
+        darkMode === true || darkMode === false ? DisplayUtils.updateDarkMode(isDarkModeOn) : Promise.resolve(),
+        level >= 0 && level <= 100 ? DisplayUtils.batchUpdateBrightness(level) : Promise.resolve(),
+        volume >= 0 && volume <= 100 ? SoundUtils.setVolume(volume) : Promise.resolve(),
+      ];
+
+      res.status(200).json(await Promise.all(promisesUpdates));
+    } catch (err) {
+      res.status(500).json({
+        error: `Failed to update darkMode config: ` + JSON.stringify(err),
+        stack: err.stack,
+      });
+    }
+  });
+
   addDataEndpoint('put', '/api/configs/volume', async (req, res) => {
     try {
       let muted = req.body.muted;

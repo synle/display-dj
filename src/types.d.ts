@@ -27,13 +27,15 @@ type Command =
   | 'command/openExternal/link/aboutUs'
   | string;
 
+type DarkModeValue = 'light' | 'dark';
+
 type BrightnessPreset = {
   // TODO: this is not supported, preset will apply to all monitors...
   // which?: string;
   /**
    * whether or not this brightness preset will be associated with the dark or light mode
    */
-  syncedWithMode?: 'light' | 'dark';
+  syncedWithMode?: DarkModeValue;
   level: number;
 };
 
@@ -69,6 +71,20 @@ export type VolumeInput = {
 
 export type Volume = Required<VolumeInput> & { isDisabled?: boolean };
 
+
+export type DisplayProfileInput = {
+  icon?: 'light' | 'dark';
+  /**
+   * @type {string} shortcut keys
+   */
+  key?: string;
+  level?: number;
+  darkMode?: DarkModeValue;
+  volume?: number;
+}
+
+export type DisplayProfile = DisplayProfileInput & {name: string};
+
 export type AppConfig = {
   monitors: Monitor[];
   darkMode: boolean;
@@ -95,6 +111,7 @@ export type Preference = {
   brightnessPresets: BrightnessPreset[];
   volumePresets: VolumePreset[];
   keyBindings: KeyBinding[];
+  profiles?: DisplayProfile[];
 };
 
 export type UIAppState = {};

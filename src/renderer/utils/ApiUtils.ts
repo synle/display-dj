@@ -1,5 +1,5 @@
 import { fetch } from 'src/renderer/utils/FetchUtils';
-import { AppConfig, BatchMonitorUpdateInput, Preference, SingleMonitorUpdateInput, VolumeInput } from 'src/types.d';
+import { DisplayProfileInput, AppConfig, BatchMonitorUpdateInput, Preference, SingleMonitorUpdateInput, VolumeInput } from 'src/types.d';
 
 const ApiUtils = {
   // preferences
@@ -33,6 +33,11 @@ const ApiUtils = {
     fetch<void>(`/api/configs/volume`, {
       method: 'put',
       body: JSON.stringify(volume),
+    }),
+  applyProfile: (profile: DisplayProfileInput) =>
+    fetch<void>(`/api/configs/profile`, {
+      method: 'put',
+      body: JSON.stringify(profile),
     }),
   updateAppPosition: () =>
     fetch<void>(`/api/configs/appPosition`, {
