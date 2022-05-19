@@ -16,6 +16,13 @@ const DisplayDJFrontEndApp = () => {
         palette: {
           mode: prefersDarkMode ? 'dark' : 'light',
         },
+        components: {
+          MuiButtonBase: {
+            defaultProps: {
+              disableRipple: true,
+            },
+          },
+        },
       }),
     [prefersDarkMode],
   );
