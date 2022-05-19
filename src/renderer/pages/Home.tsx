@@ -75,6 +75,7 @@ export function Home(props: HomeProps) {
   if (isLoading) {
     return (
       <>
+        <div style={{height: '100px'}}></div>
         <Backdrop
           sx={{
             background: (theme) => theme.palette.background.paper,
@@ -84,7 +85,7 @@ export function Home(props: HomeProps) {
           open={true}>
           <Typography variant='h6' className='flexAlignItems'>
             <Loading style={{ marginRight: '10px' }} />
-            <strong>Loading, please wait...</strong>
+            Loading, please wait...
           </Typography>
         </Backdrop>
       </>
