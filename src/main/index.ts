@@ -164,6 +164,8 @@ async function setupCommandChannel() {
     const { command } = data;
 
     if(command.includes(`command/refetch`)){
+      // global.emitAppEvent({ command: 'command/refetch' });
+
       switch (command) {
         case 'command/refetch/preferences':
           _sendRefetchEventToFrontEnd('preferences');
@@ -175,7 +177,6 @@ async function setupCommandChannel() {
           _sendRefetchEventToFrontEnd('all');
           break;
       }
-
       return;
     }
 

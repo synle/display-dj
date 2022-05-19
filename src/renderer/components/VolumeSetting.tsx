@@ -52,7 +52,7 @@ export function VolumeSetting(props: VolumeSettingProps) {
       <div className='field'>
         <span className='field__icon'>
           <Tooltip arrow title='Toggle Muted'>
-            <IconButton onClick={onSetMuted}>
+            <IconButton size='small' onClick={onSetMuted}>
               <VolumeIcon volume={volume} />
             </IconButton>
           </Tooltip>

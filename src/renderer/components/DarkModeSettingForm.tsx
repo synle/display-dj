@@ -44,6 +44,7 @@ export function DarkModeSettingForm(props: DarkModeSettingFormProps) {
           value={darkModeVal}
           onChange={(_e, val: string) => {
             if (val === null) {
+              onToggleDarkMode(darkMode);
               return;
             }
             onToggleDarkMode(val === '1');
