@@ -5,6 +5,8 @@ import { MonitorNameInput } from 'src/renderer/components/MonitorNameInput';
 import { Slider } from 'src/renderer/components/Slider';
 import { useUpdateMonitor } from 'src/renderer/hooks';
 import { Monitor } from 'src/types.d';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 
 type MonitorBrightnessSettingProps = {
   monitor: Monitor;
@@ -42,11 +44,13 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
         <MonitorNameInput monitor={monitor} idx={props.idx} />
       </div>
       <div className='field' title='Monitor Brightness'>
-        <span
-          title='Minimize or maximize brightness for this monitor'
-          className='field__icon field__button'
+        <span className='field__icon'>
+          <Tooltip arrow title='Minimize or maximize brightness for this monitor'>
+          <IconButton
           onClick={onMinAndMaxBrightness}>
-          {isLaptop ? <LaptopChromebookIcon /> : <MonitorIcon />}
+            {isLaptop ? <LaptopChromebookIcon /> : <MonitorIcon />}
+          </IconButton>
+          </Tooltip>
         </span>
         <span className='field__slider'>
           <Slider

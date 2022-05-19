@@ -1,3 +1,5 @@
+import { Loading } from 'src/renderer/components/Loading';
+import Backdrop from '@mui/material/Backdrop';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import Button from '@mui/material/Button';
@@ -31,6 +33,8 @@ export function DarkModeSettingForm(props: DarkModeSettingFormProps) {
   const darkModeVal = darkMode ? '1' : '0';
 
   return (
+    <>
+    <div className='field'>
     <ToggleButtonGroup
       color='primary'
       size='small'
@@ -57,5 +61,14 @@ export function DarkModeSettingForm(props: DarkModeSettingFormProps) {
         </Typography>
       </ToggleButton>
     </ToggleButtonGroup>
+    </div>
+  {/* backdrop */}
+  <Backdrop sx={{ background: (theme) => theme.palette.background.paper, color: (theme) => theme.palette.text.primary, zIndex: (theme) => theme.zIndex.drawer + 1 }} open={disabled}>
+          <Typography variant='h6' className='flexAlignItems'>
+            <Loading style={{ marginRight: '10px' }} />
+            <strong>Updating dark mode...</strong>
+          </Typography>
+        </Backdrop>
+    </>
   );
 }

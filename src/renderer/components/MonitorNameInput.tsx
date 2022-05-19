@@ -6,6 +6,7 @@ import { Loading } from 'src/renderer/components/Loading';
 import { MonitorBrightnessSetting } from 'src/renderer/components/MonitorBrightnessSetting';
 import { useUpdateMonitor } from 'src/renderer/hooks';
 import { Monitor } from 'src/types.d';
+import Tooltip from '@mui/material/Tooltip';
 
 type MonitorBrightnessSettingProps = {
   monitor: Monitor;
@@ -48,13 +49,14 @@ export function MonitorNameInput(props: MonitorBrightnessSettingProps) {
   switch (mode) {
     case 'mode/read':
       return (
-        <Link
-          component='button'
-          onClick={() => setMode('mode/edit')}
-          title='Monitor Name'
-          variant='subtitle1'>
-          <strong>{monitor.name}</strong>
-        </Link>
+        <Tooltip arrow title='Edit Monitor Name'>
+          <Link
+            component='button'
+            onClick={() => setMode('mode/edit')}
+            variant='subtitle1'>
+            <strong>{monitor.name}</strong>
+          </Link>
+        </Tooltip>
       );
     case 'mode/edit':
       return (
