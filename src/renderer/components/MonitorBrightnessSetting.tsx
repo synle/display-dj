@@ -21,12 +21,12 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
 
   const onChange = async (brightness: number) => {
     setDisabled(true);
-    try{
+    try {
       await updateMonitor({
-      id: monitor.id,
-      brightness,
-    });
-    } catch(err){
+        id: monitor.id,
+        brightness,
+      });
+    } catch (err) {
       console.error('MonitorBrightnessSetting.onChange failed', err);
     }
     setDisabled(false);

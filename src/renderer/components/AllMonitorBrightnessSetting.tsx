@@ -23,10 +23,10 @@ export function AllMonitorBrightnessSetting(props: AllMonitorBrightnessSettingPr
 
   const onChange = async (brightness: number) => {
     setDisabled(true);
-    try{
+    try {
       setAllBrightness(brightness);
       await batchUpdateMonitors({ brightness });
-    } catch(err){
+    } catch (err) {
       console.error('AllMonitorBrightnessSetting.onChange Failed', err);
     }
     setDisabled(false);

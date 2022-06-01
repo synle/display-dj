@@ -75,7 +75,7 @@ export function Home(props: HomeProps) {
   if (isLoading) {
     return (
       <>
-        <div style={{height: '100px'}}></div>
+        <div style={{ height: '100px' }}></div>
         <Backdrop
           sx={{
             background: (theme) => theme.palette.background.paper,

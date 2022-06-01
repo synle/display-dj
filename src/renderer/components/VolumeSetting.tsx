@@ -25,10 +25,12 @@ export function VolumeSetting(props: VolumeSettingProps) {
 
     setVolume(newVolume);
 
-    try{setDisabled(true);
-      await updateVolume(newVolume);}catch(err){
-        console.error('VolumeSetting.onChange Failed', err);
-      }
+    try {
+      setDisabled(true);
+      await updateVolume(newVolume);
+    } catch (err) {
+      console.error('VolumeSetting.onChange Failed', err);
+    }
     setDisabled(false);
   };
 
