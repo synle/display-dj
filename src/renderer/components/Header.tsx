@@ -20,7 +20,11 @@ export function Header(props: HeaderProps) {
 
   const onRefresh = async () => {
     setDisabled(true);
-    await Promise.all([refetchConfigs(), refetchPreferences()]);
+    try{
+      await Promise.all([refetchConfigs(), refetchPreferences()]);
+    } catch(err){
+      console.error('Header.onRefresh Failed', err);
+    }
     setDisabled(false);
   };
 
