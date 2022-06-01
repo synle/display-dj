@@ -21,8 +21,12 @@ export function DarkModeSettingForm(props: DarkModeSettingFormProps) {
 
   const onToggleDarkMode = async (newDarkMode: boolean) => {
     setDarkMode(newDarkMode);
-    setDisabled(true);
-    await updateDarkMode(newDarkMode);
+    try {
+      setDisabled(true);
+      await updateDarkMode(newDarkMode);
+    } catch (err) {
+      console.error('onToggleDarkMode Failed', err);
+    }
     setDisabled(false);
   };
 
