@@ -14,7 +14,7 @@ let _config : AppConfig;
 let _preferences : Preference;
 
 export function useAppState() {
-  return useQuery(QUERY_KEY_APP_STATE, () => _appState);
+  return useQuery(QUERY_KEY_APP_STATE, () => _appState, {notifyOnChangeProps: ['data', 'error']});
 }
 
 export function useUpdateAppState() {
@@ -37,7 +37,7 @@ export function usePreferences() {
       _preferences = await ApiUtils.getPreferences();
     }
     return _preferences;
-  });
+  }, {notifyOnChangeProps: ['data', 'error']});
 }
 
 export function useUpdatePreferences() {
@@ -56,7 +56,7 @@ export function useConfigs() {
       _config = await ApiUtils.getConfigs();
     }
     return _config;
-  });
+  }, {notifyOnChangeProps: ['data', 'error'],});
 }
 
 export function useUpdateMonitor() {
@@ -107,7 +107,6 @@ export function useRefetchConfigs(){
     console.log('>> Refetch Configs')
     _config = await ApiUtils.getConfigs();
     queryClient.invalidateQueries(QUERY_KEY_CONFIGS)
-    queryClient.setQueryData(QUERY_KEY_CONFIGS, _config);
   };
 }
 
@@ -117,6 +116,5 @@ export function useRefetchPreferences(){
     console.log('>> Refetch preferences')
     _preferences = await ApiUtils.getPreferences();
     queryClient.invalidateQueries(QUERY_KEY_PREFERENCE)
-    queryClient.setQueryData(QUERY_KEY_PREFERENCE, _preferences);
   };
 }
