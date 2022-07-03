@@ -5,7 +5,7 @@ import { IDisplayAdapter, Monitor } from 'src/types.d';
 const _getDdcciScript = async () => path.join(process['resourcesPath'], `win32_ddcci.js`);
 
 let LAPTOP_DISPLAY_MONITOR_ID = '';
-let EXTERNAL_DISPLAY_MONITOR_IDS = new Set<string>()
+let EXTERNAL_DISPLAY_MONITOR_IDS = new Set<string>();
 
 /**
  * get current laptop brightness. more info here
@@ -32,7 +32,7 @@ function _getBrightnessDccCi(targetMonitorId: string): Promise<number> {
   return _sendMessageToBackgroundScript('getBrightness', targetMonitorId);
 }
 
-async function _getMonitorList(){
+async function _getMonitorList() {
   return _sendMessageToBackgroundScript('getMonitorList');
 }
 
@@ -40,18 +40,21 @@ async function _setBrightnessDccCi(targetMonitorId: string, newBrightness: numbe
   return _sendMessageToBackgroundScript('setBrightness', targetMonitorId, newBrightness);
 }
 
-async function _sendMessageToBackgroundScript(command : 'customScript' | 'getBrightness'| 'setBrightness' | 'getMonitorList', ...extra: any) : Promise<any>{
+async function _sendMessageToBackgroundScript(
+  command: 'customScript' | 'getBrightness' | 'setBrightness' | 'getMonitorList',
+  ...extra: any
+): Promise<any> {
   return new Promise(async (resolve, reject) => {
     const targetChildProcess = ChildProcess.fork(await _getDdcciScript());
 
-    targetChildProcess.on('message', function(response: any) {
+    targetChildProcess.on('message', function (response: any) {
       console.debug(`ddcci child process returned`, command, response);
-      const {success, data} = response;
+      const { success, data } = response;
       success === true ? resolve(data) : reject();
     });
 
     targetChildProcess.send([process['resourcesPath'], command, ...extra]);
-  })
+  });
 }
 
 const DisplayAdapter: IDisplayAdapter = {
@@ -59,11 +62,11 @@ const DisplayAdapter: IDisplayAdapter = {
     return _getMonitorList();
   },
   getMonitorType: async (targetMonitorId: string) => {
-    if(LAPTOP_DISPLAY_MONITOR_ID === targetMonitorId){
+    if (LAPTOP_DISPLAY_MONITOR_ID === targetMonitorId) {
       return 'laptop_monitor';
     }
 
-    if(EXTERNAL_DISPLAY_MONITOR_IDS.has(targetMonitorId)){
+    if (EXTERNAL_DISPLAY_MONITOR_IDS.has(targetMonitorId)) {
       return 'external_monitor';
     }
 
@@ -93,8 +96,8 @@ const DisplayAdapter: IDisplayAdapter = {
   },
   getMonitorBrightness: async (targetMonitorId: string) => {
     try {
-      if(LAPTOP_DISPLAY_MONITOR_ID === targetMonitorId){
-         return _getBrightnessBuiltin();
+      if (LAPTOP_DISPLAY_MONITOR_ID === targetMonitorId) {
+        return _getBrightnessBuiltin();
       }
       return _getBrightnessDccCi(targetMonitorId);
     } catch (err) {}
@@ -106,7 +109,11 @@ const DisplayAdapter: IDisplayAdapter = {
       await _setBrightnessDccCi(targetMonitorId, newBrightness);
     } catch (err) {
       // monitor is a laptop
-      console.trace(`Update brightness failed with ddcci, trying builtin method`, targetMonitorId, newBrightness);
+      console.trace(
+        `Update brightness failed with ddcci, trying builtin method`,
+        targetMonitorId,
+        newBrightness,
+      );
       try {
         await _setBrightnessBuiltin(newBrightness);
       } catch (err) {
@@ -141,7 +148,7 @@ const DisplayAdapter: IDisplayAdapter = {
       );
 
     return new Promise(async (resolve) => {
-      const msg : string= await _sendMessageToBackgroundScript('customScript', shellToRun);
+      const msg: string = await _sendMessageToBackgroundScript('customScript', shellToRun);
       const lines = msg
         .toString()
         .split('\n')

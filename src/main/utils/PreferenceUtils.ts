@@ -1,7 +1,7 @@
 import StorageUtils, { PREFERENCE_FILE_PATH } from 'src/main/utils/StorageUtils';
 import { Preference } from 'src/types.d';
 
-const MIN_BRIGHTNESS = 10;// NOTE : here if we set it to 0, some monitors / laptops will turn off the backlit entirely and make it unusable...
+const MIN_BRIGHTNESS = 10; // NOTE : here if we set it to 0, some monitors / laptops will turn off the backlit entirely and make it unusable...
 
 const DEFAULT_PREFERENCES: Preference = {
   mode: process.platform === 'win32' ? 'win32' : 'intel_mac', // whether it's m1 mac or not
@@ -9,15 +9,11 @@ const DEFAULT_PREFERENCES: Preference = {
   logging: false,
   brightnessDelta: 25,
   brightnessPresets: [
-    { level: MIN_BRIGHTNESS, syncedWithMode: 'dark', },
+    { level: MIN_BRIGHTNESS, syncedWithMode: 'dark' },
     { level: 50 },
-    { level: 100, syncedWithMode: 'light', },
+    { level: 100, syncedWithMode: 'light' },
   ],
-  volumePresets: [
-    { level: 0 },
-    { level: 50 },
-    { level: 100 },
-  ],
+  volumePresets: [{ level: 0 }, { level: 50 }, { level: 100 }],
   keyBindings: [
     { key: `Shift+Escape`, command: [`command/changeDarkMode/toggle`] },
     {
@@ -30,11 +26,23 @@ const DEFAULT_PREFERENCES: Preference = {
       command: [`command/changeDarkMode/light`, `command/changeBrightness/100`],
       notification: `Switching to Light Profile`,
     },
-    { key: `Shift+F3`, command: [`command/changeBrightness/${MIN_BRIGHTNESS}`], notification: `Brightness is ${MIN_BRIGHTNESS}%`,},
-    { key: `Shift+F4`, command: [`command/changeBrightness/50`],notification: `Brightness is 50%`, },
-    { key: `Shift+F5`, command: [`command/changeBrightness/100`], notification: `Brightness is 100%`,},
-    { key: `Shift+F6`, command: [`command/changeVolume/0`],notification: `Volume is Muted`, },
-    { key: `Shift+F7`, command: [`command/changeVolume/100`],notification: `Volume is 100%`, },
+    {
+      key: `Shift+F3`,
+      command: [`command/changeBrightness/${MIN_BRIGHTNESS}`],
+      notification: `Brightness is ${MIN_BRIGHTNESS}%`,
+    },
+    {
+      key: `Shift+F4`,
+      command: [`command/changeBrightness/50`],
+      notification: `Brightness is 50%`,
+    },
+    {
+      key: `Shift+F5`,
+      command: [`command/changeBrightness/100`],
+      notification: `Brightness is 100%`,
+    },
+    { key: `Shift+F6`, command: [`command/changeVolume/0`], notification: `Volume is Muted` },
+    { key: `Shift+F7`, command: [`command/changeVolume/100`], notification: `Volume is 100%` },
   ],
 };
 
@@ -82,12 +90,12 @@ const PreferenceUtils = {
   getKeybindings: async () => {
     return (await PreferenceUtils.get()).keyBindings;
   },
-  getBrightnessPresets: async() => {
+  getBrightnessPresets: async () => {
     return (await PreferenceUtils.get()).brightnessPresets;
   },
-  getVolumePresets: async() => {
+  getVolumePresets: async () => {
     return (await PreferenceUtils.get()).volumePresets;
-  }
+  },
 };
 
 export default PreferenceUtils;

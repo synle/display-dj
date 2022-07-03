@@ -1,5 +1,11 @@
 import { fetch } from 'src/renderer/utils/FetchUtils';
-import { AppConfig, BatchMonitorUpdateInput, Preference, SingleMonitorUpdateInput, VolumeInput } from 'src/types.d';
+import {
+  AppConfig,
+  BatchMonitorUpdateInput,
+  Preference,
+  SingleMonitorUpdateInput,
+  VolumeInput,
+} from 'src/types.d';
 
 const ApiUtils = {
   // preferences
