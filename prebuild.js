@@ -33,6 +33,7 @@ switch (process.platform) {
     files.push([`src/main/utils/DisplayAdapter.Darwin.ts`, DEST_IMPL_DISPLAY_UTILS]);
     files.push([`src/main/utils/SoundUtils.Darwin.ts`, DEST_IMPL_SOUND_UTILS]);
     files.push([`src/binaries/darwin_brightness`, path.join(DEV_ELECTRON_DARWIN_RESOURCE_PATH, `brightness`)]);
+    files.push([`src/binaries/darwin_m1ddc`, path.join(DEV_ELECTRON_DARWIN_RESOURCE_PATH, `m1ddc`)]);
     files.push([`src/binaries/darwin_ddcctl`, path.join(DEV_ELECTRON_DARWIN_RESOURCE_PATH, `ddcctl`)]);
     break;
 }
