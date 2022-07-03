@@ -10,26 +10,25 @@ let ddcci;
 const path = require('path');
 const { spawn, exec } = require('child_process');
 
-process.on('message', async function(msg) {
+process.on('message', async function (msg) {
   try {
     // first attempt to find ddcci as part of the dev mode (pure third party require)
-    ddcci = require("@hensm/ddcci");
-    if(!ddcci){
-      throw 'Cannot find local node module for ddcci'
+    ddcci = require('@hensm/ddcci');
+    if (!ddcci) {
+      throw 'Cannot find local node module for ddcci';
     }
-  }
-  catch(err){
+  } catch (err) {
     // otherwise, will look into it from the msg[0] = process['resourcesPath']
-    ddcci = require(path.join(msg[0], "node_modules/@hensm/ddcci"));
+    ddcci = require(path.join(msg[0], 'node_modules/@hensm/ddcci'));
   }
 
   const command = msg[1];
   const targetMonitorId = msg[2];
   const newBrightness = parseInt(msg[3]);
 
-  try{
+  try {
     let res;
-    switch(command){
+    switch (command) {
       case 'setBrightness':
         res = await _setBrightness(targetMonitorId, newBrightness);
         break;
@@ -63,39 +62,38 @@ process.on('message', async function(msg) {
         break;
 
       default:
-        throw `Not supported command - ${command}`
+        throw `Not supported command - ${command}`;
         break;
     }
-    process.send({success: true, command, data: res});
-  } catch(error){
-    process.send({success: false, command, error: error.toString()});
+    process.send({ success: true, command, data: res });
+  } catch (error) {
+    process.send({ success: false, command, error: error.toString() });
   }
   process.exit();
 });
 
-function _setBrightness(targetMonitorId, newBrightness){
-  if(isNaN(newBrightness) || newBrightness < 0 || newBrightness > 100){
-    throw 'newBrightness needs to be a number between 0 and 100'
+function _setBrightness(targetMonitorId, newBrightness) {
+  if (isNaN(newBrightness) || newBrightness < 0 || newBrightness > 100) {
+    throw 'newBrightness needs to be a number between 0 and 100';
   }
 
   for (const monitorId of ddcci.getMonitorList()) {
-    if(monitorId === targetMonitorId){
-      try{
+    if (monitorId === targetMonitorId) {
+      try {
         return ddcci.setBrightness(monitorId, newBrightness);
-      } catch(err){
+      } catch (err) {
         throw err;
       }
-
     }
   }
 
   throw `targetMonitorId (${targetMonitorId}) not found`;
 }
 
-function _getBrightness(targetMonitorId){
+function _getBrightness(targetMonitorId) {
   return ddcci.getBrightness(targetMonitorId);
 }
 
-function _getMonitorList(){
+function _getMonitorList() {
   return ddcci.getMonitorList();
 }

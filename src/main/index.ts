@@ -1,6 +1,16 @@
 // @ts-nocheck
 import AutoLaunch from 'auto-launch';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, shell, Tray } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  shell,
+  Tray,
+} from 'electron';
 import { EventEmitter } from 'events';
 import path from 'path';
 import { matchPath } from 'react-router-dom';
@@ -11,7 +21,11 @@ import PositionUtils from 'src/main/utils/PositionUtils';
 import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 import { getJSON } from 'src/main/utils/RestUtils';
 import SoundUtils from 'src/main/utils/SoundUtils';
-import { LOG_FILE_PATH, MONITOR_CONFIG_FILE_PATH, PREFERENCE_FILE_PATH } from 'src/main/utils/StorageUtils';
+import {
+  LOG_FILE_PATH,
+  MONITOR_CONFIG_FILE_PATH,
+  PREFERENCE_FILE_PATH,
+} from 'src/main/utils/StorageUtils';
 import 'src/main/utils/SetupShortcutForWin32'; // this is to set up the icon shortcut for win32
 import 'src/main/utils/LogUtils';
 
@@ -113,7 +127,7 @@ async function setUpShortcuts() {
         global.emitAppEvent({ command });
       }
 
-      if(keyBinding.notification){
+      if (keyBinding.notification) {
         showNotification(keyBinding.notification);
       }
     });
@@ -163,7 +177,7 @@ async function setupCommandChannel() {
   global.subscribeAppEvent(async (data) => {
     const { command } = data;
 
-    if(command.includes(`command/refetch`)){
+    if (command.includes(`command/refetch`)) {
       // global.emitAppEvent({ command: 'command/refetch' });
 
       switch (command) {
@@ -197,7 +211,11 @@ async function setupCommandChannel() {
           break;
       }
 
-      if(!isNaN(allMonitorBrightness) && allMonitorBrightness >= 0 && allMonitorBrightness <= 100){
+      if (
+        !isNaN(allMonitorBrightness) &&
+        allMonitorBrightness >= 0 &&
+        allMonitorBrightness <= 100
+      ) {
         await DisplayUtils.batchUpdateBrightness(allMonitorBrightness, delta);
       } else {
         console.trace(`changeVolume failed due to invalid volume`, allMonitorBrightness, delta);
@@ -229,11 +247,11 @@ async function setupCommandChannel() {
     if (command.includes(`command/changeVolume`)) {
       const volume = parseInt(command.replace('command/changeVolume/', ''));
 
-      if(!isNaN(volume) && volume >= 0 && volume <= 100){
+      if (!isNaN(volume) && volume >= 0 && volume <= 100) {
         const promises = [];
         promises.push(SoundUtils.setMuted(volume === 0));
         promises.push(SoundUtils.setVolume(volume));
-        await Promise.all(promises)
+        await Promise.all(promises);
         _sendRefetchEventToFrontEnd('configs');
       } else {
         console.trace(`changeVolume failed due to invalid volume`, volume);
@@ -308,16 +326,16 @@ function _getTrayIcon() {
   return nativeTheme.shouldUseDarkColors ? DARK_ICON : LIGHT_ICON;
 }
 
-async function _getLatestAppVersion(){
-  try{
-    const {version} = await getJSON(`https://synle.github.io/display-dj/release.json`);
+async function _getLatestAppVersion() {
+  try {
+    const { version } = await getJSON(`https://synle.github.io/display-dj/release.json`);
     return version;
-  } catch(err){
+  } catch (err) {
     return '';
   }
 }
 
-async function _getContextMenu(){
+async function _getContextMenu() {
   const brightnessPresets = await PreferenceUtils.getBrightnessPresets();
   const volumePresets = await PreferenceUtils.getVolumePresets();
   const latestAppVersion = await _getLatestAppVersion();
@@ -326,34 +344,34 @@ async function _getContextMenu(){
     {
       label: `Use Light Mode`,
       click: async () => {
-        global.emitAppEvent({ command: 'command/changeDarkMode/light' })
+        global.emitAppEvent({ command: 'command/changeDarkMode/light' });
         showNotification(`Turn on Light Mode`);
       },
     },
     {
       label: `Use Dark Mode`,
       click: async () => {
-        global.emitAppEvent({ command: 'command/changeDarkMode/dark' })
+        global.emitAppEvent({ command: 'command/changeDarkMode/dark' });
         showNotification(`Turn on Dark Mode`);
       },
     },
     {
       type: 'separator',
     },
-    ...brightnessPresets.map(brightnessPreset => ({
+    ...brightnessPresets.map((brightnessPreset) => ({
       label: `Change brightness to ${brightnessPreset.level}%`,
       click: async () => {
-        global.emitAppEvent({ command: `command/changeBrightness/${brightnessPreset.level}` })
+        global.emitAppEvent({ command: `command/changeBrightness/${brightnessPreset.level}` });
         showNotification(`Brightness of all monitors changed to ${brightnessPreset.level}%`);
       },
     })),
     {
       type: 'separator',
     },
-    ...volumePresets.map(volumePreset => ({
+    ...volumePresets.map((volumePreset) => ({
       label: `Change volume to ${volumePreset.level}%`,
       click: async () => {
-        global.emitAppEvent({ command: `command/changeVolume/${volumePreset.level}` })
+        global.emitAppEvent({ command: `command/changeVolume/${volumePreset.level}` });
         showNotification(`Volume changed to ${volumePreset.level}%`);
       },
     })),
@@ -386,8 +404,9 @@ async function _getContextMenu(){
     },
     {
       label: `New Version Available (${latestAppVersion})`,
-      click: async () => global.emitAppEvent({ command: 'command/openExternal/link/downloadNewVersion' }),
-      visible: await latestAppVersion !== process.env.APP_VERSION
+      click: async () =>
+        global.emitAppEvent({ command: 'command/openExternal/link/downloadNewVersion' }),
+      visible: (await latestAppVersion) !== process.env.APP_VERSION,
     },
     {
       type: 'separator',
@@ -429,29 +448,29 @@ async function _getContextMenu(){
 /**
  * @return None - Hide the dock icon for Mac...
  */
-async function setupDockIcon(){
-  switch(process.platform){
+async function setupDockIcon() {
+  switch (process.platform) {
     case 'darwin':
-      try{
+      try {
         app.dock.hide();
         console.debug('Hide dock icon success');
-      } catch(err){
+      } catch (err) {
         console.error('Hide dock icon failed with error', err);
       }
       break;
   }
 }
 
-function _sendRefetchEventToFrontEnd(type: 'all' | 'preferences' | 'configs' = 'all'){
+function _sendRefetchEventToFrontEnd(type: 'all' | 'preferences' | 'configs' = 'all') {
   const eventName = 'mainAppEvent/refetch';
-  if(mainWindow){
-    mainWindow.webContents.send(eventName, {type});
+  if (mainWindow) {
+    mainWindow.webContents.send(eventName, { type });
   }
 }
 
-function _shouldTraceCall( method: string, url: string){
-  if(method.toLowerCase() === 'get'){
-    if(url.includes('/api/configs') || url.includes('/api/preferences')){
+function _shouldTraceCall(method: string, url: string) {
+  if (method.toLowerCase() === 'get') {
+    if (url.includes('/api/configs') || url.includes('/api/preferences')) {
       return false;
     }
   }
@@ -517,7 +536,7 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
         ok = false;
       }
 
-      if(_shouldTraceCall(method, url)){
+      if (_shouldTraceCall(method, url)) {
         console.trace(
           'Response',
           status,

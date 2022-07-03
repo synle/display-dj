@@ -1,5 +1,8 @@
 import DisplayAdapter from 'src/main/utils/DisplayAdapter';
-import StorageUtils, { MONITOR_CONFIG_FILE_PATH, PREFERENCE_FILE_PATH } from 'src/main/utils/StorageUtils';
+import StorageUtils, {
+  MONITOR_CONFIG_FILE_PATH,
+  PREFERENCE_FILE_PATH,
+} from 'src/main/utils/StorageUtils';
 import { Monitor, SingleMonitorUpdateInput } from 'src/types.d';
 function _getMonitorConfigs(): Record<string, Monitor> {
   return StorageUtils.readJSON(MONITOR_CONFIG_FILE_PATH) || {};
@@ -117,10 +120,10 @@ const DisplayUtils = {
     monitorsFromStorage[monitor.id] = {
       ...monitorsFromStorage[monitor.id],
       ...monitor,
-      ...{name: nameToUse}
+      ...{ name: nameToUse },
     };
 
-    if(monitor.brightness !== undefined){
+    if (monitor.brightness !== undefined) {
       console.trace(`updateMonitor brightness`, monitor.id, monitor.brightness);
 
       await DisplayAdapter.updateMonitorBrightness(
