@@ -53,8 +53,7 @@
     "dark-mode": "^4.0.0",
     "electron-installer-dmg": "^4.0.0",
     "electron-squirrel-startup": "^1.0.0",
-    "electron-winstaller": "^5.0.0",
-    "loudness": "^0.4.1"
+    "electron-winstaller": "^5.0.0"
   },
   "dependencies": {
     "@emotion/react": "^11.9.0",
