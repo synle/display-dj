@@ -450,8 +450,10 @@ function _sendRefetchEventToFrontEnd(type: 'all' | 'preferences' | 'configs' = '
 }
 
 function _shouldTraceCall( method: string, url: string){
-  if(url.includes('/api/configs') && method.toLowerCase() === 'get'){
-    return false;
+  if(method.toLowerCase() === 'get'){
+    if(url.includes('/api/configs') || url.includes('/api/preferences')){
+      return false;
+    }
   }
   return true;
 }

@@ -102,6 +102,11 @@ async function _getMonitorList(): Promise<string[]> {
   });
 }
 
+/**
+ * @param  {string} targetMonitorId
+ * @param  {number} newBrightness  brightness level from 0 to 100%
+ * @return {Promise<string>} get a script to execute to update brightness
+ */
 async function _getUpdateBrightnessShellScript(
   targetMonitorId: string,
   newBrightness: number,
@@ -113,7 +118,7 @@ async function _getUpdateBrightnessShellScript(
       if (whichDisplay === undefined) {
         return reject(`Display not found`);
       }
-      return resolve(`${await _getDdcctlBinaryForM1()} display ${whichDisplay} set luminance ${Math.floor(newBrightness * 100)}`);
+      return resolve(`${await _getDdcctlBinaryForM1()} display ${whichDisplay} set luminance ${newBrightness}`);
     }
 
     try {
