@@ -67,7 +67,7 @@ async function _getMonitorList(): Promise<string[]> {
     }
 
     try {
-      const shellToRun = `${await _getDdcctlBinary()}`;
+      const shellToRun = `${await _getDdcctlBinaryForIntel()}`;
       exec(shellToRun, (error, stdout, stderr) => {
         const monitors = (stdout || '')
           .split('\n')
@@ -102,7 +102,7 @@ async function _getUpdateBrightnessShellScript(
           return reject(`Display not found`);
         }
 
-        return resolve(`${await _getDdcctlBinary()} -d ${whichDisplay} -b ${newBrightness}`);
+        return resolve(`${await _getDdcctlBinaryForIntel()} -d ${whichDisplay} -b ${newBrightness}`);
       }
     } catch (err) {
       reject(err);
@@ -110,9 +110,11 @@ async function _getUpdateBrightnessShellScript(
   });
 }
 
-const _getDdcctlBinary = async () => path.join(process['resourcesPath'], `ddcctl`);
-
+const _getDdcctlBinaryForIntel = async () => path.join(process['resourcesPath'], `ddcctl`);
+const _getDdcctlBinaryForM1 = async () => path.join(process['resourcesPath'], `m1ddc`);
 const _getBrightnessBinary = async () => path.join(process['resourcesPath'], `brightness`);
+
+
 
 const DisplayAdapter: IDisplayAdapter = {
   getMonitorList: _getMonitorList,
@@ -150,7 +152,7 @@ const DisplayAdapter: IDisplayAdapter = {
             return reject(`Display not found`);
           }
 
-          const shellToRun = `${await _getDdcctlBinary()} -d ${whichDisplay} -b \\?`;
+          const shellToRun = `${await _getDdcctlBinaryForIntel()} -d ${whichDisplay} -b \\?`;
           console.debug('getMonitorBrightness', targetMonitorId, shellToRun);
 
           const stdout = await executeBash(shellToRun);
