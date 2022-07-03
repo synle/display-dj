@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import darkMode from 'dark-mode';
 import path from 'path';
+import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 import { executeBash } from 'src/main/utils/ShellUtils';
 import { IDisplayAdapter, Monitor } from 'src/types.d';
 // Source: http://chopmo.dk/2017/01/12/control-monitor-brightness-from-osx.html
@@ -21,6 +22,19 @@ function getCache() {
 
   return _cache;
 }
+const _getDdcctlBinaryForIntel = async () => path.join(process['resourcesPath'], `ddcctl`);
+
+const _getDdcctlBinaryForM1 = async () => path.join(process['resourcesPath'], `m1ddc`);
+const _getBrightnessBinary = async () => path.join(process['resourcesPath'], `brightness`);
+async function _isM1Mac(){
+  try{
+    const preferences = await PreferenceUtils.get();
+    return preferences.mode === 'm1_mac';
+  } catch(err){
+    return false;
+  }
+}
+
 async function _findWhichExternalDisplayById(targetMonitorId: string) {
   const monitorIds = (await _getMonitorList()).filter(
     (monitorId) => monitorId !== LAPTOP_DISPLAY_MONITOR_ID,
@@ -67,7 +81,7 @@ async function _getMonitorList(): Promise<string[]> {
     }
 
     try {
-      const shellToRun = `${await _getDdcctlBinary()}`;
+      const shellToRun = `${await _getDdcctlBinaryForIntel()}`;
       exec(shellToRun, (error, stdout, stderr) => {
         const monitors = (stdout || '')
           .split('\n')
@@ -85,11 +99,25 @@ async function _getMonitorList(): Promise<string[]> {
   });
 }
 
+/**
+ * @param  {string} targetMonitorId
+ * @param  {number} newBrightness  brightness level from 0 to 100%
+ * @return {Promise<string>} get a script to execute to update brightness
+ */
 async function _getUpdateBrightnessShellScript(
   targetMonitorId: string,
   newBrightness: number,
 ): Promise<string> {
   return new Promise(async (resolve, reject) => {
+    if(await _isM1Mac() === true){
+      // for external display
+      const whichDisplay = await _findWhichExternalDisplayById(targetMonitorId);
+      if (whichDisplay === undefined) {
+        return reject(`Display not found`);
+      }
+      return resolve(`${await _getDdcctlBinaryForM1()} display ${whichDisplay} set luminance ${newBrightness}`);
+    }
+
     try {
       if (targetMonitorId === LAPTOP_DISPLAY_MONITOR_ID) {
         // for built in display
@@ -102,17 +130,13 @@ async function _getUpdateBrightnessShellScript(
           return reject(`Display not found`);
         }
 
-        return resolve(`${await _getDdcctlBinary()} -d ${whichDisplay} -b ${newBrightness}`);
+        return resolve(`${await _getDdcctlBinaryForIntel()} -d ${whichDisplay} -b ${newBrightness}`);
       }
     } catch (err) {
       reject(err);
     }
   });
 }
-
-const _getDdcctlBinary = async () => path.join(process['resourcesPath'], `ddcctl`);
-
-const _getBrightnessBinary = async () => path.join(process['resourcesPath'], `brightness`);
 
 const DisplayAdapter: IDisplayAdapter = {
   getMonitorList: _getMonitorList,
@@ -150,7 +174,7 @@ const DisplayAdapter: IDisplayAdapter = {
             return reject(`Display not found`);
           }
 
-          const shellToRun = `${await _getDdcctlBinary()} -d ${whichDisplay} -b \\?`;
+          const shellToRun = `${await _getDdcctlBinaryForIntel()} -d ${whichDisplay} -b \\?`;
           console.debug('getMonitorBrightness', targetMonitorId, shellToRun);
 
           const stdout = await executeBash(shellToRun);
