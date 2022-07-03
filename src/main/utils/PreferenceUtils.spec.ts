@@ -11,6 +11,9 @@ describe('PreferenceUtils', () => {
 
   test('get', async () => {
     const actual = await PreferenceUtils.get();
+
+    delete actual.mode;
+
     expect(actual).toMatchInlineSnapshot(`
       Object {
         "brightnessDelta": 25,
@@ -87,7 +90,6 @@ describe('PreferenceUtils', () => {
           },
         ],
         "logging": false,
-        "mode": "intel_mac",
         "showIndividualDisplays": false,
         "volumePresets": Array [
           Object {
@@ -211,6 +213,9 @@ describe('PreferenceUtils', () => {
       ...oldPrefs,
       brightnessDelta: 30,
     });
+
+    delete actual.mode;
+
     expect(actual).toMatchInlineSnapshot(`
       Object {
         "brightnessDelta": 30,
@@ -287,7 +292,6 @@ describe('PreferenceUtils', () => {
           },
         ],
         "logging": false,
-        "mode": "intel_mac",
         "showIndividualDisplays": false,
         "volumePresets": Array [
           Object {
