@@ -23,9 +23,20 @@ function getCache() {
   return _cache;
 }
 
+
 const _getDdcctlBinaryForIntel = async () => path.join(process['resourcesPath'], `ddcctl`);
 const _getDdcctlBinaryForM1 = async () => path.join(process['resourcesPath'], `m1ddc`);
 const _getBrightnessBinary = async () => path.join(process['resourcesPath'], `brightness`);
+
+
+async function _isM1Mac(){
+  try{
+    const preferences = await PreferenceUtils.get();
+    return preferences.mode === 'm1_mac';
+  } catch(err){
+    return false;
+  }
+}
 
 async function _findWhichExternalDisplayById(targetMonitorId: string) {
   const monitorIds = (await _getMonitorList()).filter(
@@ -96,6 +107,15 @@ async function _getUpdateBrightnessShellScript(
   newBrightness: number,
 ): Promise<string> {
   return new Promise(async (resolve, reject) => {
+    if(await _isM1Mac() === true){
+      // for external display
+      const whichDisplay = await _findWhichExternalDisplayById(targetMonitorId);
+      if (whichDisplay === undefined) {
+        return reject(`Display not found`);
+      }
+      return resolve(`${await _getDdcctlBinaryForM1()} display ${whichDisplay} set luminance ${Math.floor(newBrightness * 100)}`);
+    }
+
     try {
       if (targetMonitorId === LAPTOP_DISPLAY_MONITOR_ID) {
         // for built in display

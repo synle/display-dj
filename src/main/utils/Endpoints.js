@@ -100,7 +100,7 @@ export function setUpDataEndpoints() {
         delete monitor.brightness;
       }
 
-      console.trace(`updateMonitor`, monitor);
+      console.trace(`Update Monitor`, monitor);
 
       res.status(200).json(await DisplayUtils.updateMonitor(monitor));
     } catch (err) {
