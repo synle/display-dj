@@ -1,28 +1,14 @@
 import loudness from 'loudness';
 
-const IntelMacSoundUtils = {
+const SoundUtils =  {
   getVolume: async () => {
     return {
-      value: await loudness.getVolume(),
-      muted: await loudness.getMuted(),
+      value: 50,
+      muted: true,
     };
   },
-  setVolume: async (value: number) => loudness.setVolume(value),
-  setMuted: async (muted: boolean) => loudness.setMuted(muted),
+  setVolume: async (value: number) => executeBash(`osascript -e "set Volume ${Math.floor(value / 10)}"`),
+  setMuted: async (muted: boolean) => executeBash(`osascript -e "set Volume 0"`),
 };
 
-const M1MacSoundUtils = {
-  getVolume: async () => {
-    return {
-      value: await loudness.getVolume(),
-      muted: await loudness.getMuted(),
-    };
-  },
-  setVolume: async (value: number) => loudness.setVolume(value),
-  setMuted: async (muted: boolean) => loudness.setMuted(muted),
-};
-
-// export default M1MacSoundUtils;
-export default IntelMacSoundUtils;
-
-// osascript -e "set Volume 0"
+export default SoundUtils;
