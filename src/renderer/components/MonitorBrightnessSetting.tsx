@@ -17,6 +17,7 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   const { monitor } = props;
   const { mutateAsync: updateMonitor } = useUpdateMonitor();
   const [disabled, setDisabled] = useState(false);
+  const [brightness, setBrightness] = useState(monitor.brightness);
   const isLaptop = monitor.type === 'laptop_monitor';
 
   const onChange = async (brightness: number) => {
@@ -33,12 +34,14 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
   };
 
   const onMinAndMaxBrightness = () => {
-    if (monitor.brightness === 0) {
+    if (brightness === 0) {
       // maximize brightness
       onChange(100);
+      setBrightness(100);
     } else {
       // minimize brightness
       onChange(0);
+      setBrightness(0);
     }
   };
 
@@ -59,7 +62,7 @@ export function MonitorBrightnessSetting(props: MonitorBrightnessSettingProps) {
           <Slider
             className='field__value'
             placeholder='brightness'
-            value={monitor.brightness}
+            value={brightness}
             onInput={onChange}
             disabled={disabled}
           />
