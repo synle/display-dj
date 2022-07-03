@@ -47,7 +47,7 @@ The challenge of work from home in the last 2 years with 2 young toddlers is tha
 The following version of OS has been tested and working.
 
 - Windows (tested on Windows 11)
-- Mac OSX (tested on Monterey)
+- Mac OSX (tested on Monterey on Intel Macbooks) - Does not work on M1 Macs.
 
 ## Features / Configs / Preferences
 
@@ -227,6 +227,10 @@ If you are interested in contributing, you can refer to this doc to get started
 ## Known issues
 
 Due to the complexity and quirks of `ddc/ci` protocol, unfortunately it's nearly impossible to support every single monitor out there. So if you run into issue where this app doesn't work, we will not guarantee support.
+
+### Not supporting M1 macs
+
+This app does not work on m1 macs due to the ARM architecture changes.
 
 ## Suggestion?
 
