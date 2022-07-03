@@ -103,7 +103,13 @@ export function useUpdateAppPosition() {
 // refetch
 export function useRefetchConfigs(){
   const queryClient = useQueryClient();
+  const { data: preference } = usePreferences();
+
   return async () => {
+    if(preference?.mode === 'm1_mac'){
+      return;
+    }
+
     console.log('>> Refetch Configs')
     _config = await ApiUtils.getConfigs();
     queryClient.invalidateQueries(QUERY_KEY_CONFIGS)
