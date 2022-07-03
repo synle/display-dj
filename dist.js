@@ -95,6 +95,11 @@ async function doDistWork() {
         );
 
         fs.copyFileSync(
+          path.join(__dirname, `src/binaries/darwin_m1ddc`),
+          path.join(__dirname, `dist/display-dj-darwin-x64/display-dj.app/Contents/Resources`, `m1ddc`)
+        );
+
+        fs.copyFileSync(
           path.join(__dirname, `src/binaries/darwin_brightness`),
           path.join(__dirname, `dist/display-dj-darwin-x64/display-dj.app/Contents/Resources`, `brightness`)
         );
