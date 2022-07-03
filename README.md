@@ -47,7 +47,7 @@ The challenge of work from home in the last 2 years with 2 young toddlers is tha
 The following version of OS has been tested and working.
 
 - Windows (tested on Windows 11)
-- Mac OSX (tested on Monterey on Intel Macbooks) - Does not work on M1 Macs.
+- Mac OSX (tested on Monterey on Intel Macs) (Limited support on m1 Macs)
 
 ## Features / Configs / Preferences
 
@@ -228,9 +228,20 @@ If you are interested in contributing, you can refer to this doc to get started
 
 Due to the complexity and quirks of `ddc/ci` protocol, unfortunately it's nearly impossible to support every single monitor out there. So if you run into issue where this app doesn't work, we will not guarantee support.
 
-### Not supporting M1 macs
+### Limited support for M1 macs
 
-This app does not work on m1 macs due to the ARM architecture changes.
+This app has limited support for M1 Mac. Volume settings and individual display adjustment along with builtin display are not supported.
+
+![image](https://user-images.githubusercontent.com/3792401/177044893-8d3fd19e-4fbf-4557-9048-c4a0d6fd8b2f.png)
+
+This requires preferences JSON to be updated (`~/Library/Application Support/display-dj/preferences.json`)
+```js
+{
+  // ...
+  "mode": "m1_mac",
+  // ...
+}
+```
 
 ## Suggestion?
 
