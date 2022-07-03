@@ -448,6 +448,16 @@ function _sendRefetchEventToFrontEnd(type: 'all' | 'preferences' | 'configs' = '
     mainWindow.webContents.send(eventName, {type});
   }
 }
+
+function _shouldTraceCall( method: string, url: string){
+  if(method.toLowerCase() === 'get'){
+    if(url.includes('/api/configs') || url.includes('/api/preferences')){
+      return false;
+    }
+  }
+  return true;
+}
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -506,14 +516,17 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
       if (status >= 300 || status < 200) {
         ok = false;
       }
-      console.trace(
-        'Response',
-        status,
-        method,
-        url,
-        body,
-        '\n' + JSON.stringify(responseData, null, 2),
-      );
+
+      if(_shouldTraceCall(method, url)){
+        console.trace(
+          'Response',
+          status,
+          method,
+          url,
+          body,
+          '\n' + JSON.stringify(responseData, null, 2),
+        );
+      }
       event.reply(requestId, {
         ok,
         status,

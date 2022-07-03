@@ -12,7 +12,7 @@ export function MonitorBrightnessSettingForm(props: MonitorBrightnessSettingForm
       {monitors
         .filter((monitor) => !monitor.disabled)
         .map((monitor, idx) => (
-          <MonitorBrightnessSetting key={monitor.id} monitor={monitor} idx={idx + 1} />
+          <MonitorBrightnessSetting key={`${monitor.id}-${idx}`} monitor={monitor} idx={idx + 1} />
         ))}
     </>
   );

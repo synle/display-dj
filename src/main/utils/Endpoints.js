@@ -100,12 +100,12 @@ export function setUpDataEndpoints() {
         delete monitor.brightness;
       }
 
-      console.trace(`updateMonitor`, monitor);
+      console.trace(`Update Monitor`, monitor);
 
       res.status(200).json(await DisplayUtils.updateMonitor(monitor));
     } catch (err) {
       res.status(500).json({
-        error: `Failed to update monitor config: ` + JSON.stringify(err),
+        error: `Failed to Update Monitor: ` + JSON.stringify(err),
         stack: err.stack,
       });
     }
@@ -116,12 +116,12 @@ export function setUpDataEndpoints() {
     try {
       const newBrightness = parseInt(req.body.brightness) || 0;
 
-      console.trace(`batchUpdateBrightness`, newBrightness);
+      console.trace(`Batch Update Brightness`, newBrightness);
 
       res.status(200).json(await DisplayUtils.batchUpdateBrightness(newBrightness));
     } catch (err) {
       res.status(500).json({
-        error: `Failed to update monitor config: ` + JSON.stringify(err),
+        error: `Failed to Batch Update Brightness: ` + JSON.stringify(err),
         stack: err.stack,
       });
     }
@@ -147,7 +147,7 @@ export function setUpDataEndpoints() {
         }
       }
 
-      console.trace(`Update darkMode`, isDarkModeOn, preferredBrightness);
+      console.trace(`Update Dark Mode`, isDarkModeOn, preferredBrightness);
 
       const promisesUpdates = [
         DisplayUtils.updateDarkMode(isDarkModeOn),
@@ -167,7 +167,7 @@ export function setUpDataEndpoints() {
       let muted = req.body.muted;
       let volume = parseInt(req.body.value);
 
-      console.trace(`Update volume`, volume, muted);
+      console.trace(`Update Volume`, volume, muted);
 
       if(muted !== undefined && !isNaN(volume)){
         const promises = [];

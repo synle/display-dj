@@ -87,6 +87,7 @@ describe('PreferenceUtils', () => {
           },
         ],
         "logging": false,
+        "mode": "intel_mac",
         "showIndividualDisplays": false,
         "volumePresets": Array [
           Object {
@@ -286,6 +287,7 @@ describe('PreferenceUtils', () => {
           },
         ],
         "logging": false,
+        "mode": "intel_mac",
         "showIndividualDisplays": false,
         "volumePresets": Array [
           Object {
