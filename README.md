@@ -37,7 +37,6 @@ The challenge of work from home in the last 2 years with 2 young toddlers is tha
 
 ![image](https://user-images.githubusercontent.com/3792401/168950471-15589781-ee7f-442f-afa4-58c53e136abb.png)
 
-
 ### Mac OSX Monterey
 
 ![demo-mac](https://user-images.githubusercontent.com/3792401/159141171-c6c8a6a5-4b7b-4fc6-af28-c082fc1bd723.gif)
@@ -60,7 +59,6 @@ By default, we will give each display a name. You can rename the display to some
 ![image](https://user-images.githubusercontent.com/3792401/168950578-91534cd6-27b5-4dda-a316-5770a7a33886.png)
 
 ![image](https://user-images.githubusercontent.com/3792401/168950610-576cc751-14fa-4a6d-82bf-57874cafec04.png)
-
 
 ### Toggling Dark Mode and Light Mode
 
@@ -235,6 +233,7 @@ This app has limited support for M1 Mac. Volume settings and individual display 
 ![image](https://user-images.githubusercontent.com/3792401/177044893-8d3fd19e-4fbf-4557-9048-c4a0d6fd8b2f.png)
 
 This requires preferences JSON to be updated (`~/Library/Application Support/display-dj/preferences.json`)
+
 ```js
 {
   // ...

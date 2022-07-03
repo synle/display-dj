@@ -50,15 +50,15 @@ export function setUpDataEndpoints() {
   addDataEndpoint('get', '/api/configs', async (req, res) => {
     try {
       let volume = {
-        isDisabled: true
+        isDisabled: true,
       };
 
-      try{
+      try {
         volume = {
           ...(await SoundUtils.getVolume()),
           isDisabled: false,
-        }
-      } catch(err1){}
+        };
+      } catch (err1) {}
 
       res.status(200).json({
         darkMode: (await DisplayUtils.getDarkMode()) === true,
@@ -133,14 +133,14 @@ export function setUpDataEndpoints() {
 
       let preferredBrightness;
       const preferences = await PreferenceUtils.get();
-      for(const brightnessPreset of preferences.brightnessPresets){
-        if(isDarkModeOn){
-          if(brightnessPreset.syncedWithMode === 'dark'){
+      for (const brightnessPreset of preferences.brightnessPresets) {
+        if (isDarkModeOn) {
+          if (brightnessPreset.syncedWithMode === 'dark') {
             preferredBrightness = brightnessPreset.level;
             break;
           }
         } else {
-          if(brightnessPreset.syncedWithMode === 'light'){
+          if (brightnessPreset.syncedWithMode === 'light') {
             preferredBrightness = brightnessPreset.level;
             break;
           }
@@ -151,7 +151,9 @@ export function setUpDataEndpoints() {
 
       const promisesUpdates = [
         DisplayUtils.updateDarkMode(isDarkModeOn),
-        preferredBrightness >= 0 && preferredBrightness <= 100 ? DisplayUtils.batchUpdateBrightness(preferredBrightness) : Promise.resolve(),
+        preferredBrightness >= 0 && preferredBrightness <= 100
+          ? DisplayUtils.batchUpdateBrightness(preferredBrightness)
+          : Promise.resolve(),
       ];
 
       res.status(200).json(await Promise.all(promisesUpdates));
@@ -169,7 +171,7 @@ export function setUpDataEndpoints() {
 
       console.trace(`Update Volume`, volume, muted);
 
-      if(muted !== undefined && !isNaN(volume)){
+      if (muted !== undefined && !isNaN(volume)) {
         const promises = [];
         promises.push(SoundUtils.setMuted(muted === true));
         promises.push(SoundUtils.setVolume(volume));

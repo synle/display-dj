@@ -46,9 +46,9 @@ String.prototype.red = function () {
   return `\x1b[31m${this}\x1b[0m`;
 };
 
-async function _initializeLogUtils(){
+async function _initializeLogUtils() {
   const preferences = await PreferenceUtils.get();
-  if(preferences.logging === true){
+  if (preferences.logging === true) {
     // enable logging
     const origConsole = console.log;
     console.log = (...data) => {
@@ -79,11 +79,11 @@ async function _initializeLogUtils(){
     };
   } else {
     // disable logging
-    console.log = () => {}
-    console.info = () => {}
-    console.error = () => {}
-    console.debug = () => {}
-    console.trace = () => {}
+    console.log = () => {};
+    console.info = () => {};
+    console.error = () => {};
+    console.debug = () => {};
+    console.trace = () => {};
   }
 }
 

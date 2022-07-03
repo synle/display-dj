@@ -89,7 +89,7 @@ export type IDisplayAdapter = {
 };
 
 export type Preference = {
-  mode?: 'win32' |'m1_mac' | 'intel_mac',
+  mode?: 'win32' | 'm1_mac' | 'intel_mac';
   showIndividualDisplays: boolean;
   logging: boolean;
   brightnessDelta: number;

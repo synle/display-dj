@@ -22,17 +22,17 @@ function _handleSquirrelEventForWindows() {
   const updateDotExe = path.resolve(path.join(rootAtomFolder, 'Update.exe'));
   const exeName = path.basename(process.execPath);
 
-  const spawn = function(command, args) {
+  const spawn = function (command, args) {
     let spawnedProcess, error;
 
     try {
-      spawnedProcess = ChildProcess.spawn(command, args, {detached: true});
+      spawnedProcess = ChildProcess.spawn(command, args, { detached: true });
     } catch (error) {}
 
     return spawnedProcess;
   };
 
-  const spawnUpdate = function(args) {
+  const spawnUpdate = function (args) {
     return spawn(updateDotExe, args);
   };
 
@@ -53,7 +53,7 @@ function _handleSquirrelEventForWindows() {
       app.quit();
       return true;
   }
-};
+}
 
 if (_handleSquirrelEventForWindows()) {
   process.exit();
