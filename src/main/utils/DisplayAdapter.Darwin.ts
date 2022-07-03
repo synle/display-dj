@@ -25,12 +25,13 @@ function getCache() {
 const _getDdcctlBinaryForIntel = async () => path.join(process['resourcesPath'], `ddcctl`);
 
 const _getDdcctlBinaryForM1 = async () => path.join(process['resourcesPath'], `m1ddc`);
+
 const _getBrightnessBinary = async () => path.join(process['resourcesPath'], `brightness`);
-async function _isM1Mac(){
-  try{
+async function _isM1Mac() {
+  try {
     const preferences = await PreferenceUtils.get();
     return preferences.mode === 'm1_mac';
-  } catch(err){
+  } catch (err) {
     return false;
   }
 }
@@ -109,13 +110,15 @@ async function _getUpdateBrightnessShellScript(
   newBrightness: number,
 ): Promise<string> {
   return new Promise(async (resolve, reject) => {
-    if(await _isM1Mac() === true){
+    if ((await _isM1Mac()) === true) {
       // for external display
       const whichDisplay = await _findWhichExternalDisplayById(targetMonitorId);
       if (whichDisplay === undefined) {
         return reject(`Display not found`);
       }
-      return resolve(`${await _getDdcctlBinaryForM1()} display ${whichDisplay} set luminance ${newBrightness}`);
+      return resolve(
+        `${await _getDdcctlBinaryForM1()} display ${whichDisplay} set luminance ${newBrightness}`,
+      );
     }
 
     try {
@@ -130,7 +133,9 @@ async function _getUpdateBrightnessShellScript(
           return reject(`Display not found`);
         }
 
-        return resolve(`${await _getDdcctlBinaryForIntel()} -d ${whichDisplay} -b ${newBrightness}`);
+        return resolve(
+          `${await _getDdcctlBinaryForIntel()} -d ${whichDisplay} -b ${newBrightness}`,
+        );
       }
     } catch (err) {
       reject(err);
