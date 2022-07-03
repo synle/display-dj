@@ -97,7 +97,7 @@ export function Home(props: HomeProps) {
   }
 
   const isM1Mac = preference.mode === 'm1_mac';
-  if(isM1Mac){
+  if (isM1Mac) {
     return (
       <>
         <Header configs={configs} preference={preference} />
@@ -106,8 +106,6 @@ export function Home(props: HomeProps) {
       </>
     );
   }
-
-
   return (
     <>
       <Header configs={configs} preference={preference} />

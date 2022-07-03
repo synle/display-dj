@@ -1,9 +1,9 @@
 import { exec } from 'child_process';
 import darkMode from 'dark-mode';
 import path from 'path';
+import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 import { executeBash } from 'src/main/utils/ShellUtils';
 import { IDisplayAdapter, Monitor } from 'src/types.d';
-import PreferenceUtils from 'src/main/utils/PreferenceUtils';
 // Source: http://chopmo.dk/2017/01/12/control-monitor-brightness-from-osx.html
 // Source: https://github.com/kfix/ddcctl
 // Why 2 separate packages for brightness : refer to this https://github.com/nriley/brightness/issues/11
@@ -22,13 +22,10 @@ function getCache() {
 
   return _cache;
 }
-
-
 const _getDdcctlBinaryForIntel = async () => path.join(process['resourcesPath'], `ddcctl`);
+
 const _getDdcctlBinaryForM1 = async () => path.join(process['resourcesPath'], `m1ddc`);
 const _getBrightnessBinary = async () => path.join(process['resourcesPath'], `brightness`);
-
-
 async function _isM1Mac(){
   try{
     const preferences = await PreferenceUtils.get();
