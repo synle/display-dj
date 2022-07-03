@@ -25,6 +25,7 @@ function getCache() {
 const _getDdcctlBinaryForIntel = async () => path.join(process['resourcesPath'], `ddcctl`);
 
 const _getDdcctlBinaryForM1 = async () => path.join(process['resourcesPath'], `m1ddc`);
+
 const _getBrightnessBinary = async () => path.join(process['resourcesPath'], `brightness`);
 async function _isM1Mac(){
   try{
