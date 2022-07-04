@@ -1,10 +1,11 @@
-import { executeBash } from 'src/main/utils/ShellUtils';
-
+import { executeOsaScript } from 'src/main/utils/ShellUtils';
+// /usr/bin/osascript
 const SoundUtils =  {
   getVolume: async () => {
     let stdout= '';
+    let command = `get volume settings`
     try{
-      stdout = await executeBash(`osascript -e 'get volume settings'`);
+      stdout = await executeOsaScript(command);
       stdout = stdout.substr(stdout.indexOf(`output volume:`) + `output volume:`.length)
 
       const volume = parseInt(stdout.substr(0, stdout.indexOf(`,`)));
@@ -21,7 +22,7 @@ const SoundUtils =  {
           muted: false
         }
     }catch(err){
-      console.error('SoundUtils.getVolume', stdout, err);
+      console.error('SoundUtils.getVolume',command, stdout, err);
     }
 
     return {
@@ -32,23 +33,23 @@ const SoundUtils =  {
   setVolume: async (value: number) => {
     let command = '';
     try {
-     command = `osascript -e "set Volume ${Math.floor(value / 10)}"`;
+     command = `set Volume ${Math.floor(value / 10)}`;
       console.debug('SoundUtils.setVolume', command);
-      await executeBash(command)
+      await executeOsaScript(command)
     } catch(err){
-      console.error('SoundUtils.setMuted',value,stdout, err);
+      console.error('SoundUtils.setMuted',value,command, err);
     }
   },
   setMuted: async (muted: boolean)  => {
     let command = '';
     try {
       if(muted){
-        command = `osascript -e "set Volume 0"`
+        command = `set Volume 0`
       }
       console.debug('SoundUtils.setMuted', command);
-      await executeBash(command)
+      await executeOsaScript(command)
     }catch(err){
-      console.error('SoundUtils.setMuted',muted, stdout, err);
+      console.error('SoundUtils.setMuted',muted, command, err);
     }
   },
 };
