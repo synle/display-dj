@@ -69,38 +69,22 @@ export function useConfigs() {
 
 export function useUpdateMonitor() {
   const refetchConfigs = useRefetchConfigs();
-  return useMutation(ApiUtils.updateMonitor, {
-    onSuccess: async () => {
-      await refetchConfigs();
-    },
-  });
+  return useMutation(ApiUtils.updateMonitor);
 }
 
 export function useBatchUpdateMonitors() {
   const refetchConfigs = useRefetchConfigs();
-  return useMutation(ApiUtils.batchUpdateMonitors, {
-    onSuccess: async () => {
-      await refetchConfigs();
-    },
-  });
+  return useMutation(ApiUtils.batchUpdateMonitors);
 }
 
 export function useToggleDarkMode() {
   const refetchConfigs = useRefetchConfigs();
-  return useMutation(ApiUtils.updateDarkMode, {
-    onSuccess: async () => {
-      await refetchConfigs();
-    },
-  });
+  return useMutation(ApiUtils.updateDarkMode);
 }
 
 export function useUpdateVolume() {
   const refetchConfigs = useRefetchConfigs();
-  return useMutation<void, void, VolumeInput>(ApiUtils.updateVolume, {
-    onSuccess: async () => {
-      await refetchConfigs();
-    },
-  });
+  return useMutation<void, void, VolumeInput>(ApiUtils.updateVolume);
 }
 
 // misc
