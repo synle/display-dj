@@ -27,7 +27,6 @@ switch (process.platform) {
 
     packages = `
       dark-mode
-      loudness
       electron-installer-dmg
     `;
     files.push([`src/main/utils/DisplayAdapter.Darwin.ts`, DEST_IMPL_DISPLAY_UTILS]);
