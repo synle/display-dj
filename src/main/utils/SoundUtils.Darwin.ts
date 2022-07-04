@@ -1,7 +1,9 @@
+import { executeBash } from 'src/main/utils/ShellUtils';
+
 const SoundUtils =  {
   getVolume: async () => {
     try{
-      const stdout = await executeBash(`osascript -e 'get volume settings'`);
+      let stdout = await executeBash(`osascript -e 'get volume settings'`);
       stdout = stdout.substr(stdout.indexOf(`output volume:`) + `output volume:`.length)
 
       const volume = parseInt(stdout.substr(0, stdout.indexOf(`,`)));
