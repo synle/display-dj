@@ -1,14 +1,21 @@
-import { executeOsaScript } from 'src/main/utils/ShellUtils';
-// /usr/bin/osascript
+// @ts-nocheck
+import osascript from 'node-osascript';
+
+function executeOsaScript(command: string){
+  return new Promise((resolve, reject ) => {
+    osascript.execute(command, function(err: any, result: any){
+      if (err) return reject(err)
+      resolve(result)
+    });
+  })
+}
+
 const SoundUtils =  {
   getVolume: async () => {
-    let stdout= '';
     let command = `get volume settings`
-    try{
-      stdout = await executeOsaScript(command);
-      stdout = stdout.substr(stdout.indexOf(`output volume:`) + `output volume:`.length)
 
-      const volume = parseInt(stdout.substr(0, stdout.indexOf(`,`)));
+    try{
+      const volume = await executeOsaScript(command).then(resp => resp['input volume']);
 
       if(volume === 0){
         return {
@@ -18,11 +25,11 @@ const SoundUtils =  {
       }
 
       return {
-          value: volume,
-          muted: false
-        }
+        value: volume,
+        muted: false
+      }
     }catch(err){
-      console.error('SoundUtils.getVolume',command, stdout, err);
+      console.error('SoundUtils.getVolume', command, err);
     }
 
     return {
@@ -33,7 +40,7 @@ const SoundUtils =  {
   setVolume: async (value: number) => {
     let command = '';
     try {
-     command = `set Volume ${Math.floor(value / 10)}`;
+      command = `set volume ${Math.floor(value / 10)}`;
       console.debug('SoundUtils.setVolume', command);
       await executeOsaScript(command)
     } catch(err){
@@ -44,12 +51,12 @@ const SoundUtils =  {
     let command = '';
     try {
       if(muted){
-        command = `set Volume 0`
+        command = `set volume 0`
       }
       console.debug('SoundUtils.setMuted', command);
       await executeOsaScript(command)
     }catch(err){
-      console.error('SoundUtils.setMuted',muted, command, err);
+      console.error('SoundUtils.setMuted', muted, command, err);
     }
   },
 };

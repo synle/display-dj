@@ -84,6 +84,7 @@
     "electron-packager": "^15.5.1",
     "eslint": "^8.16.0",
     "jest": "^27.5.1",
+    "node-osascript": "^2.1.0",
     "prettier": "^2.6.2",
     "rimraf": "^3.0.2",
     "sass": "^1.52.1",

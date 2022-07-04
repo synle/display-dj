@@ -40,7 +40,7 @@ export function executeBash(shellToRun: string, delay = 25): Promise<string> {
 export function executeOsaScript(shellToRun: string, delay = 25): Promise<string> {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
-      const child = spawn('/usr/bin/osascript', [shellToRun]);
+      const child = spawn('/usr/bin/osascript', ['-e', shellToRun]);
 
       let data = '';
       child.stdout.on('data', function (msg) {
@@ -50,7 +50,7 @@ export function executeOsaScript(shellToRun: string, delay = 25): Promise<string
       child.on('exit', function (exitCode: string) {
         if (parseInt(exitCode) !== 0) {
           //Handle non-zero exit
-          reject(exitCode);
+          reject(exitCode + `"'/usr/bin/osascript' -e ${shellToRun}"`);
         } else {
           resolve(data);
         }
