@@ -101,7 +101,11 @@ export function Home(props: HomeProps) {
     return (
       <>
         <Header configs={configs} preference={preference} />
-        <AllMonitorBrightnessSetting monitors={configs.monitors} />
+        {preference.showIndividualDisplays ? (
+          <MonitorBrightnessSettingForm monitors={configs.monitors} />
+        ) : (
+          <AllMonitorBrightnessSetting monitors={configs.monitors} />
+        )}
         <DarkModeSettingForm darkMode={configs.darkMode} />
       </>
     );
