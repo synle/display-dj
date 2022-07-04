@@ -58,7 +58,9 @@ export function setUpDataEndpoints() {
           ...(await SoundUtils.getVolume()),
           isDisabled: false,
         };
-      } catch (err1) {}
+      } catch (err1) {
+        console.error('Get sound failed in Endpoints', err1);
+      }
 
       res.status(200).json({
         darkMode: (await DisplayUtils.getDarkMode()) === true,

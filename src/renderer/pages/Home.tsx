@@ -102,6 +102,7 @@ export function Home(props: HomeProps) {
       <>
         <Header configs={configs} preference={preference} />
         <AllMonitorBrightnessSetting monitors={configs.monitors} />
+        {configs.volume.isDisabled === false && <VolumeSetting volume={configs.volume} />}
         <DarkModeSettingForm darkMode={configs.darkMode} />
       </>
     );
