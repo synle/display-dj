@@ -35,8 +35,6 @@ export function executeBash(shellToRun: string, delay = 25): Promise<string> {
     }, delay);
   });
 }
-
-
 export function executeOsaScript(shellToRun: string, delay = 25): Promise<string> {
   return new Promise((resolve, reject) => {
     setTimeout(() => {

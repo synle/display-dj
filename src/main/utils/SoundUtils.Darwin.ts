@@ -1,34 +1,34 @@
 // @ts-nocheck
 import osascript from 'node-osascript';
 
-function executeOsaScript(command: string){
-  return new Promise((resolve, reject ) => {
-    osascript.execute(command, function(err: any, result: any){
-      if (err) return reject(err)
-      resolve(result)
+function executeOsaScript(command: string) {
+  return new Promise((resolve, reject) => {
+    osascript.execute(command, function (err: any, result: any) {
+      if (err) return reject(err);
+      resolve(result);
     });
-  })
+  });
 }
 
-const SoundUtils =  {
+const SoundUtils = {
   getVolume: async () => {
-    let command = `get volume settings`
+    let command = `get volume settings`;
 
-    try{
-      const volume = await executeOsaScript(command).then(resp => resp['input volume']);
+    try {
+      const volume = await executeOsaScript(command).then((resp) => resp['input volume']);
 
-      if(volume === 0){
+      if (volume === 0) {
         return {
           value: 0,
-          muted: true
-        }
+          muted: true,
+        };
       }
 
       return {
         value: volume,
-        muted: false
-      }
-    }catch(err){
+        muted: false,
+      };
+    } catch (err) {
       console.error('SoundUtils.getVolume', command, err);
     }
 
@@ -42,20 +42,20 @@ const SoundUtils =  {
     try {
       command = `set volume ${Math.floor(value / 10)}`;
       console.debug('SoundUtils.setVolume', command);
-      await executeOsaScript(command)
-    } catch(err){
-      console.error('SoundUtils.setMuted',value,command, err);
+      await executeOsaScript(command);
+    } catch (err) {
+      console.error('SoundUtils.setMuted', value, command, err);
     }
   },
-  setMuted: async (muted: boolean)  => {
+  setMuted: async (muted: boolean) => {
     let command = '';
     try {
-      if(muted){
-        command = `set volume 0`
+      if (muted) {
+        command = `set volume 0`;
       }
       console.debug('SoundUtils.setMuted', command);
-      await executeOsaScript(command)
-    }catch(err){
+      await executeOsaScript(command);
+    } catch (err) {
       console.error('SoundUtils.setMuted', muted, command, err);
     }
   },
