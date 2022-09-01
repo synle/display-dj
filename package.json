@@ -68,7 +68,7 @@
     "react-router-dom": "^6.2.2"
   },
   "devDependencies": {
-    "@babel/core": "^7.17.10",
+    "@babel/core": "^7.18.13",
     "@babel/preset-env": "^7.17.10",
     "@babel/preset-react": "^7.16.7",
     "@svgr/webpack": "^6.2.1",
