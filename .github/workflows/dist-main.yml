@@ -3,122 +3,100 @@ name: dist-main
 on:
   workflow_dispatch:
 
+env:
+  NODE_VERSION: 16
+
 jobs:
-  create_release:
+  patch_version:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    outputs:
-      package_version: ${{ steps.package-version.outputs.current-version }}
-      release_upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       - uses: actions/checkout@v6
-      - id: package-version
-        uses: martinbeentjes/npm-get-version-action@master
+      - uses: actions/setup-node@v6
         with:
-          path: '.'
-      - run: gh release delete ${{ steps.package-version.outputs.current-version }} --cleanup-tag -y
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/create-release@v1
-        id: create_release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm version --no-git-tag-version patch
+      - name: Upload patched package.json
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ steps.package-version.outputs.current-version }}
-          release_name: ${{ steps.package-version.outputs.current-version }}
-          body: |
-            Version: ${{ steps.package-version.outputs.current-version }}
-          draft: false
-          prerelease: false
+          name: patched-package-json
+          path: package.json
 
   build_windows:
-    needs: [create_release]
+    needs: [patch_version]
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Download patched package.json
+        uses: actions/download-artifact@v4
+        with:
+          name: patched-package-json
       - run: npm install --no-optional
       - run: npm run build-prod
       - run: npm run test-ci
       - run: npm run dist-win32
-
-      - uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifact .exe
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ needs.create_release.outputs.release_upload_url }}
-          asset_path: ./dist/display-dj-setup.exe
-          asset_name: display-dj-setup.exe
-          asset_content_type: application/octet-stream
+          name: display-dj-setup.exe
+          path: ./dist/display-dj-setup.exe
 
   build_macos_intel:
-    needs: [create_release]
+    needs: [patch_version]
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Download patched package.json
+        uses: actions/download-artifact@v4
+        with:
+          name: patched-package-json
       - run: npm install --no-optional
       - run: npm install electron-installer-dmg
       - run: npm run build-prod
       - run: npm run test-ci
       - run: npm run dist-darwin-x64
-
-      - uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifact .dmg
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ needs.create_release.outputs.release_upload_url }}
-          asset_path: ./dist/display-dj-darwin-x64.dmg
-          asset_name: display-dj-darwin-x64.dmg
-          asset_content_type: application/octet-stream
+          name: display-dj-darwin-x64.dmg
+          path: ./dist/display-dj-darwin-x64.dmg
 
   build_macos_arm64:
-    needs: [create_release]
+    needs: [patch_version]
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Download patched package.json
+        uses: actions/download-artifact@v4
+        with:
+          name: patched-package-json
       - run: npm install --no-optional
       - run: npm install electron-installer-dmg
       - run: npm run build-prod
       - run: npm run test-ci
       - run: npm run dist-darwin-arm64
-
-      - uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifact .dmg
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ needs.create_release.outputs.release_upload_url }}
-          asset_path: ./dist/display-dj-darwin-arm64.dmg
-          asset_name: display-dj-darwin-arm64.dmg
-          asset_content_type: application/octet-stream
+          name: display-dj-darwin-arm64.dmg
+          path: ./dist/display-dj-darwin-arm64.dmg
 
   publish:
-    needs: [create_release, build_windows, build_macos_intel, build_macos_arm64]
-    runs-on: ubuntu-latest
-    timeout-minutes: 4
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.head_ref }}
-      - run: npm version --no-git-tag-version patch
-      - run: |
-          echo "{ \"version\": \"${{ needs.create_release.outputs.package_version }}\" }" > release.json
-      - uses: EndBug/add-and-commit@v8
-        with:
-          message: 'CI / CD - New Release ${{needs.create_release.outputs.package_version}}'
-
-  roll_back:
-    if: failure()
-    needs: [create_release, build_windows, build_macos_intel, build_macos_arm64]
-    runs-on: ubuntu-latest
-    timeout-minutes: 4
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.head_ref }}
-      - run: gh release delete ${{ needs.create_release.outputs.package_version }} --cleanup-tag -y
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    needs: [build_windows, build_macos_intel, build_macos_arm64]
+    uses: synle/gha-workflows/.github/workflows/build-and-commit-sh.yml@main
+    permissions:
+      contents: write
+    with:
+      node-version: 16
