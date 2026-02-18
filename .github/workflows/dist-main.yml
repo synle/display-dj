@@ -59,6 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: npm install --no-optional
+      - run: npm install electron-installer-dmg
       - run: npm run build-prod
       - run: npm run test-ci
       - run: npm run dist-darwin-x64
@@ -79,6 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: npm install --no-optional
+      - run: npm install electron-installer-dmg
       - run: npm run build-prod
       - run: npm run test-ci
       - run: npm run dist-darwin-arm64
