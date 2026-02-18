@@ -11,7 +11,9 @@ function _getPath(fileName: string) {
 
   try {
     fs.mkdirSync(baseDir);
-  } catch (err) {}
+  } catch (err) {
+    // directory already exists
+  }
 
   return path.join(baseDir, fileName);
 }
@@ -36,7 +38,9 @@ const StorageUtils = {
   delete: (file: string) => {
     try {
       fs.unlinkSync(file);
-    } catch (err) {}
+    } catch (err) {
+      // file may not exist
+    }
   },
   /**
    * return value in mb

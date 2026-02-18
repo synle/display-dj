@@ -5,18 +5,16 @@ import { IDisplayAdapter, Monitor } from 'src/types.d';
 const _getDdcciScript = async () => path.join(process['resourcesPath'], `win32_ddcci.js`);
 
 let LAPTOP_DISPLAY_MONITOR_ID = '';
-let EXTERNAL_DISPLAY_MONITOR_IDS = new Set<string>();
+const EXTERNAL_DISPLAY_MONITOR_IDS = new Set<string>();
 
 /**
  * get current laptop brightness. more info here
  * https://docs.microsoft.com/en-us/windows/win32/wmicoreprov/wmimonitorbrightness
  */
-function _getBrightnessBuiltin(): Promise<number> {
-  return new Promise(async (resolve, reject) => {
-    let shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness).CurrentBrightness`;
-    const brightness = parseInt(await _sendMessageToBackgroundScript('customScript', shellToRun));
-    resolve(brightness);
-  });
+async function _getBrightnessBuiltin(): Promise<number> {
+  const shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness).CurrentBrightness`;
+  const brightness = parseInt(await _sendMessageToBackgroundScript('customScript', shellToRun));
+  return brightness;
 }
 
 /**
@@ -24,7 +22,7 @@ function _getBrightnessBuiltin(): Promise<number> {
  * https://docs.microsoft.com/en-us/windows/win32/wmicoreprov/wmisetbrightness-method-in-class-wmimonitorbrightnessmethods
  */
 async function _setBrightnessBuiltin(newBrightness: number): Promise<void> {
-  let shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1,${newBrightness})`;
+  const shellToRun = `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1,${newBrightness})`;
   return _sendMessageToBackgroundScript('customScript', shellToRun);
 }
 
@@ -44,8 +42,9 @@ async function _sendMessageToBackgroundScript(
   command: 'customScript' | 'getBrightness' | 'setBrightness' | 'getMonitorList',
   ...extra: any
 ): Promise<any> {
-  return new Promise(async (resolve, reject) => {
-    const targetChildProcess = ChildProcess.fork(await _getDdcciScript());
+  const scriptPath = await _getDdcciScript();
+  return new Promise((resolve, reject) => {
+    const targetChildProcess = ChildProcess.fork(scriptPath);
 
     targetChildProcess.on('message', function (response: any) {
       console.debug(`ddcci child process returned`, command, response);
@@ -80,7 +79,9 @@ const DisplayAdapter: IDisplayAdapter = {
       }
 
       throw 'invalid brightness number from ddcci';
-    } catch (err) {}
+    } catch (err) {
+      // not an external display
+    }
 
     // try parsing as a built in laptop
     try {
@@ -90,7 +91,9 @@ const DisplayAdapter: IDisplayAdapter = {
         LAPTOP_DISPLAY_MONITOR_ID = targetMonitorId;
         return 'laptop_monitor';
       }
-    } catch (err) {}
+    } catch (err) {
+      // not a built-in laptop display
+    }
 
     return 'unknown_monitor';
   },
@@ -100,7 +103,9 @@ const DisplayAdapter: IDisplayAdapter = {
         return _getBrightnessBuiltin();
       }
       return _getBrightnessDccCi(targetMonitorId);
-    } catch (err) {}
+    } catch (err) {
+      // fallback to default brightness
+    }
     return 50;
   },
   updateMonitorBrightness: async (targetMonitorId: string, newBrightness: number) => {
@@ -126,53 +131,49 @@ const DisplayAdapter: IDisplayAdapter = {
 
     for (const monitor of monitors) {
       promisesChangeBrightness.push(
-        new Promise(async (resolve) => {
+        (async () => {
           try {
             await DisplayAdapter.updateMonitorBrightness(monitor.id, monitor.brightness);
             console.trace('Update monitor brightness', monitor.name, monitor.brightness);
           } catch (err) {
             console.error('Failed to update monitor brightness', monitor.name, monitor.id);
           }
-          resolve(monitor.id);
-        }),
+          return monitor.id;
+        })(),
       );
     }
 
     await Promise.all(promisesChangeBrightness);
   },
   getDarkMode: async () => {
-    let shellToRun =
+    const shellToRun =
       `Get-ItemProperty -Path HKCU:/SOFTWARE/Microsoft/Windows/CurrentVersion/Themes/Personalize -Name AppsUseLightTheme`.replace(
         /\//g,
         '\\',
       );
 
-    return new Promise(async (resolve) => {
-      const msg: string = await _sendMessageToBackgroundScript('customScript', shellToRun);
-      const lines = msg
-        .toString()
-        .split('\n')
-        .map((s) => s.trim());
+    const msg: string = await _sendMessageToBackgroundScript('customScript', shellToRun);
+    const lines = msg
+      .toString()
+      .split('\n')
+      .map((s) => s.trim());
 
-      for (const line of lines) {
-        if (line.includes('AppsUseLightTheme')) {
-          return resolve(line.includes('0'));
-        }
+    for (const line of lines) {
+      if (line.includes('AppsUseLightTheme')) {
+        return line.includes('0');
       }
+    }
 
-      resolve(false);
-    });
+    return false;
   },
   updateDarkMode: async (isDarkModeOn: boolean) => {
     const baseShellToRun = `Set-ItemProperty -Path HKCU:/SOFTWARE/Microsoft/Windows/CurrentVersion/Themes/Personalize -Name `;
-
-    let shellToRun;
 
     // NOTE: this looks kinda flipped, but the value we set here is lightMode
     const darkModeValue = isDarkModeOn ? '0' : '1';
 
     // change the app theme
-    shellToRun =
+    const shellToRun =
       `${baseShellToRun} SystemUsesLightTheme -Value ${darkModeValue}; ${baseShellToRun} AppsUseLightTheme -Value ${darkModeValue}`.replace(
         /\//g,
         '\\',

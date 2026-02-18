@@ -81,7 +81,7 @@ async function createTray() {
     tray.setImage(_getTrayIcon());
   });
 
-  tray.on('click', async (event, trayBounds, mousePos) => {
+  tray.on('click', async (_event, trayBounds) => {
     // when clicked on to open menu or context menu
     // we will reset keybindings
     setUpShortcuts();
@@ -92,17 +92,19 @@ async function createTray() {
       } else {
         mainWindow.show();
 
-        const { width, height } = mainWindow.getBounds();
+        const { height } = mainWindow.getBounds();
 
         global.trayPos = trayBounds;
 
         PositionUtils.updateTrayPosition(global.mainWindow, height);
       }
-    } catch (err) {}
+    } catch (err) {
+      // window may not be ready
+    }
   });
 
   let contextMenu = await _getContextMenu();
-  tray.on('right-click', async function (event) {
+  tray.on('right-click', async function () {
     // when clicked on to open menu or context menu
     // we will reset keybindings
     setUpShortcuts();
@@ -148,7 +150,7 @@ function setupAutolaunch() {
     return;
   }
 
-  let autoLaunch = new AutoLaunch({
+  const autoLaunch = new AutoLaunch({
     name: 'display-dj',
     path: app.getPath('exe'),
   });
@@ -262,7 +264,7 @@ async function setupCommandChannel() {
 
     if (command.includes(`command/openExternal`)) {
       let locationToUse;
-      let protocol = command.includes(`command/openExternal/file`) ? 'file://' : '';
+      const protocol = command.includes(`command/openExternal/file`) ? 'file://' : '';
 
       switch (command) {
         case 'command/openExternal/file/monitorConfigs':
@@ -307,15 +309,14 @@ async function synchronizeBrightness() {
   const promises = [];
   for (const monitor of monitors) {
     promises.push(
-      new Promise(async (resolve) => {
+      (async () => {
         try {
           await DisplayUtils.updateMonitorBrightness(monitor.id, monitor.brightness);
           console.trace('Sync monitor brightness on load', monitor.name, monitor.brightness);
         } catch (err) {
           console.error('Failed to sync monitor brightness on load', monitor.name, monitor.id);
         }
-        resolve();
-      }),
+      })(),
     );
   }
 
@@ -426,7 +427,9 @@ async function _getContextMenu() {
             global.emitAppEvent({ command: 'command/reset' });
             return;
           }
-        } catch (err) {}
+        } catch (err) {
+          // dialog cancelled or failed
+        }
         console.trace('Skip reset application configs and preferences');
       },
     },
@@ -504,11 +507,9 @@ setupDockIcon();
 // In this file you can include the rest of your app"s specific main process
 // code. You can also put them in separate files and require them here.
 // this is the event listener that will respond when we will request it in the web page
-const _apiCache = {};
+const _apiCache: Record<string, Record<string, unknown>> = {};
 ipcMain.on('mainAppEvent/fetch', async (event, data) => {
   const { requestId, url, options } = data;
-  const responseId = `server response ${Date.now()}`;
-
   const method = (options.method || 'get').toLowerCase();
 
   const sessionId = options.headers['api-call-session-id'] || 'display-dj-default-session';
@@ -516,10 +517,11 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
   let body = {};
   try {
     body = JSON.parse(options.body);
-  } catch (err) {}
+  } catch (err) {
+    // body is not JSON
+  }
 
   console.trace('Request', method, url, sessionId, body);
-  let matchedUrlObject;
   const matchCurrentUrlAgainst = (matchAgainstUrl) => {
     try {
       return matchPath(matchAgainstUrl, url);
@@ -529,7 +531,7 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
   };
 
   try {
-    let returnedResponseHeaders = []; // array of [key, value]
+    const returnedResponseHeaders: [string, string][] = [];
     const sendResponse = (responseData = '', status = 200) => {
       let ok = true;
       if (status >= 300 || status < 200) {
@@ -580,20 +582,18 @@ ipcMain.on('mainAppEvent/fetch', async (event, data) => {
         const apiCache = {
           get(key) {
             try {
-              //@ts-ignore
-              return _apiCache[sessionId][key];
+              return _apiCache[sessionId]?.[key];
             } catch (err) {
               return undefined;
             }
           },
           set(key, value) {
             try {
-              //@ts-ignore
               _apiCache[sessionId] = _apiCache[sessionId] || {};
-
-              //@ts-ignore
               _apiCache[sessionId][key] = value;
-            } catch (err) {}
+            } catch (err) {
+              // session not initialized
+            }
           },
           json() {
             return JSON.stringify(_apiCache);
