@@ -5,5 +5,5 @@ updates:
     schedule:
       interval: monthly
       time: '13:00'
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 10
     versioning-strategy: increase

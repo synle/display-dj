@@ -19,7 +19,7 @@
     "lint": "eslint -c .eslintrc --ext .ts ./src",
     "fix-import": "npx import-fixer --groupImport --aggressive --transformRelativeImport --importQuote=single",
     "preformat": "npm run fix-import",
-    "format": "concurrently \"npm run format-js\" \"npm run format-html\"",
+    "format": "prettier --write --print-width 140 --ignore-unknown --no-error-on-unmatched-pattern --cache '**/*.{js,jsx,ts,tsx,mjs,cjs,json,html,css,scss,less,md,yml,yaml,graphql,vue,xml}'",
     "format-js": "npx prettier --config ./.prettierrc --no-error-on-unmatched-pattern --write src/**/**/**/**/**/*.{ts,tsx,js,jsx,scss,yml,html,json,md} **/*.{ts,tsx,js,jsx,scss,yml,html,json,md}",
     "format-html": "npx prettier --config ./.prettierrc --parser html --no-error-on-unmatched-pattern --write **/**/**/**/**/*.svg",
     "test-ci": "cross-env CI=true npm test",
