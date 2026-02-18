@@ -11,7 +11,7 @@ jobs:
       package_version: ${{ steps.package-version.outputs.current-version }}
       release_upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
       - id: package-version
         uses: martinbeentjes/npm-get-version-action@master
         with:
@@ -39,7 +39,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
       - run: npm install --no-optional
       - run: npm run build-prod
       - run: npm run test-ci
@@ -59,7 +59,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
       - run: npm install --no-optional
       - run: npm run build-prod
       - run: npm run test-ci
@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.head_ref }}
       - run: npm version --no-git-tag-version patch
@@ -95,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.head_ref }}
       - uses: dev-drprasad/delete-tag-and-release@v0.2.0
