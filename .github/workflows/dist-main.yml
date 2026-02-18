@@ -35,8 +35,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: patched-package-json
-      - run: npm install --no-optional
-      - run: npm run build-prod
+      - run: bash scripts/build.sh
       - run: npm run test-ci
       - run: npm run dist-win32
       - name: Upload artifact .exe
@@ -58,9 +57,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: patched-package-json
-      - run: npm install --no-optional
-      - run: npm install electron-installer-dmg
-      - run: npm run build-prod
+      - run: bash scripts/build.sh
       - run: npm run test-ci
       - run: npm run dist-darwin-x64
       - name: Upload artifact .dmg
@@ -82,9 +79,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: patched-package-json
-      - run: npm install --no-optional
-      - run: npm install electron-installer-dmg
-      - run: npm run build-prod
+      - run: bash scripts/build.sh
       - run: npm run test-ci
       - run: npm run dist-darwin-arm64
       - name: Upload artifact .dmg
