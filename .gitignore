@@ -4,7 +4,6 @@ coverage
 display-dj
 dist
 node_modules
-package-lock.json
 src/main/utils/DisplayAdapter.ts
 src/main/utils/SoundUtils.ts
 .env

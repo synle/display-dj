@@ -4,7 +4,7 @@ import { Preference } from 'src/types.d';
 const MIN_BRIGHTNESS = 10; // NOTE : here if we set it to 0, some monitors / laptops will turn off the backlit entirely and make it unusable...
 
 const DEFAULT_PREFERENCES: Preference = {
-  mode: process.platform === 'win32' ? 'win32' : 'intel_mac', // whether it's m1 mac or not
+  mode: process.platform === 'win32' ? 'win32' : process.arch === 'arm64' ? 'm1_mac' : 'intel_mac',
   showIndividualDisplays: false,
   logging: false,
   brightnessDelta: 25,

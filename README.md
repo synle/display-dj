@@ -19,7 +19,8 @@ I published an article describing this project in details. Here's [the link to t
 
 You can download `display-dj` at the following URL.
 
-- [display-dj for Mac](https://github.com/synle/display-dj/releases/latest/download/display-dj-darwin.dmg)
+- [display-dj for Mac (Apple Silicon / ARM64)](https://github.com/synle/display-dj/releases/latest/download/display-dj-darwin-arm64.dmg)
+- [display-dj for Mac (Intel x64)](https://github.com/synle/display-dj/releases/latest/download/display-dj-darwin-x64.dmg)
 - [display-dj for Windows](https://github.com/synle/display-dj/releases/latest/download/display-dj-setup.exe)
 
 ## Motivation
@@ -46,7 +47,8 @@ The challenge of work from home in the last 2 years with 2 young toddlers is tha
 The following version of OS has been tested and working.
 
 - Windows (tested on Windows 11)
-- Mac OSX (tested on Monterey on Intel Macs) (Limited support on m1 Macs)
+- Mac OSX Intel x64 (tested on Monterey)
+- Mac OSX Apple Silicon / ARM64 (tested on M-series Macs)
 
 ## Features / Configs / Preferences
 
@@ -226,21 +228,9 @@ If you are interested in contributing, you can refer to this doc to get started
 
 Due to the complexity and quirks of `ddc/ci` protocol, unfortunately it's nearly impossible to support every single monitor out there. So if you run into issue where this app doesn't work, we will not guarantee support.
 
-### Limited support for M1 macs
+### Apple Silicon (M1/M2/M3) Macs
 
-This app has limited support for M1 Mac. Volume settings and individual display adjustment along with builtin display are not supported.
-
-![image](https://user-images.githubusercontent.com/3792401/177044893-8d3fd19e-4fbf-4557-9048-c4a0d6fd8b2f.png)
-
-This requires preferences JSON to be updated (`~/Library/Application Support/display-dj/preferences.json`)
-
-```js
-{
-  // ...
-  "mode": "m1_mac",
-  // ...
-}
-```
+Apple Silicon Macs use `m1ddc` for external display brightness control via DDC/CI. The architecture is auto-detected — no manual configuration is needed. Built-in display brightness is not controlled via DDC and is managed by macOS natively.
 
 ## Suggestion?
 
