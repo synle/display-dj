@@ -1,7 +1,9 @@
+*.bundle.*
+*.min.*
 *.spec.js
 *.spec.jsx
-*.spec.jsx
 *.spec.ts
+.build
 _layouts/default.html
 build
 coverage
