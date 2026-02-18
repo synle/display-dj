@@ -129,9 +129,9 @@ jobs:
           name: display-dj-darwin-arm64.dmg
           path: ./dist/display-dj-darwin-arm64.dmg
 
-  build:
-    needs: [dist_windows, dist_macos_intel, dist_macos_arm64]
-    if: always()
+  after_dist:
+    needs: [build_windows, build_macos, dist_windows, dist_macos_intel, dist_macos_arm64]
+    if: always() && github.event_name == 'pull_request'
     uses: synle/gha-workflows/.github/workflows/build-and-commit-sh.yml@main
     permissions:
       contents: write
