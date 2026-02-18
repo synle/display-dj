@@ -19,7 +19,9 @@ npm run lint              # ESLint on TypeScript files
 npm run format            # Prettier formatting
 npm test                  # Run Jest tests
 npm run test-ci           # CI test mode (CI=true)
-npm run dist-darwin       # Package macOS DMG
+npm run dist-darwin       # Package macOS DMG (host arch)
+npm run dist-darwin-x64   # Package macOS DMG (Intel x64)
+npm run dist-darwin-arm64 # Package macOS DMG (Apple Silicon ARM64)
 npm run dist-win32        # Package Windows EXE
 ```
 

@@ -31,7 +31,13 @@
     "dist-win32": "npm run dist",
     "predist-darwin": "npx electron-packager \"./\" --overwrite --asar --prune=true --out=\"dist\" --icon=./src/assets/icon.icns --platform=darwin",
     "dist-darwin": "npm run dist",
-    "postdist-darwin": "mv display-dj.dmg dist/display-dj-darwin.dmg"
+    "postdist-darwin": "mv display-dj.dmg dist/display-dj-darwin.dmg",
+    "predist-darwin-x64": "npx electron-packager \"./\" --overwrite --asar --prune=true --out=\"dist\" --icon=./src/assets/icon.icns --platform=darwin --arch=x64",
+    "dist-darwin-x64": "cross-env DIST_ARCH=x64 npm run dist",
+    "postdist-darwin-x64": "mv display-dj.dmg dist/display-dj-darwin-x64.dmg",
+    "predist-darwin-arm64": "npx electron-packager \"./\" --overwrite --asar --prune=true --out=\"dist\" --icon=./src/assets/icon.icns --platform=darwin --arch=arm64",
+    "dist-darwin-arm64": "cross-env DIST_ARCH=arm64 npm run dist",
+    "postdist-darwin-arm64": "mv display-dj.dmg dist/display-dj-darwin-arm64.dmg"
   },
   "repository": "https://github.com/synle/display-dj",
   "keywords": [

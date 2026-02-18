@@ -56,7 +56,7 @@ jobs:
           asset_name: display-dj-setup.exe
           asset_content_type: application/octet-stream
 
-  build_macos:
+  build_macos_intel:
     needs: [create_release]
     runs-on: macos-latest
     timeout-minutes: 30
@@ -65,20 +65,40 @@ jobs:
       - run: npm install --no-optional
       - run: npm run build-prod
       - run: npm run test-ci
-      - run: npm run dist-darwin
+      - run: npm run dist-darwin-x64
 
       - uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.release_upload_url }}
-          asset_path: ./dist/display-dj-darwin.dmg
-          asset_name: display-dj-darwin.dmg
+          asset_path: ./dist/display-dj-darwin-x64.dmg
+          asset_name: display-dj-darwin-x64.dmg
+          asset_content_type: application/octet-stream
+
+  build_macos_arm64:
+    needs: [create_release]
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - run: npm install --no-optional
+      - run: npm run build-prod
+      - run: npm run test-ci
+      - run: npm run dist-darwin-arm64
+
+      - uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.release_upload_url }}
+          asset_path: ./dist/display-dj-darwin-arm64.dmg
+          asset_name: display-dj-darwin-arm64.dmg
           asset_content_type: application/octet-stream
 
   roll_back:
     if: failure()
-    needs: [create_release, build_windows, build_macos]
+    needs: [create_release, build_windows, build_macos_intel, build_macos_arm64]
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
