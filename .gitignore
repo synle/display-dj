@@ -20,3 +20,8 @@ public/vs
 upload
 yarn-debug.log*
 yarn-error.log*
+
+###
+display-dj
+src/main/utils/DisplayAdapter.ts
+src/main/utils/SoundUtils.ts
