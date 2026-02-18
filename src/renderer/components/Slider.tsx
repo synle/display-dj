@@ -10,7 +10,7 @@ type SliderProps = {
   disabled?: boolean;
 };
 
-const DEBOUNCE_TIME_MS = 800;
+const DEBOUNCE_TIME_MS = 350;
 
 const SLIDER_STEP = 10;
 
