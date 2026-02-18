@@ -14,6 +14,9 @@ let _cache: Record<string, any> = {
   allMonitorList: undefined,
 };
 
+// Maps m1ddc monitor UUID → m1ddc display number (e.g. 1, 2, 3)
+const _m1ddcDisplayNumberMap: Map<string, number> = new Map();
+
 function getCache() {
   if (Date.now() - _cacheTime <= 3000) {
     // clear cache
@@ -37,6 +40,12 @@ async function _isM1Mac() {
 }
 
 async function _findWhichExternalDisplayById(targetMonitorId: string) {
+  if (await _isM1Mac()) {
+    // For M1, use the display number directly from m1ddc's display list output
+    const displayNumber = _m1ddcDisplayNumberMap.get(targetMonitorId);
+    return displayNumber;
+  }
+
   const monitorIds = (await _getMonitorList()).filter(
     (monitorId) => monitorId !== LAPTOP_DISPLAY_MONITOR_ID,
   );
@@ -75,29 +84,56 @@ async function _findWhichBuiltinDisplayById() {
   return 0;
 }
 
+async function _getMonitorListM1(): Promise<string[]> {
+  const shellToRun = `${await _getDdcctlBinaryForM1()} display list`;
+  const stdout = await executeBash(shellToRun);
+  const monitors: string[] = [];
+
+  _m1ddcDisplayNumberMap.clear();
+
+  // Parse lines like: [1] XZ322QU V3 (48D3AB11-720E-4436-BB8F-DD559D1EFC90)
+  for (const line of (stdout || '').split('\n')) {
+    const match = line.match(/^\[(\d+)\]\s+.*\(([A-F0-9-]+)\)$/);
+    if (match) {
+      const displayNumber = parseInt(match[1]);
+      const uuid = match[2];
+      _m1ddcDisplayNumberMap.set(uuid, displayNumber);
+      monitors.push(uuid);
+    }
+  }
+
+  return monitors;
+}
+
 async function _getMonitorList(): Promise<string[]> {
   if (getCache().allMonitorList) {
     return getCache().allMonitorList;
   }
 
-  const shellToRun = `${await _getDdcctlBinaryForIntel()}`;
-  return new Promise((resolve, reject) => {
-    try {
-      exec(shellToRun, (_error, stdout) => {
-        const monitors = (stdout || '')
-          .split('\n')
-          .filter((line) => line.indexOf('D:') === 0)
-          .map((line) => line.replace('D:', '').trim());
-        monitors.unshift(LAPTOP_DISPLAY_MONITOR_ID);
+  let monitors: string[];
 
-        getCache().allMonitorList = monitors;
+  if (await _isM1Mac()) {
+    monitors = await _getMonitorListM1();
+  } else {
+    const cmd = await _getDdcctlBinaryForIntel();
+    monitors = await new Promise((resolve, reject) => {
+      try {
+        exec(cmd, (_error, stdout) => {
+          const mons = (stdout || '')
+            .split('\n')
+            .filter((line) => line.indexOf('D:') === 0)
+            .map((line) => line.replace('D:', '').trim());
+          mons.unshift(LAPTOP_DISPLAY_MONITOR_ID);
+          resolve(mons);
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
 
-        resolve(monitors);
-      });
-    } catch (err) {
-      reject(err);
-    }
-  });
+  getCache().allMonitorList = monitors;
+  return monitors;
 }
 
 /**
@@ -138,6 +174,24 @@ const DisplayAdapter: IDisplayAdapter = {
     return targetMonitorId === LAPTOP_DISPLAY_MONITOR_ID ? 'laptop_monitor' : 'external_monitor';
   },
   getMonitorBrightness: async (targetMonitorId: string) => {
+    if (await _isM1Mac()) {
+      // M1 Mac: use m1ddc for external displays (no built-in display support)
+      const whichDisplay = await _findWhichExternalDisplayById(targetMonitorId);
+      if (whichDisplay === undefined) {
+        throw new Error(`Display not found`);
+      }
+
+      const shellToRun = `${await _getDdcctlBinaryForM1()} display ${whichDisplay} get luminance`;
+      console.debug('getMonitorBrightness', targetMonitorId, shellToRun);
+
+      const stdout = await executeBash(shellToRun);
+      const brightness = parseInt((stdout || '').trim());
+      if (brightness >= 0 && brightness <= 100) {
+        return brightness;
+      }
+      throw new Error('cannot read the brightness for external display from m1ddc');
+    }
+
     if (targetMonitorId === LAPTOP_DISPLAY_MONITOR_ID) {
       // for built in display
       const whichDisplay = await _findWhichBuiltinDisplayById();
