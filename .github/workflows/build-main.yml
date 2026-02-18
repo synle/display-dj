@@ -14,29 +14,6 @@ env:
   NODE_VERSION: 16
 
 jobs:
-  # format phase - only runs on PRs, exits early with success
-  format:
-    if: github.event_name == 'pull_request'
-    runs-on: macos-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.head_ref }}
-      - uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          registry-url: https://registry.npmjs.org/
-      - run: npm install --no-optional
-      - run: npm run format
-      - run: npm run build-dev
-      - run: npm run test-ci
-      - run: npm version --no-git-tag-version patch
-      - uses: EndBug/add-and-commit@v8
-        with:
-          message: 'CI / CD - Prettier Automatic Commit'
-        continue-on-error: true
-
   # build phase - validate on all platforms
   build_windows:
     runs-on: windows-latest
