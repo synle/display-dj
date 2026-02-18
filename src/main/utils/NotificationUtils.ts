@@ -9,7 +9,7 @@ export function dismissLastNotification() {
   }
 }
 
-export function showNotification(body: string, title: string = 'display-dj') {
+export function showNotification(body: string, title = 'display-dj') {
   dismissLastNotification();
 
   lastNotification = new Notification({ title, body });

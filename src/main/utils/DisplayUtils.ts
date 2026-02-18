@@ -55,8 +55,6 @@ const DisplayUtils = {
 
     const monitorsFromStorage = _getMonitorConfigs();
 
-    let shouldSync = false;
-
     // construct the active displays
     let monitorCount = 0;
     const monitorIds = await DisplayAdapter.getMonitorList();
@@ -71,7 +69,9 @@ const DisplayUtils = {
       let brightness: number = monitorsFromStorage?.[idToUse]?.brightness || 50; // set default brightness to 50%
       try {
         brightness = await DisplayAdapter.getMonitorBrightness(idToUse);
-      } catch (err) {}
+      } catch (err) {
+        // use default/stored brightness if adapter fails
+      }
 
       let name = (monitorsFromStorage?.[idToUse]?.name || '').trim();
       if (!name) {
@@ -114,7 +114,7 @@ const DisplayUtils = {
       throw `ID=${monitor.id} not found.`;
     }
 
-    let nameToUse = monitor.name || monitorsFromStorage[monitor.id].name;
+    const nameToUse = monitor.name || monitorsFromStorage[monitor.id].name;
 
     // merging the objects
     monitorsFromStorage[monitor.id] = {
@@ -147,7 +147,7 @@ const DisplayUtils = {
       return 0;
     }
   },
-  batchUpdateBrightness: async (newBrightness: number, delta: number = 0) => {
+  batchUpdateBrightness: async (newBrightness: number, delta = 0) => {
     newBrightness += delta;
 
     // making sure the range is 0 to 100

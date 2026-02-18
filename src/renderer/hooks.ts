@@ -1,6 +1,6 @@
-import { QueryClient, useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
 import ApiUtils from 'src/renderer/utils/ApiUtils';
-import { AppConfig, Monitor, Preference, UIAppState, VolumeInput } from 'src/types.d';
+import { AppConfig, Preference, UIAppState, VolumeInput } from 'src/types.d';
 // react query store
 export const QUERY_KEY_CONFIGS = 'configs';
 
@@ -68,22 +68,18 @@ export function useConfigs() {
 }
 
 export function useUpdateMonitor() {
-  const refetchConfigs = useRefetchConfigs();
   return useMutation(ApiUtils.updateMonitor);
 }
 
 export function useBatchUpdateMonitors() {
-  const refetchConfigs = useRefetchConfigs();
   return useMutation(ApiUtils.batchUpdateMonitors);
 }
 
 export function useToggleDarkMode() {
-  const refetchConfigs = useRefetchConfigs();
   return useMutation(ApiUtils.updateDarkMode);
 }
 
 export function useUpdateVolume() {
-  const refetchConfigs = useRefetchConfigs();
   return useMutation<void, void, VolumeInput>(ApiUtils.updateVolume);
 }
 

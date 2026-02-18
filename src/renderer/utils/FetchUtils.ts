@@ -11,7 +11,7 @@ function _doFetch(input: string, options: RequestInit) {
   options = options || {};
   options.headers = options.headers || {};
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const requestId = `fetch.requestId.${Date.now()}.${Math.floor(
       Math.random() * 10000000000000000,
     )}`;
@@ -22,7 +22,9 @@ function _doFetch(input: string, options: RequestInit) {
 
       try {
         returnedData = JSON.parse(text);
-      } catch (err) {}
+      } catch (err) {
+        // text is not JSON, use raw
+      }
 
       console.log(
         ok ? '>> Net Success' : 'Net Error:',
