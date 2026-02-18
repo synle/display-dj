@@ -3,8 +3,41 @@ name: build-main
 on:
   push:
     branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # format phase - only runs on PRs, exits early with success
+  format:
+    if: github.event_name == 'pull_request'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        node-version: [16.x]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          registry-url: https://registry.npmjs.org/
+      - run: npm install --no-optional
+      - run: npm run format
+      - run: npm run build-dev
+      - run: npm run test-ci
+      - run: npm version --no-git-tag-version patch
+      - uses: EndBug/add-and-commit@v8
+        with:
+          message: 'CI / CD - Prettier Automatic Commit'
+        continue-on-error: true
+
   # build phase - validate on all platforms
   build_windows:
     runs-on: windows-latest
@@ -44,8 +77,9 @@ jobs:
       - run: npm run build-prod
       - run: npm run test-ci
 
-  # dist-beta phase - create beta release after builds pass
+  # dist-beta phase - only runs on push to main/master, after builds pass
   create_beta_release:
+    if: github.event_name == 'push'
     needs: [build_windows, build_macos]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -77,6 +111,7 @@ jobs:
           prerelease: true
 
   dist_windows:
+    if: github.event_name == 'push'
     needs: [create_beta_release]
     runs-on: windows-latest
     timeout-minutes: 30
@@ -96,6 +131,7 @@ jobs:
           asset_content_type: application/octet-stream
 
   dist_macos_intel:
+    if: github.event_name == 'push'
     needs: [create_beta_release]
     runs-on: macos-latest
     timeout-minutes: 30
@@ -116,6 +152,7 @@ jobs:
           asset_content_type: application/octet-stream
 
   dist_macos_arm64:
+    if: github.event_name == 'push'
     needs: [create_beta_release]
     runs-on: macos-latest
     timeout-minutes: 30
@@ -136,7 +173,7 @@ jobs:
           asset_content_type: application/octet-stream
 
   roll_back:
-    if: failure()
+    if: failure() && github.event_name == 'push'
     needs: [create_beta_release, dist_windows, dist_macos_intel, dist_macos_arm64]
     runs-on: ubuntu-latest
     timeout-minutes: 4
