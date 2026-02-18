@@ -60,12 +60,11 @@ const PreferenceUtils = {
 
     // merging config keys
     for (const prefKey of Object.keys(DEFAULT_PREFERENCES)) {
-      //@ts-ignore
-      if (preference[prefKey] === undefined) {
+      if (preference[prefKey as keyof Preference] === undefined) {
         shouldSync = true; // when a key is missing, then also sync it up
 
-        // @ts-ignore
-        preference[prefKey] = DEFAULT_PREFERENCES[prefKey];
+        (preference as Record<string, unknown>)[prefKey] =
+          DEFAULT_PREFERENCES[prefKey as keyof Preference];
       }
     }
 

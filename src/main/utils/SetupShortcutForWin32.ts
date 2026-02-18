@@ -27,7 +27,9 @@ function _handleSquirrelEventForWindows() {
 
     try {
       spawnedProcess = ChildProcess.spawn(command, args, { detached: true });
-    } catch (error) {}
+    } catch (error) {
+      // spawn may fail on non-Windows platforms
+    }
 
     return spawnedProcess;
   };

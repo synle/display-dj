@@ -98,4 +98,4 @@ export type Preference = {
   keyBindings: KeyBinding[];
 };
 
-export type UIAppState = {};
+export type UIAppState = Record<string, never>;
