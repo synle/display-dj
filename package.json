@@ -76,7 +76,7 @@
   "devDependencies": {
     "@babel/core": "^7.17.10",
     "@babel/preset-env": "^7.17.10",
-    "@babel/preset-react": "^7.16.7",
+    "@babel/preset-react": "^7.28.5",
     "@svgr/webpack": "^6.2.1",
     "@types/jest": "^27.4.1",
     "@types/react": "^18.0.8",
