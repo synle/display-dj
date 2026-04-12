@@ -1,6 +1,6 @@
 # display-dj
 
-A cross-platform desktop app for controlling monitor brightness, contrast, dark mode, and volume -- all from one system tray popup. Works with both built-in laptop displays and external monitors via DDC/CI. Supports **macOS**, **Windows**, and **Linux**.
+A cross-platform desktop app for controlling monitor brightness, dark mode, and volume -- all from one system tray popup. Works with both built-in laptop displays and external monitors via DDC/CI. Supports **macOS**, **Windows**, and **Linux**.
 
 ## Downloads
 
@@ -15,7 +15,7 @@ Grab the latest release from the [Releases](../../releases) page.
 
 ## Features
 
-- **Monitor brightness & contrast** -- one slider for all monitors, or expand for individual control
+- **Monitor brightness** -- one slider for all monitors, or expand for individual control
 - **Dark mode toggle** -- system-wide dark/light switch
 - **Volume control** -- system volume slider with mute indicator
 - **Global keyboard shortcuts** -- work even when the app isn't focused (configurable via `preferences.json`)
@@ -55,7 +55,7 @@ The app appears in your **system tray** (not as a regular window):
 
 Config files live in `~/Library/Application Support/display-dj/` (macOS), `%APPDATA%\display-dj\` (Windows), or `~/.config/display-dj/` (Linux).
 
-- **`preferences.json`** -- keyboard shortcuts, brightness/contrast step sizes
+- **`preferences.json`** -- keyboard shortcuts, brightness step size
 - **`monitor-configs.json`** -- per-monitor names, sort order, disable flags
 
 ### Default Keyboard Shortcuts
@@ -73,7 +73,6 @@ Config files live in `~/Library/Application Support/display-dj/` (macOS), `%APPD
 - Not every external monitor supports DDC/CI (some budget models and certain HDMI connections)
 - Built-in HDMI on base M1/M2 Macs doesn't support DDC/CI -- use USB-C/DisplayPort
 - Linux global shortcuts may not work under Wayland (X11 works fine)
-- Built-in laptop displays don't support contrast adjustment on any platform
 
 ## Contributing
 

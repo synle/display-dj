@@ -1,7 +1,7 @@
 # Display DJ v2
 
 ## Project Overview
-Cross-platform desktop system tray application for controlling monitor brightness, contrast, dark mode, and volume. Built with **Tauri v2** (Rust backend) + **React 18** (TypeScript frontend) + **Vite 6**.
+Cross-platform desktop system tray application for controlling monitor brightness, dark mode, and volume. Built with **Tauri v2** (Rust backend) + **React 18** (TypeScript frontend) + **Vite 6**.
 
 Display and dark mode operations are delegated to the [display-dj CLI](https://github.com/synle/display-dj-cli), which runs as a bundled HTTP server sidecar. The Tauri backend makes HTTP requests to it. Volume control remains platform-specific in Rust.
 
@@ -17,7 +17,7 @@ Display and dark mode operations are delegated to the [display-dj CLI](https://g
 
 ### Backend (`src-tauri/src/`)
 - `lib.rs` — Tauri app setup, plugin init, sidecar launch (display-dj HTTP server), port discovery, window management, dock hiding (macOS)
-- `display.rs` — Monitor brightness/contrast via HTTP requests to the display-dj server
+- `display.rs` — Monitor brightness via HTTP requests to the display-dj server
 - `dark_mode.rs` — Dark mode detection and toggling via HTTP requests to the display-dj server
 - `volume.rs` — System volume get/set (platform-specific, not via display-dj)
 - `config.rs` — Preferences and monitor config persistence (JSON files in OS config dir)
@@ -27,7 +27,7 @@ Display and dark mode operations are delegated to the [display-dj CLI](https://g
 The [display-dj CLI](https://github.com/synle/display-dj-cli) is bundled as a Tauri sidecar. On app startup, `lib.rs` finds an available port (starting from 51337) and spawns `display-dj-server serve <port>`. All display and dark mode operations go through its HTTP API at `http://127.0.0.1:<port>/`.
 
 Key HTTP routes used:
-- `GET /get_all` — list all displays with live brightness/contrast
+- `GET /get_all` — list all displays with live brightness
 - `GET /set_one/<id>/<level>` — set one display's brightness
 - `GET /set_all/<level>` — set all displays' brightness
 - `GET /dark` / `GET /light` — switch dark/light mode

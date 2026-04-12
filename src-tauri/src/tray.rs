@@ -106,32 +106,75 @@ fn position_window_near_tray(
     window: &tauri::WebviewWindow,
     tray_rect: tauri::Rect,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri::LogicalPosition;
+    use tauri::PhysicalPosition;
 
-    let window_size = window.outer_size()?;
-    let scale = window.scale_factor()?;
-    let win_w = window_size.width as f64 / scale;
-    let win_h = window_size.height as f64 / scale;
+    let current_scale = window.scale_factor()?;
 
+    // Get tray position/size in physical pixels
     let (tray_x, tray_y) = match tray_rect.position {
-        tauri::Position::Physical(p) => (p.x as f64 / scale, p.y as f64 / scale),
-        tauri::Position::Logical(p) => (p.x, p.y),
+        tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
+        tauri::Position::Logical(p) => (p.x * current_scale, p.y * current_scale),
     };
-
     let (tray_w, tray_h) = match tray_rect.size {
-        tauri::Size::Physical(s) => (s.width as f64 / scale, s.height as f64 / scale),
-        tauri::Size::Logical(s) => (s.width, s.height),
+        tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
+        tauri::Size::Logical(s) => (s.width * current_scale, s.height * current_scale),
     };
 
-    let x = tray_x + (tray_w / 2.0) - (win_w / 2.0);
+    // Find the monitor containing the tray icon (physical coords)
+    let monitors = window.available_monitors()?;
+    let tray_cx = tray_x + tray_w / 2.0;
+    let tray_cy = tray_y + tray_h / 2.0;
+    let target = monitors.iter().find(|m| {
+        let pos = m.position();
+        let size = m.size();
+        tray_cx >= pos.x as f64
+            && tray_cx < pos.x as f64 + size.width as f64
+            && tray_cy >= pos.y as f64
+            && tray_cy < pos.y as f64 + size.height as f64
+    });
 
-    let y = if tray_y < 100.0 {
+    // Use the target monitor's scale factor for window size calculation
+    let target_scale = target
+        .map(|m| m.scale_factor())
+        .unwrap_or(current_scale);
+    let logical_w = window.outer_size()?.width as f64 / current_scale;
+    let logical_h = window.outer_size()?.height as f64 / current_scale;
+    let win_w = logical_w * target_scale;
+    let win_h = logical_h * target_scale;
+
+    // Center window horizontally under tray icon
+    let mut x = tray_x + (tray_w / 2.0) - (win_w / 2.0);
+
+    // Position below tray if near the top of its monitor, above otherwise
+    let mon_top = target.map(|m| m.position().y as f64).unwrap_or(0.0);
+    let mut y = if tray_y - mon_top < 100.0 * target_scale {
         tray_y + tray_h
     } else {
         tray_y - win_h
     };
 
-    window.set_position(LogicalPosition::new(x, y))?;
+    // Clamp to the target monitor's bounds
+    if let Some(m) = target {
+        let mx = m.position().x as f64;
+        let my = m.position().y as f64;
+        let mw = m.size().width as f64;
+        let mh = m.size().height as f64;
+
+        if x + win_w > mx + mw {
+            x = mx + mw - win_w;
+        }
+        if x < mx {
+            x = mx;
+        }
+        if y + win_h > my + mh {
+            y = my + mh - win_h;
+        }
+        if y < my {
+            y = my;
+        }
+    }
+
+    window.set_position(PhysicalPosition::new(x as i32, y as i32))?;
     Ok(())
 }
 
