@@ -86,11 +86,15 @@ impl Default for Preferences {
                     command: CommandValue::Single("command/changeBrightness/100".into()),
                 },
                 KeyBinding {
-                    key: "Shift+F6".into(),
+                    key: "Shift+F10".into(),
                     command: CommandValue::Single("command/changeVolume/0".into()),
                 },
                 KeyBinding {
-                    key: "Shift+F7".into(),
+                    key: "Shift+F11".into(),
+                    command: CommandValue::Single("command/changeVolume/10".into()),
+                },
+                KeyBinding {
+                    key: "Shift+F12".into(),
                     command: CommandValue::Single("command/changeVolume/100".into()),
                 },
             ],
@@ -222,7 +226,7 @@ mod tests {
         assert_eq!(prefs.brightness_delta, 50);
         assert_eq!(prefs.contrast_delta, 25);
         assert_eq!(prefs.min_brightness, 10);
-        assert_eq!(prefs.key_bindings.len(), 8);
+        assert_eq!(prefs.key_bindings.len(), 9);
     }
 
     #[test]
@@ -262,7 +266,8 @@ mod tests {
         let keys: Vec<&str> = prefs.key_bindings.iter().map(|kb| kb.key.as_str()).collect();
         assert_eq!(keys[0], "Shift+Escape");
         assert_eq!(keys[1], "Shift+F1");
-        assert_eq!(keys[7], "Shift+F7");
+        assert_eq!(keys[7], "Shift+F11");
+        assert_eq!(keys[8], "Shift+F12");
     }
 
     #[test]
@@ -377,7 +382,7 @@ mod tests {
         let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(loaded.brightness_delta, 50);
-        assert_eq!(loaded.key_bindings.len(), 8);
+        assert_eq!(loaded.key_bindings.len(), 9);
 
         std::fs::remove_dir_all(&dir).ok();
     }
