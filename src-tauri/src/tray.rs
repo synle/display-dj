@@ -213,7 +213,13 @@ fn execute_command(app: &AppHandle, command: &str) {
     match parts.as_slice() {
         ["command", "changeBrightness", value] => {
             if let Ok(val) = value.parse::<u32>() {
-                let url = format!("{}/set_all/{}", base, val.min(100));
+                let min = app
+                    .state::<crate::AppState>()
+                    .preferences
+                    .lock()
+                    .map(|p| p.effective_min_brightness())
+                    .unwrap_or(crate::config::ABSOLUTE_MIN_BRIGHTNESS);
+                let url = format!("{}/set_all/{}", base, val.clamp(min, 100));
                 http_get_then_emit(url, app.clone(), "monitors-changed");
             }
         }

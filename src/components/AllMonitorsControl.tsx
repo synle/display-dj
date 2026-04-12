@@ -4,12 +4,14 @@ interface AllMonitorsControlProps {
   brightness: number;
   onBrightnessChange: (value: number) => void;
   monitorCount: number;
+  minBrightness: number;
 }
 
 export default function AllMonitorsControl({
   brightness,
   onBrightnessChange,
   monitorCount,
+  minBrightness,
 }: AllMonitorsControlProps) {
   return (
     <div className="all-monitors-section">
@@ -17,8 +19,9 @@ export default function AllMonitorsControl({
       <Slider
         icon="☀"
         value={brightness}
+        min={minBrightness}
         onChange={onBrightnessChange}
-        onIconClick={() => onBrightnessChange(brightness > 0 ? 0 : 100)}
+        onIconClick={() => onBrightnessChange(brightness > minBrightness ? minBrightness : 100)}
       />
     </div>
   );

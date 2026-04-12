@@ -9,6 +9,7 @@ describe("AllMonitorsControl", () => {
         brightness={50}
         onBrightnessChange={() => {}}
         monitorCount={3}
+        minBrightness={10}
       />
     );
     expect(screen.getByText("All Monitors (3)")).toBeInTheDocument();
@@ -20,6 +21,7 @@ describe("AllMonitorsControl", () => {
         brightness={70}
         onBrightnessChange={() => {}}
         monitorCount={2}
+        minBrightness={10}
       />
     );
     const sliders = screen.getAllByRole("slider");

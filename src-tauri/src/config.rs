@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// Absolute floor for brightness — never allow less than this regardless of user config.
+pub const ABSOLUTE_MIN_BRIGHTNESS: u32 = 5;
+
 pub type MonitorConfigs = HashMap<String, MonitorConfig>;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -14,10 +17,12 @@ pub struct MonitorConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct Preferences {
     pub show_individual_displays: bool,
     pub brightness_delta: u32,
+    pub contrast_delta: u32,
+    pub min_brightness: u32,
     pub key_bindings: Vec<KeyBinding>,
 }
 
@@ -35,11 +40,20 @@ pub enum CommandValue {
     Multiple(Vec<String>),
 }
 
+impl Preferences {
+    /// Returns the effective minimum brightness, enforcing the absolute floor.
+    pub fn effective_min_brightness(&self) -> u32 {
+        self.min_brightness.max(ABSOLUTE_MIN_BRIGHTNESS)
+    }
+}
+
 impl Default for Preferences {
     fn default() -> Self {
         Self {
             show_individual_displays: false,
             brightness_delta: 50,
+            contrast_delta: 25,
+            min_brightness: 10,
             key_bindings: vec![
                 KeyBinding {
                     key: "Shift+Escape".into(),
@@ -206,7 +220,40 @@ mod tests {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.brightness_delta, 50);
+        assert_eq!(prefs.contrast_delta, 25);
+        assert_eq!(prefs.min_brightness, 10);
         assert_eq!(prefs.key_bindings.len(), 8);
+    }
+
+    #[test]
+    fn test_effective_min_brightness() {
+        let mut prefs = Preferences::default();
+        assert_eq!(prefs.effective_min_brightness(), 10);
+
+        prefs.min_brightness = 20;
+        assert_eq!(prefs.effective_min_brightness(), 20);
+
+        // Below absolute floor should clamp to 5
+        prefs.min_brightness = 3;
+        assert_eq!(prefs.effective_min_brightness(), ABSOLUTE_MIN_BRIGHTNESS);
+
+        prefs.min_brightness = 0;
+        assert_eq!(prefs.effective_min_brightness(), ABSOLUTE_MIN_BRIGHTNESS);
+    }
+
+    #[test]
+    fn test_preferences_missing_new_fields_uses_defaults() {
+        // Simulates loading an old preferences.json that lacks the new fields
+        let json = r#"{
+            "showIndividualDisplays": true,
+            "brightnessDelta": 30,
+            "keyBindings": []
+        }"#;
+        let prefs: Preferences = serde_json::from_str(json).unwrap();
+        assert!(prefs.show_individual_displays);
+        assert_eq!(prefs.brightness_delta, 30);
+        assert_eq!(prefs.contrast_delta, 25);
+        assert_eq!(prefs.min_brightness, 10);
     }
 
     #[test]
@@ -276,10 +323,14 @@ mod tests {
         let json = serde_json::to_string(&prefs).unwrap();
         assert!(json.contains("showIndividualDisplays"));
         assert!(json.contains("brightnessDelta"));
+        assert!(json.contains("contrastDelta"));
+        assert!(json.contains("minBrightness"));
         assert!(json.contains("keyBindings"));
         // Should NOT contain snake_case
         assert!(!json.contains("show_individual_displays"));
         assert!(!json.contains("brightness_delta"));
+        assert!(!json.contains("contrast_delta"));
+        assert!(!json.contains("min_brightness"));
     }
 
     #[test]

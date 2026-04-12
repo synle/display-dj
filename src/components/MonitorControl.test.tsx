@@ -29,6 +29,7 @@ describe("MonitorControl", () => {
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
         onRename={() => {}}
+        minBrightness={10}
       />
     );
     expect(screen.getByText("Dell U2723QE")).toBeInTheDocument();
@@ -40,6 +41,7 @@ describe("MonitorControl", () => {
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
         onRename={() => {}}
+        minBrightness={10}
       />
     );
     const sliders = screen.getAllByRole("slider");
@@ -54,6 +56,7 @@ describe("MonitorControl", () => {
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
         onRename={() => {}}
+        minBrightness={10}
       />
     );
 
@@ -71,6 +74,7 @@ describe("MonitorControl", () => {
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
         onRename={onRename}
+        minBrightness={10}
       />
     );
 
@@ -89,6 +93,7 @@ describe("MonitorControl", () => {
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
         onRename={onRename}
+        minBrightness={10}
       />
     );
 
@@ -108,6 +113,7 @@ describe("MonitorControl", () => {
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
         onRename={onRename}
+        minBrightness={10}
       />
     );
 
@@ -123,6 +129,7 @@ describe("MonitorControl", () => {
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
         onRename={() => {}}
+        minBrightness={10}
       />
     );
     expect(screen.getByText("\uD83D\uDDA5")).toBeInTheDocument();
@@ -134,6 +141,7 @@ describe("MonitorControl", () => {
         monitor={builtInMonitor}
         onBrightnessChange={() => {}}
         onRename={() => {}}
+        minBrightness={10}
       />
     );
     expect(screen.getByText("\uD83D\uDCBB")).toBeInTheDocument();
