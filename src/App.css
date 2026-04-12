@@ -32,7 +32,6 @@ html, body, #root {
 
 .app {
   background: var(--bg-primary);
-  border-radius: 12px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -270,7 +269,7 @@ html, body, #root {
 /* Dark mode toggle */
 .dark-mode-toggle {
   display: flex;
-  border-radius: 8px;
+  border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--border);
   margin-top: 4px;
