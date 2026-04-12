@@ -6,6 +6,10 @@ interface MonitorControlProps {
   monitor: Monitor;
   onBrightnessChange: (value: number) => void;
   onRename: (name: string) => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  isFirst?: boolean;
+  isLast?: boolean;
   minBrightness: number;
 }
 
@@ -13,6 +17,10 @@ export default function MonitorControl({
   monitor,
   onBrightnessChange,
   onRename,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
   minBrightness,
 }: MonitorControlProps) {
   const [editing, setEditing] = useState(false);
@@ -44,21 +52,43 @@ export default function MonitorControl({
 
   return (
     <div className="monitor-control">
-      {editing ? (
-        <input
-          ref={inputRef}
-          className="monitor-name-input"
-          value={editName}
-          placeholder={monitor.originalName}
-          onChange={(e) => setEditName(e.target.value)}
-          onBlur={finishEditing}
-          onKeyDown={handleKeyDown}
-        />
-      ) : (
-        <button className="monitor-name" onClick={startEditing}>
-          {monitor.name || monitor.originalName}
-        </button>
-      )}
+      <div className="monitor-name-row">
+        {editing ? (
+          <input
+            ref={inputRef}
+            className="monitor-name-input"
+            value={editName}
+            placeholder={monitor.originalName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={finishEditing}
+            onKeyDown={handleKeyDown}
+          />
+        ) : (
+          <button className="monitor-name" onClick={startEditing}>
+            {monitor.name || monitor.originalName}
+          </button>
+        )}
+        {onMoveUp && onMoveDown && (
+          <div className="monitor-reorder-buttons">
+            <button
+              className="monitor-reorder-btn"
+              onClick={onMoveUp}
+              disabled={isFirst}
+              title="Move up"
+            >
+              ▲
+            </button>
+            <button
+              className="monitor-reorder-btn"
+              onClick={onMoveDown}
+              disabled={isLast}
+              title="Move down"
+            >
+              ▼
+            </button>
+          </div>
+        )}
+      </div>
       <Slider
         icon={monitor.isBuiltIn ? "\uD83D\uDCBB" : "\uD83D\uDDA5"}
         value={monitor.brightness}
