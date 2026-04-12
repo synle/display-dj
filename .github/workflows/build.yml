@@ -19,7 +19,7 @@ jobs:
           - platform: macos-latest
             target: aarch64-apple-darwin
             artifact_name: macOS (Apple Silicon ARM64)
-          - platform: macos-13
+          - platform: macos-latest
             target: x86_64-apple-darwin
             artifact_name: macOS (Intel x64)
           - platform: windows-latest
