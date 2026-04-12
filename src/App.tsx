@@ -208,6 +208,17 @@ function App() {
     }
   };
 
+  const handleProfile = async (index: number) => {
+    try {
+      await invoke("apply_profile", { index });
+      fetchMonitors();
+      fetchDarkMode();
+      fetchVolume();
+    } catch (e) {
+      console.error("Failed to apply profile:", e);
+    }
+  };
+
   // Calculate average brightness for "all monitors" view
   const avgBrightness = monitors.length
     ? Math.round(
