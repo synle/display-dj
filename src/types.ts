@@ -30,6 +30,7 @@ export interface Preferences {
   keyBindings: KeyBinding[];
   nightModeSchedule: NightModeSchedule;
   debugLogging: boolean;
+  launchAtLogin: boolean;
 }
 
 export interface KeyBinding {

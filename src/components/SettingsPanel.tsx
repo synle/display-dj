@@ -161,6 +161,17 @@ export default function SettingsPanel({
           <label className="settings-checkbox-row">
             <input
               type="checkbox"
+              checked={prefs.launchAtLogin}
+              onChange={(e) => updateField("launchAtLogin", e.target.checked)}
+            />
+            <span>Launch at Login</span>
+          </label>
+        </div>
+
+        <div className="settings-section">
+          <label className="settings-checkbox-row">
+            <input
+              type="checkbox"
               checked={prefs.debugLogging}
               onChange={(e) => updateField("debugLogging", e.target.checked)}
             />

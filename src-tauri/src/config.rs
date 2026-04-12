@@ -50,6 +50,7 @@ pub struct Preferences {
     pub key_bindings: Vec<KeyBinding>,
     pub night_mode_schedule: NightModeSchedule,
     pub debug_logging: bool,
+    pub launch_at_login: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -126,6 +127,7 @@ impl Default for Preferences {
             ],
             night_mode_schedule: NightModeSchedule::default(),
             debug_logging: false,
+            launch_at_login: false,
         }
     }
 }
@@ -254,9 +256,19 @@ pub fn get_preferences(state: tauri::State<'_, crate::AppState>) -> Result<Prefe
 
 #[tauri::command]
 pub fn save_preferences(
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
     preferences: Preferences,
 ) -> Result<(), String> {
+    // Sync autostart with OS
+    use tauri_plugin_autostart::ManagerExt;
+    let autostart = app.autolaunch();
+    if preferences.launch_at_login {
+        autostart.enable().map_err(|e| e.to_string())?;
+    } else {
+        autostart.disable().map_err(|e| e.to_string())?;
+    }
+
     save_preferences_to_disk(&preferences);
     let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
     *prefs = preferences;
