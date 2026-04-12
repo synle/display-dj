@@ -15,6 +15,8 @@
 ## Larger Features
 
 - [x] **Multi-monitor reordering** — Up/down reorder buttons inline with each monitor in the expanded view instead of editing `sort_order` in JSON.
+- [x] **Consolidate monitor configs into preferences** — Eliminated `monitor-configs.json`. Monitor metadata (labels, sort order) now stored in `preferences.json` as a `monitorConfigs` array. Each monitor has a stable composite UID (`{api_id}::{api_model_name}`) that survives reconnections. Unplugged monitors persist in config so labels and sort order are preserved across plug/unplug cycles. Includes one-time migration from old format.
+- [x] **Debug logging tray submenu** — Replaced "Open Debug Log" menu item with a "Debug" submenu containing Enable Logging, Disable Logging, and Open Debug Log. Removed debug logging checkbox from Settings panel.
 - [ ] **Ambient light adaptation** — Auto-adjust brightness based on ambient light sensor. See [research notes](#ambient-light-adaptation-research) below.
 - [ ] **Blue light filter / Color temperature** — A "night shift" style warm color temperature control, if display-dj CLI supports gamma/color adjustments.
 - [ ] **Keyboard shortcut editor UI** — Visual editor for hotkeys instead of editing `preferences.json`. Show current bindings, let users record new ones.
@@ -24,7 +26,7 @@
 ### Quick Wins
 - [ ] **Tray tooltip showing current state** — On hover, show brightness %, volume %, and dark/light mode in the tray tooltip text instead of a static label. Tauri's `TrayIconBuilder` supports `.tooltip()` — update it on each state change. Gives users a glance at current levels without opening the popup.
 - [ ] **Per-monitor quick presets** — Add small 0/25/50/75/100% buttons below each monitor slider in expanded view for one-tap brightness setting. Avoids the imprecision of dragging a slider when you just want a round number. Render as a row of compact pill buttons styled to match the existing UI.
-- [ ] **Export / Import settings** — Backup and restore `preferences.json` and `monitor-configs.json` to/from a user-chosen file. Useful when migrating to a new machine, syncing a work and home setup, or sharing a multi-monitor config with a teammate. Use Tauri's `dialog` plugin for the native file picker.
+- [ ] **Export / Import settings** — Backup and restore `preferences.json` to/from a user-chosen file. Useful when migrating to a new machine, syncing a work and home setup, or sharing a multi-monitor config with a teammate. Use Tauri's `dialog` plugin for the native file picker.
 - [ ] **Confirm before Reset to Default** — Show a confirmation dialog before wiping all settings on "Reset to Default" to prevent accidental resets. Currently one mis-click in the tray menu destroys all customizations (shortcuts, profiles, monitor names). A simple "Are you sure?" dialog via Tauri's `dialog::ask` would prevent this.
 - [ ] **Volume presets in UI** — Quick mute/25%/50%/75%/100% buttons below the volume slider, mirroring the per-monitor preset idea. Keyboard shortcuts already support volume presets (Shift+F10/F11/F12), but the UI has no equivalent — this closes that gap for mouse-driven users.
 

@@ -56,12 +56,17 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     }
     let profiles_submenu = profiles_submenu.build()?;
 
-    let open_configs =
-        MenuItemBuilder::with_id("open_configs", "Open Monitor Configs").build(app)?;
     let open_prefs =
         MenuItemBuilder::with_id("open_prefs", "Open App Preferences").build(app)?;
-    let open_debug_log =
-        MenuItemBuilder::with_id("open_debug_log", "Open Debug Log").build(app)?;
+
+    // Debug submenu
+    let debug_enable = MenuItemBuilder::with_id("debug_enable", "Enable Logging").build(app)?;
+    let debug_disable = MenuItemBuilder::with_id("debug_disable", "Disable Logging").build(app)?;
+    let debug_open = MenuItemBuilder::with_id("debug_open", "Open Debug Log").build(app)?;
+    let debug_submenu = SubmenuBuilder::new(app, "Debug")
+        .items(&[&debug_enable, &debug_disable, &debug_open])
+        .build()?;
+
     let reset_defaults =
         MenuItemBuilder::with_id("reset_defaults", "Reset to Default").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
@@ -73,7 +78,9 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .separator()
         .item(&profiles_submenu)
         .separator()
-        .items(&[&open_configs, &open_prefs, &open_debug_log])
+        .items(&[&open_prefs])
+        .separator()
+        .item(&debug_submenu)
         .separator()
         .item(&reset_defaults)
         .separator()
@@ -94,13 +101,20 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 let url = format!("{}/light", base_url());
                 http_get(url);
             }
-            "open_configs" => {
-                let _ = crate::config::open_config_file();
-            }
             "open_prefs" => {
                 let _ = crate::config::open_preferences_file();
             }
-            "open_debug_log" => {
+            "debug_enable" => {
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    crate::config::set_debug_logging(&state, true);
+                }
+            }
+            "debug_disable" => {
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    crate::config::set_debug_logging(&state, false);
+                }
+            }
+            "debug_open" => {
                 let _ = crate::config::open_debug_log();
             }
             "reset_defaults" => {
@@ -109,9 +123,6 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 if let Some(state) = app.try_state::<crate::AppState>() {
                     if let Ok(mut prefs) = state.preferences.lock() {
                         *prefs = crate::config::load_preferences();
-                    }
-                    if let Ok(mut configs) = state.monitor_configs.lock() {
-                        *configs = crate::config::load_monitor_configs();
                     }
                 }
                 // Re-register shortcuts with default keybindings

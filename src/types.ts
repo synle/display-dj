@@ -1,5 +1,6 @@
 export interface Monitor {
   id: string;
+  uid: string;
   name: string;
   originalName: string;
   brightness: number;
@@ -7,11 +8,12 @@ export interface Monitor {
   isBuiltIn: boolean;
 }
 
-export interface MonitorConfig {
-  id: string;
-  name: string;
+export interface MonitorMetadata {
+  uid: string;
+  apiId: string;
+  apiName: string;
+  label: string;
   sortOrder: number;
-  disabled: boolean;
 }
 
 export interface NightModeSchedule {
@@ -30,6 +32,7 @@ export interface Preferences {
   nightModeSchedule: NightModeSchedule;
   debugLogging: boolean;
   launchAtLogin: boolean;
+  monitorConfigs: MonitorMetadata[];
 }
 
 export interface KeyBinding {

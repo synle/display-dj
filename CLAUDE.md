@@ -12,7 +12,7 @@ Display and dark mode operations are delegated to the [display-dj CLI](https://g
 - Communicates with backend via `invoke()` from `@tauri-apps/api/core`
 - Listens for backend events via `listen()` from `@tauri-apps/api/event`
 - Components: Header, Slider, MonitorControl, AllMonitorsControl, VolumeControl, DarkModeToggle, SettingsPanel
-- `types.ts` — shared TypeScript interfaces (Monitor, MonitorConfig, Preferences, KeyBinding, NightModeSchedule)
+- `types.ts` — shared TypeScript interfaces (Monitor, MonitorMetadata, Preferences, KeyBinding, NightModeSchedule)
 - `types.d.ts` — global type definitions (Command, DisplayType, BrightnessPreset, etc.)
 - `constants.ts` — shared constants (e.g. `LAPTOP_BUILT_IN_DISPLAY_ID`)
 
@@ -21,7 +21,7 @@ Display and dark mode operations are delegated to the [display-dj CLI](https://g
 - `display.rs` — Monitor brightness via HTTP requests to the display-dj server
 - `dark_mode.rs` — Dark mode detection and toggling via HTTP requests to the display-dj server
 - `volume.rs` — System volume get/set (platform-specific, not via display-dj)
-- `config.rs` — Preferences and monitor config persistence (JSON files in OS config dir), night mode schedule, min brightness with absolute floor, reset to defaults
+- `config.rs` — Preferences persistence (JSON file in OS config dir, includes per-monitor metadata), night mode schedule, min brightness with absolute floor, migration from legacy `monitor-configs.json`, reset to defaults
 - `tray.rs` — System tray menu, window positioning, global keyboard shortcuts
 
 ### display-dj CLI sidecar (`src-tauri/binaries/`)
@@ -75,8 +75,8 @@ cd src-tauri && cargo test  # Run all Rust backend tests
 
 ### Backend Tests (Rust)
 - **Unit tests**: Inline `#[cfg(test)]` modules in `config.rs` and `display.rs`
-  - `config.rs`: Serialization/deserialization, defaults, camelCase conventions, file roundtrips, CommandValue enum variants, effective min brightness, backward-compatible deserialization of old configs
-  - `display.rs`: `DjDisplay` to `Monitor` conversion, `merge_with_configs` (rename, disable, sort), Monitor serde
+  - `config.rs`: Serialization/deserialization, defaults, camelCase conventions, file roundtrips, CommandValue enum variants, MonitorMetadata serde, effective min brightness, backward-compatible deserialization of old configs, preferences with monitorConfigs roundtrip
+  - `display.rs`: `DjDisplay` to `Monitor` conversion (including uid computation), `merge_with_configs` (rename, sort), `reconcile_migrated_configs`, `ensure_metadata_for_monitors`, Monitor serde
 - **Smoke test**: `src-tauri/tests/smoke.rs` — Integration test verifying the crate compiles, links, and public API (AppState, run) is accessible
 
 ### CI
@@ -87,7 +87,16 @@ GitHub Actions (`build.yml`) runs `npm test` and `cargo test` on all platforms (
 - **Windows**: `%APPDATA%/display-dj/`
 - **Linux**: `~/.config/display-dj/`
 
-Files: `preferences.json`, `monitor-configs.json`
+Files: `preferences.json` (includes per-monitor metadata — labels, sort order — as `monitorConfigs` array)
+
+## Monitor Identity (UID scheme)
+
+Each monitor is identified by a composite UID: `{api_id}::{api_model_name}` (e.g. `"1::Dell U2723QE"`, `"builtin::Built-in Display"`). This is more stable than the raw integer ID from the sidecar API, which can collide when monitors are swapped.
+
+- `Monitor.id` — raw API id, used for sidecar HTTP calls (`/set_one/{id}/{value}`)
+- `Monitor.uid` — composite key, used for config lookups, React keys, rename/reorder operations
+- `MonitorMetadata` entries in `preferences.monitorConfigs` are **append-only** — new monitors are added on first detection, never removed on unplug. This preserves labels and sort order across plug/unplug cycles.
+- On startup, a one-time migration converts old `monitor-configs.json` entries into `MonitorMetadata` format within preferences.
 
 ## Key Conventions
 - All Rust structs sent to frontend use `#[serde(rename_all = "camelCase")]`
@@ -130,7 +139,7 @@ When both scales match (same monitor), the compensation is 1× (no-op).
 
 ### Debug logging
 
-Enable "Debug Logging" in Settings to write positioning data to `debug.log` in the config directory (auto-truncated at 512 KB). Open via tray menu → "Open Debug Log". Each tray click logs: tray rect, all monitors (position/size/scale), target selection, window scale, computed position, compensation factor, and final `set_position` arguments.
+Enable debug logging via the tray menu → "Debug" → "Enable Logging" to write positioning data to `debug.log` in the config directory (auto-truncated at 512 KB). Open via tray menu → "Debug" → "Open Debug Log". Each tray click logs: tray rect, all monitors (position/size/scale), target selection, window scale, computed position, compensation factor, and final `set_position` arguments.
 
 ## Dependencies
 The display-dj CLI sidecar handles all platform-specific display dependencies internally. No external tools need to be installed for display control.

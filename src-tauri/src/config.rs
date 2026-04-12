@@ -1,19 +1,25 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Absolute floor for brightness — never allow less than this regardless of user config.
 pub const ABSOLUTE_MIN_BRIGHTNESS: u32 = 5;
 
-pub type MonitorConfigs = HashMap<String, MonitorConfig>;
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
+/// Per-monitor metadata stored in preferences. Acts as a persistent registry —
+/// entries are added when a monitor is first detected and never removed on unplug,
+/// so labels and sort order survive across plug/unplug cycles.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct MonitorConfig {
-    pub id: String,
-    pub name: String,
+pub struct MonitorMetadata {
+    /// Composite unique key: "{api_id}::{api_name}" (e.g. "1::Dell U2723QE")
+    pub uid: String,
+    /// Raw ID from the display-dj sidecar API (e.g. "1", "builtin")
+    pub api_id: String,
+    /// Model name from the display-dj sidecar API (e.g. "Dell U2723QE")
+    pub api_name: String,
+    /// User-set friendly label. Empty string means use api_name.
+    pub label: String,
+    /// Sort order for UI display. Lower values come first.
     pub sort_order: i32,
-    pub disabled: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -50,6 +56,7 @@ pub struct Preferences {
     pub night_mode_schedule: NightModeSchedule,
     pub debug_logging: bool,
     pub launch_at_login: bool,
+    pub monitor_configs: Vec<MonitorMetadata>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -167,6 +174,7 @@ impl Default for Preferences {
             night_mode_schedule: NightModeSchedule::default(),
             debug_logging: false,
             launch_at_login: false,
+            monitor_configs: Vec::new(),
         }
     }
 }
@@ -227,20 +235,18 @@ fn preferences_path() -> PathBuf {
     config_dir().join("preferences.json")
 }
 
-fn monitor_configs_path() -> PathBuf {
-    config_dir().join("monitor-configs.json")
-}
-
 pub fn load_preferences() -> Preferences {
     let path = preferences_path();
-    match std::fs::read_to_string(&path) {
+    let mut prefs = match std::fs::read_to_string(&path) {
         Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
         Err(_) => {
             let prefs = Preferences::default();
             save_preferences_to_disk(&prefs);
             prefs
         }
-    }
+    };
+    migrate_monitor_configs_if_needed(&mut prefs);
+    prefs
 }
 
 pub fn save_preferences_to_disk(prefs: &Preferences) {
@@ -250,19 +256,54 @@ pub fn save_preferences_to_disk(prefs: &Preferences) {
     }
 }
 
-pub fn load_monitor_configs() -> MonitorConfigs {
-    let path = monitor_configs_path();
-    match std::fs::read_to_string(&path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-        Err(_) => HashMap::new(),
-    }
-}
+/// One-time migration: reads old `monitor-configs.json`, converts entries to
+/// `MonitorMetadata`, and stores them in `preferences.monitor_configs`.
+/// Renames the old file to `.migrated.json` so migration only runs once.
+fn migrate_monitor_configs_if_needed(prefs: &mut Preferences) {
+    use std::collections::HashMap;
 
-pub fn save_monitor_configs_to_disk(configs: &MonitorConfigs) {
-    let path = monitor_configs_path();
-    if let Ok(json) = serde_json::to_string_pretty(configs) {
-        std::fs::write(path, json).ok();
+    let old_path = config_dir().join("monitor-configs.json");
+    if !old_path.exists() || !prefs.monitor_configs.is_empty() {
+        return;
     }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct OldMonitorConfig {
+        id: String,
+        name: String,
+        sort_order: i32,
+        disabled: bool,
+    }
+
+    let content = match std::fs::read_to_string(&old_path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let old_configs: HashMap<String, OldMonitorConfig> = match serde_json::from_str(&content) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    for (_key, old) in old_configs {
+        if old.disabled {
+            continue; // drop disabled entries during migration
+        }
+        prefs.monitor_configs.push(MonitorMetadata {
+            uid: format!("{}::unknown", old.id),
+            api_id: old.id,
+            api_name: "unknown".into(),
+            label: old.name,
+            sort_order: old.sort_order,
+        });
+    }
+
+    save_preferences_to_disk(prefs);
+
+    // Rename old file so migration doesn't re-run
+    let migrated_path = config_dir().join("monitor-configs.migrated.json");
+    std::fs::rename(&old_path, &migrated_path).ok();
 }
 
 pub fn reset_to_defaults() {
@@ -275,14 +316,6 @@ pub fn reset_to_defaults() {
         std::fs::copy(&prefs_path, &backup).ok();
     }
     save_preferences_to_disk(&Preferences::default());
-
-    // Backup and reset monitor configs
-    let configs_path = monitor_configs_path();
-    if configs_path.exists() {
-        let backup = config_dir().join(format!("monitor-configs.bak_{}.json", now));
-        std::fs::copy(&configs_path, &backup).ok();
-    }
-    save_monitor_configs_to_disk(&HashMap::new());
 }
 
 // -- Tauri commands --
@@ -315,35 +348,6 @@ pub fn save_preferences(
 }
 
 #[tauri::command]
-pub fn get_monitor_configs(
-    state: tauri::State<'_, crate::AppState>,
-) -> Result<MonitorConfigs, String> {
-    let configs = state.monitor_configs.lock().map_err(|e| e.to_string())?;
-    Ok(configs.clone())
-}
-
-#[tauri::command]
-pub fn save_monitor_config(
-    state: tauri::State<'_, crate::AppState>,
-    config: MonitorConfig,
-) -> Result<(), String> {
-    let mut configs = state.monitor_configs.lock().map_err(|e| e.to_string())?;
-    configs.insert(config.id.clone(), config);
-    save_monitor_configs_to_disk(&configs);
-    Ok(())
-}
-
-#[tauri::command]
-pub fn open_config_file() -> Result<(), String> {
-    let path = monitor_configs_path();
-    // Ensure the file exists before trying to open it
-    if !path.exists() {
-        save_monitor_configs_to_disk(&HashMap::new());
-    }
-    open::that(path).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub fn open_preferences_file() -> Result<(), String> {
     let path = preferences_path();
     // Ensure the file exists before trying to open it
@@ -360,6 +364,14 @@ pub fn open_debug_log() -> Result<(), String> {
         std::fs::write(&path, "").ok();
     }
     open::that(path).map_err(|e| e.to_string())
+}
+
+/// Set debug_logging in preferences and persist to disk. Used by tray Debug submenu.
+pub fn set_debug_logging(state: &crate::AppState, enabled: bool) {
+    if let Ok(mut prefs) = state.preferences.lock() {
+        prefs.debug_logging = enabled;
+        save_preferences_to_disk(&prefs);
+    }
 }
 
 #[tauri::command]
@@ -476,40 +488,78 @@ mod tests {
         assert!(json.contains("showIndividualDisplays"));
         assert!(json.contains("minBrightness"));
         assert!(json.contains("keyBindings"));
+        assert!(json.contains("monitorConfigs"));
         // Should NOT contain snake_case
         assert!(!json.contains("show_individual_displays"));
         assert!(!json.contains("min_brightness"));
+        assert!(!json.contains("monitor_configs"));
     }
 
     #[test]
-    fn test_monitor_config_serialization() {
-        let config = MonitorConfig {
-            id: "external-1".into(),
-            name: "My Monitor".into(),
-            sort_order: 1,
-            disabled: false,
+    fn test_monitor_metadata_serialization() {
+        let meta = MonitorMetadata {
+            uid: "1::Dell U2723QE".into(),
+            api_id: "1".into(),
+            api_name: "Dell U2723QE".into(),
+            label: "Main Monitor".into(),
+            sort_order: 0,
         };
-        let json = serde_json::to_string(&config).unwrap();
+        let json = serde_json::to_string(&meta).unwrap();
         assert!(json.contains("sortOrder"));
+        assert!(json.contains("apiId"));
+        assert!(json.contains("apiName"));
         assert!(!json.contains("sort_order"));
+        assert!(!json.contains("api_id"));
     }
 
     #[test]
-    fn test_monitor_configs_hashmap() {
-        let mut configs: MonitorConfigs = HashMap::new();
-        configs.insert(
-            "external-1".into(),
-            MonitorConfig {
-                id: "external-1".into(),
-                name: "Dell".into(),
+    fn test_monitor_metadata_roundtrip() {
+        let meta = MonitorMetadata {
+            uid: "builtin::Built-in Display".into(),
+            api_id: "builtin".into(),
+            api_name: "Built-in Display".into(),
+            label: "MacBook Screen".into(),
+            sort_order: 0,
+        };
+        let json = serde_json::to_string(&meta).unwrap();
+        let restored: MonitorMetadata = serde_json::from_str(&json).unwrap();
+        assert_eq!(meta, restored);
+    }
+
+    #[test]
+    fn test_preferences_with_monitor_configs_roundtrip() {
+        let mut prefs = Preferences::default();
+        prefs.monitor_configs = vec![
+            MonitorMetadata {
+                uid: "1::Dell".into(),
+                api_id: "1".into(),
+                api_name: "Dell".into(),
+                label: "Left".into(),
                 sort_order: 0,
-                disabled: false,
             },
-        );
-        let json = serde_json::to_string(&configs).unwrap();
-        let deserialized: MonitorConfigs = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.len(), 1);
-        assert_eq!(deserialized["external-1"].name, "Dell");
+            MonitorMetadata {
+                uid: "2::LG".into(),
+                api_id: "2".into(),
+                api_name: "LG".into(),
+                label: "".into(),
+                sort_order: 1,
+            },
+        ];
+        let json = serde_json::to_string_pretty(&prefs).unwrap();
+        let restored: Preferences = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.monitor_configs.len(), 2);
+        assert_eq!(restored.monitor_configs[0].uid, "1::Dell");
+        assert_eq!(restored.monitor_configs[1].label, "");
+    }
+
+    #[test]
+    fn test_preferences_missing_monitor_configs_defaults_to_empty() {
+        let json = r#"{
+            "showIndividualDisplays": true,
+            "keyBindings": []
+        }"#;
+        let prefs: Preferences = serde_json::from_str(json).unwrap();
+        assert!(prefs.monitor_configs.is_empty());
     }
 
     #[test]
@@ -531,28 +581,26 @@ mod tests {
     }
 
     #[test]
-    fn test_monitor_configs_file_roundtrip() {
-        let dir = std::env::temp_dir().join("display-dj-test-configs");
+    fn test_preferences_with_monitor_configs_file_roundtrip() {
+        let dir = std::env::temp_dir().join("display-dj-test-configs-v2");
         std::fs::create_dir_all(&dir).ok();
-        let path = dir.join("test-monitor-configs.json");
+        let path = dir.join("test-preferences.json");
 
-        let mut configs: MonitorConfigs = HashMap::new();
-        configs.insert(
-            "builtin-0".into(),
-            MonitorConfig {
-                id: "builtin-0".into(),
-                name: "Built-in".into(),
-                sort_order: 0,
-                disabled: false,
-            },
-        );
-        let json = serde_json::to_string_pretty(&configs).unwrap();
+        let mut prefs = Preferences::default();
+        prefs.monitor_configs = vec![MonitorMetadata {
+            uid: "builtin::Built-in Display".into(),
+            api_id: "builtin".into(),
+            api_name: "Built-in Display".into(),
+            label: "MacBook".into(),
+            sort_order: 0,
+        }];
+        let json = serde_json::to_string_pretty(&prefs).unwrap();
         std::fs::write(&path, &json).unwrap();
 
-        let loaded: MonitorConfigs =
+        let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded["builtin-0"].name, "Built-in");
+        assert_eq!(loaded.monitor_configs.len(), 1);
+        assert_eq!(loaded.monitor_configs[0].label, "MacBook");
 
         std::fs::remove_dir_all(&dir).ok();
     }

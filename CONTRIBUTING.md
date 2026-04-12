@@ -94,7 +94,7 @@ display-dj2/
 │   ├── App.tsx                   # Root component: fetches data, manages state, renders layout
 │   ├── App.test.tsx              # Smoke test: App renders, fetches data, handles errors
 │   ├── App.css                   # All CSS (dark tray popup theme, sliders, toggles)
-│   ├── types.ts                  # Shared TypeScript interfaces (Monitor, MonitorConfig, Preferences, KeyBinding, NightModeSchedule)
+│   ├── types.ts                  # Shared TypeScript interfaces (Monitor, MonitorMetadata, Preferences, KeyBinding, NightModeSchedule)
 │   ├── types.d.ts                # Global type definitions (Command, DisplayType, BrightnessPreset, etc.)
 │   ├── index.d.ts                # Ambient module declarations (SVG/image imports, legacy adapters)
 │   ├── constants.ts              # Shared constants (LAPTOP_BUILT_IN_DISPLAY_ID)
@@ -132,7 +132,7 @@ display-dj2/
 │       ├── display.rs            # Monitor detection + brightness via HTTP to display-dj server (+ unit tests)
 │       ├── dark_mode.rs          # Dark mode read/write via HTTP to display-dj server
 │       ├── volume.rs             # System volume get/set (platform-specific: osascript, PowerShell, pactl)
-│       ├── config.rs             # Preferences + monitor config load/save, NightModeSchedule, min brightness, reset to defaults (+ unit tests)
+│       ├── config.rs             # Preferences + monitor metadata persistence, NightModeSchedule, min brightness, reset to defaults (+ unit tests)
 │       └── tray.rs               # System tray menu, window positioning, keyboard shortcut dispatch
 │
 ├── index.html                    # HTML shell that loads src/main.tsx
@@ -167,7 +167,7 @@ The `DjDisplay` struct maps the server's JSON response (with `display_type`, nul
 
 **Key functions to know**:
 - `detect_monitors()` -- HTTP GET to `/get_all`, converts `DjDisplay` -> `Monitor`
-- `merge_with_configs()` -- applies user-configured names, sort orders, and disabled flags from `monitor-configs.json`
+- `merge_with_configs()` -- applies user-configured labels and sort orders from `preferences.monitorConfigs`
 - `base_url()` -- returns `http://127.0.0.1:<port>` using the port stored at startup
 
 ### Dark Mode
@@ -218,7 +218,7 @@ Loads preferences via `invoke("get_preferences")`, saves via `invoke("save_prefe
 ### System Tray & Keyboard Shortcuts
 
 **Backend** (`tray.rs`):
-- `setup_tray()` -- creates the tray icon + context menu (Dark Mode, Light Mode, Open Configs, Open Preferences, Quit)
+- `setup_tray()` -- creates the tray icon + context menu (Dark Mode, Light Mode, Profiles, Open App Preferences, Debug submenu, Reset to Default, Quit)
 - Left-click toggles main window visibility; `position_window_near_tray()` places it near the tray icon
 - Right-click opens the context menu
 - `register_shortcuts()` -- reads key bindings from `Preferences`, registers via `tauri-plugin-global-shortcut`
@@ -228,8 +228,8 @@ Loads preferences via `invoke("get_preferences")`, saves via `invoke("save_prefe
 
 **Backend** (`config.rs`):
 - `config_dir()` resolves to `~/Library/Application Support/display-dj` (macOS), `%APPDATA%/display-dj` (Windows), `~/.config/display-dj` (Linux)
-- `load_preferences()` / `save_preferences_to_disk()` -- reads/writes `preferences.json`, returns `Preferences::default()` if file missing or malformed
-- `load_monitor_configs()` / `save_monitor_configs_to_disk()` -- reads/writes `monitor-configs.json` as `HashMap<String, MonitorConfig>`
+- `load_preferences()` / `save_preferences_to_disk()` -- reads/writes `preferences.json` (includes per-monitor metadata), returns `Preferences::default()` if file missing or malformed
+- Monitor metadata (labels, sort order) is stored inline in `preferences.json` as `monitorConfigs` array — no separate file
 
 ---
 
@@ -275,10 +275,10 @@ Events are used when keyboard shortcuts change brightness/volume/dark mode from 
 
 | Module | Commands |
 |---|---|
-| `display` | `get_monitors`, `set_brightness`, `set_all_brightness`, `rename_monitor` |
+| `display` | `get_monitors`, `set_brightness`, `set_all_brightness`, `rename_monitor`, `save_monitor_order` |
 | `dark_mode` | `get_dark_mode`, `set_dark_mode` |
 | `volume` | `get_volume`, `set_volume` |
-| `config` | `get_preferences`, `save_preferences`, `get_monitor_configs`, `save_monitor_config`, `open_config_file`, `open_preferences_file`, `get_app_version` |
+| `config` | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `get_app_version` |
 
 **Events emitted by backend**:
 
@@ -351,16 +351,17 @@ Each key binding has a `key` (e.g. `"Shift+F1"`) and a `command` -- either a sin
 | `changeDarkMode` | `toggle`, `dark`, `light` | Toggles or sets system dark mode |
 | `changeVolume` | Any integer 0-100 (e.g. `0`, `50`, `100`) | Sets system volume |
 
-### monitor-configs.json
+### Monitor Metadata (in preferences.json)
 
-A `HashMap<String, MonitorConfig>` keyed by monitor ID (e.g. `"external-1"`, `"builtin-0"`).
+The `monitorConfigs` array in `preferences.json` stores per-monitor metadata. Each monitor is identified by a composite UID (`{api_id}::{api_model_name}`) that survives reconnections. Entries are never removed when a monitor is unplugged — labels and sort order persist across plug/unplug cycles.
 
 | Field | Type | Purpose |
 |---|---|---|
-| `id` | string | Monitor identifier (matches backend) |
-| `name` | string | Custom display name (empty string = keep auto-detected name) |
+| `uid` | string | Composite unique key: `"{api_id}::{api_model_name}"` |
+| `apiId` | string | Raw ID from the display-dj sidecar (e.g. `"1"`, `"builtin"`) |
+| `apiName` | string | Model name from the sidecar API (e.g. `"Dell U2723QE"`) |
+| `label` | string | User-set friendly name (empty string = use apiName) |
 | `sortOrder` | number | Display order in the UI (lower = higher) |
-| `disabled` | bool | Hide this monitor from the UI |
 
 ---
 
@@ -388,7 +389,7 @@ A `HashMap<String, MonitorConfig>` keyed by monitor ID (e.g. `"external-1"`, `"b
 
 ### State
 
-- `AppState` (in `lib.rs`) holds `Mutex<Preferences>` and `Mutex<MonitorConfigs>` for thread-safe shared access across Tauri commands.
+- `AppState` (in `lib.rs`) holds `Mutex<Preferences>` for thread-safe shared access across Tauri commands. Monitor metadata (labels, sort order) is stored within `Preferences.monitor_configs`.
 - Frontend state lives entirely in `App.tsx` -- no external state library.
 
 ---
@@ -425,8 +426,8 @@ Inline `#[cfg(test)]` modules plus an integration smoke test.
 
 | Location | What it covers |
 |---|---|
-| `config.rs` | `Preferences` defaults, `CommandValue` Single/Multiple serde, camelCase JSON fields, file roundtrips, malformed JSON fallback, `get_app_version`, effective min brightness, backward-compatible deserialization of old configs |
-| `display.rs` | `DjDisplay` to `Monitor` conversion (builtin, external DDC, null brightness), `Monitor` serde (camelCase, roundtrip), `merge_with_configs` (rename, disable, sort, empty name) |
+| `config.rs` | `Preferences` defaults, `MonitorMetadata` serde, `CommandValue` Single/Multiple serde, camelCase JSON fields, file roundtrips, malformed JSON fallback, `get_app_version`, effective min brightness, backward-compatible deserialization of old configs, preferences with monitor configs roundtrip |
+| `display.rs` | `DjDisplay` to `Monitor` conversion (builtin, external DDC, null brightness, uid computation), `Monitor` serde (camelCase, roundtrip), `merge_with_configs` (rename, sort, empty label), `reconcile_migrated_configs`, `ensure_metadata_for_monitors` |
 | `tests/smoke.rs` | **Smoke test**: crate compiles and links, `AppState` is constructable, `run` function is exported |
 
 Rust tests don't require external tools, hardware, or the display-dj server -- they test pure logic that works on all platforms.
