@@ -234,4 +234,101 @@ describe("App smoke test", () => {
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
   });
+
+  it("calls rename_monitor with uid (not id)", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Expand to individual monitors
+    await waitFor(() => {
+      expect(screen.getByText("All Monitors (1)")).toBeInTheDocument();
+    });
+    await user.click(screen.getByTitle("Show individual monitors"));
+    await waitFor(() => {
+      expect(screen.getByText("Built-in Display")).toBeInTheDocument();
+    });
+
+    // Click monitor name to edit
+    await user.click(screen.getByText("Built-in Display"));
+    const input = screen.getByRole("textbox");
+    await user.clear(input);
+    await user.type(input, "MacBook{Enter}");
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("rename_monitor", {
+        uid: "builtin-0::Built-in Display",
+        name: "MacBook",
+      });
+    });
+  });
+
+  it("calls set_brightness with API id (not uid)", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "get_monitors":
+          return Promise.resolve([
+            {
+              id: "1",
+              uid: "1::Dell U2723QE",
+              name: "Dell U2723QE",
+              originalName: "Dell U2723QE",
+              brightness: 50,
+              supportsBrightness: true,
+              isBuiltIn: false,
+            },
+          ]);
+        case "get_dark_mode":
+          return Promise.resolve(false);
+        case "get_volume":
+          return Promise.resolve(50);
+        case "get_preferences":
+          return Promise.resolve({
+            showIndividualDisplays: false,
+            minBrightness: 5,
+            keyBindings: [],
+            profiles: [],
+            nightModeSchedule: {
+              enabled: false,
+              nightStart: "21:00",
+              nightBrightness: 20,
+              dayStart: "07:00",
+              dayBrightness: 100,
+            },
+            debugLogging: false,
+            launchAtLogin: false,
+            monitorConfigs: [],
+          });
+        case "get_app_version":
+          return Promise.resolve("2.0.0");
+        case "set_brightness":
+          return Promise.resolve(undefined);
+        default:
+          return Promise.resolve(undefined);
+      }
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Expand to individual monitors
+    await waitFor(() => {
+      expect(screen.getByText("All Monitors (1)")).toBeInTheDocument();
+    });
+    await user.click(screen.getByTitle("Show individual monitors"));
+    await waitFor(() => {
+      expect(screen.getByText("Dell U2723QE")).toBeInTheDocument();
+    });
+
+    // Click the monitor icon to toggle brightness (triggers set_brightness)
+    const icon = screen.getByText("\uD83D\uDDA5");
+    await user.click(icon);
+
+    await waitFor(() => {
+      // Should use API id "1" (not uid "1::Dell U2723QE")
+      expect(mockInvoke).toHaveBeenCalledWith("set_brightness", {
+        monitorId: "1",
+        value: 5,
+      });
+    });
+  });
 });
