@@ -152,6 +152,26 @@ pub fn save_monitor_configs_to_disk(configs: &MonitorConfigs) {
     }
 }
 
+pub fn reset_to_defaults() {
+    let now = chrono::Local::now().format("%Y%m%d_%H%M%S");
+
+    // Backup and reset preferences
+    let prefs_path = preferences_path();
+    if prefs_path.exists() {
+        let backup = config_dir().join(format!("preferences.bak_{}.json", now));
+        std::fs::copy(&prefs_path, &backup).ok();
+    }
+    save_preferences_to_disk(&Preferences::default());
+
+    // Backup and reset monitor configs
+    let configs_path = monitor_configs_path();
+    if configs_path.exists() {
+        let backup = config_dir().join(format!("monitor-configs.bak_{}.json", now));
+        std::fs::copy(&configs_path, &backup).ok();
+    }
+    save_monitor_configs_to_disk(&HashMap::new());
+}
+
 // -- Tauri commands --
 
 #[tauri::command]
