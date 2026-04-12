@@ -63,7 +63,7 @@ export default function MonitorControl({
         onChange={onBrightnessChange}
       />
       {monitor.supportsContrast && (
-        <Slider icon="\u25D1" value={monitor.contrast} onChange={onContrastChange} />
+        <Slider icon="🌓" value={monitor.contrast} onChange={onContrastChange} />
       )}
     </div>
   );

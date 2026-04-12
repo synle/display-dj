@@ -57,12 +57,19 @@ pub fn run() {
             let handle = app.handle().clone();
             tray::register_shortcuts(&handle, &preferences.key_bindings);
 
-            // Hide window when it loses focus
+            // Hide window when it loses focus (with debounce so subprocesses
+            // like m1ddc/brightness don't cause the window to dismiss)
             if let Some(window) = app.get_webview_window("main") {
                 let win_clone = window.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::Focused(false) = event {
-                        let _ = win_clone.hide();
+                        let win = win_clone.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(200));
+                            if !win.is_focused().unwrap_or(true) {
+                                let _ = win.hide();
+                            }
+                        });
                     }
                 });
             }
