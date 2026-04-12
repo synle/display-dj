@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "linux")]
 use std::path::PathBuf;
 
 /// Create a PowerShell command that runs without a visible console window.
@@ -26,47 +26,78 @@ pub struct Monitor {
 }
 
 // ===========================================================================
-// macOS implementation
+// macOS implementation — DDC/CI via ddc-macos for external monitors,
+// CoreGraphics gamma fallback for monitors without DDC support,
+// IOKit for built-in display.
 // ===========================================================================
 
 #[cfg(target_os = "macos")]
-fn get_binary_path(name: &str) -> PathBuf {
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_default();
+const VCP_BRIGHTNESS: u8 = 0x10;
+#[cfg(target_os = "macos")]
+const VCP_CONTRAST: u8 = 0x12;
 
-    // 1. Next to executable (production bundle)
-    let beside_exe = exe_dir.join(name);
-    if beside_exe.exists() {
-        return beside_exe;
-    }
+// CoreGraphics FFI for gamma table control (software brightness fallback).
+#[cfg(target_os = "macos")]
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGSetDisplayTransferByFormula(
+        display: u32,
+        red_min: f32, red_max: f32, red_gamma: f32,
+        green_min: f32, green_max: f32, green_gamma: f32,
+        blue_min: f32, blue_max: f32, blue_gamma: f32,
+    ) -> i32;
+    fn CGGetActiveDisplayList(max: u32, displays: *mut u32, count: *mut u32) -> i32;
+    fn CGDisplayIsBuiltin(display: u32) -> i32;
+}
 
-    // 2. macOS .app bundle Resources directory
-    let resources = exe_dir.join("../Resources").join(name);
-    if resources.exists() {
-        return resources;
-    }
+// DisplayServices private framework FFI for built-in display brightness.
+#[cfg(target_os = "macos")]
+type DisplayServicesGetBrightnessFn = unsafe extern "C" fn(u32, *mut f32) -> i32;
+#[cfg(target_os = "macos")]
+type DisplayServicesSetBrightnessFn = unsafe extern "C" fn(u32, f32) -> i32;
 
-    // 3. Homebrew (Apple Silicon)
-    let homebrew_arm = PathBuf::from(format!("/opt/homebrew/bin/{}", name));
-    if homebrew_arm.exists() {
-        return homebrew_arm;
-    }
-
-    // 4. Homebrew (Intel)
-    let homebrew_intel = PathBuf::from(format!("/usr/local/bin/{}", name));
-    if homebrew_intel.exists() {
-        return homebrew_intel;
-    }
-
-    // 5. Fallback: hope it's in PATH
-    PathBuf::from(name)
+#[cfg(target_os = "macos")]
+struct DisplayServicesFns {
+    get_brightness: DisplayServicesGetBrightnessFn,
+    set_brightness: DisplayServicesSetBrightnessFn,
 }
 
 #[cfg(target_os = "macos")]
-fn is_apple_silicon() -> bool {
-    std::env::consts::ARCH == "aarch64"
+fn display_services() -> Option<&'static DisplayServicesFns> {
+    use std::sync::OnceLock;
+    static FUNCS: OnceLock<Option<DisplayServicesFns>> = OnceLock::new();
+    FUNCS.get_or_init(|| {
+        unsafe {
+            let path = std::ffi::CString::new(
+                "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices"
+            ).ok()?;
+            let handle = libc::dlopen(path.as_ptr(), libc::RTLD_NOW);
+            if handle.is_null() { return None; }
+            let get_sym = libc::dlsym(handle, b"DisplayServicesGetBrightness\0".as_ptr() as *const _);
+            let set_sym = libc::dlsym(handle, b"DisplayServicesSetBrightness\0".as_ptr() as *const _);
+            if get_sym.is_null() || set_sym.is_null() { return None; }
+            Some(DisplayServicesFns {
+                get_brightness: std::mem::transmute(get_sym),
+                set_brightness: std::mem::transmute(set_sym),
+            })
+        }
+    }).as_ref()
+}
+
+/// Per-monitor state tracked across detect/set calls.
+#[cfg(target_os = "macos")]
+struct ExternalMonitorInfo {
+    cg_display_id: u32,
+    ddc_supported: bool,
+    gamma_brightness: u32,
+}
+
+#[cfg(target_os = "macos")]
+fn mac_state() -> &'static std::sync::Mutex<std::collections::HashMap<String, ExternalMonitorInfo>> {
+    use std::sync::OnceLock;
+    static STATE: OnceLock<std::sync::Mutex<std::collections::HashMap<String, ExternalMonitorInfo>>> =
+        OnceLock::new();
+    STATE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
 #[cfg(target_os = "macos")]
@@ -77,194 +108,118 @@ fn detect_monitors() -> Vec<Monitor> {
         monitors.push(builtin);
     }
 
-    if is_apple_silicon() {
-        detect_external_monitors_m1ddc(&mut monitors);
-    } else {
-        detect_external_monitors_ddcctl(&mut monitors);
-    }
+    detect_external_monitors_ddc(&mut monitors);
 
     monitors
 }
 
+/// Find the CGDirectDisplayID of the built-in display.
 #[cfg(target_os = "macos")]
-fn detect_builtin_monitor_macos() -> Option<Monitor> {
-    let brightness_bin = get_binary_path("brightness");
-    let output = std::process::Command::new(&brightness_bin)
-        .arg("-l")
-        .output()
-        .ok()?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        let line = line.trim();
-        if line.starts_with("display 0:") {
-            let brightness = line
-                .split("brightness")
-                .nth(1)
-                .and_then(|s| s.trim().parse::<f64>().ok())
-                .map(|v| (v * 100.0).round() as u32)
-                .unwrap_or(50);
-
-            return Some(Monitor {
-                id: "builtin-0".into(),
-                name: "Built-in Display".into(),
-                brightness,
-                contrast: 50,
-                supports_brightness: true,
-                supports_contrast: false,
-                is_built_in: true,
-            });
+fn find_builtin_display_id() -> Option<u32> {
+    unsafe {
+        let mut displays = [0u32; 10];
+        let mut count: u32 = 0;
+        CGGetActiveDisplayList(10, displays.as_mut_ptr(), &mut count);
+        for i in 0..count as usize {
+            if CGDisplayIsBuiltin(displays[i]) != 0 {
+                return Some(displays[i]);
+            }
         }
     }
     None
 }
 
+/// Detect built-in display via DisplayServices private framework.
 #[cfg(target_os = "macos")]
-fn detect_external_monitors_m1ddc(monitors: &mut Vec<Monitor>) {
-    let m1ddc = get_binary_path("m1ddc");
+fn detect_builtin_monitor_macos() -> Option<Monitor> {
+    let ds = display_services()?;
+    let display_id = find_builtin_display_id()?;
+    let mut brightness_f: f32 = 0.0;
+    let result = unsafe { (ds.get_brightness)(display_id, &mut brightness_f) };
+    if result != 0 {
+        return None;
+    }
+    let brightness = (brightness_f * 100.0).round() as u32;
+    Some(Monitor {
+        id: "builtin-0".into(),
+        name: "Built-in Display".into(),
+        brightness,
+        contrast: 50,
+        supports_brightness: true,
+        supports_contrast: false,
+        is_built_in: true,
+    })
+}
 
-    let list_output = match std::process::Command::new(&m1ddc)
-        .args(["display", "list"])
-        .output()
-    {
-        Ok(o) => o,
+/// Detect external monitors via ddc-macos. Monitors that fail DDC reads
+/// are still included but use gamma fallback for brightness control.
+#[cfg(target_os = "macos")]
+fn detect_external_monitors_ddc(monitors: &mut Vec<Monitor>) {
+    use ddc::Ddc;
+
+    let ddc_monitors = match ddc_macos::Monitor::enumerate() {
+        Ok(m) => m,
         Err(e) => {
-            log::warn!("Failed to run m1ddc display list: {}", e);
+            log::warn!("Failed to enumerate DDC monitors: {}", e);
             return;
         }
     };
 
-    let stdout = String::from_utf8_lossy(&list_output.stdout);
-    let mut display_numbers: Vec<u32> = Vec::new();
-    for line in stdout.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if let Some(num_str) = line.split_whitespace().next() {
-            if let Ok(num) = num_str.parse::<u32>() {
-                display_numbers.push(num);
-            }
-        }
-    }
+    let mut state = mac_state().lock().unwrap_or_else(|e| e.into_inner());
 
-    if display_numbers.is_empty() {
-        display_numbers = vec![1, 2, 3, 4];
-    }
+    for (idx, mut ddc_mon) in ddc_monitors.into_iter().enumerate() {
+        let monitor_id = format!("external-{}", idx + 1);
+        let cg_display_id = ddc_mon.handle().id;
+        let name = ddc_mon
+            .product_name()
+            .unwrap_or_else(|| format!("External Display {}", idx + 1));
 
-    for display_num in display_numbers {
-        let brightness = get_m1ddc_value(&m1ddc, "luminance", display_num);
-        let contrast = get_m1ddc_value(&m1ddc, "contrast", display_num);
+        let ddc_brightness = ddc_mon.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|val| {
+            let max = val.maximum() as f64;
+            let cur = val.value() as f64;
+            if max > 0.0 { (cur / max * 100.0).round() as u32 } else { 50 }
+        });
 
-        let brightness = match brightness {
-            Some(v) => v,
-            None => continue,
-        };
+        let ddc_contrast = ddc_mon.get_vcp_feature(VCP_CONTRAST).ok().map(|val| {
+            let max = val.maximum() as f64;
+            let cur = val.value() as f64;
+            if max > 0.0 { (cur / max * 100.0).round() as u32 } else { 50 }
+        });
 
-        let name = get_m1ddc_display_name(&m1ddc, display_num)
-            .unwrap_or_else(|| format!("External Display {}", display_num));
+        let ddc_supported = ddc_brightness.is_some();
+        let existing_gamma = state.get(&monitor_id).map(|s| s.gamma_brightness).unwrap_or(100);
+        let brightness = ddc_brightness.unwrap_or(existing_gamma);
+
+        state.insert(monitor_id.clone(), ExternalMonitorInfo {
+            cg_display_id,
+            ddc_supported,
+            gamma_brightness: if ddc_supported { 100 } else { existing_gamma },
+        });
 
         monitors.push(Monitor {
-            id: format!("external-{}", display_num),
+            id: monitor_id,
             name,
             brightness,
-            contrast: contrast.unwrap_or(50),
+            contrast: ddc_contrast.unwrap_or(50),
             supports_brightness: true,
-            supports_contrast: contrast.is_some(),
+            supports_contrast: ddc_supported && ddc_contrast.is_some(),
             is_built_in: false,
         });
     }
 }
 
+/// Set brightness via gamma table (software dimming, 0-100).
 #[cfg(target_os = "macos")]
-fn get_m1ddc_value(m1ddc: &PathBuf, property: &str, display_num: u32) -> Option<u32> {
-    let output = std::process::Command::new(m1ddc)
-        .args(["get", property, "-d", &display_num.to_string()])
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
+fn set_gamma_brightness(cg_display_id: u32, value: u32) {
+    let val = (value.min(100) as f32) / 100.0;
+    unsafe {
+        CGSetDisplayTransferByFormula(
+            cg_display_id,
+            0.0, val, 1.0,
+            0.0, val, 1.0,
+            0.0, val, 1.0,
+        );
     }
-
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse::<u32>()
-        .ok()
-}
-
-#[cfg(target_os = "macos")]
-fn get_m1ddc_display_name(m1ddc: &PathBuf, display_num: u32) -> Option<String> {
-    let output = std::process::Command::new(m1ddc)
-        .args(["display", "list"])
-        .output()
-        .ok()?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        let line = line.trim();
-        if line.starts_with(&display_num.to_string()) {
-            if let Some(rest) = line.splitn(2, " - ").nth(1) {
-                let name = if let Some(idx) = rest.rfind('(') {
-                    rest[..idx].trim()
-                } else {
-                    rest.trim()
-                };
-                if !name.is_empty() {
-                    return Some(name.to_string());
-                }
-            }
-        }
-    }
-    None
-}
-
-#[cfg(target_os = "macos")]
-fn detect_external_monitors_ddcctl(monitors: &mut Vec<Monitor>) {
-    let ddcctl = get_binary_path("ddcctl");
-
-    for display_num in 1..=4 {
-        let brightness = get_ddcctl_value(&ddcctl, "-b", display_num);
-        let brightness = match brightness {
-            Some(v) => v,
-            None => continue,
-        };
-
-        let contrast = get_ddcctl_value(&ddcctl, "-con", display_num);
-
-        monitors.push(Monitor {
-            id: format!("external-{}", display_num),
-            name: format!("External Display {}", display_num),
-            brightness,
-            contrast: contrast.unwrap_or(50),
-            supports_brightness: true,
-            supports_contrast: contrast.is_some(),
-            is_built_in: false,
-        });
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn get_ddcctl_value(ddcctl: &PathBuf, flag: &str, display_num: u32) -> Option<u32> {
-    let output = std::process::Command::new(ddcctl)
-        .args(["-d", &display_num.to_string(), flag, "?"])
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        if line.contains("current:") {
-            if let Some(val_str) = line.split("current:").nth(1) {
-                let val_str = val_str.split(',').next().unwrap_or("").trim();
-                return val_str.parse::<u32>().ok();
-            }
-        }
-    }
-    None
 }
 
 #[cfg(target_os = "macos")]
@@ -272,49 +227,26 @@ fn set_monitor_brightness(monitor_id: &str, value: u32) -> Result<(), String> {
     let value = value.min(100);
 
     if monitor_id.starts_with("builtin") {
-        let brightness_bin = get_binary_path("brightness");
-        let float_val = value as f64 / 100.0;
-        let output = std::process::Command::new(&brightness_bin)
-            .args(["-d", "0", &format!("{:.4}", float_val)])
-            .output()
-            .map_err(|e| format!("Failed to set built-in brightness: {}", e))?;
-        if !output.status.success() {
-            return Err(format!(
-                "brightness set failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-        return Ok(());
+        return set_builtin_brightness(value);
     }
 
-    let display_num = extract_display_number(monitor_id)?;
+    let mut state = mac_state().lock().unwrap_or_else(|e| e.into_inner());
+    let info = state.get(monitor_id)
+        .ok_or_else(|| format!("Monitor {} not found in state", monitor_id))?;
 
-    if is_apple_silicon() {
-        let m1ddc = get_binary_path("m1ddc");
-        let output = std::process::Command::new(&m1ddc)
-            .args(["set", "luminance", &value.to_string(), "-d", &display_num.to_string()])
-            .output()
-            .map_err(|e| format!("m1ddc error: {}", e))?;
-        if !output.status.success() {
-            return Err(format!(
-                "m1ddc set brightness failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
+    if info.ddc_supported {
+        let target_index = extract_display_number(monitor_id)?;
+        drop(state);
+        set_ddc_value_macos(target_index, VCP_BRIGHTNESS, value)
     } else {
-        let ddcctl = get_binary_path("ddcctl");
-        let output = std::process::Command::new(&ddcctl)
-            .args(["-d", &display_num.to_string(), "-b", &value.to_string()])
-            .output()
-            .map_err(|e| format!("ddcctl error: {}", e))?;
-        if !output.status.success() {
-            return Err(format!(
-                "ddcctl set brightness failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
+        let cg_id = info.cg_display_id;
+        if let Some(info) = state.get_mut(monitor_id) {
+            info.gamma_brightness = value;
         }
+        drop(state);
+        set_gamma_brightness(cg_id, value);
+        Ok(())
     }
-    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -325,32 +257,61 @@ fn set_monitor_contrast(monitor_id: &str, value: u32) -> Result<(), String> {
         return Err("Built-in display does not support contrast control".into());
     }
 
-    let display_num = extract_display_number(monitor_id)?;
+    let state = mac_state().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(info) = state.get(monitor_id) {
+        if !info.ddc_supported {
+            return Err("Contrast not available (gamma-only monitor)".into());
+        }
+    }
+    drop(state);
 
-    if is_apple_silicon() {
-        let m1ddc = get_binary_path("m1ddc");
-        let output = std::process::Command::new(&m1ddc)
-            .args(["set", "contrast", &value.to_string(), "-d", &display_num.to_string()])
-            .output()
-            .map_err(|e| format!("m1ddc error: {}", e))?;
-        if !output.status.success() {
-            return Err(format!(
-                "m1ddc set contrast failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
+    let target_index = extract_display_number(monitor_id)?;
+    set_ddc_value_macos(target_index, VCP_CONTRAST, value)
+}
+
+/// Set a DDC VCP value on an external monitor via IOKit I2C.
+#[cfg(target_os = "macos")]
+fn set_ddc_value_macos(target_index: u32, vcp_code: u8, value: u32) -> Result<(), String> {
+    use ddc::Ddc;
+
+    let ddc_monitors = ddc_macos::Monitor::enumerate()
+        .map_err(|e| format!("Failed to enumerate DDC monitors: {}", e))?;
+
+    let idx = (target_index as usize).saturating_sub(1);
+    let mut ddc_mon = ddc_monitors
+        .into_iter()
+        .nth(idx)
+        .ok_or_else(|| format!("Monitor index {} not found", target_index))?;
+
+    // Get the monitor's actual max value to map our 0-100 percentage.
+    // Clamp brightness minimum to 1 — some monitors turn off/freeze at 0.
+    let max_val = ddc_mon
+        .get_vcp_feature(vcp_code)
+        .map(|v| v.maximum())
+        .unwrap_or(100);
+
+    let raw_value = if max_val == 100 {
+        value.max(1) as u16
     } else {
-        let ddcctl = get_binary_path("ddcctl");
-        let output = std::process::Command::new(&ddcctl)
-            .args(["-d", &display_num.to_string(), "-con", &value.to_string()])
-            .output()
-            .map_err(|e| format!("ddcctl error: {}", e))?;
-        if !output.status.success() {
-            return Err(format!(
-                "ddcctl set contrast failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
+        (value.max(1) as f64 / 100.0 * max_val as f64).round() as u16
+    };
+
+    ddc_mon
+        .set_vcp_feature(vcp_code, raw_value)
+        .map_err(|e| format!("DDC set VCP 0x{:02X} failed: {}", vcp_code, e))
+}
+
+/// Set built-in display brightness via DisplayServices private framework.
+#[cfg(target_os = "macos")]
+fn set_builtin_brightness(value: u32) -> Result<(), String> {
+    let ds = display_services()
+        .ok_or("DisplayServices framework not available")?;
+    let display_id = find_builtin_display_id()
+        .ok_or("No built-in display found")?;
+    let float_val = value.min(100) as f32 / 100.0;
+    let result = unsafe { (ds.set_brightness)(display_id, float_val) };
+    if result != 0 {
+        return Err(format!("DisplayServicesSetBrightness failed: {}", result));
     }
     Ok(())
 }
