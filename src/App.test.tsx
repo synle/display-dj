@@ -15,9 +15,7 @@ beforeEach(() => {
             id: "builtin-0",
             name: "Built-in Display",
             brightness: 50,
-            contrast: 50,
             supportsBrightness: true,
-            supportsContrast: false,
             isBuiltIn: true,
           },
         ]);

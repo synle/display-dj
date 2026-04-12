@@ -7,6 +7,7 @@ interface SliderProps {
   max?: number;
   onChange: (value: number) => void;
   showValue?: boolean;
+  onIconClick?: () => void;
 }
 
 export default function Slider({
@@ -16,6 +17,7 @@ export default function Slider({
   max = 100,
   onChange,
   showValue = true,
+  onIconClick,
 }: SliderProps) {
   const [localValue, setLocalValue] = useState(value);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,7 +45,12 @@ export default function Slider({
 
   return (
     <div className="slider-row">
-      <span className="slider-icon">{icon}</span>
+      <span
+        className={`slider-icon${onIconClick ? " slider-icon-clickable" : ""}`}
+        onClick={onIconClick}
+      >
+        {icon}
+      </span>
       <div className="slider-container">
         <div className="slider-track">
           <div className="slider-fill" style={{ width: `${percentage}%` }} />

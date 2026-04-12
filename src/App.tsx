@@ -80,17 +80,6 @@ function App() {
     }
   };
 
-  const handleAllContrast = async (value: number) => {
-    try {
-      await invoke("set_all_contrast", { value });
-      setMonitors((prev) =>
-        prev.map((m) => (m.supportsContrast ? { ...m, contrast: value } : m))
-      );
-    } catch (e) {
-      console.error("Failed to set contrast:", e);
-    }
-  };
-
   const handleMonitorBrightness = async (
     monitorId: string,
     value: number
@@ -102,17 +91,6 @@ function App() {
       );
     } catch (e) {
       console.error("Failed to set brightness:", e);
-    }
-  };
-
-  const handleMonitorContrast = async (monitorId: string, value: number) => {
-    try {
-      await invoke("set_contrast", { monitorId, value });
-      setMonitors((prev) =>
-        prev.map((m) => (m.id === monitorId ? { ...m, contrast: value } : m))
-      );
-    } catch (e) {
-      console.error("Failed to set contrast:", e);
     }
   };
 
@@ -145,17 +123,10 @@ function App() {
     }
   };
 
-  // Calculate average brightness/contrast for "all monitors" view
+  // Calculate average brightness for "all monitors" view
   const avgBrightness = monitors.length
     ? Math.round(
         monitors.reduce((sum, m) => sum + m.brightness, 0) / monitors.length
-      )
-    : 50;
-  const contrastMonitors = monitors.filter((m) => m.supportsContrast);
-  const avgContrast = contrastMonitors.length
-    ? Math.round(
-        contrastMonitors.reduce((sum, m) => sum + m.contrast, 0) /
-          contrastMonitors.length
       )
     : 50;
 
@@ -171,10 +142,7 @@ function App() {
         {!expanded ? (
           <AllMonitorsControl
             brightness={avgBrightness}
-            contrast={avgContrast}
-            showContrast={contrastMonitors.length > 0}
             onBrightnessChange={handleAllBrightness}
-            onContrastChange={handleAllContrast}
           />
         ) : (
           <div className="monitors-list">
@@ -184,9 +152,6 @@ function App() {
                 monitor={monitor}
                 onBrightnessChange={(v) =>
                   handleMonitorBrightness(monitor.id, v)
-                }
-                onContrastChange={(v) =>
-                  handleMonitorContrast(monitor.id, v)
                 }
                 onRename={(name) => handleRename(monitor.id, name)}
               />

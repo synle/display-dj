@@ -174,9 +174,6 @@ fn execute_command(app: &AppHandle, command: &str) {
                 http_get_then_emit(url, app.clone(), "monitors-changed");
             }
         }
-        ["command", "changeContrast", _value] => {
-            let _ = app.emit("monitors-changed", ());
-        }
         ["command", "changeDarkMode", mode] => {
             let url = match *mode {
                 "toggle" => {
