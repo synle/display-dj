@@ -14,12 +14,21 @@ export interface MonitorConfig {
   disabled: boolean;
 }
 
+export interface NightModeSchedule {
+  enabled: boolean;
+  nightStart: string;
+  nightBrightness: number;
+  dayStart: string;
+  dayBrightness: number;
+}
+
 export interface Preferences {
   showIndividualDisplays: boolean;
   brightnessDelta: number;
   contrastDelta: number;
   minBrightness: number;
   keyBindings: KeyBinding[];
+  nightModeSchedule: NightModeSchedule;
 }
 
 export interface KeyBinding {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 interface SliderProps {
-  icon: string;
+  icon?: string;
   value: number;
   min?: number;
   max?: number;
@@ -45,12 +45,14 @@ export default function Slider({
 
   return (
     <div className="slider-row">
-      <span
-        className={`slider-icon${onIconClick ? " slider-icon-clickable" : ""}`}
-        onClick={onIconClick}
-      >
-        {icon}
-      </span>
+      {icon && (
+        <span
+          className={`slider-icon${onIconClick ? " slider-icon-clickable" : ""}`}
+          onClick={onIconClick}
+        >
+          {icon}
+        </span>
+      )}
       <div className="slider-container">
         <div className="slider-track">
           <div className="slider-fill" style={{ width: `${percentage}%` }} />

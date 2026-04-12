@@ -18,12 +18,37 @@ pub struct MonitorConfig {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
+pub struct NightModeSchedule {
+    pub enabled: bool,
+    /// "HH:MM" 24-hour format
+    pub night_start: String,
+    pub night_brightness: u32,
+    /// "HH:MM" 24-hour format
+    pub day_start: String,
+    pub day_brightness: u32,
+}
+
+impl Default for NightModeSchedule {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            night_start: "21:00".into(),
+            night_brightness: 20,
+            day_start: "07:00".into(),
+            day_brightness: 100,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase", default)]
 pub struct Preferences {
     pub show_individual_displays: bool,
     pub brightness_delta: u32,
     pub contrast_delta: u32,
     pub min_brightness: u32,
     pub key_bindings: Vec<KeyBinding>,
+    pub night_mode_schedule: NightModeSchedule,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -51,8 +76,8 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             show_individual_displays: false,
-            brightness_delta: 50,
-            contrast_delta: 25,
+            brightness_delta: 10,
+            contrast_delta: 10,
             min_brightness: 10,
             key_bindings: vec![
                 KeyBinding {
@@ -98,6 +123,7 @@ impl Default for Preferences {
                     command: CommandValue::Single("command/changeVolume/100".into()),
                 },
             ],
+            night_mode_schedule: NightModeSchedule::default(),
         }
     }
 }
@@ -243,8 +269,8 @@ mod tests {
     fn test_default_preferences() {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
-        assert_eq!(prefs.brightness_delta, 50);
-        assert_eq!(prefs.contrast_delta, 25);
+        assert_eq!(prefs.brightness_delta, 10);
+        assert_eq!(prefs.contrast_delta, 10);
         assert_eq!(prefs.min_brightness, 10);
         assert_eq!(prefs.key_bindings.len(), 9);
     }
@@ -276,7 +302,7 @@ mod tests {
         let prefs: Preferences = serde_json::from_str(json).unwrap();
         assert!(prefs.show_individual_displays);
         assert_eq!(prefs.brightness_delta, 30);
-        assert_eq!(prefs.contrast_delta, 25);
+        assert_eq!(prefs.contrast_delta, 10);
         assert_eq!(prefs.min_brightness, 10);
     }
 
@@ -401,7 +427,7 @@ mod tests {
 
         let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(loaded.brightness_delta, 50);
+        assert_eq!(loaded.brightness_delta, 10);
         assert_eq!(loaded.key_bindings.len(), 9);
 
         std::fs::remove_dir_all(&dir).ok();
@@ -446,6 +472,6 @@ mod tests {
     fn test_malformed_json_returns_default_preferences() {
         let bad_json = "{ not valid json }";
         let result: Preferences = serde_json::from_str(bad_json).unwrap_or_default();
-        assert_eq!(result.brightness_delta, 50);
+        assert_eq!(result.brightness_delta, 10);
     }
 }
