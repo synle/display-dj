@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_os = "windows"))]
 use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -486,14 +487,14 @@ fn detect_external_monitors_win32(monitors: &mut Vec<Monitor>) {
                 let mut max_b: u32 = 100;
                 let supports_brightness =
                     GetMonitorBrightness(pm.hPhysicalMonitor, &mut min_b, &mut cur_b, &mut max_b)
-                        .is_ok();
+                        != 0;
 
                 let mut min_c: u32 = 0;
                 let mut cur_c: u32 = 50;
                 let mut max_c: u32 = 100;
                 let supports_contrast =
                     GetMonitorContrast(pm.hPhysicalMonitor, &mut min_c, &mut cur_c, &mut max_c)
-                        .is_ok();
+                        != 0;
 
                 let brightness = if supports_brightness && max_b > min_b {
                     ((cur_b - min_b) as f64 / (max_b - min_b) as f64 * 100.0).round() as u32
@@ -618,14 +619,15 @@ fn set_ddc_value_windows(monitor_id: &str, value: u32, is_brightness: bool) -> R
                         SetMonitorContrast(pm.hPhysicalMonitor, value)
                     };
                     let _ = DestroyPhysicalMonitor(pm.hPhysicalMonitor);
-                    return result.map_err(|e| {
-                        format!(
-                            "Failed to set {} on {}: {}",
+                    if result != 0 {
+                        return Ok(());
+                    } else {
+                        return Err(format!(
+                            "Failed to set {} on {}",
                             if is_brightness { "brightness" } else { "contrast" },
                             monitor_id,
-                            e
-                        )
-                    });
+                        ));
+                    }
                 }
                 let _ = DestroyPhysicalMonitor(pm.hPhysicalMonitor);
             }
