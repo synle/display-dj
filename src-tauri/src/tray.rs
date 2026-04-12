@@ -131,22 +131,30 @@ fn position_window_near_tray(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::PhysicalPosition;
 
-    let current_scale = window.scale_factor()?;
+    // --- Phase 1: Find the target monitor using a rough scale estimate ---
+    let rough_scale = window.scale_factor().unwrap_or(2.0);
 
-    // Get tray position/size in physical pixels
-    let (tray_x, tray_y) = match tray_rect.position {
-        tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
-        tauri::Position::Logical(p) => (p.x * current_scale, p.y * current_scale),
+    let tray_x_rough = match tray_rect.position {
+        tauri::Position::Physical(p) => p.x as f64,
+        tauri::Position::Logical(p) => p.x * rough_scale,
     };
-    let (tray_w, tray_h) = match tray_rect.size {
-        tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
-        tauri::Size::Logical(s) => (s.width * current_scale, s.height * current_scale),
+    let tray_y_rough = match tray_rect.position {
+        tauri::Position::Physical(p) => p.y as f64,
+        tauri::Position::Logical(p) => p.y * rough_scale,
+    };
+    let tray_w_rough = match tray_rect.size {
+        tauri::Size::Physical(s) => s.width as f64,
+        tauri::Size::Logical(s) => s.width * rough_scale,
+    };
+    let tray_h_rough = match tray_rect.size {
+        tauri::Size::Physical(s) => s.height as f64,
+        tauri::Size::Logical(s) => s.height * rough_scale,
     };
 
-    // Find the monitor containing the tray icon (physical coords)
+    let tray_cx = tray_x_rough + tray_w_rough / 2.0;
+    let tray_cy = tray_y_rough + tray_h_rough / 2.0;
+
     let monitors = window.available_monitors()?;
-    let tray_cx = tray_x + tray_w / 2.0;
-    let tray_cy = tray_y + tray_h / 2.0;
     let target = monitors.iter().find(|m| {
         let pos = m.position();
         let size = m.size();
@@ -156,46 +164,59 @@ fn position_window_near_tray(
             && tray_cy < pos.y as f64 + size.height as f64
     });
 
-    // Use the target monitor's scale factor for window size calculation
-    let target_scale = target
-        .map(|m| m.scale_factor())
-        .unwrap_or(current_scale);
-    let logical_w = window.outer_size()?.width as f64 / current_scale;
-    let logical_h = window.outer_size()?.height as f64 / current_scale;
-    let win_w = logical_w * target_scale;
-    let win_h = logical_h * target_scale;
+    // --- Phase 2: Move window to target monitor so scale_factor() is correct ---
+    // The window is still hidden at this point, so there's no visual flicker.
+    // This is necessary because set_position(PhysicalPosition) internally
+    // divides by window.scale_factor() to get platform coordinates. If the
+    // window is on a different monitor (different DPI), the division is wrong.
+    if let Some(m) = target {
+        window.set_position(PhysicalPosition::new(
+            m.position().x + 10,
+            m.position().y + 10,
+        ))?;
+    }
+
+    // --- Phase 3: Now position precisely (scale_factor matches target monitor) ---
+    let scale = window.scale_factor()?;
+
+    let (tray_x, tray_y) = match tray_rect.position {
+        tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
+        tauri::Position::Logical(p) => (p.x * scale, p.y * scale),
+    };
+    let (tray_w, tray_h) = match tray_rect.size {
+        tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
+        tauri::Size::Logical(s) => (s.width * scale, s.height * scale),
+    };
+
+    let win_w = 360.0 * scale;
+    let win_h = window.outer_size()?.height as f64;
 
     // Center window horizontally under tray icon
     let mut x = tray_x + (tray_w / 2.0) - (win_w / 2.0);
 
-    // Position below tray if near the top of its monitor, above otherwise
-    let mon_top = target.map(|m| m.position().y as f64).unwrap_or(0.0);
-    let mut y = if tray_y - mon_top < 100.0 * target_scale {
-        tray_y + tray_h
+    // Position below tray if in top half of monitor, above otherwise
+    let (mon_x, mon_y, mon_w, mon_h) = if let Some(m) = target {
+        (
+            m.position().x as f64,
+            m.position().y as f64,
+            m.size().width as f64,
+            m.size().height as f64,
+        )
     } else {
-        tray_y - win_h
+        (0.0, 0.0, 1920.0, 1080.0)
     };
 
-    // Clamp to the target monitor's bounds
-    if let Some(m) = target {
-        let mx = m.position().x as f64;
-        let my = m.position().y as f64;
-        let mw = m.size().width as f64;
-        let mh = m.size().height as f64;
+    let tray_in_top_half = (tray_y - mon_y) < mon_h / 2.0;
+    let gap = 4.0 * scale;
+    let mut y = if tray_in_top_half {
+        tray_y + tray_h + gap
+    } else {
+        tray_y - win_h - gap
+    };
 
-        if x + win_w > mx + mw {
-            x = mx + mw - win_w;
-        }
-        if x < mx {
-            x = mx;
-        }
-        if y + win_h > my + mh {
-            y = my + mh - win_h;
-        }
-        if y < my {
-            y = my;
-        }
-    }
+    // Clamp to monitor bounds
+    x = x.max(mon_x).min(mon_x + mon_w - win_w);
+    y = y.max(mon_y).min(mon_y + mon_h - win_h);
 
     window.set_position(PhysicalPosition::new(x as i32, y as i32))?;
     Ok(())
