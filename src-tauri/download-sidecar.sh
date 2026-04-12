@@ -11,8 +11,14 @@ BINARIES_DIR="$(dirname "$0")/binaries"
 
 mkdir -p "$BINARIES_DIR"
 
+# Determine the target triple. Priority:
+# 1. CARGO_BUILD_TARGET — passed from build.rs (Cargo's TARGET env var)
+# 2. TAURI_ENV_TARGET_TRIPLE — set by tauri-cli when invoking cargo
+# 3. Host triple from rustc — fallback for local development
+TRIPLE="${CARGO_BUILD_TARGET:-${TAURI_ENV_TARGET_TRIPLE:-$(rustc -vV | grep host | cut -d' ' -f2)}}"
+
 # Map Rust target triples to release asset names
-case "${TAURI_ENV_TARGET_TRIPLE:-$(rustc -vV | grep host | cut -d' ' -f2)}" in
+case "$TRIPLE" in
   aarch64-apple-darwin)
     ASSET="display-dj-macos-arm64"
     TARGET="display-dj-server-aarch64-apple-darwin"
@@ -38,7 +44,7 @@ case "${TAURI_ENV_TARGET_TRIPLE:-$(rustc -vV | grep host | cut -d' ' -f2)}" in
     TARGET="display-dj-server-aarch64-unknown-linux-gnu"
     ;;
   *)
-    echo "ERROR: Unsupported target triple: ${TAURI_ENV_TARGET_TRIPLE}" >&2
+    echo "ERROR: Unsupported target triple: ${TRIPLE}" >&2
     exit 1
     ;;
 esac
