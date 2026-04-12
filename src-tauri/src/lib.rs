@@ -7,6 +7,7 @@ mod volume;
 use std::sync::atomic::{AtomicU16, Ordering};
 use chrono::Timelike;
 use tauri::Manager;
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_shell::ShellExt;
 
 static SERVER_PORT: AtomicU16 = AtomicU16::new(51337);
@@ -131,6 +132,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .manage(AppState {
             preferences: std::sync::Mutex::new(preferences.clone()),
             monitor_configs: std::sync::Mutex::new(monitor_configs),
@@ -184,6 +189,14 @@ pub fn run() {
             // Register global shortcuts from saved preferences
             let handle = app.handle().clone();
             tray::register_shortcuts(&handle, &preferences.key_bindings);
+
+            // Sync autostart state with saved preference
+            let autostart = app.autolaunch();
+            if preferences.launch_at_login {
+                let _ = autostart.enable();
+            } else {
+                let _ = autostart.disable();
+            }
 
             // Start night mode schedule checker
             let schedule_handle = app.handle().clone();
