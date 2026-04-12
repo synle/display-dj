@@ -457,7 +457,7 @@ html, body, #root {
 
 .settings-btn-save {
   background: var(--accent-dark);
-  color: var(--text-primary);
+  color: #ffffff;
   border-color: var(--accent-dark);
 }
 
