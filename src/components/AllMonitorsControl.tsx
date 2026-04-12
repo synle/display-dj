@@ -20,7 +20,7 @@ export default function AllMonitorsControl({
       <div className="section-label">All Monitors</div>
       <Slider icon="☀" value={brightness} onChange={onBrightnessChange} />
       {showContrast && (
-        <Slider icon="◑" value={contrast} onChange={onContrastChange} />
+        <Slider icon="🌓" value={contrast} onChange={onContrastChange} />
       )}
     </div>
   );

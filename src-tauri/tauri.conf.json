@@ -28,11 +28,7 @@
     "security": {
       "csp": null
     },
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true,
-      "tooltip": "Display DJ"
-    }
+    "trayIcon": null
   },
   "bundle": {
     "active": true,
