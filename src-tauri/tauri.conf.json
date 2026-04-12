@@ -40,11 +40,20 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "externalBin": ["binaries/display-dj-server"],
     "resources": []
   },
   "plugins": {
     "shell": {
-      "open": true
+      "open": true,
+      "scope": [
+        {
+          "name": "display-dj-server",
+          "sidecar": true,
+          "cmd": "binaries/display-dj-server",
+          "args": true
+        }
+      ]
     }
   }
 }
