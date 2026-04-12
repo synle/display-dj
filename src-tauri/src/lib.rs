@@ -199,13 +199,7 @@ pub fn run() {
                 let win_clone = window.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::Focused(false) = event {
-                        let win = win_clone.clone();
-                        std::thread::spawn(move || {
-                            std::thread::sleep(std::time::Duration::from_millis(200));
-                            if !win.is_focused().unwrap_or(true) {
-                                let _ = win.hide();
-                            }
-                        });
+                        let _ = win_clone.hide();
                     }
                 });
             }
