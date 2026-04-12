@@ -150,6 +150,7 @@ pub fn run() {
             config::save_monitor_config,
             config::open_config_file,
             config::open_preferences_file,
+            config::open_debug_log,
             config::get_app_version,
         ])
         .setup(move |app| {

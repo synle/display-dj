@@ -154,6 +154,19 @@ export default function SettingsPanel({
             </div>
           </>
         )}
+
+        <div className="settings-divider" />
+
+        <div className="settings-section">
+          <label className="settings-checkbox-row">
+            <input
+              type="checkbox"
+              checked={prefs.debugLogging}
+              onChange={(e) => updateField("debugLogging", e.target.checked)}
+            />
+            <span>Debug Logging</span>
+          </label>
+        </div>
       </div>
 
       <div className="settings-footer">
