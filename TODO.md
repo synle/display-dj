@@ -2,18 +2,16 @@
 
 ## Quick Wins
 
-- [ ] **Brightness presets synced with dark/light mode** — `types.d.ts` already defines `BrightnessPreset` with `syncedWithMode`. Wire it up so switching to dark mode auto-sets brightness (e.g., dark = 10%, light = 100%).
 - [x] **Volume presets via keyboard shortcuts** — Add intermediate volume levels (e.g., 25%, 50%, 75%) alongside the existing mute/unmute shortcuts (Shift+F6/F7).
 - [ ] **Tray icon reflecting state** — Change the tray icon dynamically based on brightness level or dark/light mode (e.g., dim icon when brightness is low, moon/sun icon for dark/light).
 
 ## Medium Effort
 
 - [x] **Brightness scheduling / Night mode** — Auto-dim at sunset or on a schedule (e.g., 9 PM = dark mode + 20% brightness, 7 AM = light mode + 100%).
-- [ ] **Per-monitor brightness presets** — The TODO in `types.d.ts` notes presets only apply to all monitors. Allow per-monitor presets (e.g., laptop at 40%, external at 80%).
+- [ ] **Profiles** — Named presets that bundle any combination of settings. Each profile has a name and all fields are optional (if absent, that value stays unchanged): all-display brightness, per-monitor brightness (`{ [monitorId]: number }`), dark/light mode, and volume. Examples: "Night Coding" = brightness 15% + dark mode; "Presentation" = external 100% + laptop 50% + light mode + volume 30%; "Mute" = volume 0% only. Profiles can be triggered from the tray menu and bound to keyboard shortcuts. Replaces the old `BrightnessPreset` / `VolumePreset` types in `types.d.ts`.
 - [ ] **Brightness/volume increment shortcuts** — Add "brightness up/down by delta" and "volume up/down by delta" commands. `brightness_delta` config exists but isn't wired to shortcuts.
-- [ ] **Monitor profiles** — Save/restore named configurations (e.g., "Presentation mode" = external at 100% + laptop disabled, "Night coding" = all at 15% + dark mode). Quick switch from tray menu.
 - [x] **Settings UI in the app** — Add a settings panel for min brightness, keyboard shortcuts, and monitor sort/disable/rename instead of editing JSON files manually.
-- [ ] **Launch at login** — Auto-start the app on system boot. Tauri has an `autostart` plugin for this.
+- [x] **Launch at login** — Auto-start the app on system boot. Tauri has an `autostart` plugin for this.
 
 ## Larger Features
 
