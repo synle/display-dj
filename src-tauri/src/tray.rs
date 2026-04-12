@@ -38,6 +38,8 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         MenuItemBuilder::with_id("open_configs", "Open Monitor Configs").build(app)?;
     let open_prefs =
         MenuItemBuilder::with_id("open_prefs", "Open App Preferences").build(app)?;
+    let reset_defaults =
+        MenuItemBuilder::with_id("reset_defaults", "Reset to Default").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
     let menu = MenuBuilder::new(app)
@@ -46,6 +48,8 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .items(&[&dark_mode, &light_mode])
         .separator()
         .items(&[&open_configs, &open_prefs])
+        .separator()
+        .item(&reset_defaults)
         .separator()
         .item(&quit)
         .build()?;
@@ -69,6 +73,25 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
             }
             "open_prefs" => {
                 let _ = crate::config::open_preferences_file();
+            }
+            "reset_defaults" => {
+                crate::config::reset_to_defaults();
+                // Reload in-memory state
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    if let Ok(mut prefs) = state.preferences.lock() {
+                        *prefs = crate::config::load_preferences();
+                    }
+                    if let Ok(mut configs) = state.monitor_configs.lock() {
+                        *configs = crate::config::load_monitor_configs();
+                    }
+                }
+                // Re-register shortcuts with default keybindings
+                let prefs = crate::config::Preferences::default();
+                register_shortcuts(app, &prefs.key_bindings);
+                // Notify frontend to refresh
+                let _ = app.emit("monitors-changed", ());
+                let _ = app.emit("dark-mode-changed", ());
+                let _ = app.emit("volume-changed", ());
             }
             "quit" => {
                 app.exit(0);
