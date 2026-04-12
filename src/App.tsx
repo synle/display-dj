@@ -7,8 +7,9 @@ import AllMonitorsControl from "./components/AllMonitorsControl";
 import MonitorControl from "./components/MonitorControl";
 import VolumeControl from "./components/VolumeControl";
 import DarkModeToggle from "./components/DarkModeToggle";
+import ProfileButtons from "./components/ProfileButtons";
 import SettingsPanel from "./components/SettingsPanel";
-import { Monitor, Preferences } from "./types";
+import { Monitor, Preferences, Profile } from "./types";
 
 const ABSOLUTE_MIN_BRIGHTNESS = 5;
 
@@ -17,6 +18,7 @@ function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [volume, setVolume] = useState(50);
   const [minBrightness, setMinBrightness] = useState(10);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [version, setVersion] = useState("");
@@ -53,6 +55,7 @@ function App() {
     try {
       const prefs = await invoke<Preferences>("get_preferences");
       setMinBrightness(Math.max(prefs.minBrightness, ABSOLUTE_MIN_BRIGHTNESS));
+      setProfiles(prefs.profiles || []);
     } catch {
       // ignore
     }
@@ -183,6 +186,28 @@ function App() {
     }
   };
 
+  const handleProfile = async (index: number) => {
+    try {
+      await invoke("apply_profile", { index });
+      fetchMonitors();
+      fetchDarkMode();
+      fetchVolume();
+    } catch (e) {
+      console.error("Failed to apply profile:", e);
+    }
+  };
+
+  const handleProfile = async (index: number) => {
+    try {
+      await invoke("apply_profile", { index });
+      fetchMonitors();
+      fetchDarkMode();
+      fetchVolume();
+    } catch (e) {
+      console.error("Failed to apply profile:", e);
+    }
+  };
+
   // Calculate average brightness for "all monitors" view
   const avgBrightness = monitors.length
     ? Math.round(
@@ -236,6 +261,7 @@ function App() {
 
         <VolumeControl value={volume} onChange={handleVolume} />
         <DarkModeToggle isDarkMode={darkMode} onChange={handleDarkMode} />
+        <ProfileButtons profiles={profiles} onActivate={handleProfile} />
       </div>
       )}
     </div>

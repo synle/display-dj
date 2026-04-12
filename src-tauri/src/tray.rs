@@ -1,5 +1,5 @@
 use tauri::{
-    menu::{MenuBuilder, MenuItemBuilder},
+    menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager,
 };
@@ -34,6 +34,28 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .build(app)?;
     let dark_mode = MenuItemBuilder::with_id("dark_mode", "Dark Mode").build(app)?;
     let light_mode = MenuItemBuilder::with_id("light_mode", "Light Mode").build(app)?;
+
+    // Build profiles submenu from saved preferences
+    let profiles = {
+        if let Some(state) = app.try_state::<crate::AppState>() {
+            state.preferences.lock().map(|p| p.profiles.clone()).unwrap_or_default()
+        } else {
+            crate::config::Preferences::default().profiles
+        }
+    };
+    let mut profiles_submenu = SubmenuBuilder::new(app, "Profiles");
+    for (i, profile) in profiles.iter().enumerate() {
+        let label = if profile.name.is_empty() {
+            format!("Unnamed Profile #{}", i + 1)
+        } else {
+            profile.name.clone()
+        };
+        let item_id = format!("profile_{}", i);
+        let item = MenuItemBuilder::with_id(&item_id, &label).build(app)?;
+        profiles_submenu = profiles_submenu.item(&item);
+    }
+    let profiles_submenu = profiles_submenu.build()?;
+
     let open_configs =
         MenuItemBuilder::with_id("open_configs", "Open Monitor Configs").build(app)?;
     let open_prefs =
@@ -48,6 +70,8 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .item(&bridge)
         .separator()
         .items(&[&dark_mode, &light_mode])
+        .separator()
+        .item(&profiles_submenu)
         .separator()
         .items(&[&open_configs, &open_prefs, &open_debug_log])
         .separator()
@@ -101,7 +125,14 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
             "quit" => {
                 app.exit(0);
             }
-            _ => {}
+            other => {
+                if let Some(idx_str) = other.strip_prefix("profile_") {
+                    if let Ok(idx) = idx_str.parse::<usize>() {
+                        let cmd = format!("command/changeProfile/{}", idx);
+                        execute_command(app, &cmd);
+                    }
+                }
+            }
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -426,8 +457,36 @@ fn execute_command(app: &AppHandle, command: &str) {
                 http_get_then_emit(url, app.clone(), "volume-changed");
             }
         }
+        ["command", "changeProfile", idx_str] => {
+            if let Ok(idx) = idx_str.parse::<usize>() {
+                let profiles = app
+                    .state::<crate::AppState>()
+                    .preferences
+                    .lock()
+                    .map(|p| p.profiles.clone())
+                    .unwrap_or_default();
+
+                if let Some(profile) = profiles.get(idx) {
+                    let commands: Vec<String> = match &profile.command {
+                        CommandValue::Single(cmd) => vec![cmd.clone()],
+                        CommandValue::Multiple(cmds) => cmds.clone(),
+                    };
+                    for cmd in &commands {
+                        execute_command(app, cmd);
+                    }
+                } else {
+                    log::warn!("Profile index out of range: {}", idx);
+                }
+            }
+        }
         _ => {
             log::warn!("Unknown command: {}", command);
         }
     }
+}
+
+#[tauri::command]
+pub fn apply_profile(app: AppHandle, index: usize) -> Result<(), String> {
+    execute_command(&app, &format!("command/changeProfile/{}", index));
+    Ok(())
 }

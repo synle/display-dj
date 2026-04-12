@@ -19,8 +19,6 @@ export default function SettingsPanel({
       .then((p) => {
         // Clamp values to UI slider ranges in case saved values are out of bounds
         p.minBrightness = Math.max(5, Math.min(100, p.minBrightness));
-        p.brightnessDelta = Math.max(5, Math.min(20, p.brightnessDelta));
-        p.contrastDelta = Math.max(5, Math.min(20, p.contrastDelta));
         setPrefs(p);
       })
       .catch(console.error);
@@ -79,26 +77,6 @@ export default function SettingsPanel({
             min={5}
             max={100}
             onChange={(v) => updateField("minBrightness", v)}
-          />
-        </div>
-
-        <div className="settings-section">
-          <label className="settings-label">Brightness Delta</label>
-          <Slider
-            value={prefs.brightnessDelta}
-            min={5}
-            max={20}
-            onChange={(v) => updateField("brightnessDelta", v)}
-          />
-        </div>
-
-        <div className="settings-section">
-          <label className="settings-label">Contrast Delta</label>
-          <Slider
-            value={prefs.contrastDelta}
-            min={5}
-            max={20}
-            onChange={(v) => updateField("contrastDelta", v)}
           />
         </div>
 

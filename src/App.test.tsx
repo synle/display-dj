@@ -25,6 +25,47 @@ beforeEach(() => {
         return Promise.resolve(false);
       case "get_volume":
         return Promise.resolve(50);
+      case "get_preferences":
+        return Promise.resolve({
+          showIndividualDisplays: false,
+          minBrightness: 10,
+          keyBindings: [],
+          profiles: [
+            {
+              name: "Presentation",
+              command: [
+                "command/changeBrightness/100",
+                "command/changeDarkMode/light",
+                "command/changeVolume/50",
+              ],
+            },
+            {
+              name: "Focus",
+              command: [
+                "command/changeBrightness/80",
+                "command/changeDarkMode/dark",
+                "command/changeVolume/30",
+              ],
+            },
+            {
+              name: "Daylight",
+              command: [
+                "command/changeBrightness/100",
+                "command/changeDarkMode/light",
+                "command/changeVolume/100",
+              ],
+            },
+          ],
+          nightModeSchedule: {
+            enabled: false,
+            nightStart: "21:00",
+            nightBrightness: 20,
+            dayStart: "07:00",
+            dayBrightness: 100,
+          },
+          debugLogging: false,
+          launchAtLogin: false,
+        });
       case "get_app_version":
         return Promise.resolve("2.0.0");
       default:
@@ -71,6 +112,15 @@ describe("App smoke test", () => {
     render(<App />);
     expect(screen.getByText("DARK", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("LIGHT", { exact: false })).toBeInTheDocument();
+  });
+
+  it("renders profile buttons", async () => {
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText("Presentation")).toBeInTheDocument();
+      expect(screen.getByText("Focus")).toBeInTheDocument();
+      expect(screen.getByText("Daylight")).toBeInTheDocument();
+    });
   });
 
   it("shows all-monitors view by default (collapsed)", async () => {

@@ -157,6 +157,7 @@ pub fn run() {
             config::open_preferences_file,
             config::open_debug_log,
             config::get_app_version,
+            tray::apply_profile,
         ])
         .setup(move |app| {
             // Find an available port and store it

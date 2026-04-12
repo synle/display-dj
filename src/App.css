@@ -358,6 +358,89 @@ html, body, #root {
   font-size: 16px;
 }
 
+/* Profile buttons */
+.profile-buttons {
+  display: flex;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.profile-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+  border: none;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.2s;
+  background: var(--toggle-inactive-bg);
+  color: var(--text-secondary);
+}
+
+.profile-btn:last-child {
+  border-right: none;
+}
+
+.profile-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.profile-btn:active {
+  background: var(--toggle-active-bg);
+}
+
+.profile-overflow {
+  position: relative;
+}
+
+.profile-overflow-btn {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+}
+
+.profile-overflow-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  min-width: 120px;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.profile-overflow-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.profile-overflow-item:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.profile-overflow-item:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
 /* Header actions */
 .header-actions {
   display: flex;

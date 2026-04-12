@@ -24,10 +24,9 @@ export interface NightModeSchedule {
 
 export interface Preferences {
   showIndividualDisplays: boolean;
-  brightnessDelta: number;
-  contrastDelta: number;
   minBrightness: number;
   keyBindings: KeyBinding[];
+  profiles: Profile[];
   nightModeSchedule: NightModeSchedule;
   debugLogging: boolean;
   launchAtLogin: boolean;
@@ -35,5 +34,10 @@ export interface Preferences {
 
 export interface KeyBinding {
   key: string;
+  command: string | string[];
+}
+
+export interface Profile {
+  name: string;
   command: string | string[];
 }
