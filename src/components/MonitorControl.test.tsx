@@ -148,4 +148,94 @@ describe("MonitorControl", () => {
     );
     expect(screen.getByText("\uD83D\uDCBB")).toBeInTheDocument();
   });
+
+  it("renders reorder buttons when callbacks provided", () => {
+    render(
+      <MonitorControl
+        monitor={externalMonitor}
+        onBrightnessChange={() => {}}
+        onRename={() => {}}
+        onMoveUp={() => {}}
+        onMoveDown={() => {}}
+        isFirst={false}
+        isLast={false}
+        minBrightness={10}
+      />
+    );
+    expect(screen.getByTitle("Move up")).toBeInTheDocument();
+    expect(screen.getByTitle("Move down")).toBeInTheDocument();
+    expect(screen.getByTitle("Move up")).not.toBeDisabled();
+    expect(screen.getByTitle("Move down")).not.toBeDisabled();
+  });
+
+  it("disables move up for first monitor and move down for last", () => {
+    render(
+      <MonitorControl
+        monitor={externalMonitor}
+        onBrightnessChange={() => {}}
+        onRename={() => {}}
+        onMoveUp={() => {}}
+        onMoveDown={() => {}}
+        isFirst={true}
+        isLast={true}
+        minBrightness={10}
+      />
+    );
+    expect(screen.getByTitle("Move up")).toBeDisabled();
+    expect(screen.getByTitle("Move down")).toBeDisabled();
+  });
+
+  it("calls onMoveUp and onMoveDown when clicked", async () => {
+    const onMoveUp = vi.fn();
+    const onMoveDown = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <MonitorControl
+        monitor={externalMonitor}
+        onBrightnessChange={() => {}}
+        onRename={() => {}}
+        onMoveUp={onMoveUp}
+        onMoveDown={onMoveDown}
+        isFirst={false}
+        isLast={false}
+        minBrightness={10}
+      />
+    );
+
+    await user.click(screen.getByTitle("Move up"));
+    expect(onMoveUp).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByTitle("Move down"));
+    expect(onMoveDown).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render reorder buttons without callbacks", () => {
+    render(
+      <MonitorControl
+        monitor={externalMonitor}
+        onBrightnessChange={() => {}}
+        onRename={() => {}}
+        minBrightness={10}
+      />
+    );
+    expect(screen.queryByTitle("Move up")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Move down")).not.toBeInTheDocument();
+  });
+
+  it("shows originalName as fallback when name is empty", () => {
+    const monitorWithEmptyName: Monitor = {
+      ...externalMonitor,
+      name: "",
+      originalName: "Dell U2723QE",
+    };
+    render(
+      <MonitorControl
+        monitor={monitorWithEmptyName}
+        onBrightnessChange={() => {}}
+        onRename={() => {}}
+        minBrightness={10}
+      />
+    );
+    expect(screen.getByText("Dell U2723QE")).toBeInTheDocument();
+  });
 });

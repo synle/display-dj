@@ -357,6 +357,59 @@ mod tests {
     }
 
     #[test]
+    fn test_merge_with_configs_preserves_original_name() {
+        let monitors = vec![make_monitor("1", "Dell U2723QE", false)];
+        let configs = vec![make_meta("1::Dell U2723QE", "My Custom Label", 0)];
+        let result = merge_with_configs(monitors, &configs);
+        assert_eq!(result[0].name, "My Custom Label");
+        assert_eq!(result[0].original_name, "Dell U2723QE"); // must NOT change
+    }
+
+    #[test]
+    fn test_merge_with_configs_same_sort_order_tiebreaks_by_uid() {
+        let monitors = vec![
+            make_monitor("2", "Monitor B", false),
+            make_monitor("1", "Monitor A", false),
+        ];
+        let configs = vec![
+            make_meta("2::Monitor B", "", 0),
+            make_meta("1::Monitor A", "", 0), // same sort_order
+        ];
+        let result = merge_with_configs(monitors, &configs);
+        // Tiebreaker is uid ascending: "1::Monitor A" < "2::Monitor B"
+        assert_eq!(result[0].uid, "1::Monitor A");
+        assert_eq!(result[1].uid, "2::Monitor B");
+    }
+
+    #[test]
+    fn test_merge_with_configs_unplugged_monitors_not_in_result() {
+        // Config has entries for 3 monitors, but only 1 is currently connected
+        let monitors = vec![make_monitor("1", "Dell", false)];
+        let configs = vec![
+            make_meta("1::Dell", "My Dell", 0),
+            make_meta("2::LG", "Office Left", 1),       // unplugged
+            make_meta("builtin::Built-in", "MacBook", 2), // unplugged
+        ];
+        let result = merge_with_configs(monitors, &configs);
+        assert_eq!(result.len(), 1); // only the connected monitor
+        assert_eq!(result[0].name, "My Dell");
+    }
+
+    #[test]
+    fn test_dj_display_into_monitor_preserves_original_name() {
+        let dj = DjDisplay {
+            id: "1".into(),
+            name: "Dell U2723QE".into(),
+            display_type: "external".into(),
+            brightness: Some(70),
+        };
+        let m = dj.into_monitor();
+        assert_eq!(m.name, "Dell U2723QE");
+        assert_eq!(m.original_name, "Dell U2723QE");
+        assert_eq!(m.name, m.original_name); // name and original_name start identical
+    }
+
+    #[test]
     fn test_dj_display_into_monitor_builtin() {
         let dj = DjDisplay {
             id: "builtin".into(),
@@ -432,5 +485,80 @@ mod tests {
         let changed2 = ensure_metadata_for_monitors(&monitors, &mut configs);
         assert!(!changed2);
         assert_eq!(configs.len(), 2);
+    }
+
+    #[test]
+    fn test_ensure_metadata_sort_order_continues_from_existing() {
+        let monitors = vec![
+            make_monitor("builtin", "Built-in", true),
+            make_monitor("3", "New Monitor", false),
+        ];
+        // Pre-existing configs with sort orders 0, 5, 10
+        let mut configs = vec![
+            make_meta("builtin::Built-in", "MacBook", 0),
+            make_meta("1::Dell", "Left", 5),   // unplugged but persisted
+            make_meta("2::LG", "Right", 10),    // unplugged but persisted
+        ];
+        let changed = ensure_metadata_for_monitors(&monitors, &mut configs);
+        assert!(changed); // "3::New Monitor" is new
+        assert_eq!(configs.len(), 4);
+        // New monitor should get sort_order = max(0,5,10) + 1 + index_in_monitors_list
+        // "3::New Monitor" is at index 1 in monitors vec, so sort_order = 11 + 1 = 12
+        let new = configs.iter().find(|c| c.uid == "3::New Monitor").unwrap();
+        assert_eq!(new.sort_order, 12);
+    }
+
+    #[test]
+    fn test_reconcile_migrated_configs_multiple_monitors() {
+        let monitors = vec![
+            make_monitor("1", "Dell U2723QE", false),
+            make_monitor("2", "LG 27UK850", false),
+            make_monitor("builtin", "Built-in Display", true),
+        ];
+        let mut configs = vec![
+            // Two migrated entries with "unknown"
+            crate::config::MonitorMetadata {
+                uid: "1::unknown".into(),
+                api_id: "1".into(),
+                api_name: "unknown".into(),
+                label: "Left Monitor".into(),
+                sort_order: 0,
+            },
+            crate::config::MonitorMetadata {
+                uid: "2::unknown".into(),
+                api_id: "2".into(),
+                api_name: "unknown".into(),
+                label: "Right Monitor".into(),
+                sort_order: 1,
+            },
+            // One already-known entry (not migrated)
+            crate::config::MonitorMetadata {
+                uid: "builtin::Built-in Display".into(),
+                api_id: "builtin".into(),
+                api_name: "Built-in Display".into(),
+                label: "MacBook".into(),
+                sort_order: 2,
+            },
+        ];
+        let changed = reconcile_migrated_configs(&monitors, &mut configs);
+        assert!(changed);
+        // Migrated entries should be reconciled
+        assert_eq!(configs[0].uid, "1::Dell U2723QE");
+        assert_eq!(configs[0].api_name, "Dell U2723QE");
+        assert_eq!(configs[0].label, "Left Monitor"); // preserved
+        assert_eq!(configs[1].uid, "2::LG 27UK850");
+        assert_eq!(configs[1].api_name, "LG 27UK850");
+        assert_eq!(configs[1].label, "Right Monitor"); // preserved
+        // Already-known entry unchanged
+        assert_eq!(configs[2].uid, "builtin::Built-in Display");
+        assert_eq!(configs[2].label, "MacBook");
+    }
+
+    #[test]
+    fn test_reconcile_skips_when_uid_already_matches() {
+        let monitors = vec![make_monitor("1", "Dell", false)];
+        let mut configs = vec![make_meta("1::Dell", "My Dell", 0)];
+        let changed = reconcile_migrated_configs(&monitors, &mut configs);
+        assert!(!changed); // uid already matches, nothing to do
     }
 }

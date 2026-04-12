@@ -59,12 +59,12 @@ fn parse_time_minutes(time_str: &str) -> Option<u32> {
 
 /// Check if current time is in the "night" window.
 fn is_night_time(night_start: u32, day_start: u32, now: u32) -> bool {
-    if night_start < day_start {
-        // e.g. night=21:00 day=07:00 — night wraps around midnight
-        now >= night_start || now < day_start
-    } else {
-        // e.g. night=22:00 day=18:00 — unusual but handle it
+    if night_start <= day_start {
+        // No midnight wrap: e.g. night=02:00 day=08:00 — night is [02:00, 08:00)
         now >= night_start && now < day_start
+    } else {
+        // Wraps midnight: e.g. night=21:00 day=07:00 — night is [21:00, 24:00) ∪ [00:00, 07:00)
+        now >= night_start || now < day_start
     }
 }
 
@@ -120,6 +120,87 @@ fn check_night_mode_schedule(app: &tauri::AppHandle) {
     use tauri::Emitter;
     let _ = app.emit("monitors-changed", ());
     let _ = app.emit("dark-mode-changed", ());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- parse_time_minutes --
+
+    #[test]
+    fn test_parse_time_minutes_valid() {
+        assert_eq!(parse_time_minutes("00:00"), Some(0));
+        assert_eq!(parse_time_minutes("07:00"), Some(420));
+        assert_eq!(parse_time_minutes("12:30"), Some(750));
+        assert_eq!(parse_time_minutes("21:00"), Some(1260));
+        assert_eq!(parse_time_minutes("23:59"), Some(1439));
+    }
+
+    #[test]
+    fn test_parse_time_minutes_single_digits() {
+        assert_eq!(parse_time_minutes("0:0"), Some(0));
+        assert_eq!(parse_time_minutes("9:5"), Some(545));
+    }
+
+    #[test]
+    fn test_parse_time_minutes_invalid() {
+        assert_eq!(parse_time_minutes(""), None);
+        assert_eq!(parse_time_minutes("invalid"), None);
+        assert_eq!(parse_time_minutes("12"), None);
+        assert_eq!(parse_time_minutes("12:ab"), None);
+        assert_eq!(parse_time_minutes("ab:30"), None);
+        assert_eq!(parse_time_minutes("12:30:00"), None);
+    }
+
+    // -- is_night_time --
+
+    #[test]
+    fn test_is_night_time_wraps_midnight() {
+        // Typical schedule: night=21:00 (1260), day=07:00 (420)
+        let night = 1260;
+        let day = 420;
+
+        // Night window: [21:00, 07:00)
+        assert!(is_night_time(night, day, 1260));  // exactly 21:00 — night starts
+        assert!(is_night_time(night, day, 1400));  // 23:20 — late night
+        assert!(is_night_time(night, day, 0));      // 00:00 — midnight
+        assert!(is_night_time(night, day, 300));    // 05:00 — early morning
+        assert!(is_night_time(night, day, 419));    // 06:59 — still night
+
+        // Day window: [07:00, 21:00)
+        assert!(!is_night_time(night, day, 420));   // exactly 07:00 — day starts
+        assert!(!is_night_time(night, day, 720));   // 12:00 — noon
+        assert!(!is_night_time(night, day, 1200));  // 20:00 — evening
+        assert!(!is_night_time(night, day, 1259));  // 20:59 — last minute of day
+    }
+
+    #[test]
+    fn test_is_night_time_no_midnight_wrap() {
+        // Unusual schedule: night=02:00 (120), day=08:00 (480)
+        let night = 120;
+        let day = 480;
+
+        // Night window: [02:00, 08:00)
+        assert!(is_night_time(night, day, 120));    // exactly 02:00 — night starts
+        assert!(is_night_time(night, day, 300));    // 05:00 — middle of night
+        assert!(is_night_time(night, day, 479));    // 07:59 — last minute of night
+
+        // Day window: [08:00, 02:00)
+        assert!(!is_night_time(night, day, 480));   // exactly 08:00 — day starts
+        assert!(!is_night_time(night, day, 720));   // 12:00 — day
+        assert!(!is_night_time(night, day, 0));      // 00:00 — day (before night starts)
+        assert!(!is_night_time(night, day, 119));    // 01:59 — day
+        assert!(!is_night_time(night, day, 1260));  // 21:00 — day
+    }
+
+    #[test]
+    fn test_is_night_time_same_start() {
+        // Edge case: night_start == day_start — always day
+        assert!(!is_night_time(420, 420, 0));
+        assert!(!is_night_time(420, 420, 420));
+        assert!(!is_night_time(420, 420, 1000));
+    }
 }
 
 pub fn run() {

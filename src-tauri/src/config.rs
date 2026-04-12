@@ -553,6 +553,29 @@ mod tests {
     }
 
     #[test]
+    fn test_monitor_metadata_deserialization_from_camel_case() {
+        let json = r#"{
+            "uid": "1::Dell U2723QE",
+            "apiId": "1",
+            "apiName": "Dell U2723QE",
+            "label": "Main Monitor",
+            "sortOrder": 3
+        }"#;
+        let meta: MonitorMetadata = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.uid, "1::Dell U2723QE");
+        assert_eq!(meta.api_id, "1");
+        assert_eq!(meta.api_name, "Dell U2723QE");
+        assert_eq!(meta.label, "Main Monitor");
+        assert_eq!(meta.sort_order, 3);
+    }
+
+    #[test]
+    fn test_default_preferences_has_empty_monitor_configs() {
+        let prefs = Preferences::default();
+        assert!(prefs.monitor_configs.is_empty());
+    }
+
+    #[test]
     fn test_preferences_missing_monitor_configs_defaults_to_empty() {
         let json = r#"{
             "showIndividualDisplays": true,
