@@ -44,8 +44,6 @@ impl Default for NightModeSchedule {
 #[serde(rename_all = "camelCase", default)]
 pub struct Preferences {
     pub show_individual_displays: bool,
-    pub brightness_delta: u32,
-    pub contrast_delta: u32,
     pub min_brightness: u32,
     pub key_bindings: Vec<KeyBinding>,
     pub night_mode_schedule: NightModeSchedule,
@@ -78,8 +76,6 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             show_individual_displays: false,
-            brightness_delta: 10,
-            contrast_delta: 10,
             min_brightness: 10,
             key_bindings: vec![
                 KeyBinding {
@@ -336,8 +332,6 @@ mod tests {
     fn test_default_preferences() {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
-        assert_eq!(prefs.brightness_delta, 10);
-        assert_eq!(prefs.contrast_delta, 10);
         assert_eq!(prefs.min_brightness, 10);
         assert_eq!(prefs.key_bindings.len(), 9);
     }
@@ -363,13 +357,10 @@ mod tests {
         // Simulates loading an old preferences.json that lacks the new fields
         let json = r#"{
             "showIndividualDisplays": true,
-            "brightnessDelta": 30,
             "keyBindings": []
         }"#;
         let prefs: Preferences = serde_json::from_str(json).unwrap();
         assert!(prefs.show_individual_displays);
-        assert_eq!(prefs.brightness_delta, 30);
-        assert_eq!(prefs.contrast_delta, 10);
         assert_eq!(prefs.min_brightness, 10);
     }
 
@@ -431,7 +422,7 @@ mod tests {
         let json = serde_json::to_string_pretty(&prefs).unwrap();
         let deserialized: Preferences = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.show_individual_displays, prefs.show_individual_displays);
-        assert_eq!(deserialized.brightness_delta, prefs.brightness_delta);
+        assert_eq!(deserialized.min_brightness, prefs.min_brightness);
         assert_eq!(deserialized.key_bindings.len(), prefs.key_bindings.len());
     }
 
@@ -440,14 +431,10 @@ mod tests {
         let prefs = Preferences::default();
         let json = serde_json::to_string(&prefs).unwrap();
         assert!(json.contains("showIndividualDisplays"));
-        assert!(json.contains("brightnessDelta"));
-        assert!(json.contains("contrastDelta"));
         assert!(json.contains("minBrightness"));
         assert!(json.contains("keyBindings"));
         // Should NOT contain snake_case
         assert!(!json.contains("show_individual_displays"));
-        assert!(!json.contains("brightness_delta"));
-        assert!(!json.contains("contrast_delta"));
         assert!(!json.contains("min_brightness"));
     }
 
@@ -494,7 +481,7 @@ mod tests {
 
         let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(loaded.brightness_delta, 10);
+        assert_eq!(loaded.min_brightness, 10);
         assert_eq!(loaded.key_bindings.len(), 9);
 
         std::fs::remove_dir_all(&dir).ok();
@@ -539,6 +526,6 @@ mod tests {
     fn test_malformed_json_returns_default_preferences() {
         let bad_json = "{ not valid json }";
         let result: Preferences = serde_json::from_str(bad_json).unwrap_or_default();
-        assert_eq!(result.brightness_delta, 10);
+        assert_eq!(result.min_brightness, 10);
     }
 }
