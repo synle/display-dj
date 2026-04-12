@@ -1,6 +1,7 @@
 export interface Monitor {
   id: string;
   name: string;
+  originalName: string;
   brightness: number;
   supportsBrightness: boolean;
   isBuiltIn: boolean;

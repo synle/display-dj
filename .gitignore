@@ -20,6 +20,9 @@ public/vs
 upload
 yarn-debug.log*
 yarn-error.log*
+.pnp.*
+.yarn/
+yarn.lock
 
 ### Tauri
 src-tauri/target/

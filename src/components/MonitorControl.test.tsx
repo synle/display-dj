@@ -7,6 +7,7 @@ import { Monitor } from "../types";
 const externalMonitor: Monitor = {
   id: "external-1",
   name: "Dell U2723QE",
+  originalName: "Dell U2723QE",
   brightness: 80,
   supportsBrightness: true,
   isBuiltIn: false,
@@ -15,6 +16,7 @@ const externalMonitor: Monitor = {
 const builtInMonitor: Monitor = {
   id: "builtin-0",
   name: "Built-in Display",
+  originalName: "Built-in Display",
   brightness: 60,
   supportsBrightness: true,
   isBuiltIn: true,

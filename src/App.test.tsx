@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
@@ -14,6 +15,7 @@ beforeEach(() => {
           {
             id: "builtin-0",
             name: "Built-in Display",
+            originalName: "Built-in Display",
             brightness: 50,
             supportsBrightness: true,
             isBuiltIn: true,
@@ -74,7 +76,7 @@ describe("App smoke test", () => {
   it("shows all-monitors view by default (collapsed)", async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText("All Monitors")).toBeInTheDocument();
+      expect(screen.getByText("All Monitors (1)")).toBeInTheDocument();
     });
   });
 
@@ -85,5 +87,96 @@ describe("App smoke test", () => {
     await waitFor(() => {
       expect(container.querySelector(".app")).toBeInTheDocument();
     });
+  });
+
+  it("renders collapsed and expanded views without JS errors", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    // Wait for initial data to load (collapsed view)
+    await waitFor(() => {
+      expect(screen.getByText("All Monitors (1)")).toBeInTheDocument();
+    });
+
+    // Expand to show individual monitors
+    await user.click(screen.getByTitle("Show individual monitors"));
+    await waitFor(() => {
+      expect(screen.getByText("Built-in Display")).toBeInTheDocument();
+    });
+
+    // Collapse back
+    await user.click(screen.getByTitle("Show all monitors control"));
+    await waitFor(() => {
+      expect(screen.getByText("All Monitors (1)")).toBeInTheDocument();
+    });
+
+    // No console.error calls should have occurred
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("renders with multiple monitors without JS errors", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockInvoke.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "get_monitors":
+          return Promise.resolve([
+            {
+              id: "builtin-0",
+              name: "Built-in Display",
+              originalName: "Built-in Display",
+              brightness: 100,
+              supportsBrightness: true,
+              isBuiltIn: true,
+            },
+            {
+              id: "external-1",
+              name: "Dell U2723QE",
+              originalName: "Dell U2723QE",
+              brightness: 80,
+              supportsBrightness: true,
+              isBuiltIn: false,
+            },
+            {
+              id: "external-2",
+              name: "",
+              originalName: "LG 27UK850",
+              brightness: 60,
+              supportsBrightness: true,
+              isBuiltIn: false,
+            },
+          ]);
+        case "get_dark_mode":
+          return Promise.resolve(true);
+        case "get_volume":
+          return Promise.resolve(75);
+        case "get_app_version":
+          return Promise.resolve("2.0.0");
+        default:
+          return Promise.resolve(undefined);
+      }
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Collapsed view with 3 monitors
+    await waitFor(() => {
+      expect(screen.getByText("All Monitors (3)")).toBeInTheDocument();
+    });
+
+    // Expand to individual monitors
+    await user.click(screen.getByTitle("Show individual monitors"));
+    await waitFor(() => {
+      expect(screen.getByText("Built-in Display")).toBeInTheDocument();
+      expect(screen.getByText("Dell U2723QE")).toBeInTheDocument();
+      // Monitor with empty name should fall back to originalName
+      expect(screen.getByText("LG 27UK850")).toBeInTheDocument();
+    });
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

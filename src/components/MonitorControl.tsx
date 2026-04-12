@@ -25,9 +25,10 @@ export default function MonitorControl({
 
   const finishEditing = () => {
     setEditing(false);
-    if (editName.trim() && editName.trim() !== monitor.name) {
-      onRename(editName.trim());
-    }
+    const trimmed = editName.trim();
+    if (trimmed === monitor.name) return;
+    // Empty input clears the custom name, reverting to the API default
+    onRename(trimmed);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -46,13 +47,14 @@ export default function MonitorControl({
           ref={inputRef}
           className="monitor-name-input"
           value={editName}
+          placeholder={monitor.originalName}
           onChange={(e) => setEditName(e.target.value)}
           onBlur={finishEditing}
           onKeyDown={handleKeyDown}
         />
       ) : (
         <button className="monitor-name" onClick={startEditing}>
-          {monitor.name}
+          {monitor.name || monitor.originalName}
         </button>
       )}
       <Slider
