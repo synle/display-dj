@@ -163,7 +163,7 @@ function App() {
     : 50;
 
   return (
-    <div className="app" ref={appRef}>
+    <div className="app" ref={appRef} data-theme={darkMode ? "dark" : "light"}>
       <Header
         version={version}
         expanded={expanded}
