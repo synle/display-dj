@@ -64,7 +64,15 @@ jobs:
 
       - name: Run Rust tests
         working-directory: src-tauri
-        run: cargo test --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          if [[ "${{ matrix.platform }}" == "windows-latest" ]]; then
+            # Skip integration smoke test on Windows CI — Dxva2.dll (DDC/CI) is not
+            # available on Server SKUs, so the smoke binary crashes at load time.
+            cargo test --target ${{ matrix.target }} --lib
+          else
+            cargo test --target ${{ matrix.target }}
+          fi
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
