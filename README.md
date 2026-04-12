@@ -57,8 +57,7 @@ The app appears in your **system tray** (not as a regular window):
 
 Config files live in `~/Library/Application Support/display-dj/` (macOS), `%APPDATA%\display-dj\` (Windows), or `~/.config/display-dj/` (Linux).
 
-- **`preferences.json`** -- keyboard shortcuts, brightness/contrast delta, min brightness, night mode schedule
-- **`monitor-configs.json`** -- per-monitor names, sort order, disable flags
+- **`preferences.json`** -- keyboard shortcuts, min brightness, night mode schedule, profiles, per-monitor metadata (labels, sort order)
 
 ### Default Keyboard Shortcuts
 

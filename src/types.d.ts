@@ -24,7 +24,6 @@ type Command =
   | 'command/changeProfile/1'
   | 'command/changeProfile/2'
   // open external links or text files
-  | 'command/openExternal/file/monitorConfigs'
   | 'command/openExternal/file/preferences'
   | 'command/openExternal/file/devLogs'
   | 'command/openExternal/link/bugReport'

@@ -18,7 +18,6 @@ pub fn server_port() -> u16 {
 
 pub struct AppState {
     pub preferences: std::sync::Mutex<config::Preferences>,
-    pub monitor_configs: std::sync::Mutex<config::MonitorConfigs>,
 }
 
 /// Find an available port starting from the default.
@@ -127,7 +126,6 @@ pub fn run() {
     env_logger::init();
 
     let preferences = config::load_preferences();
-    let monitor_configs = config::load_monitor_configs();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -138,22 +136,19 @@ pub fn run() {
         ))
         .manage(AppState {
             preferences: std::sync::Mutex::new(preferences.clone()),
-            monitor_configs: std::sync::Mutex::new(monitor_configs),
         })
         .invoke_handler(tauri::generate_handler![
             display::get_monitors,
             display::set_brightness,
             display::set_all_brightness,
             display::rename_monitor,
+            display::save_monitor_order,
             dark_mode::get_dark_mode,
             dark_mode::set_dark_mode,
             volume::get_volume,
             volume::set_volume,
             config::get_preferences,
             config::save_preferences,
-            config::get_monitor_configs,
-            config::save_monitor_config,
-            config::open_config_file,
             config::open_preferences_file,
             config::open_debug_log,
             config::get_app_version,

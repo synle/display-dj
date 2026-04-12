@@ -14,6 +14,7 @@ beforeEach(() => {
         return Promise.resolve([
           {
             id: "builtin-0",
+            uid: "builtin-0::Built-in Display",
             name: "Built-in Display",
             originalName: "Built-in Display",
             brightness: 50,
@@ -65,6 +66,7 @@ beforeEach(() => {
           },
           debugLogging: false,
           launchAtLogin: false,
+          monitorConfigs: [],
         });
       case "get_app_version":
         return Promise.resolve("2.0.0");
@@ -175,6 +177,7 @@ describe("App smoke test", () => {
           return Promise.resolve([
             {
               id: "builtin-0",
+              uid: "builtin-0::Built-in Display",
               name: "Built-in Display",
               originalName: "Built-in Display",
               brightness: 100,
@@ -182,7 +185,8 @@ describe("App smoke test", () => {
               isBuiltIn: true,
             },
             {
-              id: "external-1",
+              id: "1",
+              uid: "1::Dell U2723QE",
               name: "Dell U2723QE",
               originalName: "Dell U2723QE",
               brightness: 80,
@@ -190,7 +194,8 @@ describe("App smoke test", () => {
               isBuiltIn: false,
             },
             {
-              id: "external-2",
+              id: "2",
+              uid: "2::LG 27UK850",
               name: "",
               originalName: "LG 27UK850",
               brightness: 60,

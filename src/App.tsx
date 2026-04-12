@@ -117,23 +117,24 @@ function App() {
 
   const handleMonitorBrightness = async (
     monitorId: string,
+    uid: string,
     value: number
   ) => {
     try {
       await invoke("set_brightness", { monitorId, value });
       setMonitors((prev) =>
-        prev.map((m) => (m.id === monitorId ? { ...m, brightness: value } : m))
+        prev.map((m) => (m.uid === uid ? { ...m, brightness: value } : m))
       );
     } catch (e) {
       console.error("Failed to set brightness:", e);
     }
   };
 
-  const handleRename = async (monitorId: string, name: string) => {
+  const handleRename = async (uid: string, name: string) => {
     try {
-      await invoke("rename_monitor", { monitorId, name });
+      await invoke("rename_monitor", { uid, name });
       setMonitors((prev) =>
-        prev.map((m) => (m.id === monitorId ? { ...m, name } : m))
+        prev.map((m) => (m.uid === uid ? { ...m, name } : m))
       );
     } catch (e) {
       console.error("Failed to rename monitor:", e);
@@ -148,14 +149,12 @@ function App() {
     const b = monitors[swapIndex];
 
     try {
-      await Promise.all([
-        invoke("save_monitor_config", {
-          config: { id: a.id, name: a.name, sortOrder: swapIndex, disabled: false },
-        }),
-        invoke("save_monitor_config", {
-          config: { id: b.id, name: b.name, sortOrder: index, disabled: false },
-        }),
-      ]);
+      await invoke("save_monitor_order", {
+        orders: [
+          [a.uid, swapIndex],
+          [b.uid, index],
+        ],
+      });
       // Swap locally for instant feedback
       setMonitors((prev) => {
         const next = [...prev];
@@ -232,12 +231,12 @@ function App() {
           <div className="monitors-list">
             {monitors.map((monitor, index) => (
               <MonitorControl
-                key={monitor.id}
+                key={monitor.uid}
                 monitor={monitor}
                 onBrightnessChange={(v) =>
-                  handleMonitorBrightness(monitor.id, v)
+                  handleMonitorBrightness(monitor.id, monitor.uid, v)
                 }
-                onRename={(name) => handleRename(monitor.id, name)}
+                onRename={(name) => handleRename(monitor.uid, name)}
                 onMoveUp={() => handleReorder(index, "up")}
                 onMoveDown={() => handleReorder(index, "down")}
                 isFirst={index === 0}

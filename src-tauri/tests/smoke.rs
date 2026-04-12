@@ -14,7 +14,6 @@ fn app_state_struct_is_public() {
     // Verify AppState is accessible from outside the crate
     let _state = display_dj_lib::AppState {
         preferences: std::sync::Mutex::new(Default::default()),
-        monitor_configs: std::sync::Mutex::new(Default::default()),
     };
 }
 

@@ -3,8 +3,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Monitor {
+    /// Raw API id from display-dj sidecar (e.g. "1", "builtin"). Used for brightness commands.
     pub id: String,
+    /// Composite unique key: "{api_id}::{api_name}". Used for config lookups.
+    pub uid: String,
+    /// Display label (custom label from config, or api_name if no custom label).
     pub name: String,
+    /// Original model name from the API (never changes).
     pub original_name: String,
     pub brightness: u32,
     pub supports_brightness: bool,
@@ -23,8 +28,10 @@ struct DjDisplay {
 impl DjDisplay {
     fn into_monitor(self) -> Monitor {
         let is_built_in = self.display_type == "builtin";
+        let uid = format!("{}::{}", self.id, self.name);
         Monitor {
             id: self.id,
+            uid,
             name: self.name.clone(),
             original_name: self.name,
             brightness: self.brightness.unwrap_or(50),
@@ -71,29 +78,70 @@ async fn set_all_monitors_brightness(value: u32, min_brightness: u32) -> Result<
 
 fn merge_with_configs(
     monitors: Vec<Monitor>,
-    configs: &crate::config::MonitorConfigs,
+    configs: &[crate::config::MonitorMetadata],
 ) -> Vec<Monitor> {
     let mut result: Vec<Monitor> = Vec::new();
 
     for mut monitor in monitors {
-        if let Some(config) = configs.get(&monitor.id) {
-            if !config.name.is_empty() {
-                monitor.name = config.name.clone();
-            }
-            if config.disabled {
-                continue;
+        if let Some(meta) = configs.iter().find(|m| m.uid == monitor.uid) {
+            if !meta.label.is_empty() {
+                monitor.name = meta.label.clone();
             }
         }
         result.push(monitor);
     }
 
     result.sort_by(|a, b| {
-        let order_a = configs.get(&a.id).map(|c| c.sort_order).unwrap_or(i32::MAX);
-        let order_b = configs.get(&b.id).map(|c| c.sort_order).unwrap_or(i32::MAX);
-        order_a.cmp(&order_b).then(a.id.cmp(&b.id))
+        let order_a = configs.iter().find(|c| c.uid == a.uid).map(|c| c.sort_order).unwrap_or(i32::MAX);
+        let order_b = configs.iter().find(|c| c.uid == b.uid).map(|c| c.sort_order).unwrap_or(i32::MAX);
+        order_a.cmp(&order_b).then(a.uid.cmp(&b.uid))
     });
 
     result
+}
+
+/// Fix up migrated entries whose api_name is "unknown" — once we detect the real
+/// monitor, we can fill in the correct uid and api_name.
+fn reconcile_migrated_configs(
+    monitors: &[Monitor],
+    configs: &mut Vec<crate::config::MonitorMetadata>,
+) -> bool {
+    let mut changed = false;
+    for monitor in monitors {
+        if configs.iter().any(|c| c.uid == monitor.uid) {
+            continue;
+        }
+        if let Some(meta) = configs.iter_mut().find(|c| c.api_id == monitor.id && c.api_name == "unknown") {
+            meta.uid = monitor.uid.clone();
+            meta.api_name = monitor.original_name.clone();
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Ensure every detected monitor has a metadata entry in preferences.
+/// New monitors get an entry with empty label (will display api_name).
+fn ensure_metadata_for_monitors(
+    monitors: &[Monitor],
+    configs: &mut Vec<crate::config::MonitorMetadata>,
+) -> bool {
+    let mut changed = false;
+    let next_order = configs.iter().map(|c| c.sort_order).max().unwrap_or(-1) + 1;
+
+    for (i, monitor) in monitors.iter().enumerate() {
+        if !configs.iter().any(|c| c.uid == monitor.uid) {
+            configs.push(crate::config::MonitorMetadata {
+                uid: monitor.uid.clone(),
+                api_id: monitor.id.clone(),
+                api_name: monitor.original_name.clone(),
+                label: String::new(),
+                sort_order: next_order + i as i32,
+            });
+            changed = true;
+        }
+    }
+    changed
 }
 
 // ===========================================================================
@@ -105,8 +153,15 @@ pub async fn get_monitors(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Vec<Monitor>, String> {
     let monitors = detect_monitors().await;
-    let configs = state.monitor_configs.lock().map_err(|e| e.to_string())?;
-    Ok(merge_with_configs(monitors, &configs))
+    let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
+
+    let mut dirty = reconcile_migrated_configs(&monitors, &mut prefs.monitor_configs);
+    dirty |= ensure_metadata_for_monitors(&monitors, &mut prefs.monitor_configs);
+    if dirty {
+        crate::config::save_preferences_to_disk(&prefs);
+    }
+
+    Ok(merge_with_configs(monitors, &prefs.monitor_configs))
 }
 
 #[tauri::command]
@@ -131,31 +186,68 @@ pub async fn set_all_brightness(
 #[tauri::command]
 pub fn rename_monitor(
     state: tauri::State<'_, crate::AppState>,
-    monitor_id: String,
+    uid: String,
     name: String,
 ) -> Result<(), String> {
-    let mut configs = state.monitor_configs.lock().map_err(|e| e.to_string())?;
-    let config = configs
-        .entry(monitor_id.clone())
-        .or_insert_with(|| crate::config::MonitorConfig {
-            id: monitor_id,
-            name: String::new(),
+    let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
+    if let Some(meta) = prefs.monitor_configs.iter_mut().find(|m| m.uid == uid) {
+        meta.label = name;
+    } else {
+        let parts: Vec<&str> = uid.splitn(2, "::").collect();
+        let (api_id, api_name) = if parts.len() == 2 {
+            (parts[0].to_string(), parts[1].to_string())
+        } else {
+            (uid.clone(), String::new())
+        };
+        prefs.monitor_configs.push(crate::config::MonitorMetadata {
+            uid: uid.clone(),
+            api_id,
+            api_name,
+            label: name,
             sort_order: 0,
-            disabled: false,
         });
-    config.name = name;
-    crate::config::save_monitor_configs_to_disk(&configs);
+    }
+    crate::config::save_preferences_to_disk(&prefs);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn save_monitor_order(
+    state: tauri::State<'_, crate::AppState>,
+    orders: Vec<(String, i32)>,
+) -> Result<(), String> {
+    let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
+    for (uid, sort_order) in orders {
+        if let Some(meta) = prefs.monitor_configs.iter_mut().find(|m| m.uid == uid) {
+            meta.sort_order = sort_order;
+        } else {
+            let parts: Vec<&str> = uid.splitn(2, "::").collect();
+            let (api_id, api_name) = if parts.len() == 2 {
+                (parts[0].to_string(), parts[1].to_string())
+            } else {
+                (uid.clone(), String::new())
+            };
+            prefs.monitor_configs.push(crate::config::MonitorMetadata {
+                uid,
+                api_id,
+                api_name,
+                label: String::new(),
+                sort_order,
+            });
+        }
+    }
+    crate::config::save_preferences_to_disk(&prefs);
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     fn make_monitor(id: &str, name: &str, is_built_in: bool) -> Monitor {
         Monitor {
             id: id.into(),
+            uid: format!("{}::{}", id, name),
             name: name.into(),
             original_name: name.into(),
             brightness: 50,
@@ -164,12 +256,24 @@ mod tests {
         }
     }
 
+    fn make_meta(uid: &str, label: &str, sort_order: i32) -> crate::config::MonitorMetadata {
+        let parts: Vec<&str> = uid.splitn(2, "::").collect();
+        crate::config::MonitorMetadata {
+            uid: uid.into(),
+            api_id: parts.first().unwrap_or(&"").to_string(),
+            api_name: parts.get(1).unwrap_or(&"").to_string(),
+            label: label.into(),
+            sort_order,
+        }
+    }
+
     #[test]
     fn test_monitor_serialization_camel_case() {
-        let monitor = make_monitor("builtin-0", "Built-in", true);
+        let monitor = make_monitor("builtin", "Built-in", true);
         let json = serde_json::to_string(&monitor).unwrap();
         assert!(json.contains("\"supportsBrightness\""));
         assert!(json.contains("\"isBuiltIn\""));
+        assert!(json.contains("\"uid\""));
         assert!(!json.contains("supports_brightness"));
         assert!(!json.contains("is_built_in"));
     }
@@ -177,7 +281,8 @@ mod tests {
     #[test]
     fn test_monitor_deserialization() {
         let json = r#"{
-            "id": "external-1",
+            "id": "1",
+            "uid": "1::Dell U2723QE",
             "name": "Dell U2723QE",
             "originalName": "Dell U2723QE",
             "brightness": 80,
@@ -185,7 +290,8 @@ mod tests {
             "isBuiltIn": false
         }"#;
         let monitor: Monitor = serde_json::from_str(json).unwrap();
-        assert_eq!(monitor.id, "external-1");
+        assert_eq!(monitor.id, "1");
+        assert_eq!(monitor.uid, "1::Dell U2723QE");
         assert_eq!(monitor.name, "Dell U2723QE");
         assert_eq!(monitor.brightness, 80);
         assert!(!monitor.is_built_in);
@@ -193,10 +299,11 @@ mod tests {
 
     #[test]
     fn test_monitor_roundtrip_serialization() {
-        let original = make_monitor("external-2", "LG 27UK850", false);
+        let original = make_monitor("2", "LG 27UK850", false);
         let json = serde_json::to_string(&original).unwrap();
         let restored: Monitor = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.id, original.id);
+        assert_eq!(restored.uid, original.uid);
         assert_eq!(restored.name, original.name);
         assert_eq!(restored.brightness, original.brightness);
         assert_eq!(restored.supports_brightness, original.supports_brightness);
@@ -205,89 +312,35 @@ mod tests {
 
     #[test]
     fn test_merge_with_configs_renames_monitor() {
-        let monitors = vec![make_monitor("external-1", "External Display 1", false)];
-        let mut configs: crate::config::MonitorConfigs = HashMap::new();
-        configs.insert(
-            "external-1".into(),
-            crate::config::MonitorConfig {
-                id: "external-1".into(),
-                name: "My Dell".into(),
-                sort_order: 0,
-                disabled: false,
-            },
-        );
+        let monitors = vec![make_monitor("1", "External Display 1", false)];
+        let configs = vec![make_meta("1::External Display 1", "My Dell", 0)];
         let result = merge_with_configs(monitors, &configs);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "My Dell");
     }
 
     #[test]
-    fn test_merge_with_configs_filters_disabled() {
-        let monitors = vec![
-            make_monitor("external-1", "Monitor 1", false),
-            make_monitor("external-2", "Monitor 2", false),
-        ];
-        let mut configs: crate::config::MonitorConfigs = HashMap::new();
-        configs.insert(
-            "external-2".into(),
-            crate::config::MonitorConfig {
-                id: "external-2".into(),
-                name: "Monitor 2".into(),
-                sort_order: 0,
-                disabled: true,
-            },
-        );
-        let result = merge_with_configs(monitors, &configs);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].id, "external-1");
-    }
-
-    #[test]
     fn test_merge_with_configs_sorts_by_sort_order() {
         let monitors = vec![
-            make_monitor("external-1", "Monitor A", false),
-            make_monitor("external-2", "Monitor B", false),
-            make_monitor("builtin-0", "Built-in", true),
+            make_monitor("1", "Monitor A", false),
+            make_monitor("2", "Monitor B", false),
+            make_monitor("builtin", "Built-in", true),
         ];
-        let mut configs: crate::config::MonitorConfigs = HashMap::new();
-        configs.insert(
-            "external-2".into(),
-            crate::config::MonitorConfig {
-                id: "external-2".into(),
-                name: "Monitor B".into(),
-                sort_order: 1,
-                disabled: false,
-            },
-        );
-        configs.insert(
-            "builtin-0".into(),
-            crate::config::MonitorConfig {
-                id: "builtin-0".into(),
-                name: "Built-in".into(),
-                sort_order: 0,
-                disabled: false,
-            },
-        );
+        let configs = vec![
+            make_meta("2::Monitor B", "Monitor B", 1),
+            make_meta("builtin::Built-in", "Built-in", 0),
+        ];
         let result = merge_with_configs(monitors, &configs);
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0].id, "builtin-0");
-        assert_eq!(result[1].id, "external-2");
-        assert_eq!(result[2].id, "external-1");
+        assert_eq!(result[0].uid, "builtin::Built-in");
+        assert_eq!(result[1].uid, "2::Monitor B");
+        assert_eq!(result[2].uid, "1::Monitor A");
     }
 
     #[test]
-    fn test_merge_with_configs_empty_name_keeps_original() {
-        let monitors = vec![make_monitor("external-1", "Original Name", false)];
-        let mut configs: crate::config::MonitorConfigs = HashMap::new();
-        configs.insert(
-            "external-1".into(),
-            crate::config::MonitorConfig {
-                id: "external-1".into(),
-                name: "".into(),
-                sort_order: 0,
-                disabled: false,
-            },
-        );
+    fn test_merge_with_configs_empty_label_keeps_original() {
+        let monitors = vec![make_monitor("1", "Original Name", false)];
+        let configs = vec![make_meta("1::Original Name", "", 0)];
         let result = merge_with_configs(monitors, &configs);
         assert_eq!(result[0].name, "Original Name");
     }
@@ -295,10 +348,10 @@ mod tests {
     #[test]
     fn test_merge_with_configs_no_configs() {
         let monitors = vec![
-            make_monitor("builtin-0", "Built-in", true),
-            make_monitor("external-1", "External", false),
+            make_monitor("builtin", "Built-in", true),
+            make_monitor("1", "External", false),
         ];
-        let configs: crate::config::MonitorConfigs = HashMap::new();
+        let configs: Vec<crate::config::MonitorMetadata> = Vec::new();
         let result = merge_with_configs(monitors, &configs);
         assert_eq!(result.len(), 2);
     }
@@ -314,6 +367,7 @@ mod tests {
         let m = dj.into_monitor();
         assert!(m.is_built_in);
         assert_eq!(m.brightness, 80);
+        assert_eq!(m.uid, "builtin::Built-in Display");
     }
 
     #[test]
@@ -327,6 +381,7 @@ mod tests {
         let m = dj.into_monitor();
         assert!(!m.is_built_in);
         assert_eq!(m.brightness, 50);
+        assert_eq!(m.uid, "1::Dell U2723QE");
     }
 
     #[test]
@@ -339,5 +394,43 @@ mod tests {
         };
         let m = dj.into_monitor();
         assert_eq!(m.brightness, 50);
+        assert_eq!(m.uid, "2::Unknown");
+    }
+
+    #[test]
+    fn test_reconcile_migrated_configs() {
+        let monitors = vec![make_monitor("1", "Dell U2723QE", false)];
+        let mut configs = vec![crate::config::MonitorMetadata {
+            uid: "1::unknown".into(),
+            api_id: "1".into(),
+            api_name: "unknown".into(),
+            label: "My Dell".into(),
+            sort_order: 0,
+        }];
+        let changed = reconcile_migrated_configs(&monitors, &mut configs);
+        assert!(changed);
+        assert_eq!(configs[0].uid, "1::Dell U2723QE");
+        assert_eq!(configs[0].api_name, "Dell U2723QE");
+        assert_eq!(configs[0].label, "My Dell"); // label preserved
+    }
+
+    #[test]
+    fn test_ensure_metadata_for_monitors() {
+        let monitors = vec![
+            make_monitor("builtin", "Built-in", true),
+            make_monitor("1", "Dell", false),
+        ];
+        let mut configs: Vec<crate::config::MonitorMetadata> = Vec::new();
+        let changed = ensure_metadata_for_monitors(&monitors, &mut configs);
+        assert!(changed);
+        assert_eq!(configs.len(), 2);
+        assert_eq!(configs[0].uid, "builtin::Built-in");
+        assert_eq!(configs[1].uid, "1::Dell");
+        assert_eq!(configs[0].label, ""); // default empty label
+
+        // Running again should not add duplicates
+        let changed2 = ensure_metadata_for_monitors(&monitors, &mut configs);
+        assert!(!changed2);
+        assert_eq!(configs.len(), 2);
     }
 }
