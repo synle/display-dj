@@ -173,6 +173,10 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                         }
                         let _ = window.show();
                         let _ = window.set_focus();
+                        // Emit refresh events so frontend fetches latest monitor/dark-mode/volume state
+                        let _ = app.emit("monitors-changed", ());
+                        let _ = app.emit("dark-mode-changed", ());
+                        let _ = app.emit("volume-changed", ());
                     }
                 }
             }
