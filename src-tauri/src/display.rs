@@ -6,9 +6,7 @@ pub struct Monitor {
     pub id: String,
     pub name: String,
     pub brightness: u32,
-    pub contrast: u32,
     pub supports_brightness: bool,
-    pub supports_contrast: bool,
     pub is_built_in: bool,
 }
 
@@ -19,8 +17,6 @@ struct DjDisplay {
     name: String,
     display_type: String,
     brightness: Option<u32>,
-    contrast: Option<u32>,
-    ddc_supported: bool,
 }
 
 impl DjDisplay {
@@ -30,9 +26,7 @@ impl DjDisplay {
             id: self.id,
             name: self.name,
             brightness: self.brightness.unwrap_or(50),
-            contrast: self.contrast.unwrap_or(50),
             supports_brightness: true,
-            supports_contrast: !is_built_in && self.ddc_supported && self.contrast.is_some(),
             is_built_in,
         }
     }
@@ -62,21 +56,11 @@ async fn set_monitor_brightness(monitor_id: &str, value: u32) -> Result<(), Stri
     Ok(())
 }
 
-async fn set_monitor_contrast(monitor_id: &str, value: u32) -> Result<(), String> {
-    let _ = (monitor_id, value);
-    Err("Contrast control via display-dj server is not yet supported".into())
-}
-
 async fn set_all_monitors_brightness(value: u32) -> Result<(), String> {
     let url = format!("{}/set_all/{}", base_url(), value.clamp(10, 100));
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set all brightness: {}", e))?;
     Ok(())
-}
-
-async fn set_all_monitors_contrast(value: u32) -> Result<(), String> {
-    let _ = value;
-    Err("Contrast control via display-dj server is not yet supported".into())
 }
 
 // ===========================================================================
@@ -129,18 +113,8 @@ pub async fn set_brightness(monitor_id: String, value: u32) -> Result<(), String
 }
 
 #[tauri::command]
-pub async fn set_contrast(monitor_id: String, value: u32) -> Result<(), String> {
-    set_monitor_contrast(&monitor_id, value).await
-}
-
-#[tauri::command]
 pub async fn set_all_brightness(value: u32) -> Result<(), String> {
     set_all_monitors_brightness(value).await
-}
-
-#[tauri::command]
-pub async fn set_all_contrast(value: u32) -> Result<(), String> {
-    set_all_monitors_contrast(value).await
 }
 
 #[tauri::command]
@@ -173,9 +147,7 @@ mod tests {
             id: id.into(),
             name: name.into(),
             brightness: 50,
-            contrast: 50,
             supports_brightness: true,
-            supports_contrast: !is_built_in,
             is_built_in,
         }
     }
@@ -185,7 +157,6 @@ mod tests {
         let monitor = make_monitor("builtin-0", "Built-in", true);
         let json = serde_json::to_string(&monitor).unwrap();
         assert!(json.contains("\"supportsBrightness\""));
-        assert!(json.contains("\"supportsContrast\""));
         assert!(json.contains("\"isBuiltIn\""));
         assert!(!json.contains("supports_brightness"));
         assert!(!json.contains("is_built_in"));
@@ -197,16 +168,13 @@ mod tests {
             "id": "external-1",
             "name": "Dell U2723QE",
             "brightness": 80,
-            "contrast": 50,
             "supportsBrightness": true,
-            "supportsContrast": true,
             "isBuiltIn": false
         }"#;
         let monitor: Monitor = serde_json::from_str(json).unwrap();
         assert_eq!(monitor.id, "external-1");
         assert_eq!(monitor.name, "Dell U2723QE");
         assert_eq!(monitor.brightness, 80);
-        assert!(monitor.supports_contrast);
         assert!(!monitor.is_built_in);
     }
 
@@ -218,9 +186,7 @@ mod tests {
         assert_eq!(restored.id, original.id);
         assert_eq!(restored.name, original.name);
         assert_eq!(restored.brightness, original.brightness);
-        assert_eq!(restored.contrast, original.contrast);
         assert_eq!(restored.supports_brightness, original.supports_brightness);
-        assert_eq!(restored.supports_contrast, original.supports_contrast);
         assert_eq!(restored.is_built_in, original.is_built_in);
     }
 
@@ -331,13 +297,10 @@ mod tests {
             name: "Built-in Display".into(),
             display_type: "builtin".into(),
             brightness: Some(80),
-            contrast: None,
-            ddc_supported: false,
         };
         let m = dj.into_monitor();
         assert!(m.is_built_in);
         assert_eq!(m.brightness, 80);
-        assert!(!m.supports_contrast);
     }
 
     #[test]
@@ -347,14 +310,10 @@ mod tests {
             name: "Dell U2723QE".into(),
             display_type: "external".into(),
             brightness: Some(50),
-            contrast: Some(70),
-            ddc_supported: true,
         };
         let m = dj.into_monitor();
         assert!(!m.is_built_in);
         assert_eq!(m.brightness, 50);
-        assert_eq!(m.contrast, 70);
-        assert!(m.supports_contrast);
     }
 
     #[test]
@@ -364,12 +323,8 @@ mod tests {
             name: "Unknown".into(),
             display_type: "external".into(),
             brightness: None,
-            contrast: None,
-            ddc_supported: false,
         };
         let m = dj.into_monitor();
         assert_eq!(m.brightness, 50);
-        assert_eq!(m.contrast, 50);
-        assert!(!m.supports_contrast);
     }
 }

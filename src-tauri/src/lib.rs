@@ -60,9 +60,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             display::get_monitors,
             display::set_brightness,
-            display::set_contrast,
             display::set_all_brightness,
-            display::set_all_contrast,
             display::rename_monitor,
             dark_mode::get_dark_mode,
             dark_mode::set_dark_mode,

@@ -2,9 +2,7 @@ export interface Monitor {
   id: string;
   name: string;
   brightness: number;
-  contrast: number;
   supportsBrightness: boolean;
-  supportsContrast: boolean;
   isBuiltIn: boolean;
 }
 
@@ -18,7 +16,6 @@ export interface MonitorConfig {
 export interface Preferences {
   showIndividualDisplays: boolean;
   brightnessDelta: number;
-  contrastDelta: number;
   keyBindings: KeyBinding[];
 }
 

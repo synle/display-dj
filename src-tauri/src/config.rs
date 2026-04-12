@@ -18,7 +18,6 @@ pub struct MonitorConfig {
 pub struct Preferences {
     pub show_individual_displays: bool,
     pub brightness_delta: u32,
-    pub contrast_delta: u32,
     pub key_bindings: Vec<KeyBinding>,
 }
 
@@ -41,7 +40,6 @@ impl Default for Preferences {
         Self {
             show_individual_displays: false,
             brightness_delta: 50,
-            contrast_delta: 25,
             key_bindings: vec![
                 KeyBinding {
                     key: "Shift+Escape".into(),
@@ -208,7 +206,6 @@ mod tests {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.brightness_delta, 50);
-        assert_eq!(prefs.contrast_delta, 25);
         assert_eq!(prefs.key_bindings.len(), 8);
     }
 
@@ -270,7 +267,6 @@ mod tests {
         let deserialized: Preferences = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.show_individual_displays, prefs.show_individual_displays);
         assert_eq!(deserialized.brightness_delta, prefs.brightness_delta);
-        assert_eq!(deserialized.contrast_delta, prefs.contrast_delta);
         assert_eq!(deserialized.key_bindings.len(), prefs.key_bindings.len());
     }
 
@@ -280,7 +276,6 @@ mod tests {
         let json = serde_json::to_string(&prefs).unwrap();
         assert!(json.contains("showIndividualDisplays"));
         assert!(json.contains("brightnessDelta"));
-        assert!(json.contains("contrastDelta"));
         assert!(json.contains("keyBindings"));
         // Should NOT contain snake_case
         assert!(!json.contains("show_individual_displays"));

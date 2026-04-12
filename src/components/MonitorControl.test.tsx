@@ -8,9 +8,7 @@ const externalMonitor: Monitor = {
   id: "external-1",
   name: "Dell U2723QE",
   brightness: 80,
-  contrast: 50,
   supportsBrightness: true,
-  supportsContrast: true,
   isBuiltIn: false,
 };
 
@@ -18,9 +16,7 @@ const builtInMonitor: Monitor = {
   id: "builtin-0",
   name: "Built-in Display",
   brightness: 60,
-  contrast: 50,
   supportsBrightness: true,
-  supportsContrast: false,
   isBuiltIn: true,
 };
 
@@ -30,7 +26,6 @@ describe("MonitorControl", () => {
       <MonitorControl
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
         onRename={() => {}}
       />
     );
@@ -42,7 +37,6 @@ describe("MonitorControl", () => {
       <MonitorControl
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
         onRename={() => {}}
       />
     );
@@ -51,39 +45,12 @@ describe("MonitorControl", () => {
     expect(sliders[0]).toHaveValue("80");
   });
 
-  it("renders contrast slider when supported", () => {
-    render(
-      <MonitorControl
-        monitor={externalMonitor}
-        onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
-        onRename={() => {}}
-      />
-    );
-    const sliders = screen.getAllByRole("slider");
-    expect(sliders).toHaveLength(2);
-  });
-
-  it("hides contrast slider when not supported", () => {
-    render(
-      <MonitorControl
-        monitor={builtInMonitor}
-        onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
-        onRename={() => {}}
-      />
-    );
-    const sliders = screen.getAllByRole("slider");
-    expect(sliders).toHaveLength(1);
-  });
-
   it("enters edit mode on name click", async () => {
     const user = userEvent.setup();
     render(
       <MonitorControl
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
         onRename={() => {}}
       />
     );
@@ -101,7 +68,6 @@ describe("MonitorControl", () => {
       <MonitorControl
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
         onRename={onRename}
       />
     );
@@ -120,7 +86,6 @@ describe("MonitorControl", () => {
       <MonitorControl
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
         onRename={onRename}
       />
     );
@@ -140,7 +105,6 @@ describe("MonitorControl", () => {
       <MonitorControl
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
         onRename={onRename}
       />
     );
@@ -156,7 +120,6 @@ describe("MonitorControl", () => {
       <MonitorControl
         monitor={externalMonitor}
         onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
         onRename={() => {}}
       />
     );
@@ -168,7 +131,6 @@ describe("MonitorControl", () => {
       <MonitorControl
         monitor={builtInMonitor}
         onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
         onRename={() => {}}
       />
     );

@@ -7,10 +7,7 @@ describe("AllMonitorsControl", () => {
     render(
       <AllMonitorsControl
         brightness={50}
-        contrast={50}
-        showContrast={false}
         onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
       />
     );
     expect(screen.getByText("All Monitors")).toBeInTheDocument();
@@ -20,43 +17,11 @@ describe("AllMonitorsControl", () => {
     render(
       <AllMonitorsControl
         brightness={70}
-        contrast={50}
-        showContrast={false}
         onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
       />
     );
     const sliders = screen.getAllByRole("slider");
     expect(sliders).toHaveLength(1);
     expect(sliders[0]).toHaveValue("70");
-  });
-
-  it("shows contrast slider when showContrast is true", () => {
-    render(
-      <AllMonitorsControl
-        brightness={50}
-        contrast={60}
-        showContrast={true}
-        onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
-      />
-    );
-    const sliders = screen.getAllByRole("slider");
-    expect(sliders).toHaveLength(2);
-    expect(sliders[1]).toHaveValue("60");
-  });
-
-  it("hides contrast slider when showContrast is false", () => {
-    render(
-      <AllMonitorsControl
-        brightness={50}
-        contrast={60}
-        showContrast={false}
-        onBrightnessChange={() => {}}
-        onContrastChange={() => {}}
-      />
-    );
-    const sliders = screen.getAllByRole("slider");
-    expect(sliders).toHaveLength(1);
   });
 });

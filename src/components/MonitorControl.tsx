@@ -5,14 +5,12 @@ import Slider from "./Slider";
 interface MonitorControlProps {
   monitor: Monitor;
   onBrightnessChange: (value: number) => void;
-  onContrastChange: (value: number) => void;
   onRename: (name: string) => void;
 }
 
 export default function MonitorControl({
   monitor,
   onBrightnessChange,
-  onContrastChange,
   onRename,
 }: MonitorControlProps) {
   const [editing, setEditing] = useState(false);
@@ -61,10 +59,8 @@ export default function MonitorControl({
         icon={monitor.isBuiltIn ? "\uD83D\uDCBB" : "\uD83D\uDDA5"}
         value={monitor.brightness}
         onChange={onBrightnessChange}
+        onIconClick={() => onBrightnessChange(monitor.brightness > 0 ? 0 : 100)}
       />
-      {monitor.supportsContrast && (
-        <Slider icon="🌓" value={monitor.contrast} onChange={onContrastChange} />
-      )}
     </div>
   );
 }
