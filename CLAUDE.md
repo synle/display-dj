@@ -97,6 +97,41 @@ Files: `preferences.json`, `monitor-configs.json`
 - Preferences use `#[serde(default)]` so old config files missing new fields gracefully fall back to defaults
 - Brightness values are clamped to `effective_min_brightness()` which enforces an absolute floor of 5
 
+## Window Positioning (multi-monitor DPI)
+
+The tray popup window must appear next to the tray icon, which can be on any monitor with any DPI scale factor. This is deceptively hard because of how Tauri handles coordinates on macOS. **Read the doc comment on `position_window_near_tray` in `tray.rs` before modifying positioning code.**
+
+### The coordinate spaces
+
+| API | Returns | Coordinate space |
+|---|---|---|
+| `tray.rect()` | `PhysicalPosition` / `PhysicalSize` | Global physical pixels |
+| `monitor.position()` / `monitor.size()` | `PhysicalPosition` / `PhysicalSize` | Global physical pixels |
+| `window.set_position(PhysicalPosition)` | — | Tauri divides by `window.scale_factor()` to get macOS points |
+| `window.scale_factor()` | `f64` | Scale of the monitor the window is **currently** on |
+
+### The pitfall
+
+`window.scale_factor()` reflects the **current** monitor, not the target. When the window is on a 1× display and the tray is clicked on a 2× display, Tauri's `set_position` divides by 1 instead of 2, placing the window at double the intended macOS-point coordinate (off-screen).
+
+**Attempted fix that does NOT work:** moving the hidden window to the target monitor before positioning. `scale_factor()` does not update synchronously after `set_position`.
+
+### The fix: scale compensation
+
+All positioning math runs in the global physical pixel space using `target_scale` (the tray's monitor). Before calling `set_position`, multiply by `window_scale / target_scale`:
+
+```
+Tauri does:     point = arg / window_scale
+We need:        point = physical / target_scale
+So we pass:     arg = physical × window_scale / target_scale
+```
+
+When both scales match (same monitor), the compensation is 1× (no-op).
+
+### Debug logging
+
+Enable "Debug Logging" in Settings to write positioning data to `debug.log` in the config directory (auto-truncated at 512 KB). Open via tray menu → "Open Debug Log". Each tray click logs: tray rect, all monitors (position/size/scale), target selection, window scale, computed position, compensation factor, and final `set_position` arguments.
+
 ## Dependencies
 The display-dj CLI sidecar handles all platform-specific display dependencies internally. No external tools need to be installed for display control.
 

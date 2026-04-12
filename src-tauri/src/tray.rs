@@ -38,6 +38,8 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         MenuItemBuilder::with_id("open_configs", "Open Monitor Configs").build(app)?;
     let open_prefs =
         MenuItemBuilder::with_id("open_prefs", "Open App Preferences").build(app)?;
+    let open_debug_log =
+        MenuItemBuilder::with_id("open_debug_log", "Open Debug Log").build(app)?;
     let reset_defaults =
         MenuItemBuilder::with_id("reset_defaults", "Reset to Default").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
@@ -47,7 +49,7 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .separator()
         .items(&[&dark_mode, &light_mode])
         .separator()
-        .items(&[&open_configs, &open_prefs])
+        .items(&[&open_configs, &open_prefs, &open_debug_log])
         .separator()
         .item(&reset_defaults)
         .separator()
@@ -73,6 +75,9 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
             }
             "open_prefs" => {
                 let _ = crate::config::open_preferences_file();
+            }
+            "open_debug_log" => {
+                let _ = crate::config::open_debug_log();
             }
             "reset_defaults" => {
                 crate::config::reset_to_defaults();
@@ -108,11 +113,32 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 let app = tray.app_handle();
                 if let Some(window) = app.get_webview_window("main") {
                     let visible = window.is_visible().unwrap_or(false);
+                    if let Some(state) = app.try_state::<crate::AppState>() {
+                        crate::config::write_debug_log(
+                            &state,
+                            &format!("tray_click: visible={}", visible),
+                        );
+                    }
                     if visible {
                         let _ = window.hide();
                     } else {
                         if let Ok(Some(tray_rect)) = tray.rect() {
-                            let _ = position_window_near_tray(&window, tray_rect);
+                            if let Some(state) = app.try_state::<crate::AppState>() {
+                                crate::config::write_debug_log(
+                                    &state,
+                                    &format!(
+                                        "tray_rect: pos={:?} size={:?}",
+                                        tray_rect.position, tray_rect.size
+                                    ),
+                                );
+                            }
+                            let result = position_window_near_tray(&window, tray_rect, app.try_state::<crate::AppState>());
+                            if let Some(state) = app.try_state::<crate::AppState>() {
+                                crate::config::write_debug_log(
+                                    &state,
+                                    &format!("position_result: {:?}", result.as_ref().map(|_| "ok")),
+                                );
+                            }
                         }
                         let _ = window.show();
                         let _ = window.set_focus();
@@ -125,14 +151,76 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
+/// Position the popup window directly below (or above) the system tray icon.
+///
+/// # Multi-monitor DPI pitfall (the hard-won lesson)
+///
+/// On macOS, Tauri's coordinate APIs behave as follows:
+///
+///   - `tray.rect()`, `monitor.position()`, `monitor.size()` all return values
+///     in a **global physical-pixel coordinate space**. Internally macOS works
+///     in points (logical), but Tauri multiplies by each display's scale factor
+///     when reporting positions as `PhysicalPosition`/`PhysicalSize`.
+///
+///   - `window.set_position(PhysicalPosition(x, y))` does **not** place the
+///     window at physical pixel (x, y). Instead Tauri converts to platform
+///     coordinates (macOS points) by dividing: `point = x / window.scale_factor()`.
+///
+///   - `window.scale_factor()` returns the scale of **the monitor the window is
+///     currently on**, and it does NOT update synchronously after `set_position`.
+///
+/// This means that if the window is on a 1× external monitor (scale=1) and you
+/// click the tray on the 2× built-in Retina display (scale=2):
+///
+///   - The tray position comes back in 2× physical coords, e.g. x=12380
+///   - We compute the desired position in the same physical space, e.g. x=12054
+///   - `set_position(12054)` → Tauri divides by window_scale (1) → macOS point 12054
+///   - But the correct macOS point is 12054 / 2 = 6027 → **window goes off-screen!**
+///
+/// Attempted fix that **does not work**: moving the hidden window to the target
+/// monitor first and then calling `scale_factor()`. The scale factor does not
+/// update synchronously after `set_position`, so the second call still returns
+/// the old monitor's scale.
+///
+/// # The fix: scale compensation
+///
+/// We compute everything in the global physical space using `target_scale`
+/// (the scale of the monitor where the tray icon is). Then, right before
+/// calling `set_position`, we apply a compensation factor:
+///
+/// ```text
+///   Tauri does:       point = physical_arg / window_scale
+///   We need:          point = physical     / target_scale
+///   Therefore pass:   physical_arg = physical * window_scale / target_scale
+/// ```
+///
+/// When window and target are on the same monitor, `window_scale == target_scale`
+/// and the compensation is 1 (no-op). When they differ, it corrects the mismatch.
+///
+/// # Debug logging
+///
+/// When "Debug Logging" is enabled in preferences, every tray click writes
+/// detailed positioning data to `debug.log` in the config directory (capped
+/// at 512 KB). Open it via the tray menu → "Open Debug Log".
 fn position_window_near_tray(
     window: &tauri::WebviewWindow,
     tray_rect: tauri::Rect,
+    state: Option<tauri::State<'_, crate::AppState>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::PhysicalPosition;
 
+    let dbg = |msg: &str| {
+        if let Some(ref s) = state {
+            crate::config::write_debug_log(s, msg);
+        }
+    };
+
     // --- Phase 1: Find the target monitor using a rough scale estimate ---
+    // We use window.scale_factor() only to convert Logical→Physical for the
+    // hit-test. The exact value doesn't matter much here — it just needs to be
+    // close enough to land in the right monitor's bounding box.
     let rough_scale = window.scale_factor().unwrap_or(2.0);
+    dbg(&format!("phase1: rough_scale={}", rough_scale));
 
     let tray_x_rough = match tray_rect.position {
         tauri::Position::Physical(p) => p.x as f64,
@@ -153,43 +241,67 @@ fn position_window_near_tray(
 
     let tray_cx = tray_x_rough + tray_w_rough / 2.0;
     let tray_cy = tray_y_rough + tray_h_rough / 2.0;
+    dbg(&format!(
+        "phase1: tray_rough x={} y={} w={} h={} cx={} cy={}",
+        tray_x_rough, tray_y_rough, tray_w_rough, tray_h_rough, tray_cx, tray_cy
+    ));
 
     let monitors = window.available_monitors()?;
-    let target = monitors.iter().find(|m| {
+    let mut target_idx: Option<usize> = None;
+    for (i, m) in monitors.iter().enumerate() {
         let pos = m.position();
         let size = m.size();
-        tray_cx >= pos.x as f64
+        let scale = m.scale_factor();
+        dbg(&format!(
+            "  monitor[{}]: pos=({},{}) size={}x{} scale={}",
+            i, pos.x, pos.y, size.width, size.height, scale
+        ));
+        if target_idx.is_none()
+            && tray_cx >= pos.x as f64
             && tray_cx < pos.x as f64 + size.width as f64
             && tray_cy >= pos.y as f64
             && tray_cy < pos.y as f64 + size.height as f64
-    });
-
-    // --- Phase 2: Move window to target monitor so scale_factor() is correct ---
-    // The window is still hidden at this point, so there's no visual flicker.
-    // This is necessary because set_position(PhysicalPosition) internally
-    // divides by window.scale_factor() to get platform coordinates. If the
-    // window is on a different monitor (different DPI), the division is wrong.
-    if let Some(m) = target {
-        window.set_position(PhysicalPosition::new(
-            m.position().x + 10,
-            m.position().y + 10,
-        ))?;
+        {
+            target_idx = Some(i);
+        }
     }
 
-    // --- Phase 3: Now position precisely (scale_factor matches target monitor) ---
-    let scale = window.scale_factor()?;
+    let target = target_idx.map(|i| &monitors[i]);
+    let target_scale = target.map(|m| m.scale_factor()).unwrap_or(rough_scale);
+    let window_scale = window.scale_factor().unwrap_or(1.0);
+    let win_pos = window.outer_position().ok();
+    if let Some(ref t) = target {
+        dbg(&format!(
+            "target: monitor[{}] pos=({},{}) size={}x{} scale={} | window_scale={} window_pos={:?}",
+            target_idx.unwrap_or(0),
+            t.position().x, t.position().y,
+            t.size().width, t.size().height,
+            target_scale, window_scale, win_pos
+        ));
+    } else {
+        dbg(&format!("target: NONE | window_scale={} window_pos={:?}", window_scale, win_pos));
+    }
 
+    // --- Phase 2: Calculate position using target monitor's scale ---
+    // All tray/monitor coordinates are in the global physical space.
+    // We use target_scale (not window_scale) for sizing, then compensate
+    // in set_position because Tauri divides by window_scale internally.
     let (tray_x, tray_y) = match tray_rect.position {
         tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
-        tauri::Position::Logical(p) => (p.x * scale, p.y * scale),
+        tauri::Position::Logical(p) => (p.x * target_scale, p.y * target_scale),
     };
     let (tray_w, tray_h) = match tray_rect.size {
         tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
-        tauri::Size::Logical(s) => (s.width * scale, s.height * scale),
+        tauri::Size::Logical(s) => (s.width * target_scale, s.height * target_scale),
     };
 
-    let win_w = 360.0 * scale;
-    let win_h = window.outer_size()?.height as f64;
+    // Window size in target monitor's physical pixels
+    let win_w = 360.0 * target_scale;
+    let win_h = window.outer_size()?.height as f64 * target_scale / window_scale;
+    dbg(&format!(
+        "tray x={} y={} w={} h={} | win_w={} win_h={}",
+        tray_x, tray_y, tray_w, tray_h, win_w, win_h
+    ));
 
     // Center window horizontally under tray icon
     let mut x = tray_x + (tray_w / 2.0) - (win_w / 2.0);
@@ -207,18 +319,36 @@ fn position_window_near_tray(
     };
 
     let tray_in_top_half = (tray_y - mon_y) < mon_h / 2.0;
-    let gap = 4.0 * scale;
+    let gap = 4.0 * target_scale;
     let mut y = if tray_in_top_half {
         tray_y + tray_h + gap
     } else {
         tray_y - win_h - gap
     };
+    dbg(&format!(
+        "before_clamp x={} y={} | mon ({},{}) {}x{} | top_half={}",
+        x, y, mon_x, mon_y, mon_w, mon_h, tray_in_top_half
+    ));
 
     // Clamp to monitor bounds
     x = x.max(mon_x).min(mon_x + mon_w - win_w);
     y = y.max(mon_y).min(mon_y + mon_h - win_h);
 
-    window.set_position(PhysicalPosition::new(x as i32, y as i32))?;
+    // Compensate for Tauri's set_position dividing by window_scale.
+    // We computed (x, y) in the global physical space. Tauri will do:
+    //   platform_pos = physical / window_scale
+    // But we need:
+    //   platform_pos = physical / target_scale
+    // So we pass: physical * window_scale / target_scale
+    let comp = window_scale / target_scale;
+    let final_x = (x * comp) as i32;
+    let final_y = (y * comp) as i32;
+    dbg(&format!(
+        "final: x={} y={} comp={} set_pos=({},{})",
+        x, y, comp, final_x, final_y
+    ));
+
+    window.set_position(PhysicalPosition::new(final_x, final_y))?;
     Ok(())
 }
 

@@ -29,6 +29,7 @@ export interface Preferences {
   minBrightness: number;
   keyBindings: KeyBinding[];
   nightModeSchedule: NightModeSchedule;
+  debugLogging: boolean;
 }
 
 export interface KeyBinding {

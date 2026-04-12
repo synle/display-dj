@@ -49,6 +49,7 @@ pub struct Preferences {
     pub min_brightness: u32,
     pub key_bindings: Vec<KeyBinding>,
     pub night_mode_schedule: NightModeSchedule,
+    pub debug_logging: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -124,7 +125,52 @@ impl Default for Preferences {
                 },
             ],
             night_mode_schedule: NightModeSchedule::default(),
+            debug_logging: false,
         }
+    }
+}
+
+const MAX_DEBUG_LOG_SIZE: u64 = 512 * 1024; // 512 KB
+
+pub fn debug_log_path() -> PathBuf {
+    config_dir().join("debug.log")
+}
+
+pub fn write_debug_log(state: &crate::AppState, message: &str) {
+    let enabled = state
+        .preferences
+        .lock()
+        .map(|p| p.debug_logging)
+        .unwrap_or(false);
+    if !enabled {
+        return;
+    }
+
+    let path = debug_log_path();
+
+    // Truncate if over size limit
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > MAX_DEBUG_LOG_SIZE {
+            // Keep the last half of the file
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let half = content.len() / 2;
+                // Find the next newline after the midpoint to avoid splitting a line
+                let start = content[half..].find('\n').map(|i| half + i + 1).unwrap_or(half);
+                std::fs::write(&path, &content[start..]).ok();
+            }
+        }
+    }
+
+    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+    let line = format!("[{}] {}\n", timestamp, message);
+
+    use std::io::Write;
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = file.write_all(line.as_bytes());
     }
 }
 
@@ -252,6 +298,15 @@ pub fn open_preferences_file() -> Result<(), String> {
     // Ensure the file exists before trying to open it
     if !path.exists() {
         save_preferences_to_disk(&Preferences::default());
+    }
+    open::that(path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn open_debug_log() -> Result<(), String> {
+    let path = debug_log_path();
+    if !path.exists() {
+        std::fs::write(&path, "").ok();
     }
     open::that(path).map_err(|e| e.to_string())
 }
