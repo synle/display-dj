@@ -472,7 +472,8 @@ fn detect_external_monitors_win32(monitors: &mut Vec<Monitor>) {
             for pm in &physical_monitors {
                 ext_index += 1;
 
-                let description = String::from_utf16_lossy(&pm.szPhysicalMonitorDescription)
+                let desc_buf = pm.szPhysicalMonitorDescription;
+                let description = String::from_utf16_lossy(&desc_buf)
                     .trim_end_matches('\0')
                     .to_string();
 
