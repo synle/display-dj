@@ -3,14 +3,15 @@ import { describe, it, expect } from "vitest";
 import AllMonitorsControl from "./AllMonitorsControl";
 
 describe("AllMonitorsControl", () => {
-  it("renders 'All Monitors' label", () => {
+  it("renders 'All Monitors' label with count", () => {
     render(
       <AllMonitorsControl
         brightness={50}
         onBrightnessChange={() => {}}
+        monitorCount={3}
       />
     );
-    expect(screen.getByText("All Monitors")).toBeInTheDocument();
+    expect(screen.getByText("All Monitors (3)")).toBeInTheDocument();
   });
 
   it("renders brightness slider with correct value", () => {
@@ -18,6 +19,7 @@ describe("AllMonitorsControl", () => {
       <AllMonitorsControl
         brightness={70}
         onBrightnessChange={() => {}}
+        monitorCount={2}
       />
     );
     const sliders = screen.getAllByRole("slider");

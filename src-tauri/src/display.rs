@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct Monitor {
     pub id: String,
     pub name: String,
+    pub original_name: String,
     pub brightness: u32,
     pub supports_brightness: bool,
     pub is_built_in: bool,
@@ -24,7 +25,8 @@ impl DjDisplay {
         let is_built_in = self.display_type == "builtin";
         Monitor {
             id: self.id,
-            name: self.name,
+            name: self.name.clone(),
+            original_name: self.name,
             brightness: self.brightness.unwrap_or(50),
             supports_brightness: true,
             is_built_in,
@@ -146,6 +148,7 @@ mod tests {
         Monitor {
             id: id.into(),
             name: name.into(),
+            original_name: name.into(),
             brightness: 50,
             supports_brightness: true,
             is_built_in,
@@ -167,6 +170,7 @@ mod tests {
         let json = r#"{
             "id": "external-1",
             "name": "Dell U2723QE",
+            "originalName": "Dell U2723QE",
             "brightness": 80,
             "supportsBrightness": true,
             "isBuiltIn": false

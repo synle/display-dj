@@ -160,6 +160,7 @@ function App() {
           <AllMonitorsControl
             brightness={avgBrightness}
             onBrightnessChange={handleAllBrightness}
+            monitorCount={monitors.length}
           />
         ) : (
           <div className="monitors-list">
