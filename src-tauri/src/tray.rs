@@ -54,7 +54,7 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .icon(app.default_window_icon().unwrap().clone())
         .tooltip("Display DJ")
         .menu(&menu)
-        .menu_on_left_click(false)
+        .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id().as_ref() {
             "dark_mode" => {
                 let url = format!("{}/dark", base_url());

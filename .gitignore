@@ -23,6 +23,7 @@ yarn-error.log*
 
 ### Tauri
 src-tauri/target/
+src-tauri/binaries/
 
 ### Legacy
 display-dj
