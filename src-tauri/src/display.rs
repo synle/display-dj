@@ -2,6 +2,17 @@ use serde::{Deserialize, Serialize};
 #[cfg(not(target_os = "windows"))]
 use std::path::PathBuf;
 
+/// Create a PowerShell command that runs without a visible console window.
+#[cfg(target_os = "windows")]
+fn powershell_hidden(ps_command: &str) -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let mut cmd = std::process::Command::new("powershell");
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", ps_command])
+        .creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Monitor {
@@ -391,13 +402,9 @@ fn detect_monitors() -> Vec<Monitor> {
 
 #[cfg(target_os = "windows")]
 fn detect_builtin_monitor_windows() -> Option<Monitor> {
-    let output = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
+    let output = powershell_hidden(
             "(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue).CurrentBrightness",
-        ])
+        )
         .output()
         .ok()?;
 
@@ -534,8 +541,7 @@ fn set_monitor_brightness(monitor_id: &str, value: u32) -> Result<(), String> {
             "(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods).WmiSetBrightness(1, {})",
             value
         );
-        let output = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &ps_cmd])
+        let output = powershell_hidden(&ps_cmd)
             .output()
             .map_err(|e| format!("Failed to set built-in brightness: {}", e))?;
         if !output.status.success() {

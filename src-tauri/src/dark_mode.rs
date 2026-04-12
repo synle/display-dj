@@ -88,9 +88,9 @@ fn set_system_dark_mode(enabled: bool) -> Result<(), String> {
 /// Notify running applications that the theme has changed.
 #[cfg(target_os = "windows")]
 fn broadcast_theme_change() {
-    use std::process::Command;
-    // Use PowerShell to broadcast WM_SETTINGCHANGE with "ImmersiveColorSet"
-    let _ = Command::new("powershell")
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let _ = std::process::Command::new("powershell")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -114,6 +114,7 @@ public class ThemeNotify {
 [ThemeNotify]::Notify()
 "#,
         ])
+        .creation_flags(CREATE_NO_WINDOW)
         .output();
 }
 

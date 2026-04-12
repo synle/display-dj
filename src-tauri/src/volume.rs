@@ -109,14 +109,23 @@ public class Audio {
 "#;
 
 #[cfg(target_os = "windows")]
+fn powershell_hidden(ps_command: &str) -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let mut cmd = std::process::Command::new("powershell");
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", ps_command])
+        .creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
+#[cfg(target_os = "windows")]
 fn get_system_volume() -> Result<u32, String> {
     let ps_script = format!(
         "Add-Type -TypeDefinition @'\n{}\n'@\n[Math]::Round([Audio]::Volume * 100)",
         AUDIO_TYPE_DEF
     );
 
-    let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+    let output = powershell_hidden(&ps_script)
         .output()
         .map_err(|e| format!("Failed to get volume: {}", e))?;
 
@@ -141,8 +150,7 @@ fn set_system_volume(value: u32) -> Result<(), String> {
         value as f64 / 100.0
     );
 
-    let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+    let output = powershell_hidden(&ps_script)
         .output()
         .map_err(|e| format!("Failed to set volume: {}", e))?;
 
