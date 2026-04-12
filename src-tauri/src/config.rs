@@ -46,6 +46,7 @@ pub struct Preferences {
     pub show_individual_displays: bool,
     pub min_brightness: u32,
     pub key_bindings: Vec<KeyBinding>,
+    pub profiles: Vec<Profile>,
     pub night_mode_schedule: NightModeSchedule,
     pub debug_logging: bool,
     pub launch_at_login: bool,
@@ -56,6 +57,22 @@ pub struct Preferences {
 pub struct KeyBinding {
     pub key: String,
     pub command: CommandValue,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Profile {
+    pub name: String,
+    pub command: CommandValue,
+}
+
+impl Default for Profile {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            command: CommandValue::Single(String::new()),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -119,6 +136,32 @@ impl Default for Preferences {
                 KeyBinding {
                     key: "Shift+F12".into(),
                     command: CommandValue::Single("command/changeVolume/100".into()),
+                },
+            ],
+            profiles: vec![
+                Profile {
+                    name: "Presentation".into(),
+                    command: CommandValue::Multiple(vec![
+                        "command/changeBrightness/100".into(),
+                        "command/changeDarkMode/light".into(),
+                        "command/changeVolume/50".into(),
+                    ]),
+                },
+                Profile {
+                    name: "Focus".into(),
+                    command: CommandValue::Multiple(vec![
+                        "command/changeBrightness/80".into(),
+                        "command/changeDarkMode/dark".into(),
+                        "command/changeVolume/30".into(),
+                    ]),
+                },
+                Profile {
+                    name: "Daylight".into(),
+                    command: CommandValue::Multiple(vec![
+                        "command/changeBrightness/100".into(),
+                        "command/changeDarkMode/light".into(),
+                        "command/changeVolume/100".into(),
+                    ]),
                 },
             ],
             night_mode_schedule: NightModeSchedule::default(),
@@ -527,5 +570,63 @@ mod tests {
         let bad_json = "{ not valid json }";
         let result: Preferences = serde_json::from_str(bad_json).unwrap_or_default();
         assert_eq!(result.min_brightness, 10);
+    }
+
+    #[test]
+    fn test_default_profiles() {
+        let prefs = Preferences::default();
+        assert_eq!(prefs.profiles.len(), 3);
+        assert_eq!(prefs.profiles[0].name, "Presentation");
+        assert_eq!(prefs.profiles[1].name, "Focus");
+        assert_eq!(prefs.profiles[2].name, "Daylight");
+    }
+
+    #[test]
+    fn test_profile_serialization() {
+        let profile = Profile {
+            name: "Test".into(),
+            command: CommandValue::Multiple(vec![
+                "command/changeBrightness/50".into(),
+                "command/changeDarkMode/dark".into(),
+            ]),
+        };
+        let json = serde_json::to_string(&profile).unwrap();
+        assert!(json.contains("\"name\""));
+        assert!(json.contains("\"command\""));
+        assert!(json.contains("command/changeBrightness/50"));
+    }
+
+    #[test]
+    fn test_profile_deserialization() {
+        let json = r#"{
+            "name": "Mute",
+            "command": "command/changeVolume/0"
+        }"#;
+        let profile: Profile = serde_json::from_str(json).unwrap();
+        assert_eq!(profile.name, "Mute");
+        match profile.command {
+            CommandValue::Single(s) => assert_eq!(s, "command/changeVolume/0"),
+            _ => panic!("Expected Single variant"),
+        }
+    }
+
+    #[test]
+    fn test_profile_missing_name_uses_default() {
+        let json = r#"{
+            "command": "command/changeVolume/0"
+        }"#;
+        let profile: Profile = serde_json::from_str(json).unwrap();
+        assert_eq!(profile.name, "");
+    }
+
+    #[test]
+    fn test_preferences_missing_profiles_uses_defaults() {
+        let json = r#"{
+            "showIndividualDisplays": false,
+            "keyBindings": []
+        }"#;
+        let prefs: Preferences = serde_json::from_str(json).unwrap();
+        assert_eq!(prefs.profiles.len(), 3);
+        assert_eq!(prefs.profiles[0].name, "Presentation");
     }
 }

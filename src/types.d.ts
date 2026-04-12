@@ -19,6 +19,10 @@ type Command =
   | 'command/changeDarkMode/toggle'
   | 'command/changeDarkMode/dark'
   | 'command/changeDarkMode/light'
+  // profile commands (by index)
+  | 'command/changeProfile/0'
+  | 'command/changeProfile/1'
+  | 'command/changeProfile/2'
   // open external links or text files
   | 'command/openExternal/file/monitorConfigs'
   | 'command/openExternal/file/preferences'
