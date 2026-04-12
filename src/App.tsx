@@ -7,12 +7,15 @@ import AllMonitorsControl from "./components/AllMonitorsControl";
 import MonitorControl from "./components/MonitorControl";
 import VolumeControl from "./components/VolumeControl";
 import DarkModeToggle from "./components/DarkModeToggle";
-import { Monitor } from "./types";
+import { Monitor, Preferences } from "./types";
+
+const ABSOLUTE_MIN_BRIGHTNESS = 5;
 
 function App() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [darkMode, setDarkMode] = useState(false);
   const [volume, setVolume] = useState(50);
+  const [minBrightness, setMinBrightness] = useState(10);
   const [expanded, setExpanded] = useState(false);
   const [version, setVersion] = useState("");
   const appRef = useRef<HTMLDivElement>(null);
@@ -48,6 +51,9 @@ function App() {
     fetchMonitors();
     fetchDarkMode();
     fetchVolume();
+    invoke<Preferences>("get_preferences")
+      .then((prefs) => setMinBrightness(Math.max(prefs.minBrightness, ABSOLUTE_MIN_BRIGHTNESS)))
+      .catch(() => {});
     invoke<string>("get_app_version").then(setVersion).catch(() => {});
 
     // Listen for backend events (from keyboard shortcuts)
@@ -161,6 +167,7 @@ function App() {
             brightness={avgBrightness}
             onBrightnessChange={handleAllBrightness}
             monitorCount={monitors.length}
+            minBrightness={minBrightness}
           />
         ) : (
           <div className="monitors-list">
@@ -172,6 +179,7 @@ function App() {
                   handleMonitorBrightness(monitor.id, v)
                 }
                 onRename={(name) => handleRename(monitor.id, name)}
+                minBrightness={minBrightness}
               />
             ))}
           </div>

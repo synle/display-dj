@@ -17,6 +17,8 @@ export interface MonitorConfig {
 export interface Preferences {
   showIndividualDisplays: boolean;
   brightnessDelta: number;
+  contrastDelta: number;
+  minBrightness: number;
   keyBindings: KeyBinding[];
 }
 

@@ -51,15 +51,15 @@ async fn detect_monitors() -> Vec<Monitor> {
     displays.into_iter().map(|d| d.into_monitor()).collect()
 }
 
-async fn set_monitor_brightness(monitor_id: &str, value: u32) -> Result<(), String> {
-    let url = format!("{}/set_one/{}/{}", base_url(), monitor_id, value.clamp(10, 100));
+async fn set_monitor_brightness(monitor_id: &str, value: u32, min_brightness: u32) -> Result<(), String> {
+    let url = format!("{}/set_one/{}/{}", base_url(), monitor_id, value.clamp(min_brightness, 100));
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set brightness: {}", e))?;
     Ok(())
 }
 
-async fn set_all_monitors_brightness(value: u32) -> Result<(), String> {
-    let url = format!("{}/set_all/{}", base_url(), value.clamp(10, 100));
+async fn set_all_monitors_brightness(value: u32, min_brightness: u32) -> Result<(), String> {
+    let url = format!("{}/set_all/{}", base_url(), value.clamp(min_brightness, 100));
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set all brightness: {}", e))?;
     Ok(())
@@ -110,13 +110,22 @@ pub async fn get_monitors(
 }
 
 #[tauri::command]
-pub async fn set_brightness(monitor_id: String, value: u32) -> Result<(), String> {
-    set_monitor_brightness(&monitor_id, value).await
+pub async fn set_brightness(
+    state: tauri::State<'_, crate::AppState>,
+    monitor_id: String,
+    value: u32,
+) -> Result<(), String> {
+    let min = state.preferences.lock().map_err(|e| e.to_string())?.effective_min_brightness();
+    set_monitor_brightness(&monitor_id, value, min).await
 }
 
 #[tauri::command]
-pub async fn set_all_brightness(value: u32) -> Result<(), String> {
-    set_all_monitors_brightness(value).await
+pub async fn set_all_brightness(
+    state: tauri::State<'_, crate::AppState>,
+    value: u32,
+) -> Result<(), String> {
+    let min = state.preferences.lock().map_err(|e| e.to_string())?.effective_min_brightness();
+    set_all_monitors_brightness(value, min).await
 }
 
 #[tauri::command]

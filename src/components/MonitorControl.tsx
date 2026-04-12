@@ -6,12 +6,14 @@ interface MonitorControlProps {
   monitor: Monitor;
   onBrightnessChange: (value: number) => void;
   onRename: (name: string) => void;
+  minBrightness: number;
 }
 
 export default function MonitorControl({
   monitor,
   onBrightnessChange,
   onRename,
+  minBrightness,
 }: MonitorControlProps) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(monitor.name);
@@ -60,8 +62,9 @@ export default function MonitorControl({
       <Slider
         icon={monitor.isBuiltIn ? "\uD83D\uDCBB" : "\uD83D\uDDA5"}
         value={monitor.brightness}
+        min={minBrightness}
         onChange={onBrightnessChange}
-        onIconClick={() => onBrightnessChange(monitor.brightness > 0 ? 0 : 100)}
+        onIconClick={() => onBrightnessChange(monitor.brightness > minBrightness ? minBrightness : 100)}
       />
     </div>
   );
