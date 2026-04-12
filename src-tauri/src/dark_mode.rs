@@ -11,20 +11,20 @@ fn base_url() -> String {
 }
 
 #[tauri::command]
-pub fn get_dark_mode() -> Result<bool, String> {
+pub async fn get_dark_mode() -> Result<bool, String> {
     let url = format!("{}/theme", base_url());
-    let resp: ThemeResponse = reqwest::blocking::get(&url)
+    let resp: ThemeResponse = reqwest::get(&url).await
         .map_err(|e| format!("Failed to get theme: {}", e))?
-        .json()
+        .json().await
         .map_err(|e| format!("Failed to parse theme response: {}", e))?;
     Ok(resp.theme == "dark")
 }
 
 #[tauri::command]
-pub fn set_dark_mode(enabled: bool) -> Result<(), String> {
+pub async fn set_dark_mode(enabled: bool) -> Result<(), String> {
     let route = if enabled { "dark" } else { "light" };
     let url = format!("{}/{}", base_url(), route);
-    reqwest::blocking::get(&url)
+    reqwest::get(&url).await
         .map_err(|e| format!("Failed to set dark mode: {}", e))?;
     Ok(())
 }

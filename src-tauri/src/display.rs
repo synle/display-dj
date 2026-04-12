@@ -43,10 +43,10 @@ fn base_url() -> String {
     format!("http://127.0.0.1:{}", port)
 }
 
-fn detect_monitors() -> Vec<Monitor> {
+async fn detect_monitors() -> Vec<Monitor> {
     let url = format!("{}/get_all", base_url());
-    let displays: Vec<DjDisplay> = match reqwest::blocking::get(&url) {
-        Ok(resp) => resp.json().unwrap_or_default(),
+    let displays: Vec<DjDisplay> = match reqwest::get(&url).await {
+        Ok(resp) => resp.json().await.unwrap_or_default(),
         Err(e) => {
             log::warn!("display-dj server request failed: {}", e);
             Vec::new()
@@ -55,29 +55,26 @@ fn detect_monitors() -> Vec<Monitor> {
     displays.into_iter().map(|d| d.into_monitor()).collect()
 }
 
-fn set_monitor_brightness(monitor_id: &str, value: u32) -> Result<(), String> {
-    let url = format!("{}/set_one/{}/{}", base_url(), monitor_id, value.min(100));
-    reqwest::blocking::get(&url)
+async fn set_monitor_brightness(monitor_id: &str, value: u32) -> Result<(), String> {
+    let url = format!("{}/set_one/{}/{}", base_url(), monitor_id, value.clamp(10, 100));
+    reqwest::get(&url).await
         .map_err(|e| format!("Failed to set brightness: {}", e))?;
     Ok(())
 }
 
-fn set_monitor_contrast(monitor_id: &str, value: u32) -> Result<(), String> {
-    // The display-dj server doesn't have a separate contrast endpoint,
-    // contrast is set via DDC VCP code internally when using set_one.
-    // For now, we treat contrast as brightness on the same endpoint.
+async fn set_monitor_contrast(monitor_id: &str, value: u32) -> Result<(), String> {
     let _ = (monitor_id, value);
     Err("Contrast control via display-dj server is not yet supported".into())
 }
 
-fn set_all_monitors_brightness(value: u32) -> Result<(), String> {
-    let url = format!("{}/set_all/{}", base_url(), value.min(100));
-    reqwest::blocking::get(&url)
+async fn set_all_monitors_brightness(value: u32) -> Result<(), String> {
+    let url = format!("{}/set_all/{}", base_url(), value.clamp(10, 100));
+    reqwest::get(&url).await
         .map_err(|e| format!("Failed to set all brightness: {}", e))?;
     Ok(())
 }
 
-fn set_all_monitors_contrast(value: u32) -> Result<(), String> {
+async fn set_all_monitors_contrast(value: u32) -> Result<(), String> {
     let _ = value;
     Err("Contrast control via display-dj server is not yet supported".into())
 }
@@ -121,29 +118,29 @@ fn merge_with_configs(
 pub async fn get_monitors(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Vec<Monitor>, String> {
-    let monitors = detect_monitors();
+    let monitors = detect_monitors().await;
     let configs = state.monitor_configs.lock().map_err(|e| e.to_string())?;
     Ok(merge_with_configs(monitors, &configs))
 }
 
 #[tauri::command]
 pub async fn set_brightness(monitor_id: String, value: u32) -> Result<(), String> {
-    set_monitor_brightness(&monitor_id, value)
+    set_monitor_brightness(&monitor_id, value).await
 }
 
 #[tauri::command]
 pub async fn set_contrast(monitor_id: String, value: u32) -> Result<(), String> {
-    set_monitor_contrast(&monitor_id, value)
+    set_monitor_contrast(&monitor_id, value).await
 }
 
 #[tauri::command]
 pub async fn set_all_brightness(value: u32) -> Result<(), String> {
-    set_all_monitors_brightness(value)
+    set_all_monitors_brightness(value).await
 }
 
 #[tauri::command]
 pub async fn set_all_contrast(value: u32) -> Result<(), String> {
-    set_all_monitors_contrast(value)
+    set_all_monitors_contrast(value).await
 }
 
 #[tauri::command]
@@ -190,7 +187,6 @@ mod tests {
         assert!(json.contains("\"supportsBrightness\""));
         assert!(json.contains("\"supportsContrast\""));
         assert!(json.contains("\"isBuiltIn\""));
-        // Should NOT have snake_case
         assert!(!json.contains("supports_brightness"));
         assert!(!json.contains("is_built_in"));
     }
@@ -241,7 +237,6 @@ mod tests {
                 disabled: false,
             },
         );
-
         let result = merge_with_configs(monitors, &configs);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "My Dell");
@@ -263,7 +258,6 @@ mod tests {
                 disabled: true,
             },
         );
-
         let result = merge_with_configs(monitors, &configs);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, "external-1");
@@ -295,12 +289,10 @@ mod tests {
                 disabled: false,
             },
         );
-
         let result = merge_with_configs(monitors, &configs);
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].id, "builtin-0");
         assert_eq!(result[1].id, "external-2");
-        // external-1 has no config -> sort_order = i32::MAX
         assert_eq!(result[2].id, "external-1");
     }
 
@@ -317,7 +309,6 @@ mod tests {
                 disabled: false,
             },
         );
-
         let result = merge_with_configs(monitors, &configs);
         assert_eq!(result[0].name, "Original Name");
     }
@@ -329,7 +320,6 @@ mod tests {
             make_monitor("external-1", "External", false),
         ];
         let configs: crate::config::MonitorConfigs = HashMap::new();
-
         let result = merge_with_configs(monitors, &configs);
         assert_eq!(result.len(), 2);
     }
@@ -378,8 +368,8 @@ mod tests {
             ddc_supported: false,
         };
         let m = dj.into_monitor();
-        assert_eq!(m.brightness, 50); // default
-        assert_eq!(m.contrast, 50); // default
+        assert_eq!(m.brightness, 50);
+        assert_eq!(m.contrast, 50);
         assert!(!m.supports_contrast);
     }
 }
