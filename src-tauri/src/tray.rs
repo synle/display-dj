@@ -11,7 +11,27 @@ fn base_url() -> String {
     format!("http://127.0.0.1:{}", port)
 }
 
+/// Fire an HTTP GET in a background thread (non-blocking, fire-and-forget).
+fn http_get(url: String) {
+    std::thread::spawn(move || {
+        let _ = reqwest::blocking::get(&url);
+    });
+}
+
+/// Fire an HTTP GET in a background thread and emit an event when done.
+fn http_get_then_emit(url: String, app: AppHandle, event: &'static str) {
+    std::thread::spawn(move || {
+        let _ = reqwest::blocking::get(&url);
+        let _ = app.emit(event, ());
+    });
+}
+
 pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let port = crate::server_port();
+    let bridge_label = format!("Bridge: 127.0.0.1:{}", port);
+    let bridge = MenuItemBuilder::with_id("bridge", &bridge_label)
+        .enabled(false)
+        .build(app)?;
     let dark_mode = MenuItemBuilder::with_id("dark_mode", "Dark Mode").build(app)?;
     let light_mode = MenuItemBuilder::with_id("light_mode", "Light Mode").build(app)?;
     let open_configs =
@@ -21,6 +41,8 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
     let menu = MenuBuilder::new(app)
+        .item(&bridge)
+        .separator()
         .items(&[&dark_mode, &light_mode])
         .separator()
         .items(&[&open_configs, &open_prefs])
@@ -32,12 +54,15 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .icon(app.default_window_icon().unwrap().clone())
         .tooltip("Display DJ")
         .menu(&menu)
+        .menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id().as_ref() {
             "dark_mode" => {
-                let _ = crate::dark_mode::set_dark_mode(true);
+                let url = format!("{}/dark", base_url());
+                http_get(url);
             }
             "light_mode" => {
-                let _ = crate::dark_mode::set_dark_mode(false);
+                let url = format!("{}/light", base_url());
+                http_get(url);
             }
             "open_configs" => {
                 let _ = crate::config::open_config_file();
@@ -98,10 +123,8 @@ fn position_window_near_tray(
         tauri::Size::Logical(s) => (s.width, s.height),
     };
 
-    // Center window horizontally on the tray icon
     let x = tray_x + (tray_w / 2.0) - (win_w / 2.0);
 
-    // If tray is near the top (macOS menu bar), show below; otherwise above (Windows taskbar)
     let y = if tray_y < 100.0 {
         tray_y + tray_h
     } else {
@@ -148,35 +171,39 @@ fn execute_command(app: &AppHandle, command: &str) {
         ["command", "changeBrightness", value] => {
             if let Ok(val) = value.parse::<u32>() {
                 let url = format!("{}/set_all/{}", base, val.min(100));
-                let _ = reqwest::blocking::get(&url);
-                let _ = app.emit("monitors-changed", ());
+                http_get_then_emit(url, app.clone(), "monitors-changed");
             }
         }
         ["command", "changeContrast", _value] => {
-            // Contrast not yet supported via display-dj server
             let _ = app.emit("monitors-changed", ());
         }
         ["command", "changeDarkMode", mode] => {
-            match *mode {
+            let url = match *mode {
                 "toggle" => {
-                    if let Ok(current) = crate::dark_mode::get_dark_mode() {
-                        let _ = crate::dark_mode::set_dark_mode(!current);
-                    }
+                    // For toggle, we need to read current state first — fire and forget
+                    let base_clone = base.clone();
+                    let app_clone = app.clone();
+                    std::thread::spawn(move || {
+                        if let Ok(resp) = reqwest::blocking::get(format!("{}/theme", base_clone)) {
+                            if let Ok(text) = resp.text() {
+                                let route = if text.contains("dark") { "light" } else { "dark" };
+                                let _ = reqwest::blocking::get(format!("{}/{}", base_clone, route));
+                            }
+                        }
+                        let _ = app_clone.emit("dark-mode-changed", ());
+                    });
+                    return;
                 }
-                "dark" => {
-                    let _ = crate::dark_mode::set_dark_mode(true);
-                }
-                "light" => {
-                    let _ = crate::dark_mode::set_dark_mode(false);
-                }
-                _ => {}
-            }
-            let _ = app.emit("dark-mode-changed", ());
+                "dark" => format!("{}/dark", base),
+                "light" => format!("{}/light", base),
+                _ => return,
+            };
+            http_get_then_emit(url, app.clone(), "dark-mode-changed");
         }
         ["command", "changeVolume", value] => {
             if let Ok(val) = value.parse::<u32>() {
-                let _ = crate::volume::set_volume(val);
-                let _ = app.emit("volume-changed", ());
+                let url = format!("{}/set_volume/{}", base, val.min(100));
+                http_get_then_emit(url, app.clone(), "volume-changed");
             }
         }
         _ => {

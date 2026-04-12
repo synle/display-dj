@@ -45,15 +45,7 @@
   },
   "plugins": {
     "shell": {
-      "open": true,
-      "scope": [
-        {
-          "name": "display-dj-server",
-          "sidecar": true,
-          "cmd": "binaries/display-dj-server",
-          "args": true
-        }
-      ]
+      "open": true
     }
   }
 }
