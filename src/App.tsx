@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import Header from "./components/Header";
 import AllMonitorsControl from "./components/AllMonitorsControl";
 import MonitorControl from "./components/MonitorControl";
@@ -14,6 +15,7 @@ function App() {
   const [volume, setVolume] = useState(50);
   const [expanded, setExpanded] = useState(false);
   const [version, setVersion] = useState("");
+  const appRef = useRef<HTMLDivElement>(null);
 
   const fetchMonitors = useCallback(async () => {
     try {
@@ -70,6 +72,21 @@ function App() {
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [fetchMonitors, fetchDarkMode, fetchVolume]);
+
+  // Auto-resize window to fit content
+  useEffect(() => {
+    const el = appRef.current;
+    if (!el) return;
+    const win = getCurrentWindow();
+    const observer = new ResizeObserver(() => {
+      const height = el.scrollHeight;
+      if (height > 0) {
+        win.setSize(new LogicalSize(360, height));
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const handleAllBrightness = async (value: number) => {
     try {
@@ -131,7 +148,7 @@ function App() {
     : 50;
 
   return (
-    <div className="app">
+    <div className="app" ref={appRef}>
       <Header
         version={version}
         expanded={expanded}
