@@ -6,6 +6,11 @@ use tauri::{
 
 use crate::config::{CommandValue, KeyBinding};
 
+fn base_url() -> String {
+    let port = crate::server_port();
+    format!("http://127.0.0.1:{}", port)
+}
+
 pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let dark_mode = MenuItemBuilder::with_id("dark_mode", "Dark Mode").build(app)?;
     let light_mode = MenuItemBuilder::with_id("light_mode", "Light Mode").build(app)?;
@@ -138,18 +143,18 @@ pub fn register_shortcuts(app: &AppHandle, key_bindings: &[KeyBinding]) {
 
 fn execute_command(app: &AppHandle, command: &str) {
     let parts: Vec<&str> = command.split('/').collect();
+    let base = base_url();
     match parts.as_slice() {
         ["command", "changeBrightness", value] => {
             if let Ok(val) = value.parse::<u32>() {
-                let _ = tauri::async_runtime::block_on(crate::display::set_all_brightness(val));
+                let url = format!("{}/set_all/{}", base, val.min(100));
+                let _ = reqwest::blocking::get(&url);
                 let _ = app.emit("monitors-changed", ());
             }
         }
-        ["command", "changeContrast", value] => {
-            if let Ok(val) = value.parse::<u32>() {
-                let _ = tauri::async_runtime::block_on(crate::display::set_all_contrast(val));
-                let _ = app.emit("monitors-changed", ());
-            }
+        ["command", "changeContrast", _value] => {
+            // Contrast not yet supported via display-dj server
+            let _ = app.emit("monitors-changed", ());
         }
         ["command", "changeDarkMode", mode] => {
             match *mode {

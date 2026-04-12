@@ -21,7 +21,7 @@
   - [macOS](#macos-setup)
   - [Windows](#windows-setup)
   - [Linux](#linux-ubuntudebian-setup)
-- [Platform Implementation Details](#platform-implementation-details)
+- [display-dj CLI Sidecar](#display-dj-cli-sidecar)
 - [Known Limitations](#known-limitations)
 - [Troubleshooting](#troubleshooting)
 
@@ -29,7 +29,7 @@
 
 ## Quick Start
 
-**Prerequisites**: [Node.js](https://nodejs.org) 18+, [Rust](https://www.rust-lang.org/tools/install) 1.77+, plus platform-specific dependencies (see [Platform Setup Guides](#platform-setup-guides)).
+**Prerequisites**: [Node.js](https://nodejs.org) 18+, [Rust](https://www.rust-lang.org/tools/install) 1.77+, plus the display-dj CLI sidecar binary (see [display-dj CLI Sidecar](#display-dj-cli-sidecar)).
 
 ```bash
 git clone <repo-url>
@@ -46,7 +46,7 @@ Display DJ is a **system tray app** -- it does NOT open a regular window. Look f
 
 ## Architecture Overview
 
-Display DJ is built with [Tauri v2](https://v2.tauri.app/), which pairs a **Rust** backend with a **web-based** frontend.
+Display DJ is built with [Tauri v2](https://v2.tauri.app/), which pairs a **Rust** backend with a **web-based** frontend. Display and dark mode operations are delegated to the [display-dj CLI](https://github.com/synle/display-dj-cli), which runs as a bundled HTTP server sidecar.
 
 ```
 ┌──────────────────────────────────────────────┐
@@ -61,17 +61,27 @@ Display DJ is built with [Tauri v2](https://v2.tauri.app/), which pairs a **Rust
 │  Backend (Rust + Tauri v2)                   │
 │                                              │
 │  #[tauri::command] functions handle:         │
-│  - Monitor brightness/contrast (DDC/CI)      │
-│  - System dark mode toggle                   │
-│  - System volume control                     │
+│  - Monitor brightness/contrast (via HTTP)    │
+│  - System dark mode toggle (via HTTP)        │
+│  - System volume control (platform-specific) │
 │  - Preferences/config persistence            │
 │  - System tray + global keyboard shortcuts   │
 │                                              │
-│  Platform-specific code via #[cfg(target_os)]│
+│  HTTP requests to display-dj server sidecar  │
+└──────────────────┬───────────────────────────┘
+                   │  HTTP (127.0.0.1:<port>)
+┌──────────────────▼───────────────────────────┐
+│  display-dj CLI sidecar (HTTP server)        │
+│  https://github.com/synle/display-dj-cli     │
+│                                              │
+│  Handles all display operations:             │
+│  - DDC/CI, gamma, DisplayServices, WMI       │
+│  - Dark mode (osascript, registry, gsettings)│
+│  - Cross-platform, single binary per OS      │
 └──────────────────────────────────────────────┘
 ```
 
-The frontend calls Rust functions using `invoke("command_name", { params })`. The backend can push events to the frontend using `app.emit("event-name", payload)`.
+The frontend calls Rust functions using `invoke("command_name", { params })`. The Rust backend makes HTTP requests to the display-dj server for display and dark mode operations. The backend can push events to the frontend using `app.emit("event-name", payload)`.
 
 ---
 
@@ -84,7 +94,10 @@ display-dj2/
 │   ├── App.tsx                   # Root component: fetches data, manages state, renders layout
 │   ├── App.test.tsx              # Smoke test: App renders, fetches data, handles errors
 │   ├── App.css                   # All CSS (dark tray popup theme, sliders, toggles)
-│   ├── types.ts                  # Shared TypeScript interfaces (Monitor, Preferences, etc.)
+│   ├── types.ts                  # Shared TypeScript interfaces (Monitor, MonitorConfig, Preferences, KeyBinding)
+│   ├── types.d.ts                # Global type definitions (Command, DisplayType, BrightnessPreset, etc.)
+│   ├── index.d.ts                # Ambient module declarations (SVG/image imports, legacy adapters)
+│   ├── constants.ts              # Shared constants (LAPTOP_BUILT_IN_DISPLAY_ID)
 │   ├── test/
 │   │   └── setup.ts              # Vitest setup: jsdom, jest-dom matchers, Tauri API mocks
 │   └── components/
@@ -102,9 +115,11 @@ display-dj2/
 │       └── DarkModeToggle.test.tsx
 │
 ├── src-tauri/                    # Backend (Rust + Tauri v2)
-│   ├── Cargo.toml                # Rust dependencies
+│   ├── Cargo.toml                # Rust dependencies (tauri, reqwest, serde, etc.)
 │   ├── build.rs                  # Tauri build script (runs before compilation)
-│   ├── tauri.conf.json           # App config: window size, tray icon, bundling options
+│   ├── tauri.conf.json           # App config: window size, tray icon, sidecar, bundling options
+│   ├── binaries/                 # display-dj CLI sidecar (per-platform binaries)
+│   │   └── display-dj-server-<target-triple>
 │   ├── capabilities/
 │   │   └── default.json          # Security permissions (what frontend JS can access)
 │   ├── icons/                    # App icons for all platforms (.icns, .ico, .png)
@@ -112,10 +127,10 @@ display-dj2/
 │   │   └── smoke.rs              # Integration smoke test: crate links, public API usable
 │   └── src/
 │       ├── main.rs               # Binary entry point (calls lib::run)
-│       ├── lib.rs                # Tauri app setup: plugins, state, tray, shortcuts, window events
-│       ├── display.rs            # Monitor detection + brightness/contrast get/set (+ unit tests)
-│       ├── dark_mode.rs          # System dark mode read/write
-│       ├── volume.rs             # System volume get/set
+│       ├── lib.rs                # Tauri app setup: sidecar launch, port discovery, plugins, state, tray, shortcuts
+│       ├── display.rs            # Monitor detection + brightness/contrast via HTTP to display-dj server (+ unit tests)
+│       ├── dark_mode.rs          # Dark mode read/write via HTTP to display-dj server
+│       ├── volume.rs             # System volume get/set (platform-specific: osascript, PowerShell, pactl)
 │       ├── config.rs             # Preferences + monitor config load/save (+ unit tests)
 │       └── tray.rs               # System tray menu, window positioning, keyboard shortcut dispatch
 │
@@ -139,38 +154,38 @@ This section maps each user-facing feature to the exact files and functions that
 
 **Frontend flow**: `App.tsx` calls `invoke("get_monitors")` on mount and on `monitors-changed` events. Slider changes call `invoke("set_brightness", { monitorId, value })` or `invoke("set_contrast", { monitorId, value })`. The `Slider.tsx` component debounces changes by 150ms to avoid flooding the backend. In collapsed view, `AllMonitorsControl.tsx` sets all monitors at once via `set_all_brightness` / `set_all_contrast`.
 
-**Backend** (`display.rs`): All platform code is gated by `#[cfg(target_os = "...")]`.
+**Backend** (`display.rs`): All display operations go through the display-dj HTTP server sidecar. No platform-specific code.
 
-| Platform | External monitors | Built-in display |
+| Operation | HTTP Route | Response |
 |---|---|---|
-| macOS ARM | `m1ddc` CLI. Detect: `m1ddc display list`. Get/set: `m1ddc get/set luminance`, `m1ddc get/set contrast`. | `brightness` CLI. Float 0.0-1.0 scale, converted to 0-100. |
-| macOS Intel | `ddcctl` CLI. Get: `ddcctl -d <num> -b ?`. Set: `ddcctl -d <num> -b <val>`. | Same `brightness` CLI as ARM. |
-| Windows | Win32 API (no external binaries): `EnumDisplayMonitors` -> `GetPhysicalMonitorsFromHMONITOR` -> `GetMonitorBrightness`/`SetMonitorBrightness`/`GetMonitorContrast`/`SetMonitorContrast`. | PowerShell WMI: `Get-CimInstance WmiMonitorBrightness` / `WmiSetBrightness`. |
-| Linux | `ddcutil` CLI. VCP codes: `0x10` (brightness), `0x12` (contrast). Requires `i2c-dev` module + `i2c` group. | `brightnessctl set <value>%`. |
+| Detect monitors | `GET /get_all` | JSON array of `DisplayInfo` with live brightness/contrast |
+| Set one monitor | `GET /set_one/<id>/<level>` | Status |
+| Set all monitors | `GET /set_all/<level>` | Status per display |
+
+The `DjDisplay` struct maps the server's JSON response (with `display_type`, `ddc_supported`, nullable `brightness`/`contrast`) into the app's `Monitor` struct (with `is_built_in`, `supports_brightness`, `supports_contrast`).
 
 **Key functions to know**:
-- `detect_monitors()` -- platform-specific, returns `Vec<Monitor>` with current values
+- `detect_monitors()` -- HTTP GET to `/get_all`, converts `DjDisplay` -> `Monitor`
 - `merge_with_configs()` -- applies user-configured names, sort orders, and disabled flags from `monitor-configs.json`
-- `extract_display_number()` -- parses `"external-2"` -> `2`
-- `get_binary_path()` (macOS only) -- resolves CLI tool paths across dev and bundled environments
+- `base_url()` -- returns `http://127.0.0.1:<port>` using the port stored at startup
 
 ### Dark Mode
 
 **Frontend**: `App.tsx` calls `invoke("get_dark_mode")` and `invoke("set_dark_mode", { enabled })`. `DarkModeToggle.tsx` renders two buttons.
 
-**Backend** (`dark_mode.rs`):
+**Backend** (`dark_mode.rs`): Delegates to the display-dj HTTP server.
 
-| Platform | Read | Write |
+| Operation | HTTP Route | Response |
 |---|---|---|
-| macOS | `defaults read -g AppleInterfaceStyle` ("Dark" or non-zero exit for light) | `osascript` AppleScript to set `dark mode` on System Events |
-| Windows | Registry: `HKCU\...\Themes\Personalize\AppsUseLightTheme` (0=dark, 1=light) | Same key + broadcasts `WM_SETTINGCHANGE` with `ImmersiveColorSet` |
-| Linux | `gsettings get org.gnome.desktop.interface color-scheme` (checks "prefer-dark") | `gsettings set` color-scheme + gtk-theme |
+| Get current theme | `GET /theme` | `{"theme": "dark"}` or `{"theme": "light"}` |
+| Set dark mode | `GET /dark` | Status |
+| Set light mode | `GET /light` | Status |
 
 ### Volume
 
 **Frontend**: `App.tsx` calls `invoke("get_volume")` and `invoke("set_volume", { value })`. `VolumeControl.tsx` wraps `Slider.tsx` with muted/unmuted icon logic.
 
-**Backend** (`volume.rs`):
+**Backend** (`volume.rs`): Volume is the only module with platform-specific code, as the display-dj CLI does not handle volume.
 
 | Platform | Method |
 |---|---|
@@ -185,7 +200,7 @@ This section maps each user-facing feature to the exact files and functions that
 - Left-click toggles main window visibility; `position_window_near_tray()` places it near the tray icon
 - Right-click opens the context menu
 - `register_shortcuts()` -- reads key bindings from `Preferences`, registers via `tauri-plugin-global-shortcut`
-- `execute_command()` -- dispatches command strings like `"command/changeBrightness/50"` to backend functions and emits events to the frontend so it can refresh
+- `execute_command()` -- dispatches command strings like `"command/changeBrightness/50"` to the display-dj HTTP server and emits events to the frontend so it can refresh
 
 ### Config Persistence
 
@@ -209,6 +224,13 @@ await invoke("set_brightness", { monitorId: "external-1", value: 75 });
 
 - Command names are **snake_case** strings matching the Rust function name
 - Parameters are passed as a single object with **camelCase** keys (Serde converts them)
+
+**Backend -> display-dj server** (HTTP requests):
+
+```rust
+let url = format!("http://127.0.0.1:{}/set_all/{}", port, value);
+reqwest::blocking::get(&url)?;
+```
 
 **Backend -> Frontend** (pushing events):
 
@@ -288,12 +310,12 @@ Each key binding has a `key` (e.g. `"Shift+F1"`) and a `command` -- either a sin
 
 **Supported command format**: `command/<action>/<value>`
 
-| Action | Values |
-|---|---|
-| `changeBrightness` | `0`, `10`, `50`, `100` |
-| `changeContrast` | `0`, `50`, `100` |
-| `changeDarkMode` | `toggle`, `dark`, `light` |
-| `changeVolume` | `0`, `50`, `100` |
+| Action | Values | Effect |
+|---|---|---|
+| `changeBrightness` | Any integer 0-100 (e.g. `0`, `10`, `50`, `100`) | Sets all monitors' brightness |
+| `changeContrast` | Any integer 0-100 (e.g. `0`, `50`, `100`) | Sets all monitors' contrast |
+| `changeDarkMode` | `toggle`, `dark`, `light` | Toggles or sets system dark mode |
+| `changeVolume` | Any integer 0-100 (e.g. `0`, `50`, `100`) | Sets system volume |
 
 ### monitor-configs.json
 
@@ -317,11 +339,11 @@ A `HashMap<String, MonitorConfig>` keyed by monitor ID (e.g. `"external-1"`, `"b
 - **Frontend parameters** are passed as `camelCase` objects -- Serde handles the conversion automatically.
 - The `CommandValue` enum uses `#[serde(untagged)]` so keybinding commands can be either `"string"` or `["array"]` in JSON.
 
-### Platform code
+### Display operations
 
-- All platform-specific code uses `#[cfg(target_os = "macos")]` / `"windows"` / `"linux"` conditional compilation.
-- Each module (`display.rs`, `dark_mode.rs`, `volume.rs`) follows the same pattern: a public `#[tauri::command]` function that delegates to a private platform-gated function.
-- macOS code shells out to CLI tools (`m1ddc`, `ddcctl`, `brightness`, `osascript`). Windows code uses native APIs via the `windows` crate or PowerShell. Linux code shells out to CLI tools (`ddcutil`, `brightnessctl`, `pactl`, `gsettings`).
+- All display and dark mode operations go through the display-dj HTTP server sidecar -- there is **no platform-specific display code** in the Rust backend.
+- Volume is the only platform-specific module, using `#[cfg(target_os = "...")]` conditional compilation.
+- The sidecar port is discovered at startup and stored in a global `AtomicU16`. All modules access it via `crate::server_port()`.
 
 ### Error handling
 
@@ -368,10 +390,10 @@ Inline `#[cfg(test)]` modules plus an integration smoke test.
 | Location | What it covers |
 |---|---|
 | `config.rs` | `Preferences` defaults, `CommandValue` Single/Multiple serde, camelCase JSON fields, file roundtrips, malformed JSON fallback, `get_app_version` |
-| `display.rs` | `extract_display_number`, `Monitor` serde (camelCase, roundtrip), `merge_with_configs` (rename, disable, sort, empty name) |
+| `display.rs` | `DjDisplay` to `Monitor` conversion (builtin, external DDC, null brightness), `Monitor` serde (camelCase, roundtrip), `merge_with_configs` (rename, disable, sort, empty name) |
 | `tests/smoke.rs` | **Smoke test**: crate compiles and links, `AppState` is constructable, `run` function is exported |
 
-Rust tests don't require external tools or hardware -- they test pure logic that works on all platforms.
+Rust tests don't require external tools, hardware, or the display-dj server -- they test pure logic that works on all platforms.
 
 ### Adding New Tests
 
@@ -463,7 +485,7 @@ npx tauri build
 
 ## Platform Setup Guides
 
-These guides walk through setting up a development environment from a fresh machine. If you already have Node.js 18+ and Rust 1.77+ installed, skip to the platform-specific dependencies.
+These guides walk through setting up a development environment from a fresh machine. If you already have Node.js 18+ and Rust 1.77+ installed, skip to the sidecar setup.
 
 ### Prerequisites (All Platforms)
 
@@ -510,25 +532,9 @@ source "$HOME/.cargo/env"
 
 Verify: `node --version` (18+), `rustc --version` (1.77+).
 
-#### Step 4: Install display control tools
+#### Step 4: Set up the display-dj sidecar
 
-**Apple Silicon (M1/M2/M3/M4)**:
-
-```bash
-brew install m1ddc
-```
-
-Verify (with external monitor connected): `m1ddc display list`
-
-**Intel Macs**: Install `ddcctl` from [kfix/ddcctl](https://github.com/kfix/ddcctl): `brew install kfix/tap/ddcctl`
-
-**Built-in display brightness** (both architectures):
-
-```bash
-brew install brightness
-```
-
-If not available via Homebrew, build from source per [nriley/brightness](https://github.com/nriley/brightness). The app works without it -- it just can't control the laptop's built-in display.
+See [display-dj CLI Sidecar](#display-dj-cli-sidecar) below.
 
 #### Step 5: Clone and run
 
@@ -567,7 +573,11 @@ Verify: `node --version` (18+), `rustc --version` (1.77+).
 
 Windows 11 includes it. On Windows 10, download from [developer.microsoft.com](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
 
-#### Step 5: Clone and run
+#### Step 5: Set up the display-dj sidecar
+
+See [display-dj CLI Sidecar](#display-dj-cli-sidecar) below.
+
+#### Step 6: Clone and run
 
 ```powershell
 git clone <repo-url>
@@ -575,8 +585,6 @@ cd display-dj2
 npm install
 npx tauri dev
 ```
-
-No additional display tools needed -- the app uses built-in Windows APIs (Win32 Dxva2 for DDC/CI, WMI for built-in display, WASAPI for volume, Registry for dark mode).
 
 ---
 
@@ -611,16 +619,16 @@ sudo apt install -y \
   libssl-dev
 ```
 
-#### Step 3: Install display control tools
+#### Step 3: Install display control dependencies
 
 ```bash
-# External monitors (DDC/CI)
+# External monitors (DDC/CI) -- required by the display-dj CLI sidecar
 sudo apt install -y ddcutil i2c-tools
 sudo modprobe i2c-dev
 echo "i2c-dev" | sudo tee /etc/modules-load.d/i2c-dev.conf
 sudo usermod -aG i2c $USER    # log out and back in after this
 
-# Built-in laptop display
+# Built-in laptop display -- required by the display-dj CLI sidecar
 sudo apt install -y brightnessctl
 ```
 
@@ -628,7 +636,11 @@ sudo apt install -y brightnessctl
 
 Volume (`pactl`) and dark mode (`gsettings`) are pre-installed on Ubuntu/GNOME.
 
-#### Step 4: Clone and run
+#### Step 4: Set up the display-dj sidecar
+
+See [display-dj CLI Sidecar](#display-dj-cli-sidecar) below.
+
+#### Step 5: Clone and run
 
 ```bash
 git clone <repo-url>
@@ -639,46 +651,87 @@ npx tauri dev
 
 ---
 
-## Platform Implementation Details
+## display-dj CLI Sidecar
 
-### macOS Binary Resolution
+Display DJ delegates all display and dark mode operations to the [display-dj CLI](https://github.com/synle/display-dj-cli), which runs as a Tauri sidecar. The CLI is a single cross-platform binary (~556KB) that handles DDC/CI, gamma tables, DisplayServices, WMI, and more.
 
-`get_binary_path(name)` in `display.rs` searches for CLI tools in order:
+### How it works
 
-1. Next to the executable (production app bundle)
-2. `.app/Contents/Resources/` (macOS bundle resources)
-3. `/opt/homebrew/bin/` (Homebrew Apple Silicon)
-4. `/usr/local/bin/` (Homebrew Intel)
-5. Falls back to just the name (relies on PATH)
+1. On app startup, `lib.rs` finds an available TCP port (starting from 51337)
+2. Spawns `display-dj-server serve <port>` as a background sidecar process
+3. Waits for the server's `/health` endpoint to respond (up to 5 seconds)
+4. All display/dark mode commands (`display.rs`, `dark_mode.rs`, `tray.rs`) make HTTP GET requests to `http://127.0.0.1:<port>/...`
 
-### Windows DDC/CI
+### Getting the sidecar binary
 
-Uses unsafe Win32 API calls via the `windows` Rust crate:
+**Option A: Download from releases**
 
-1. `EnumDisplayMonitors` enumerates logical monitors
-2. `GetPhysicalMonitorsFromHMONITOR` gets physical monitor handles
-3. `GetMonitorBrightness` / `SetMonitorBrightness` / `GetMonitorContrast` / `SetMonitorContrast`
-4. `DestroyPhysicalMonitor` cleans up handles
+Download the appropriate binary from [display-dj-cli releases](https://github.com/synle/display-dj-cli/releases) and place it in `src-tauri/binaries/` with the Tauri naming convention:
 
-### Linux DDC/CI
+```
+src-tauri/binaries/
+  display-dj-server-aarch64-apple-darwin        # macOS ARM (M1/M2/M3/M4)
+  display-dj-server-x86_64-apple-darwin         # macOS Intel
+  display-dj-server-x86_64-pc-windows-msvc.exe  # Windows x64
+  display-dj-server-aarch64-pc-windows-msvc.exe # Windows ARM
+  display-dj-server-x86_64-unknown-linux-gnu    # Linux x64
+  display-dj-server-aarch64-unknown-linux-gnu   # Linux ARM
+```
 
-Requires `i2c-dev` kernel module + user in `i2c` group. `ddcutil` communicates via `/dev/i2c-*` using DDC/CI VCP codes:
-- `0x10` = Luminance (brightness)
-- `0x12` = Contrast
+**Option B: Build from source**
+
+```bash
+git clone https://github.com/synle/display-dj-cli.git
+cd display-dj-cli
+cargo build --release
+
+# Copy to the sidecar directory with the correct name
+# Replace <target-triple> with your platform (e.g. aarch64-apple-darwin)
+cp target/release/display-dj ../display-dj2/src-tauri/binaries/display-dj-server-<target-triple>
+```
+
+You only need the binary for your current platform during development. The CI pipeline builds all platform variants for releases.
+
+### Verifying the sidecar
+
+```bash
+# Test the CLI directly
+./src-tauri/binaries/display-dj-server-aarch64-apple-darwin list
+
+# Test the HTTP server
+./src-tauri/binaries/display-dj-server-aarch64-apple-darwin serve 51337 &
+curl http://127.0.0.1:51337/health    # should return {"status":"ok"}
+curl http://127.0.0.1:51337/get_all   # should return display JSON
+kill %1
+```
+
+### HTTP API routes used by Display DJ
+
+| Route | Used by | Purpose |
+|---|---|---|
+| `GET /health` | `lib.rs` | Wait for server readiness on startup |
+| `GET /get_all` | `display.rs` | List all displays with live brightness/contrast |
+| `GET /set_one/<id>/<level>` | `display.rs` | Set one display's brightness |
+| `GET /set_all/<level>` | `display.rs`, `tray.rs` | Set all displays' brightness |
+| `GET /theme` | `dark_mode.rs` | Get current system theme (dark/light) |
+| `GET /dark` | `dark_mode.rs`, `tray.rs` | Switch to dark mode |
+| `GET /light` | `dark_mode.rs`, `tray.rs` | Switch to light mode |
+
+For the full API reference, see the [display-dj CLI documentation](https://github.com/synle/display-dj-cli).
 
 ---
 
 ## Known Limitations
 
-| Limitation | Platform | Details |
-|---|---|---|
-| DDC/CI not universal | All | Not every monitor implements DDC/CI. Budget models and some HDMI connections may not work. |
-| Built-in HDMI on base M1/M2 | macOS | Doesn't support DDC/CI via m1ddc. Use USB-C/DisplayPort. |
-| No contrast for built-in displays | All | Contrast is DDC/CI only. Laptop screens don't expose it. |
-| Global shortcuts on Wayland | Linux | Wayland restricts global hotkey capture. Works on X11. |
-| Tray left-click | Linux | AppIndicator doesn't always fire left-click. Right-click works. |
-| Dark mode on non-GNOME | Linux | `gsettings` is GNOME-specific. KDE, XFCE not supported. |
-| Volume/dark mode latency | Windows, macOS | Shells out to PowerShell/osascript, adding ~100-500ms. |
+| Limitation | Details |
+|---|---|
+| DDC/CI not universal | Not every monitor implements DDC/CI. Budget models and some HDMI connections may not work. |
+| Built-in HDMI on base M1/M2 | Doesn't support DDC/CI. Use USB-C/DisplayPort. |
+| No contrast for built-in displays | Contrast is DDC/CI only. Laptop screens don't expose it. |
+| Contrast via keyboard shortcuts | Contrast control via the display-dj server is not yet supported. |
+| Global shortcuts on Wayland | Wayland restricts global hotkey capture. Works on X11. |
+| Tray left-click on Linux | AppIndicator doesn't always fire left-click. Right-click works. |
+| Dark mode on non-GNOME | `gsettings` is GNOME-specific. KDE, XFCE not supported. |
 
 ---
 
@@ -699,20 +752,26 @@ System tray app, not a regular window:
 - **Windows**: System tray, bottom-right (click `^` if hidden)
 - **Linux**: Top panel. May need [AppIndicator GNOME extension](https://extensions.gnome.org/extension/615/appindicator-support/).
 
-### "No displays found" from ddcutil (Linux)
+### "display-dj-server sidecar not found"
 
-1. `lsmod | grep i2c_dev` -- if empty, run `sudo modprobe i2c-dev`
-2. `groups` -- check for `i2c`. If missing, run `sudo usermod -aG i2c $USER` and **log out/back in**
-3. `sudo ddcutil detect` -- if this works but non-sudo doesn't, group not applied yet
-4. Some monitors don't support DDC/CI
+The sidecar binary is missing from `src-tauri/binaries/`. See [Getting the sidecar binary](#getting-the-sidecar-binary).
 
-### m1ddc shows no displays (macOS)
+### "display-dj server did not become ready"
 
-Connected via USB-C/DisplayPort? Built-in HDMI on base M1/M2 doesn't work with m1ddc.
+The sidecar started but isn't responding. Check:
+1. Is the binary executable? `chmod +x src-tauri/binaries/display-dj-server-*`
+2. Is port 51337 (or nearby) available? `lsof -i :51337`
+3. Test the binary directly: `./src-tauri/binaries/display-dj-server-* serve 51337`
 
-### "error: failed to run custom build command" (Linux)
+### "No displays found"
 
-Missing Tauri build dependency. Re-run the `sudo apt install` from [Step 2](#step-2-install-tauri-system-dependencies).
+The display-dj CLI can't detect monitors. Test directly:
+```bash
+./src-tauri/binaries/display-dj-server-* list
+```
+If this returns an empty array, see the [display-dj CLI troubleshooting](https://github.com/synle/display-dj-cli).
+
+On Linux, ensure `ddcutil` works: `sudo ddcutil detect`. If it works as root but not as user, check `groups` for `i2c` membership.
 
 ### Dark mode toggle does nothing (Linux)
 
