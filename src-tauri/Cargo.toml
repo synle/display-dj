@@ -23,6 +23,11 @@ log = "0.4"
 env_logger = "0.11"
 open = "5"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+ddc-macos = "0.2"
+ddc = "0.2"
+libc = "0.2"
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [
     "Win32_Devices_Display",
