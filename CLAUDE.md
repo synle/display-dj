@@ -11,16 +11,17 @@ Display and dark mode operations are delegated to the [display-dj CLI](https://g
 - React 18 + TypeScript, bundled with Vite
 - Communicates with backend via `invoke()` from `@tauri-apps/api/core`
 - Listens for backend events via `listen()` from `@tauri-apps/api/event`
-- Components: Header, Slider, MonitorControl, AllMonitorsControl, VolumeControl, DarkModeToggle
-- `types.ts` — shared TypeScript interfaces (Monitor, MonitorConfig, Preferences, KeyBinding)
+- Components: Header, Slider, MonitorControl, AllMonitorsControl, VolumeControl, DarkModeToggle, SettingsPanel
+- `types.ts` — shared TypeScript interfaces (Monitor, MonitorConfig, Preferences, KeyBinding, NightModeSchedule)
+- `types.d.ts` — global type definitions (Command, DisplayType, BrightnessPreset, etc.)
 - `constants.ts` — shared constants (e.g. `LAPTOP_BUILT_IN_DISPLAY_ID`)
 
 ### Backend (`src-tauri/src/`)
-- `lib.rs` — Tauri app setup, plugin init, sidecar launch (display-dj HTTP server), port discovery, window management, dock hiding (macOS)
+- `lib.rs` — Tauri app setup, plugin init, sidecar launch (display-dj HTTP server), port discovery, window management, dock hiding (macOS), night mode schedule checker
 - `display.rs` — Monitor brightness via HTTP requests to the display-dj server
 - `dark_mode.rs` — Dark mode detection and toggling via HTTP requests to the display-dj server
 - `volume.rs` — System volume get/set (platform-specific, not via display-dj)
-- `config.rs` — Preferences and monitor config persistence (JSON files in OS config dir)
+- `config.rs` — Preferences and monitor config persistence (JSON files in OS config dir), night mode schedule, min brightness with absolute floor, reset to defaults
 - `tray.rs` — System tray menu, window positioning, global keyboard shortcuts
 
 ### display-dj CLI sidecar (`src-tauri/binaries/`)
@@ -74,7 +75,7 @@ cd src-tauri && cargo test  # Run all Rust backend tests
 
 ### Backend Tests (Rust)
 - **Unit tests**: Inline `#[cfg(test)]` modules in `config.rs` and `display.rs`
-  - `config.rs`: Serialization/deserialization, defaults, camelCase conventions, file roundtrips, CommandValue enum variants
+  - `config.rs`: Serialization/deserialization, defaults, camelCase conventions, file roundtrips, CommandValue enum variants, effective min brightness, backward-compatible deserialization of old configs
   - `display.rs`: `DjDisplay` to `Monitor` conversion, `merge_with_configs` (rename, disable, sort), Monitor serde
 - **Smoke test**: `src-tauri/tests/smoke.rs` — Integration test verifying the crate compiles, links, and public API (AppState, run) is accessible
 
@@ -93,6 +94,8 @@ Files: `preferences.json`, `monitor-configs.json`
 - Tauri commands are snake_case in Rust, called with snake_case strings from frontend `invoke()`
 - Frontend parameter objects use camelCase (Serde handles the conversion)
 - The `CommandValue` enum uses `#[serde(untagged)]` to support both `"string"` and `["array"]` in keybindings
+- Preferences use `#[serde(default)]` so old config files missing new fields gracefully fall back to defaults
+- Brightness values are clamped to `effective_min_brightness()` which enforces an absolute floor of 5
 
 ## Dependencies
 The display-dj CLI sidecar handles all platform-specific display dependencies internally. No external tools need to be installed for display control.
