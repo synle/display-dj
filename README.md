@@ -18,7 +18,9 @@ Grab the latest release from the [Releases](../../releases) page.
 - **Monitor brightness** -- one slider for all monitors, or expand for individual control
 - **Dark mode toggle** -- system-wide dark/light switch
 - **Volume control** -- system volume slider with mute indicator
-- **Global keyboard shortcuts** -- work even when the app isn't focused (configurable via `preferences.json`)
+- **Night mode schedule** -- auto-set brightness and dark/light mode on a time schedule (e.g., dim at 9 PM, bright at 7 AM)
+- **Settings panel** -- in-app UI for min brightness, brightness/contrast delta, and night mode schedule
+- **Global keyboard shortcuts** -- work even when the app isn't focused (configurable via settings or `preferences.json`)
 - **Monitor renaming** -- click a display name to rename it
 - **System tray app** -- lives in your menu bar / system tray, no dock/taskbar clutter
 
@@ -55,7 +57,7 @@ The app appears in your **system tray** (not as a regular window):
 
 Config files live in `~/Library/Application Support/display-dj/` (macOS), `%APPDATA%\display-dj\` (Windows), or `~/.config/display-dj/` (Linux).
 
-- **`preferences.json`** -- keyboard shortcuts, brightness step size
+- **`preferences.json`** -- keyboard shortcuts, brightness/contrast delta, min brightness, night mode schedule
 - **`monitor-configs.json`** -- per-monitor names, sort order, disable flags
 
 ### Default Keyboard Shortcuts
@@ -66,7 +68,7 @@ Config files live in `~/Library/Application Support/display-dj/` (macOS), `%APPD
 | Shift + F1 | Brightness 10% + Dark Mode |
 | Shift + F2 | Brightness 100% + Light Mode |
 | Shift + F3-F5 | Brightness 0% / 50% / 100% |
-| Shift + F6-F7 | Volume 0% / 100% |
+| Shift + F10-F12 | Volume 0% / 10% / 100% |
 
 ## Known Issues
 

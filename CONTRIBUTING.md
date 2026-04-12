@@ -94,7 +94,7 @@ display-dj2/
 │   ├── App.tsx                   # Root component: fetches data, manages state, renders layout
 │   ├── App.test.tsx              # Smoke test: App renders, fetches data, handles errors
 │   ├── App.css                   # All CSS (dark tray popup theme, sliders, toggles)
-│   ├── types.ts                  # Shared TypeScript interfaces (Monitor, MonitorConfig, Preferences, KeyBinding)
+│   ├── types.ts                  # Shared TypeScript interfaces (Monitor, MonitorConfig, Preferences, KeyBinding, NightModeSchedule)
 │   ├── types.d.ts                # Global type definitions (Command, DisplayType, BrightnessPreset, etc.)
 │   ├── index.d.ts                # Ambient module declarations (SVG/image imports, legacy adapters)
 │   ├── constants.ts              # Shared constants (LAPTOP_BUILT_IN_DISPLAY_ID)
@@ -112,7 +112,8 @@ display-dj2/
 │       ├── VolumeControl.tsx     # Volume slider
 │       ├── VolumeControl.test.tsx
 │       ├── DarkModeToggle.tsx    # Dark / Light toggle buttons
-│       └── DarkModeToggle.test.tsx
+│       ├── DarkModeToggle.test.tsx
+│       └── SettingsPanel.tsx     # In-app settings: min brightness, deltas, night mode schedule
 │
 ├── src-tauri/                    # Backend (Rust + Tauri v2)
 │   ├── Cargo.toml                # Rust dependencies (tauri, reqwest, serde, etc.)
@@ -127,11 +128,11 @@ display-dj2/
 │   │   └── smoke.rs              # Integration smoke test: crate links, public API usable
 │   └── src/
 │       ├── main.rs               # Binary entry point (calls lib::run)
-│       ├── lib.rs                # Tauri app setup: sidecar launch, port discovery, plugins, state, tray, shortcuts
+│       ├── lib.rs                # Tauri app setup: sidecar launch, port discovery, plugins, state, tray, shortcuts, night mode schedule checker
 │       ├── display.rs            # Monitor detection + brightness via HTTP to display-dj server (+ unit tests)
 │       ├── dark_mode.rs          # Dark mode read/write via HTTP to display-dj server
 │       ├── volume.rs             # System volume get/set (platform-specific: osascript, PowerShell, pactl)
-│       ├── config.rs             # Preferences + monitor config load/save (+ unit tests)
+│       ├── config.rs             # Preferences + monitor config load/save, NightModeSchedule, min brightness, reset to defaults (+ unit tests)
 │       └── tray.rs               # System tray menu, window positioning, keyboard shortcut dispatch
 │
 ├── index.html                    # HTML shell that loads src/main.tsx
@@ -192,6 +193,27 @@ The `DjDisplay` struct maps the server's JSON response (with `display_type`, nul
 | macOS | `osascript` for CoreAudio: `output volume of (get volume settings)` / `set volume output volume` |
 | Windows | PowerShell with inline C# `Add-Type` for WASAPI COM (`IAudioEndpointVolume`) |
 | Linux | `pactl get-sink-volume @DEFAULT_SINK@` / `pactl set-sink-volume @DEFAULT_SINK@ <val>%` |
+
+### Night Mode Schedule
+
+**Backend** (`lib.rs`): A background thread runs `check_night_mode_schedule()` every 60 seconds. It reads the `NightModeSchedule` from preferences and, if enabled, compares the current time against `nightStart` / `dayStart` (both "HH:MM" 24-hour format). During the night window it sets all monitors to `nightBrightness` and switches to dark mode; during the day window it sets `dayBrightness` and light mode. Brightness values are clamped to `effective_min_brightness()`.
+
+**Frontend**: `SettingsPanel.tsx` provides UI for enabling/disabling the schedule, setting night/day start times, and night/day brightness levels. Changes are saved via `invoke("save_preferences", { preferences })`.
+
+Helper functions in `lib.rs`:
+- `parse_time_minutes()` — converts "HH:MM" to minutes since midnight
+- `is_night_time()` — determines if current time falls in the night window (handles midnight wraparound)
+- `check_night_mode_schedule()` — the main scheduler that applies brightness + dark mode changes
+
+### Settings Panel
+
+**Frontend** (`SettingsPanel.tsx`): In-app settings UI accessed from the header. Allows editing:
+- Min brightness (5–100) — floor for all brightness operations
+- Brightness delta (5–20) — step size for keyboard shortcut brightness changes
+- Contrast delta (5–20) — step size for contrast changes
+- Night mode schedule — enable/disable, set times and brightness levels
+
+Loads preferences via `invoke("get_preferences")`, saves via `invoke("save_preferences")`. Values are clamped to slider ranges on load.
 
 ### System Tray & Keyboard Shortcuts
 
@@ -287,6 +309,9 @@ Events are used when keyboard shortcuts change brightness/volume/dark mode from 
 
 **Average calculations** (collapsed view):
 - `avgBrightness` = mean of all monitors' brightness
+
+**Settings panel**: Opened from the header, `SettingsPanel.tsx` manages its own local state loaded from `get_preferences`. On save, it writes back to the backend and triggers a refresh in `App.tsx` via the `onPreferencesSaved` callback.
+
 ---
 
 ## Configuration Files
@@ -300,8 +325,21 @@ Deserialized into the `Preferences` struct. If the file is missing or malformed,
 | Field | Type | Default | Purpose |
 |---|---|---|---|
 | `showIndividualDisplays` | bool | `false` | Start in expanded view |
-| `brightnessDelta` | number | `50` | Step size for keyboard shortcut brightness changes |
-| `keyBindings` | array | 8 default bindings | Global keyboard shortcuts |
+| `brightnessDelta` | number | `10` | Step size for keyboard shortcut brightness changes |
+| `contrastDelta` | number | `10` | Step size for contrast changes |
+| `minBrightness` | number | `10` | Minimum brightness floor (absolute floor: 5) |
+| `nightModeSchedule` | object | disabled, 21:00–07:00 | Auto brightness + dark mode by time of day |
+| `keyBindings` | array | 9 default bindings | Global keyboard shortcuts |
+
+**Night mode schedule fields**:
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `enabled` | bool | `false` | Whether the schedule is active |
+| `nightStart` | string | `"21:00"` | Time to switch to night mode (HH:MM, 24h) |
+| `nightBrightness` | number | `20` | Brightness during night window |
+| `dayStart` | string | `"07:00"` | Time to switch to day mode (HH:MM, 24h) |
+| `dayBrightness` | number | `100` | Brightness during day window |
 
 Each key binding has a `key` (e.g. `"Shift+F1"`) and a `command` -- either a single string (`"command/changeBrightness/50"`) or an array of strings for multi-action shortcuts.
 
@@ -340,6 +378,8 @@ A `HashMap<String, MonitorConfig>` keyed by monitor ID (e.g. `"external-1"`, `"b
 - All display and dark mode operations go through the display-dj HTTP server sidecar -- there is **no platform-specific display code** in the Rust backend.
 - Volume is the only platform-specific module, using `#[cfg(target_os = "...")]` conditional compilation.
 - The sidecar port is discovered at startup and stored in a global `AtomicU16`. All modules access it via `crate::server_port()`.
+- `Preferences` and `NightModeSchedule` use `#[serde(default)]` so old config files missing new fields gracefully fall back to defaults without breaking.
+- Brightness values are clamped to `effective_min_brightness()` (which enforces `ABSOLUTE_MIN_BRIGHTNESS = 5`) before being sent to displays.
 
 ### Error handling
 
@@ -385,7 +425,7 @@ Inline `#[cfg(test)]` modules plus an integration smoke test.
 
 | Location | What it covers |
 |---|---|
-| `config.rs` | `Preferences` defaults, `CommandValue` Single/Multiple serde, camelCase JSON fields, file roundtrips, malformed JSON fallback, `get_app_version` |
+| `config.rs` | `Preferences` defaults, `CommandValue` Single/Multiple serde, camelCase JSON fields, file roundtrips, malformed JSON fallback, `get_app_version`, effective min brightness, backward-compatible deserialization of old configs |
 | `display.rs` | `DjDisplay` to `Monitor` conversion (builtin, external DDC, null brightness), `Monitor` serde (camelCase, roundtrip), `merge_with_configs` (rename, disable, sort, empty name) |
 | `tests/smoke.rs` | **Smoke test**: crate compiles and links, `AppState` is constructable, `run` function is exported |
 
