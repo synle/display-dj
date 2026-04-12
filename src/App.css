@@ -147,6 +147,43 @@ html, body, #root {
   text-decoration-color: var(--accent);
 }
 
+/* Monitor name row (name + reorder buttons) */
+.monitor-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.monitor-reorder-buttons {
+  display: flex;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.monitor-reorder-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 8px;
+  padding: 1px 4px;
+  cursor: pointer;
+  opacity: 0.4;
+  border-radius: 3px;
+  line-height: 1;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.monitor-reorder-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  background: var(--bg-hover);
+}
+
+.monitor-reorder-btn:disabled {
+  opacity: 0.15;
+  cursor: default;
+}
+
 .monitor-name-input {
   font-size: 12px;
   font-weight: 600;

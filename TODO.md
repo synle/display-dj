@@ -15,7 +15,7 @@
 
 ## Larger Features
 
-- [ ] **Multi-monitor drag-and-drop reordering** — Allow drag-to-reorder monitors in the expanded view instead of editing `sort_order` in JSON.
+- [x] **Multi-monitor reordering** — Up/down reorder buttons inline with each monitor in the expanded view instead of editing `sort_order` in JSON.
 - [ ] **Ambient light adaptation** — Auto-adjust brightness based on ambient light sensor (macOS supports this via IOKit).
 - [ ] **Blue light filter / Color temperature** — A "night shift" style warm color temperature control, if display-dj CLI supports gamma/color adjustments.
 - [ ] **Keyboard shortcut editor UI** — Visual editor for hotkeys instead of editing `preferences.json`. Show current bindings, let users record new ones.

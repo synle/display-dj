@@ -137,6 +137,34 @@ function App() {
     }
   };
 
+  const handleReorder = async (index: number, direction: "up" | "down") => {
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= monitors.length) return;
+
+    const a = monitors[index];
+    const b = monitors[swapIndex];
+
+    try {
+      await Promise.all([
+        invoke("save_monitor_config", {
+          config: { id: a.id, name: a.name, sortOrder: swapIndex, disabled: false },
+        }),
+        invoke("save_monitor_config", {
+          config: { id: b.id, name: b.name, sortOrder: index, disabled: false },
+        }),
+      ]);
+      // Swap locally for instant feedback
+      setMonitors((prev) => {
+        const next = [...prev];
+        next[index] = prev[swapIndex];
+        next[swapIndex] = prev[index];
+        return next;
+      });
+    } catch (e) {
+      console.error("Failed to reorder monitors:", e);
+    }
+  };
+
   const handleDarkMode = async (enabled: boolean) => {
     try {
       await invoke("set_dark_mode", { enabled });
@@ -188,7 +216,7 @@ function App() {
           />
         ) : (
           <div className="monitors-list">
-            {monitors.map((monitor) => (
+            {monitors.map((monitor, index) => (
               <MonitorControl
                 key={monitor.id}
                 monitor={monitor}
@@ -196,6 +224,10 @@ function App() {
                   handleMonitorBrightness(monitor.id, v)
                 }
                 onRename={(name) => handleRename(monitor.id, name)}
+                onMoveUp={() => handleReorder(index, "up")}
+                onMoveDown={() => handleReorder(index, "down")}
+                isFirst={index === 0}
+                isLast={index === monitors.length - 1}
                 minBrightness={minBrightness}
               />
             ))}
