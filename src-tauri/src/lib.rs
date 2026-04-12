@@ -5,6 +5,7 @@ mod tray;
 mod volume;
 
 use std::sync::atomic::{AtomicU16, Ordering};
+use chrono::Timelike;
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 
@@ -42,6 +43,83 @@ fn wait_for_server(port: u16) {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     log::warn!("display-dj server did not become ready on port {} within 5s", port);
+}
+
+/// Parse "HH:MM" into minutes since midnight.
+fn parse_time_minutes(time_str: &str) -> Option<u32> {
+    let parts: Vec<&str> = time_str.split(':').collect();
+    if parts.len() == 2 {
+        let h = parts[0].parse::<u32>().ok()?;
+        let m = parts[1].parse::<u32>().ok()?;
+        Some(h * 60 + m)
+    } else {
+        None
+    }
+}
+
+/// Check if current time is in the "night" window.
+fn is_night_time(night_start: u32, day_start: u32, now: u32) -> bool {
+    if night_start < day_start {
+        // e.g. night=21:00 day=07:00 — night wraps around midnight
+        now >= night_start || now < day_start
+    } else {
+        // e.g. night=22:00 day=18:00 — unusual but handle it
+        now >= night_start && now < day_start
+    }
+}
+
+fn check_night_mode_schedule(app: &tauri::AppHandle) {
+    let schedule = {
+        let state = app.state::<AppState>();
+        let prefs = match state.preferences.lock() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        prefs.night_mode_schedule.clone()
+    };
+
+    if !schedule.enabled {
+        return;
+    }
+
+    let night_start = match parse_time_minutes(&schedule.night_start) {
+        Some(m) => m,
+        None => return,
+    };
+    let day_start = match parse_time_minutes(&schedule.day_start) {
+        Some(m) => m,
+        None => return,
+    };
+
+    let now_local = chrono::Local::now();
+    let now_minutes = now_local.hour() * 60 + now_local.minute();
+
+    let base = format!("http://127.0.0.1:{}", server_port());
+    let is_night = is_night_time(night_start, day_start, now_minutes);
+
+    let (brightness, dark_mode_route) = if is_night {
+        (schedule.night_brightness, "dark")
+    } else {
+        (schedule.day_brightness, "light")
+    };
+
+    let min_brightness = {
+        let state = app.state::<AppState>();
+        state
+            .preferences
+            .lock()
+            .map(|p| p.effective_min_brightness())
+            .unwrap_or(config::ABSOLUTE_MIN_BRIGHTNESS)
+    };
+
+    let brightness = brightness.clamp(min_brightness, 100);
+
+    let _ = reqwest::blocking::get(format!("{}/set_all/{}", base, brightness));
+    let _ = reqwest::blocking::get(format!("{}/{}", base, dark_mode_route));
+
+    use tauri::Emitter;
+    let _ = app.emit("monitors-changed", ());
+    let _ = app.emit("dark-mode-changed", ());
 }
 
 pub fn run() {
@@ -105,6 +183,15 @@ pub fn run() {
             // Register global shortcuts from saved preferences
             let handle = app.handle().clone();
             tray::register_shortcuts(&handle, &preferences.key_bindings);
+
+            // Start night mode schedule checker
+            let schedule_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(60));
+                    check_night_mode_schedule(&schedule_handle);
+                }
+            });
 
             // Hide window when it loses focus
             if let Some(window) = app.get_webview_window("main") {
