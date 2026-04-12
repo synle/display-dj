@@ -21,7 +21,10 @@ upload
 yarn-debug.log*
 yarn-error.log*
 
-###
+### Tauri
+src-tauri/target/
+
+### Legacy
 display-dj
 src/main/utils/DisplayAdapter.ts
 src/main/utils/SoundUtils.ts
