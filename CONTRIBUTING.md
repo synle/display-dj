@@ -61,7 +61,7 @@ Display DJ is built with [Tauri v2](https://v2.tauri.app/), which pairs a **Rust
 │  Backend (Rust + Tauri v2)                   │
 │                                              │
 │  #[tauri::command] functions handle:         │
-│  - Monitor brightness/contrast (via HTTP)    │
+│  - Monitor brightness (via HTTP)              │
 │  - System dark mode toggle (via HTTP)        │
 │  - System volume control (platform-specific) │
 │  - Preferences/config persistence            │
@@ -105,9 +105,9 @@ display-dj2/
 │       ├── Header.test.tsx
 │       ├── Slider.tsx            # Reusable range slider with icon, debounced onChange
 │       ├── Slider.test.tsx
-│       ├── AllMonitorsControl.tsx # Collapsed view: single brightness + contrast slider
+│       ├── AllMonitorsControl.tsx # Collapsed view: single brightness slider for all monitors
 │       ├── AllMonitorsControl.test.tsx
-│       ├── MonitorControl.tsx    # Expanded view: per-monitor brightness/contrast + editable name
+│       ├── MonitorControl.tsx    # Expanded view: per-monitor brightness + editable name
 │       ├── MonitorControl.test.tsx
 │       ├── VolumeControl.tsx     # Volume slider
 │       ├── VolumeControl.test.tsx
@@ -128,7 +128,7 @@ display-dj2/
 │   └── src/
 │       ├── main.rs               # Binary entry point (calls lib::run)
 │       ├── lib.rs                # Tauri app setup: sidecar launch, port discovery, plugins, state, tray, shortcuts
-│       ├── display.rs            # Monitor detection + brightness/contrast via HTTP to display-dj server (+ unit tests)
+│       ├── display.rs            # Monitor detection + brightness via HTTP to display-dj server (+ unit tests)
 │       ├── dark_mode.rs          # Dark mode read/write via HTTP to display-dj server
 │       ├── volume.rs             # System volume get/set (platform-specific: osascript, PowerShell, pactl)
 │       ├── config.rs             # Preferences + monitor config load/save (+ unit tests)
@@ -150,19 +150,19 @@ display-dj2/
 
 This section maps each user-facing feature to the exact files and functions that implement it. Use this when debugging or extending a feature.
 
-### Monitor Brightness & Contrast
+### Monitor Brightness
 
-**Frontend flow**: `App.tsx` calls `invoke("get_monitors")` on mount and on `monitors-changed` events. Slider changes call `invoke("set_brightness", { monitorId, value })` or `invoke("set_contrast", { monitorId, value })`. The `Slider.tsx` component debounces changes by 150ms to avoid flooding the backend. In collapsed view, `AllMonitorsControl.tsx` sets all monitors at once via `set_all_brightness` / `set_all_contrast`.
+**Frontend flow**: `App.tsx` calls `invoke("get_monitors")` on mount and on `monitors-changed` events. Slider changes call `invoke("set_brightness", { monitorId, value })`. The `Slider.tsx` component debounces changes by 150ms to avoid flooding the backend. In collapsed view, `AllMonitorsControl.tsx` sets all monitors at once via `set_all_brightness`.
 
 **Backend** (`display.rs`): All display operations go through the display-dj HTTP server sidecar. No platform-specific code.
 
 | Operation | HTTP Route | Response |
 |---|---|---|
-| Detect monitors | `GET /get_all` | JSON array of `DisplayInfo` with live brightness/contrast |
+| Detect monitors | `GET /get_all` | JSON array of `DisplayInfo` with live brightness |
 | Set one monitor | `GET /set_one/<id>/<level>` | Status |
 | Set all monitors | `GET /set_all/<level>` | Status per display |
 
-The `DjDisplay` struct maps the server's JSON response (with `display_type`, `ddc_supported`, nullable `brightness`/`contrast`) into the app's `Monitor` struct (with `is_built_in`, `supports_brightness`, `supports_contrast`).
+The `DjDisplay` struct maps the server's JSON response (with `display_type`, nullable `brightness`) into the app's `Monitor` struct (with `is_built_in`, `supports_brightness`).
 
 **Key functions to know**:
 - `detect_monitors()` -- HTTP GET to `/get_all`, converts `DjDisplay` -> `Monitor`
@@ -253,7 +253,7 @@ Events are used when keyboard shortcuts change brightness/volume/dark mode from 
 
 | Module | Commands |
 |---|---|
-| `display` | `get_monitors`, `set_brightness`, `set_contrast`, `set_all_brightness`, `set_all_contrast`, `rename_monitor` |
+| `display` | `get_monitors`, `set_brightness`, `set_all_brightness`, `rename_monitor` |
 | `dark_mode` | `get_dark_mode`, `set_dark_mode` |
 | `volume` | `get_volume`, `set_volume` |
 | `config` | `get_preferences`, `save_preferences`, `get_monitor_configs`, `save_monitor_config`, `open_config_file`, `open_preferences_file`, `get_app_version` |
@@ -262,7 +262,7 @@ Events are used when keyboard shortcuts change brightness/volume/dark mode from 
 
 | Event | Emitted when |
 |---|---|
-| `monitors-changed` | Keyboard shortcut changes brightness/contrast |
+| `monitors-changed` | Keyboard shortcut changes brightness |
 | `dark-mode-changed` | Keyboard shortcut toggles dark mode |
 | `volume-changed` | Keyboard shortcut changes volume |
 
@@ -273,7 +273,7 @@ Events are used when keyboard shortcuts change brightness/volume/dark mode from 
 `App.tsx` is the single source of truth for all UI state. There is no external state library.
 
 **State variables**:
-- `monitors: Monitor[]` -- current monitor list with brightness/contrast values
+- `monitors: Monitor[]` -- current monitor list with brightness values
 - `darkMode: boolean` -- system dark mode state
 - `volume: number` -- system volume (0-100)
 - `expanded: boolean` -- collapsed (all-monitors) vs expanded (individual) view
@@ -287,8 +287,6 @@ Events are used when keyboard shortcuts change brightness/volume/dark mode from 
 
 **Average calculations** (collapsed view):
 - `avgBrightness` = mean of all monitors' brightness
-- `avgContrast` = mean of monitors where `supportsContrast` is true
-
 ---
 
 ## Configuration Files
@@ -303,7 +301,6 @@ Deserialized into the `Preferences` struct. If the file is missing or malformed,
 |---|---|---|---|
 | `showIndividualDisplays` | bool | `false` | Start in expanded view |
 | `brightnessDelta` | number | `50` | Step size for keyboard shortcut brightness changes |
-| `contrastDelta` | number | `25` | Step size for keyboard shortcut contrast changes |
 | `keyBindings` | array | 8 default bindings | Global keyboard shortcuts |
 
 Each key binding has a `key` (e.g. `"Shift+F1"`) and a `command` -- either a single string (`"command/changeBrightness/50"`) or an array of strings for multi-action shortcuts.
@@ -313,7 +310,6 @@ Each key binding has a `key` (e.g. `"Shift+F1"`) and a `command` -- either a sin
 | Action | Values | Effect |
 |---|---|---|
 | `changeBrightness` | Any integer 0-100 (e.g. `0`, `10`, `50`, `100`) | Sets all monitors' brightness |
-| `changeContrast` | Any integer 0-100 (e.g. `0`, `50`, `100`) | Sets all monitors' contrast |
 | `changeDarkMode` | `toggle`, `dark`, `light` | Toggles or sets system dark mode |
 | `changeVolume` | Any integer 0-100 (e.g. `0`, `50`, `100`) | Sets system volume |
 
@@ -377,8 +373,8 @@ Test files live next to the components they test (`*.test.tsx`).
 | `src/components/Slider.test.tsx` | Range input rendering, debounced onChange (150ms), fill width calculation, prop updates |
 | `src/components/DarkModeToggle.test.tsx` | Active button state, click handlers for dark/light |
 | `src/components/VolumeControl.test.tsx` | Slider value, muted/unmuted icon switching |
-| `src/components/AllMonitorsControl.test.tsx` | Brightness/contrast sliders, contrast visibility toggle |
-| `src/components/MonitorControl.test.tsx` | Monitor name rendering, inline edit mode (Enter/Escape), brightness/contrast sliders, built-in vs external icons |
+| `src/components/AllMonitorsControl.test.tsx` | Brightness slider, average brightness calculation |
+| `src/components/MonitorControl.test.tsx` | Monitor name rendering, inline edit mode (Enter/Escape), brightness slider, built-in vs external icons |
 | `src/App.test.tsx` | **Smoke test**: App mounts without crashing, fetches initial data, renders all sections, handles backend errors gracefully |
 
 **Tauri API mocking**: `src/test/setup.ts` globally mocks `invoke()` and `listen()` from `@tauri-apps/api` so tests run without a Tauri backend. The App smoke test provides per-command mock responses.
@@ -710,7 +706,7 @@ kill %1
 | Route | Used by | Purpose |
 |---|---|---|
 | `GET /health` | `lib.rs` | Wait for server readiness on startup |
-| `GET /get_all` | `display.rs` | List all displays with live brightness/contrast |
+| `GET /get_all` | `display.rs` | List all displays with live brightness |
 | `GET /set_one/<id>/<level>` | `display.rs` | Set one display's brightness |
 | `GET /set_all/<level>` | `display.rs`, `tray.rs` | Set all displays' brightness |
 | `GET /theme` | `dark_mode.rs` | Get current system theme (dark/light) |
@@ -727,8 +723,6 @@ For the full API reference, see the [display-dj CLI documentation](https://githu
 |---|---|
 | DDC/CI not universal | Not every monitor implements DDC/CI. Budget models and some HDMI connections may not work. |
 | Built-in HDMI on base M1/M2 | Doesn't support DDC/CI. Use USB-C/DisplayPort. |
-| No contrast for built-in displays | Contrast is DDC/CI only. Laptop screens don't expose it. |
-| Contrast via keyboard shortcuts | Contrast control via the display-dj server is not yet supported. |
 | Global shortcuts on Wayland | Wayland restricts global hotkey capture. Works on X11. |
 | Tray left-click on Linux | AppIndicator doesn't always fire left-click. Right-click works. |
 | Dark mode on non-GNOME | `gsettings` is GNOME-specific. KDE, XFCE not supported. |
