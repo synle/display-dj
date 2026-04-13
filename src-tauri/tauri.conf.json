@@ -41,6 +41,7 @@
       "icons/icon.ico"
     ],
     "externalBin": ["binaries/display-dj-server"],
+    "sidecarVersion": "v0.4.1",
     "resources": []
   },
   "plugins": {
