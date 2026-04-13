@@ -2,13 +2,26 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::SystemTime;
 
-const VERSION: &str = "v0.4.1";
 const REPO: &str = "synle/display-dj-cli";
 
 fn main() {
     expose_app_version();
     download_sidecar();
     tauri_build::build();
+}
+
+/// Read the sidecar version from tauri.conf.json `bundle.sidecarVersion`.
+fn sidecar_version() -> String {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let conf_path = manifest_dir.join("tauri.conf.json");
+    let conf: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&conf_path).expect("failed to read tauri.conf.json"),
+    )
+    .expect("failed to parse tauri.conf.json");
+    conf["bundle"]["sidecarVersion"]
+        .as_str()
+        .expect("bundle.sidecarVersion missing in tauri.conf.json")
+        .to_string()
 }
 
 /// Read the version from tauri.conf.json (the single source of truth) and
@@ -58,8 +71,9 @@ fn download_sidecar() {
         }
     }
 
-    let url = format!("https://github.com/{REPO}/releases/download/{VERSION}/{asset}");
-    println!("Downloading display-dj {VERSION} for {sidecar_name}...");
+    let version = sidecar_version();
+    let url = format!("https://github.com/{REPO}/releases/download/{version}/{asset}");
+    println!("Downloading display-dj {version} for {sidecar_name}...");
 
     let status = Command::new("curl")
         .args(["-fSL", &url, "-o"])
