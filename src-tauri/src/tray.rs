@@ -30,7 +30,6 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     let port = crate::server_port();
     let bridge_label = format!("Bridge: 127.0.0.1:{}", port);
     let bridge = MenuItemBuilder::with_id("bridge", &bridge_label)
-        .enabled(false)
         .build(app)?;
     let dark_mode = MenuItemBuilder::with_id("dark_mode", "Dark Mode").build(app)?;
     let light_mode = MenuItemBuilder::with_id("light_mode", "Light Mode").build(app)?;
@@ -93,6 +92,10 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id().as_ref() {
+            "bridge" => {
+                let url = base_url();
+                let _ = open::that(&url);
+            }
             "dark_mode" => {
                 let url = format!("{}/dark", base_url());
                 http_get(url);
@@ -251,7 +254,7 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
 ///
 /// When "Debug Logging" is enabled in preferences, every tray click writes
 /// detailed positioning data to `debug.log` in the config directory (capped
-/// at 512 KB). Open it via the tray menu → "Open Debug Log".
+/// at 1 MB). Open it via the tray menu → "Open Debug Log".
 pub fn position_window_near_tray(
     window: &tauri::WebviewWindow,
     tray_rect: tauri::Rect,

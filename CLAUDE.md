@@ -34,6 +34,7 @@ Key HTTP routes used:
 - `GET /dark` / `GET /light` — switch dark/light mode
 - `GET /theme` — get current theme
 - `GET /health` — server health check
+- `GET /debug` — full diagnostics: version, OS/arch, display enumeration, active tests (brightness/contrast per display, volume, theme). Restores all settings after testing. Returns JSON.
 
 **Sidecar lifecycle:** The `CommandChild` handle is stored in `AppState.sidecar_child`. On app exit, the `RunEvent::Exit` handler in `lib.rs::run()` calls `child.kill()` to terminate the sidecar server. This prevents orphaned `display-dj-server` processes after the main app closes.
 
@@ -141,12 +142,16 @@ When both scales match (same monitor), the compensation is 1× (no-op).
 
 ### Debug logging
 
-Enable debug logging via the tray menu → "Debug" → "Enable Logging" to write positioning data to `debug.log` in the config directory (auto-truncated at 512 KB). Open via tray menu → "Debug" → "Open Debug Log". Each tray click logs: tray rect, all monitors (position/size/scale), target selection, window scale, computed position, compensation factor, and final `set_position` arguments.
+Enable debug logging via the tray menu → "Debug" → "Enable Logging" to write positioning data to `debug.log` in the config directory (auto-truncated at 1 MB, keeps last 80% when limit is hit). Open via tray menu → "Debug" → "Open Debug Log". Each tray click logs: tray rect, all monitors (position/size/scale), target selection, window scale, computed position, compensation factor, and final `set_position` arguments.
+
+When debug logging is enabled, the app also calls the sidecar's `/debug` endpoint on startup and prepends the full diagnostic dump (version, OS, display enumeration, active brightness/contrast/volume/theme tests) to the debug log. This is useful for troubleshooting display detection issues. You can also hit the endpoint directly: `curl http://127.0.0.1:<port>/debug`.
 
 ## Dependencies
 The display-dj CLI sidecar handles all platform-specific display dependencies internally. No external tools need to be installed for display control.
 
-For the sidecar binary itself, download from [display-dj-cli releases](https://github.com/synle/display-dj-cli/releases) or build from source:
+The sidecar version is defined in `package.json` under `displayDjCliVersion`. The Rust build script (`src-tauri/build.rs`) reads this at compile time and downloads the matching release from GitHub. The `DISPLAY_DJ_CLI_VERSION` env var can override it (used by CI `workflow_dispatch`).
+
+For manual builds, download from [display-dj-cli releases](https://github.com/synle/display-dj-cli/releases) or build from source:
 ```bash
 git clone https://github.com/synle/display-dj-cli.git
 cd display-dj-cli
