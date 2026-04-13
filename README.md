@@ -83,6 +83,12 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup (per-p
 
 Use the [Issues](../../issues) page. Please include your OS version, monitor model(s), and connection type.
 
+## display-dj CLI
+
+Display and dark mode operations are handled by the [display-dj CLI](https://github.com/synle/display-dj-cli), which runs as a bundled HTTP server sidecar. The correct version is downloaded automatically during the build (via `build.rs`).
+
+To manually download or build from source, see the [display-dj CLI releases](https://github.com/synle/display-dj-cli/releases) and the [sidecar setup guide](CONTRIBUTING.md#display-dj-cli-sidecar).
+
 ## Tech Stack
 
-[Tauri v2](https://v2.tauri.app/) (Rust) + React 18 + TypeScript + Vite 6
+[Tauri v2](https://v2.tauri.app/) (Rust) + React 18 + TypeScript + Vite 6 + [display-dj CLI](https://github.com/synle/display-dj-cli)

@@ -53,11 +53,6 @@ jobs:
             libxdo-dev \
             libssl-dev
 
-      - name: Install macOS display tools
-        if: startsWith(matrix.platform, 'macos')
-        run: |
-          brew install m1ddc || true
-
       - name: Install dependencies
         run: npm install
 
@@ -78,8 +73,8 @@ jobs:
             - **Linux** (x64) - `.deb` / `.AppImage`
 
             ### Requirements
-            - **macOS**: Install `m1ddc` via Homebrew for external monitor control: `brew install m1ddc`
-            - **Linux**: Install `ddcutil` and `brightnessctl`: `sudo apt install ddcutil brightnessctl i2c-tools`
+            - Display control is handled by the bundled [display-dj CLI](https://github.com/synle/display-dj-cli) sidecar — no external tools needed on macOS or Windows
+            - **Linux**: Install `ddcutil` and `brightnessctl` for display control: `sudo apt install ddcutil brightnessctl i2c-tools`
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
