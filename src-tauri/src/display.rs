@@ -59,6 +59,7 @@ fn base_url() -> String {
 /// Fetches all connected displays from the sidecar and converts them to Monitors.
 async fn detect_monitors() -> Vec<Monitor> {
     let url = format!("{}/get_all", base_url());
+    log::info!("detect_monitors: GET {}", url);
     let displays: Vec<DjDisplay> = match reqwest::get(&url).await {
         Ok(resp) => resp.json().await.unwrap_or_default(),
         Err(e) => {
@@ -66,38 +67,51 @@ async fn detect_monitors() -> Vec<Monitor> {
             Vec::new()
         }
     };
+    log::info!("detect_monitors: found {} displays", displays.len());
     displays.into_iter().map(|d| d.into_monitor()).collect()
 }
 
 /// Sets brightness for a single monitor via the sidecar, clamped to [min_brightness, 100].
 async fn set_monitor_brightness(monitor_id: &str, value: u32, min_brightness: u32) -> Result<(), String> {
-    let url = format!("{}/set_one/{}/{}", base_url(), monitor_id, value.clamp(min_brightness, 100));
+    let clamped = value.clamp(min_brightness, 100);
+    let url = format!("{}/set_one/{}/{}", base_url(), monitor_id, clamped);
+    log::info!("set_monitor_brightness: monitor_id={} value={} clamped={} GET {}", monitor_id, value, clamped, url);
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set brightness: {}", e))?;
+    log::info!("set_monitor_brightness: done");
     Ok(())
 }
 
 /// Sets brightness for all monitors via the sidecar, clamped to [min_brightness, 100].
 async fn set_all_monitors_brightness(value: u32, min_brightness: u32) -> Result<(), String> {
-    let url = format!("{}/set_all/{}", base_url(), value.clamp(min_brightness, 100));
+    let clamped = value.clamp(min_brightness, 100);
+    let url = format!("{}/set_all/{}", base_url(), clamped);
+    log::info!("set_all_monitors_brightness: value={} clamped={} GET {}", value, clamped, url);
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set all brightness: {}", e))?;
+    log::info!("set_all_monitors_brightness: done");
     Ok(())
 }
 
 /// Sets contrast for a single monitor via the sidecar (0-100).
 async fn set_monitor_contrast(monitor_id: &str, value: u32) -> Result<(), String> {
-    let url = format!("{}/set_contrast_one/{}/{}", base_url(), monitor_id, value.min(100));
+    let clamped = value.min(100);
+    let url = format!("{}/set_contrast_one/{}/{}", base_url(), monitor_id, clamped);
+    log::info!("set_monitor_contrast: monitor_id={} value={} GET {}", monitor_id, clamped, url);
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set contrast: {}", e))?;
+    log::info!("set_monitor_contrast: done");
     Ok(())
 }
 
 /// Sets contrast for all monitors via the sidecar (0-100).
 async fn set_all_monitors_contrast(value: u32) -> Result<(), String> {
-    let url = format!("{}/set_contrast_all/{}", base_url(), value.min(100));
+    let clamped = value.min(100);
+    let url = format!("{}/set_contrast_all/{}", base_url(), clamped);
+    log::info!("set_all_monitors_contrast: value={} GET {}", clamped, url);
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set all contrast: {}", e))?;
+    log::info!("set_all_monitors_contrast: done");
     Ok(())
 }
 

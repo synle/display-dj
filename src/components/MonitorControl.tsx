@@ -106,7 +106,7 @@ export default function MonitorControl({
       />
       {showContrast && monitor.contrast !== null && (
         <Slider
-          icon={'\uD83D\uDD06'}
+          icon={'\u25D0'}
           value={monitor.contrast}
           onChange={onContrastChange}
           onIconClick={() => onContrastChange(monitor.contrast! > 0 ? 0 : 100)}

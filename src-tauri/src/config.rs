@@ -338,29 +338,56 @@ pub fn reset_to_defaults() {
 /// Returns the current in-memory preferences to the frontend.
 #[tauri::command]
 pub fn get_preferences(state: tauri::State<'_, crate::AppState>) -> Result<Preferences, String> {
+    log::info!("get_preferences: reading in-memory preferences");
     let prefs = state.preferences.lock().map_err(|e| e.to_string())?;
+    log::info!(
+        "get_preferences: show_contrast={} min_brightness={} monitors={} profiles={}",
+        prefs.show_contrast, prefs.min_brightness, prefs.monitor_configs.len(), prefs.profiles.len()
+    );
     Ok(prefs.clone())
 }
 
 /// Saves updated preferences from the frontend, syncs autostart with the OS, and persists to disk.
 #[tauri::command]
-pub fn save_preferences(
+pub async fn save_preferences(
     app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
     preferences: Preferences,
 ) -> Result<(), String> {
+    log::info!(
+        "save_preferences: show_contrast={} min_brightness={} launch_at_login={} debug_logging={} monitor_configs={} profiles={} night_mode_enabled={}",
+        preferences.show_contrast,
+        preferences.min_brightness,
+        preferences.launch_at_login,
+        preferences.debug_logging,
+        preferences.monitor_configs.len(),
+        preferences.profiles.len(),
+        preferences.night_mode_schedule.enabled,
+    );
+
     // Sync autostart with OS
+    log::info!("save_preferences: syncing autostart (launch_at_login={})", preferences.launch_at_login);
     use tauri_plugin_autostart::ManagerExt;
     let autostart = app.autolaunch();
     if preferences.launch_at_login {
-        autostart.enable().map_err(|e| e.to_string())?;
+        autostart.enable().map_err(|e| {
+            log::error!("save_preferences: autostart.enable() failed: {}", e);
+            e.to_string()
+        })?;
     } else {
-        autostart.disable().map_err(|e| e.to_string())?;
+        autostart.disable().map_err(|e| {
+            log::error!("save_preferences: autostart.disable() failed: {}", e);
+            e.to_string()
+        })?;
     }
+    log::info!("save_preferences: autostart synced");
 
     save_preferences_to_disk(&preferences);
+    log::info!("save_preferences: written to disk");
+
     let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
     *prefs = preferences;
+    log::info!("save_preferences: in-memory state updated, done");
     Ok(())
 }
 
