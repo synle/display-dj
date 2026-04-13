@@ -9,6 +9,7 @@ use chrono::Timelike;
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_shell::ShellExt;
+use tauri_plugin_shell::process::CommandChild;
 
 static SERVER_PORT: AtomicU16 = AtomicU16::new(51337);
 
@@ -19,6 +20,7 @@ pub fn server_port() -> u16 {
 pub struct AppState {
     pub preferences: std::sync::Mutex<config::Preferences>,
     pub last_tray_rect: std::sync::Mutex<Option<tauri::Rect>>,
+    pub sidecar_child: std::sync::Mutex<Option<CommandChild>>,
 }
 
 /// Find an available port starting from the default.
@@ -219,6 +221,7 @@ pub fn run() {
         .manage(AppState {
             preferences: std::sync::Mutex::new(preferences.clone()),
             last_tray_rect: std::sync::Mutex::new(None),
+            sidecar_child: std::sync::Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             display::get_monitors,
@@ -243,13 +246,17 @@ pub fn run() {
             SERVER_PORT.store(port, Ordering::Relaxed);
 
             // Spawn display-dj HTTP server as a background sidecar
-            let (_rx, _child) = app
+            let (_rx, child) = app
                 .shell()
                 .sidecar("display-dj-server")
                 .expect("display-dj-server sidecar not found")
                 .args(["serve", &port.to_string()])
                 .spawn()
                 .expect("failed to start display-dj server");
+
+            // Store sidecar child so we can kill it on exit
+            let state = app.state::<AppState>();
+            *state.sidecar_child.lock().unwrap() = Some(child);
 
             // Wait for the server to be ready (in a background thread to not block UI)
             std::thread::spawn(move || {
@@ -313,6 +320,17 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running display-dj");
+        .build(tauri::generate_context!())
+        .expect("error while building display-dj")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                let state = app_handle.state::<AppState>();
+                if let Ok(mut guard) = state.sidecar_child.lock() {
+                    if let Some(child) = guard.take() {
+                        log::info!("killing display-dj sidecar on exit");
+                        let _ = child.kill();
+                    }
+                };
+            }
+        });
 }

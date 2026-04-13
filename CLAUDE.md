@@ -35,6 +35,8 @@ Key HTTP routes used:
 - `GET /theme` — get current theme
 - `GET /health` — server health check
 
+**Sidecar lifecycle:** The `CommandChild` handle is stored in `AppState.sidecar_child`. On app exit, the `RunEvent::Exit` handler in `lib.rs::run()` calls `child.kill()` to terminate the sidecar server. This prevents orphaned `display-dj-server` processes after the main app closes.
+
 Sidecar binaries follow Tauri's naming convention:
 ```
 src-tauri/binaries/
