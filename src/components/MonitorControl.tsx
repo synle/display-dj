@@ -1,10 +1,12 @@
-import { useState, useRef } from "react";
-import { Monitor } from "../types";
-import Slider from "./Slider";
+import { useState, useRef } from 'react';
+import { Monitor } from '../types';
+import Slider from './Slider';
 
 interface MonitorControlProps {
   monitor: Monitor;
   onBrightnessChange: (value: number) => void;
+  onContrastChange: (value: number) => void;
+  showContrast: boolean;
   onRename: (name: string) => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
@@ -13,10 +15,12 @@ interface MonitorControlProps {
   minBrightness: number;
 }
 
-/** Individual monitor control: editable name label, brightness slider, and reorder buttons. */
+/** Individual monitor control: editable name label, brightness slider, optional contrast slider, and reorder buttons. */
 export default function MonitorControl({
   monitor,
   onBrightnessChange,
+  onContrastChange,
+  showContrast,
   onRename,
   onMoveUp,
   onMoveDown,
@@ -46,21 +50,21 @@ export default function MonitorControl({
 
   /** Handles Enter (commit) and Escape (cancel) during inline rename. */
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
+    if (e.key === 'Enter') {
       finishEditing();
-    } else if (e.key === "Escape") {
+    } else if (e.key === 'Escape') {
       setEditing(false);
       setEditName(monitor.name);
     }
   };
 
   return (
-    <div className="monitor-control">
-      <div className="monitor-name-row">
+    <div className='monitor-control'>
+      <div className='monitor-name-row'>
         {editing ? (
           <input
             ref={inputRef}
-            className="monitor-name-input"
+            className='monitor-name-input'
             value={editName}
             placeholder={monitor.originalName}
             onChange={(e) => setEditName(e.target.value)}
@@ -68,38 +72,46 @@ export default function MonitorControl({
             onKeyDown={handleKeyDown}
           />
         ) : (
-          <button className="monitor-name" onClick={startEditing}>
+          <button className='monitor-name' onClick={startEditing}>
             {monitor.name || monitor.originalName}
           </button>
         )}
         {onMoveUp && onMoveDown && (
-          <div className="monitor-reorder-buttons">
+          <div className='monitor-reorder-buttons'>
             <button
-              className="monitor-reorder-btn"
+              className='monitor-reorder-btn'
               onClick={onMoveUp}
               disabled={isFirst}
-              title="Move up"
-            >
+              title='Move up'>
               ▲
             </button>
             <button
-              className="monitor-reorder-btn"
+              className='monitor-reorder-btn'
               onClick={onMoveDown}
               disabled={isLast}
-              title="Move down"
-            >
+              title='Move down'>
               ▼
             </button>
           </div>
         )}
       </div>
       <Slider
-        icon={monitor.isBuiltIn ? "\uD83D\uDCBB" : "\uD83D\uDDA5"}
+        icon={monitor.isBuiltIn ? '\uD83D\uDCBB' : '\uD83D\uDDA5'}
         value={monitor.brightness}
         min={minBrightness}
         onChange={onBrightnessChange}
-        onIconClick={() => onBrightnessChange(monitor.brightness > minBrightness ? minBrightness : 100)}
+        onIconClick={() =>
+          onBrightnessChange(monitor.brightness > minBrightness ? minBrightness : 100)
+        }
       />
+      {showContrast && monitor.contrast !== null && (
+        <Slider
+          icon={'\uD83D\uDD06'}
+          value={monitor.contrast}
+          onChange={onContrastChange}
+          onIconClick={() => onContrastChange(monitor.contrast! > 0 ? 0 : 100)}
+        />
+      )}
     </div>
   );
 }

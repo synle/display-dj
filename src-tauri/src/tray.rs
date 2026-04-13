@@ -496,6 +496,12 @@ fn execute_command(app: &AppHandle, command: &str) {
             };
             http_get_then_emit(url, app.clone(), "dark-mode-changed");
         }
+        ["command", "changeContrast", value] => {
+            if let Ok(val) = value.parse::<u32>() {
+                let url = format!("{}/set_contrast_all/{}", base, val.min(100));
+                http_get_then_emit(url, app.clone(), "monitors-changed");
+            }
+        }
         ["command", "changeVolume", value] => {
             if let Ok(val) = value.parse::<u32>() {
                 let url = format!("{}/set_volume/{}", base, val.min(100));

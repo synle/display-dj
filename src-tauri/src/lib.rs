@@ -255,6 +255,8 @@ pub fn run() {
             display::get_monitors,
             display::set_brightness,
             display::set_all_brightness,
+            display::set_contrast,
+            display::set_all_contrast,
             display::rename_monitor,
             display::save_monitor_order,
             display::set_monitor_visibility,

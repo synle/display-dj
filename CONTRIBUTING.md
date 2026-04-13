@@ -61,7 +61,7 @@ Display DJ is built with [Tauri v2](https://v2.tauri.app/), which pairs a **Rust
 │  Backend (Rust + Tauri v2)                   │
 │                                              │
 │  #[tauri::command] functions handle:         │
-│  - Monitor brightness (via HTTP)              │
+│  - Monitor brightness & contrast (via HTTP)   │
 │  - System dark mode toggle (via HTTP)        │
 │  - System volume control (platform-specific) │
 │  - Preferences/config persistence            │
@@ -113,7 +113,8 @@ display-dj2/
 │       ├── VolumeControl.test.tsx
 │       ├── DarkModeToggle.tsx    # Dark / Light toggle buttons
 │       ├── DarkModeToggle.test.tsx
-│       └── SettingsPanel.tsx     # In-app settings: min brightness, deltas, night mode schedule
+│       ├── SettingsPanel.tsx     # In-app settings: min brightness, show contrast, night mode schedule
+│       └── ProfileButtons.tsx   # Profile quick-action buttons with overflow menu
 │
 ├── src-tauri/                    # Backend (Rust + Tauri v2)
 │   ├── Cargo.toml                # Rust dependencies (tauri, reqwest, serde, etc.)
@@ -129,7 +130,7 @@ display-dj2/
 │   └── src/
 │       ├── main.rs               # Binary entry point (calls lib::run)
 │       ├── lib.rs                # Tauri app setup: sidecar launch, port discovery, plugins, state, tray, shortcuts, night mode schedule checker
-│       ├── display.rs            # Monitor detection + brightness via HTTP to display-dj server (+ unit tests)
+│       ├── display.rs            # Monitor detection + brightness/contrast via HTTP to display-dj server (+ unit tests)
 │       ├── dark_mode.rs          # Dark mode read/write via HTTP to display-dj server
 │       ├── volume.rs             # System volume get/set (platform-specific: osascript, PowerShell, pactl)
 │       ├── config.rs             # Preferences + monitor metadata persistence, NightModeSchedule, min brightness, reset to defaults (+ unit tests)
@@ -157,15 +158,31 @@ This section maps each user-facing feature to the exact files and functions that
 
 **Backend** (`display.rs`): All display operations go through the display-dj HTTP server sidecar. No platform-specific code.
 
-| Operation | HTTP Route | Response |
-|---|---|---|
-| Detect monitors | `GET /get_all` | JSON array of `DisplayInfo` with live brightness |
-| Set one monitor | `GET /set_one/<id>/<level>` | Status |
-| Set all monitors | `GET /set_all/<level>` | Status per display |
+| Operation                   | HTTP Route                           | Response                                                      |
+| --------------------------- | ------------------------------------ | ------------------------------------------------------------- |
+| Detect monitors             | `GET /get_all`                       | JSON array of `DisplayInfo` with live brightness and contrast |
+| Set one monitor brightness  | `GET /set_one/<id>/<level>`          | Status                                                        |
+| Set all monitors brightness | `GET /set_all/<level>`               | Status per display                                            |
+| Set one monitor contrast    | `GET /set_contrast_one/<id>/<level>` | Status (DDC-only)                                             |
+| Set all monitors contrast   | `GET /set_contrast_all/<level>`      | Status per display (DDC-only)                                 |
 
-The `DjDisplay` struct maps the server's JSON response (with `display_type`, nullable `brightness`) into the app's `Monitor` struct (with `is_built_in`, `supports_brightness`).
+The `DjDisplay` struct maps the server's JSON response (with `display_type`, nullable `brightness`, nullable `contrast`) into the app's `Monitor` struct (with `is_built_in`, `supports_brightness`, `contrast`).
+
+### Monitor Contrast
+
+**Frontend flow**: Contrast sliders are shown alongside brightness sliders only when `showContrast` is enabled in preferences and the monitor supports DDC contrast (`contrast !== null`). Built-in displays never show contrast. The collapsed `AllMonitorsControl` shows an average contrast slider across all contrast-capable monitors.
+
+**Backend** (`display.rs`): Contrast uses the same pattern as brightness — HTTP GET to the sidecar. Contrast values are 0-100, not subject to `min_brightness` clamping.
+
+| Operation                 | HTTP Route                           |
+| ------------------------- | ------------------------------------ |
+| Set one monitor contrast  | `GET /set_contrast_one/<id>/<level>` |
+| Set all monitors contrast | `GET /set_contrast_all/<level>`      |
+
+**Key functions**: `set_monitor_contrast()`, `set_all_monitors_contrast()`, `set_contrast` (Tauri command), `set_all_contrast` (Tauri command).
 
 **Key functions to know**:
+
 - `detect_monitors()` -- HTTP GET to `/get_all`, converts `DjDisplay` -> `Monitor`
 - `merge_with_configs()` -- applies user-configured labels and sort orders from `preferences.monitorConfigs`
 - `base_url()` -- returns `http://127.0.0.1:<port>` using the port stored at startup
@@ -176,11 +193,11 @@ The `DjDisplay` struct maps the server's JSON response (with `display_type`, nul
 
 **Backend** (`dark_mode.rs`): Delegates to the display-dj HTTP server.
 
-| Operation | HTTP Route | Response |
-|---|---|---|
+| Operation         | HTTP Route   | Response                                    |
+| ----------------- | ------------ | ------------------------------------------- |
 | Get current theme | `GET /theme` | `{"theme": "dark"}` or `{"theme": "light"}` |
-| Set dark mode | `GET /dark` | Status |
-| Set light mode | `GET /light` | Status |
+| Set dark mode     | `GET /dark`  | Status                                      |
+| Set light mode    | `GET /light` | Status                                      |
 
 ### Volume
 
@@ -188,11 +205,11 @@ The `DjDisplay` struct maps the server's JSON response (with `display_type`, nul
 
 **Backend** (`volume.rs`): Volume is the only module with platform-specific code, as the display-dj CLI does not handle volume.
 
-| Platform | Method |
-|---|---|
-| macOS | `osascript` for CoreAudio: `output volume of (get volume settings)` / `set volume output volume` |
-| Windows | PowerShell with inline C# `Add-Type` for WASAPI COM (`IAudioEndpointVolume`) |
-| Linux | `pactl get-sink-volume @DEFAULT_SINK@` / `pactl set-sink-volume @DEFAULT_SINK@ <val>%` |
+| Platform | Method                                                                                           |
+| -------- | ------------------------------------------------------------------------------------------------ |
+| macOS    | `osascript` for CoreAudio: `output volume of (get volume settings)` / `set volume output volume` |
+| Windows  | PowerShell with inline C# `Add-Type` for WASAPI COM (`IAudioEndpointVolume`)                     |
+| Linux    | `pactl get-sink-volume @DEFAULT_SINK@` / `pactl set-sink-volume @DEFAULT_SINK@ <val>%`           |
 
 ### Night Mode Schedule
 
@@ -201,6 +218,7 @@ The `DjDisplay` struct maps the server's JSON response (with `display_type`, nul
 **Frontend**: `SettingsPanel.tsx` provides UI for enabling/disabling the schedule, setting night/day start times, and night/day brightness levels. Changes are saved via `invoke("save_preferences", { preferences })`.
 
 Helper functions in `lib.rs`:
+
 - `parse_time_minutes()` — converts "HH:MM" to minutes since midnight
 - `is_night_time()` — determines if current time falls in the night window (handles midnight wraparound)
 - `check_night_mode_schedule()` — the main scheduler that applies brightness + dark mode changes
@@ -208,16 +226,19 @@ Helper functions in `lib.rs`:
 ### Settings Panel
 
 **Frontend** (`SettingsPanel.tsx`): In-app settings UI accessed from the header. Allows editing:
+
 - Min brightness (5–100) — floor for all brightness operations
-- Brightness delta (5–20) — step size for keyboard shortcut brightness changes
-- Contrast delta (5–20) — step size for contrast changes
+- Show Contrast Slider — toggles contrast controls in the UI (DDC-only monitors)
+- Monitor order, labels, and visibility — per-monitor configuration
 - Night mode schedule — enable/disable, set times and brightness levels
+- Launch at Login — OS autostart
 
 Loads preferences via `invoke("get_preferences")`, saves via `invoke("save_preferences")`. Values are clamped to slider ranges on load.
 
 ### System Tray & Keyboard Shortcuts
 
 **Backend** (`tray.rs`):
+
 - `setup_tray()` -- creates the tray icon + context menu (Dark Mode, Light Mode, Profiles, Open App Preferences, Debug submenu, Reset to Default, Quit)
 - Left-click toggles main window visibility; `position_window_near_tray()` places it near the tray icon
 - Right-click opens the context menu
@@ -227,6 +248,7 @@ Loads preferences via `invoke("get_preferences")`, saves via `invoke("save_prefe
 ### Config Persistence
 
 **Backend** (`config.rs`):
+
 - `config_dir()` resolves to `~/Library/Application Support/display-dj` (macOS), `%APPDATA%/display-dj` (Windows), `~/.config/display-dj` (Linux)
 - `load_preferences()` / `save_preferences_to_disk()` -- reads/writes `preferences.json` (includes per-monitor metadata), returns `Preferences::default()` if file missing or malformed
 - Monitor metadata (labels, sort order) is stored inline in `preferences.json` as `monitorConfigs` array — no separate file
@@ -238,10 +260,10 @@ Loads preferences via `invoke("get_preferences")`, saves via `invoke("save_prefe
 **Frontend -> Backend** (calling Rust functions):
 
 ```typescript
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from '@tauri-apps/api/core';
 
-const monitors = await invoke<Monitor[]>("get_monitors");
-await invoke("set_brightness", { monitorId: "external-1", value: 75 });
+const monitors = await invoke<Monitor[]>('get_monitors');
+await invoke('set_brightness', { monitorId: 'external-1', value: 75 });
 ```
 
 - Command names are **snake_case** strings matching the Rust function name
@@ -262,9 +284,9 @@ app.emit("monitors-changed", ())?;
 ```
 
 ```typescript
-import { listen } from "@tauri-apps/api/event";
+import { listen } from '@tauri-apps/api/event';
 
-const unlisten = await listen("monitors-changed", () => {
+const unlisten = await listen('monitors-changed', () => {
   // Refetch monitor data
 });
 ```
@@ -273,20 +295,21 @@ Events are used when keyboard shortcuts change brightness/volume/dark mode from 
 
 **All registered commands** (defined in `lib.rs` `invoke_handler`):
 
-| Module | Commands |
-|---|---|
-| `display` | `get_monitors`, `set_brightness`, `set_all_brightness`, `rename_monitor`, `save_monitor_order` |
-| `dark_mode` | `get_dark_mode`, `set_dark_mode` |
-| `volume` | `get_volume`, `set_volume` |
-| `config` | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `get_app_version` |
+| Module      | Commands                                                                                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `display`   | `get_monitors`, `set_brightness`, `set_all_brightness`, `set_contrast`, `set_all_contrast`, `rename_monitor`, `save_monitor_order`, `set_monitor_visibility` |
+| `dark_mode` | `get_dark_mode`, `set_dark_mode`                                                                                                                             |
+| `volume`    | `get_volume`, `set_volume`                                                                                                                                   |
+| `config`    | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `get_app_version`                                                          |
+| `tray`      | `apply_profile`                                                                                                                                              |
 
 **Events emitted by backend**:
 
-| Event | Emitted when |
-|---|---|
-| `monitors-changed` | Keyboard shortcut changes brightness |
-| `dark-mode-changed` | Keyboard shortcut toggles dark mode |
-| `volume-changed` | Keyboard shortcut changes volume |
+| Event               | Emitted when                         |
+| ------------------- | ------------------------------------ |
+| `monitors-changed`  | Keyboard shortcut changes brightness |
+| `dark-mode-changed` | Keyboard shortcut toggles dark mode  |
+| `volume-changed`    | Keyboard shortcut changes volume     |
 
 ---
 
@@ -295,20 +318,27 @@ Events are used when keyboard shortcuts change brightness/volume/dark mode from 
 `App.tsx` is the single source of truth for all UI state. There is no external state library.
 
 **State variables**:
-- `monitors: Monitor[]` -- current monitor list with brightness values
+
+- `monitors: Monitor[]` -- current monitor list with brightness and contrast values
 - `darkMode: boolean` -- system dark mode state
 - `volume: number` -- system volume (0-100)
+- `minBrightness: number` -- effective minimum brightness floor
+- `showContrast: boolean` -- whether contrast sliders are visible (from preferences)
+- `profiles: Profile[]` -- saved profiles from preferences
 - `expanded: boolean` -- collapsed (all-monitors) vs expanded (individual) view
 - `version: string` -- app version from Cargo.toml
 
 **Data flow**:
+
 1. On mount, `useEffect` calls `invoke()` for each data source (`get_monitors`, `get_dark_mode`, `get_volume`, `get_app_version`)
 2. Event listeners (`listen("monitors-changed", ...)`) trigger refetches when the backend changes state via keyboard shortcuts
 3. `visibilitychange` listener refetches all data when the tray popup becomes visible (catches external changes)
 4. Slider/toggle handlers call `invoke()` to push changes to the backend, then optimistically update local state
 
 **Average calculations** (collapsed view):
-- `avgBrightness` = mean of all monitors' brightness
+
+- `avgBrightness` = mean of all visible monitors' brightness
+- `avgContrast` = mean of visible monitors that support contrast (`contrast !== null`); `null` if none support it
 
 **Settings panel**: Opened from the header, `SettingsPanel.tsx` manages its own local state loaded from `get_preferences`. On save, it writes back to the backend and triggers a refresh in `App.tsx` via the `onPreferencesSaved` callback.
 
@@ -322,46 +352,50 @@ All config files live in the platform-specific config directory (`config_dir()` 
 
 Deserialized into the `Preferences` struct. If the file is missing or malformed, `Preferences::default()` is used and written to disk.
 
-| Field | Type | Default | Purpose |
-|---|---|---|---|
-| `showIndividualDisplays` | bool | `false` | Start in expanded view |
-| `brightnessDelta` | number | `10` | Step size for keyboard shortcut brightness changes |
-| `contrastDelta` | number | `10` | Step size for contrast changes |
-| `minBrightness` | number | `10` | Minimum brightness floor (absolute floor: 5) |
-| `nightModeSchedule` | object | disabled, 21:00–07:00 | Auto brightness + dark mode by time of day |
-| `keyBindings` | array | 9 default bindings | Global keyboard shortcuts |
+| Field                    | Type   | Default               | Purpose                                             |
+| ------------------------ | ------ | --------------------- | --------------------------------------------------- |
+| `showIndividualDisplays` | bool   | `false`               | Start in expanded view                              |
+| `brightnessDelta`        | number | `10`                  | Step size for keyboard shortcut brightness changes  |
+| `contrastDelta`          | number | `10`                  | Step size for contrast changes                      |
+| `minBrightness`          | number | `10`                  | Minimum brightness floor (absolute floor: 5)        |
+| `showContrast`           | bool   | `false`               | Show contrast sliders in the UI (DDC-only monitors) |
+| `nightModeSchedule`      | object | disabled, 21:00–07:00 | Auto brightness + dark mode by time of day          |
+| `keyBindings`            | array  | 9 default bindings    | Global keyboard shortcuts                           |
 
 **Night mode schedule fields**:
 
-| Field | Type | Default | Purpose |
-|---|---|---|---|
-| `enabled` | bool | `false` | Whether the schedule is active |
-| `nightStart` | string | `"21:00"` | Time to switch to night mode (HH:MM, 24h) |
-| `nightBrightness` | number | `20` | Brightness during night window |
-| `dayStart` | string | `"07:00"` | Time to switch to day mode (HH:MM, 24h) |
-| `dayBrightness` | number | `100` | Brightness during day window |
+| Field             | Type   | Default   | Purpose                                   |
+| ----------------- | ------ | --------- | ----------------------------------------- |
+| `enabled`         | bool   | `false`   | Whether the schedule is active            |
+| `nightStart`      | string | `"21:00"` | Time to switch to night mode (HH:MM, 24h) |
+| `nightBrightness` | number | `20`      | Brightness during night window            |
+| `dayStart`        | string | `"07:00"` | Time to switch to day mode (HH:MM, 24h)   |
+| `dayBrightness`   | number | `100`     | Brightness during day window              |
 
 Each key binding has a `key` (e.g. `"Shift+F1"`) and a `command` -- either a single string (`"command/changeBrightness/50"`) or an array of strings for multi-action shortcuts.
 
 **Supported command format**: `command/<action>/<value>`
 
-| Action | Values | Effect |
-|---|---|---|
-| `changeBrightness` | Any integer 0-100 (e.g. `0`, `10`, `50`, `100`) | Sets all monitors' brightness |
-| `changeDarkMode` | `toggle`, `dark`, `light` | Toggles or sets system dark mode |
-| `changeVolume` | Any integer 0-100 (e.g. `0`, `50`, `100`) | Sets system volume |
+| Action             | Values                                          | Effect                                 |
+| ------------------ | ----------------------------------------------- | -------------------------------------- |
+| `changeBrightness` | Any integer 0-100 (e.g. `0`, `10`, `50`, `100`) | Sets all monitors' brightness          |
+| `changeContrast`   | Any integer 0-100 (e.g. `0`, `50`, `100`)       | Sets all monitors' contrast (DDC-only) |
+| `changeDarkMode`   | `toggle`, `dark`, `light`                       | Toggles or sets system dark mode       |
+| `changeVolume`     | Any integer 0-100 (e.g. `0`, `50`, `100`)       | Sets system volume                     |
+| `changeProfile`    | Profile index (e.g. `0`, `1`, `2`)              | Applies a saved profile by index       |
 
 ### Monitor Metadata (in preferences.json)
 
 The `monitorConfigs` array in `preferences.json` stores per-monitor metadata. Each monitor is identified by a composite UID (`{api_id}::{api_model_name}`) that survives reconnections. Entries are never removed when a monitor is unplugged — labels and sort order persist across plug/unplug cycles.
 
-| Field | Type | Purpose |
-|---|---|---|
-| `uid` | string | Composite unique key: `"{api_id}::{api_model_name}"` |
-| `apiId` | string | Raw ID from the display-dj sidecar (e.g. `"1"`, `"builtin"`) |
-| `apiName` | string | Model name from the sidecar API (e.g. `"Dell U2723QE"`) |
-| `label` | string | User-set friendly name (empty string = use apiName) |
-| `sortOrder` | number | Display order in the UI (lower = higher) |
+| Field       | Type   | Purpose                                                      |
+| ----------- | ------ | ------------------------------------------------------------ |
+| `uid`       | string | Composite unique key: `"{api_id}::{api_model_name}"`         |
+| `apiId`     | string | Raw ID from the display-dj sidecar (e.g. `"1"`, `"builtin"`) |
+| `apiName`   | string | Model name from the sidecar API (e.g. `"Dell U2723QE"`)      |
+| `label`     | string | User-set friendly name (empty string = use apiName)          |
+| `sortOrder` | number | Display order in the UI (lower = higher)                     |
+| `hidden`    | bool   | Whether the monitor is hidden from the main UI               |
 
 ---
 
@@ -408,15 +442,15 @@ cd src-tauri && cargo test     # Run all Rust backend tests
 
 Test files live next to the components they test (`*.test.tsx`).
 
-| File | What it covers |
-|---|---|
-| `src/components/Header.test.tsx` | Title rendering, version display, expand/collapse toggle, chevron state |
-| `src/components/Slider.test.tsx` | Range input rendering, debounced onChange (150ms), fill width calculation, prop updates |
-| `src/components/DarkModeToggle.test.tsx` | Active button state, click handlers for dark/light |
-| `src/components/VolumeControl.test.tsx` | Slider value, muted/unmuted icon switching |
-| `src/components/AllMonitorsControl.test.tsx` | Brightness slider, average brightness calculation |
-| `src/components/MonitorControl.test.tsx` | Monitor name rendering, inline edit mode (Enter/Escape), brightness slider, built-in vs external icons |
-| `src/App.test.tsx` | **Smoke test**: App mounts without crashing, fetches initial data, renders all sections, handles backend errors gracefully |
+| File                                         | What it covers                                                                                                             |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `src/components/Header.test.tsx`             | Title rendering, version display, expand/collapse toggle, chevron state                                                    |
+| `src/components/Slider.test.tsx`             | Range input rendering, debounced onChange (150ms), fill width calculation, prop updates                                    |
+| `src/components/DarkModeToggle.test.tsx`     | Active button state, click handlers for dark/light                                                                         |
+| `src/components/VolumeControl.test.tsx`      | Slider value, muted/unmuted icon switching                                                                                 |
+| `src/components/AllMonitorsControl.test.tsx` | Brightness slider, average brightness calculation                                                                          |
+| `src/components/MonitorControl.test.tsx`     | Monitor name rendering, inline edit mode (Enter/Escape), brightness slider, built-in vs external icons                     |
+| `src/App.test.tsx`                           | **Smoke test**: App mounts without crashing, fetches initial data, renders all sections, handles backend errors gracefully |
 
 **Tauri API mocking**: `src/test/setup.ts` globally mocks `invoke()` and `listen()` from `@tauri-apps/api` so tests run without a Tauri backend. The App smoke test provides per-command mock responses.
 
@@ -424,11 +458,11 @@ Test files live next to the components they test (`*.test.tsx`).
 
 Inline `#[cfg(test)]` modules plus an integration smoke test.
 
-| Location | What it covers |
-|---|---|
-| `config.rs` | `Preferences` defaults, `MonitorMetadata` serde, `CommandValue` Single/Multiple serde, camelCase JSON fields, file roundtrips, malformed JSON fallback, `get_app_version`, effective min brightness, backward-compatible deserialization of old configs, preferences with monitor configs roundtrip |
-| `display.rs` | `DjDisplay` to `Monitor` conversion (builtin, external DDC, null brightness, uid computation), `Monitor` serde (camelCase, roundtrip), `merge_with_configs` (rename, sort, empty label), `reconcile_migrated_configs`, `ensure_metadata_for_monitors` |
-| `tests/smoke.rs` | **Smoke test**: crate compiles and links, `AppState` is constructable, `run` function is exported |
+| Location         | What it covers                                                                                                                                                                                                                                                                                      |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config.rs`      | `Preferences` defaults, `MonitorMetadata` serde, `CommandValue` Single/Multiple serde, camelCase JSON fields, file roundtrips, malformed JSON fallback, `get_app_version`, effective min brightness, backward-compatible deserialization of old configs, preferences with monitor configs roundtrip |
+| `display.rs`     | `DjDisplay` to `Monitor` conversion (builtin, external DDC, null brightness, uid computation), `Monitor` serde (camelCase, roundtrip), `merge_with_configs` (rename, sort, empty label), `reconcile_migrated_configs`, `ensure_metadata_for_monitors`                                               |
+| `tests/smoke.rs` | **Smoke test**: crate compiles and links, `AppState` is constructable, `run` function is exported                                                                                                                                                                                                   |
 
 Rust tests don't require external tools, hardware, or the display-dj server -- they test pure logic that works on all platforms.
 
@@ -445,6 +479,7 @@ Rust tests don't require external tools, hardware, or the display-dj server -- t
 ### build.yml (PR validation)
 
 Triggers on pushes and PRs to `main` and `v2` branches. Runs on four matrix targets:
+
 - `macos-latest` (ARM64), `macos-13` (Intel x64), `windows-latest`, `ubuntu-22.04`
 
 Steps: checkout -> Node 20 -> Rust stable -> Linux deps (Ubuntu only) -> `npm install` -> `npm test` -> `npm run build` -> `cargo test` -> `cargo check`
@@ -483,7 +518,7 @@ pub fn my_new_command(some_param: String) -> Result<String, String> {
 3. **Call it from the frontend**:
 
 ```typescript
-const result = await invoke<string>("my_new_command", { someParam: "world" });
+const result = await invoke<string>('my_new_command', { someParam: 'world' });
 ```
 
 Note: Rust `some_param` maps to TypeScript `someParam` via serde's camelCase renaming.
@@ -494,15 +529,15 @@ Note: Rust `some_param` maps to TypeScript `someParam` via serde's camelCase ren
 
 ## Day-to-day Commands
 
-| Command | What it does |
-|---|---|
-| `npx tauri dev` | Full app in dev mode. Frontend hot-reloads. Rust recompiles incrementally (~5-15s). |
-| `npx tauri build` | Production build: optimized binary + platform installer. |
-| `npm run build` | Frontend only (TypeScript check + Vite bundle). Quick way to catch frontend errors. |
-| `npm run dev` | Vite dev server only (no Rust). Tauri API calls fail, but useful for CSS/layout work. |
-| `npm test` | Frontend tests (Vitest). ~1 second. |
-| `cd src-tauri && cargo test` | Backend tests. |
-| `cd src-tauri && cargo check` | Check Rust compiles. Faster than a full build. |
+| Command                       | What it does                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------- |
+| `npx tauri dev`               | Full app in dev mode. Frontend hot-reloads. Rust recompiles incrementally (~5-15s).   |
+| `npx tauri build`             | Production build: optimized binary + platform installer.                              |
+| `npm run build`               | Frontend only (TypeScript check + Vite bundle). Quick way to catch frontend errors.   |
+| `npm run dev`                 | Vite dev server only (no Rust). Tauri API calls fail, but useful for CSS/layout work. |
+| `npm test`                    | Frontend tests (Vitest). ~1 second.                                                   |
+| `cd src-tauri && cargo test`  | Backend tests.                                                                        |
+| `cd src-tauri && cargo check` | Check Rust compiles. Faster than a full build.                                        |
 
 ---
 
@@ -512,11 +547,11 @@ Note: Rust `some_param` maps to TypeScript `someParam` via serde's camelCase ren
 npx tauri build
 ```
 
-| Platform | Output |
-|---|---|
-| macOS | `src-tauri/target/release/bundle/dmg/Display DJ_2.0.0_aarch64.dmg` |
-| Windows | `src-tauri\target\release\bundle\nsis\Display DJ_2.0.0_x64-setup.exe` |
-| Linux | `src-tauri/target/release/bundle/deb/display-dj_2.0.0_amd64.deb`<br>`src-tauri/target/release/bundle/appimage/display-dj_2.0.0_amd64.AppImage` |
+| Platform | Output                                                                                                                                         |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS    | `src-tauri/target/release/bundle/dmg/Display DJ_2.0.0_aarch64.dmg`                                                                             |
+| Windows  | `src-tauri\target\release\bundle\nsis\Display DJ_2.0.0_x64-setup.exe`                                                                          |
+| Linux    | `src-tauri/target/release/bundle/deb/display-dj_2.0.0_amd64.deb`<br>`src-tauri/target/release/bundle/appimage/display-dj_2.0.0_amd64.AppImage` |
 
 ---
 
@@ -526,11 +561,11 @@ These guides walk through setting up a development environment from a fresh mach
 
 ### Prerequisites (All Platforms)
 
-| Tool | Minimum Version | Purpose |
-|---|---|---|
-| **Git** | Any recent version | Clone the repository |
-| **Node.js** | 18+ (CI uses 20) | Build the React/TypeScript frontend |
-| **Rust** | 1.77+ (stable) | Build the Tauri/Rust backend |
+| Tool        | Minimum Version    | Purpose                             |
+| ----------- | ------------------ | ----------------------------------- |
+| **Git**     | Any recent version | Clone the repository                |
+| **Node.js** | 18+ (CI uses 20)   | Build the React/TypeScript frontend |
+| **Rust**    | 1.77+ (stable)     | Build the Tauri/Rust backend        |
 
 ---
 
@@ -744,15 +779,17 @@ kill %1
 
 ### HTTP API routes used by Display DJ
 
-| Route | Used by | Purpose |
-|---|---|---|
-| `GET /health` | `lib.rs` | Wait for server readiness on startup |
-| `GET /get_all` | `display.rs` | List all displays with live brightness |
-| `GET /set_one/<id>/<level>` | `display.rs` | Set one display's brightness |
-| `GET /set_all/<level>` | `display.rs`, `tray.rs` | Set all displays' brightness |
-| `GET /theme` | `dark_mode.rs` | Get current system theme (dark/light) |
-| `GET /dark` | `dark_mode.rs`, `tray.rs` | Switch to dark mode |
-| `GET /light` | `dark_mode.rs`, `tray.rs` | Switch to light mode |
+| Route                                | Used by                   | Purpose                                             |
+| ------------------------------------ | ------------------------- | --------------------------------------------------- |
+| `GET /health`                        | `lib.rs`                  | Wait for server readiness on startup                |
+| `GET /get_all`                       | `display.rs`              | List all displays with live brightness and contrast |
+| `GET /set_one/<id>/<level>`          | `display.rs`              | Set one display's brightness                        |
+| `GET /set_all/<level>`               | `display.rs`, `tray.rs`   | Set all displays' brightness                        |
+| `GET /set_contrast_one/<id>/<level>` | `display.rs`              | Set one display's contrast (DDC-only)               |
+| `GET /set_contrast_all/<level>`      | `display.rs`, `tray.rs`   | Set all displays' contrast (DDC-only)               |
+| `GET /theme`                         | `dark_mode.rs`            | Get current system theme (dark/light)               |
+| `GET /dark`                          | `dark_mode.rs`, `tray.rs` | Switch to dark mode                                 |
+| `GET /light`                         | `dark_mode.rs`, `tray.rs` | Switch to light mode                                |
 
 For the full API reference, see the [display-dj CLI documentation](https://github.com/synle/display-dj-cli).
 
@@ -760,13 +797,13 @@ For the full API reference, see the [display-dj CLI documentation](https://githu
 
 ## Known Limitations
 
-| Limitation | Details |
-|---|---|
-| DDC/CI not universal | Not every monitor implements DDC/CI. Budget models and some HDMI connections may not work. |
-| Built-in HDMI on base M1/M2 | Doesn't support DDC/CI. Use USB-C/DisplayPort. |
-| Global shortcuts on Wayland | Wayland restricts global hotkey capture. Works on X11. |
-| Tray left-click on Linux | AppIndicator doesn't always fire left-click. Right-click works. |
-| Dark mode on non-GNOME | `gsettings` is GNOME-specific. KDE, XFCE not supported. |
+| Limitation                  | Details                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| DDC/CI not universal        | Not every monitor implements DDC/CI. Budget models and some HDMI connections may not work. |
+| Built-in HDMI on base M1/M2 | Doesn't support DDC/CI. Use USB-C/DisplayPort.                                             |
+| Global shortcuts on Wayland | Wayland restricts global hotkey capture. Works on X11.                                     |
+| Tray left-click on Linux    | AppIndicator doesn't always fire left-click. Right-click works.                            |
+| Dark mode on non-GNOME      | `gsettings` is GNOME-specific. KDE, XFCE not supported.                                    |
 
 ---
 
@@ -783,6 +820,7 @@ Normal. Rust compiles everything from source. Cached in `src-tauri/target/`, so 
 ### App launched but I can't find it
 
 System tray app, not a regular window:
+
 - **macOS**: Menu bar, top-right
 - **Windows**: System tray, bottom-right (click `^` if hidden)
 - **Linux**: Top panel. May need [AppIndicator GNOME extension](https://extensions.gnome.org/extension/615/appindicator-support/).
@@ -794,6 +832,7 @@ The sidecar binary is missing from `src-tauri/binaries/`. See [Getting the sidec
 ### "display-dj server did not become ready"
 
 The sidecar started but isn't responding. Check:
+
 1. Is the binary executable? `chmod +x src-tauri/binaries/display-dj-server-*`
 2. Is port 51337 (or nearby) available? `lsof -i :51337`
 3. Test the binary directly: `./src-tauri/binaries/display-dj-server-* serve 51337`
@@ -801,9 +840,11 @@ The sidecar started but isn't responding. Check:
 ### "No displays found"
 
 The display-dj CLI can't detect monitors. Test directly:
+
 ```bash
 ./src-tauri/binaries/display-dj-server-* list
 ```
+
 If this returns an empty array, see the [display-dj CLI troubleshooting](https://github.com/synle/display-dj-cli).
 
 On Linux, ensure `ddcutil` works: `sudo ddcutil detect`. If it works as root but not as user, check `groups` for `i2c` membership.

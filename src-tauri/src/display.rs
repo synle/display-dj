@@ -12,6 +12,8 @@ pub struct Monitor {
     /// Original model name from the API (never changes).
     pub original_name: String,
     pub brightness: u32,
+    /// Current contrast level (None for displays that don't support DDC contrast).
+    pub contrast: Option<u32>,
     pub supports_brightness: bool,
     pub is_built_in: bool,
     #[serde(default)]
@@ -25,6 +27,7 @@ struct DjDisplay {
     name: String,
     display_type: String,
     brightness: Option<u32>,
+    contrast: Option<u32>,
 }
 
 impl DjDisplay {
@@ -39,6 +42,7 @@ impl DjDisplay {
             name: self.name.clone(),
             original_name: self.name,
             brightness: self.brightness.unwrap_or(50),
+            contrast: self.contrast,
             supports_brightness: true,
             is_built_in,
             hidden: false,
@@ -78,6 +82,22 @@ async fn set_all_monitors_brightness(value: u32, min_brightness: u32) -> Result<
     let url = format!("{}/set_all/{}", base_url(), value.clamp(min_brightness, 100));
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set all brightness: {}", e))?;
+    Ok(())
+}
+
+/// Sets contrast for a single monitor via the sidecar (0-100).
+async fn set_monitor_contrast(monitor_id: &str, value: u32) -> Result<(), String> {
+    let url = format!("{}/set_contrast_one/{}/{}", base_url(), monitor_id, value.min(100));
+    reqwest::get(&url).await
+        .map_err(|e| format!("Failed to set contrast: {}", e))?;
+    Ok(())
+}
+
+/// Sets contrast for all monitors via the sidecar (0-100).
+async fn set_all_monitors_contrast(value: u32) -> Result<(), String> {
+    let url = format!("{}/set_contrast_all/{}", base_url(), value.min(100));
+    reqwest::get(&url).await
+        .map_err(|e| format!("Failed to set all contrast: {}", e))?;
     Ok(())
 }
 
@@ -200,6 +220,23 @@ pub async fn set_all_brightness(
     set_all_monitors_brightness(value, min).await
 }
 
+/// Sets contrast for a single monitor (0-100, DDC-only).
+#[tauri::command]
+pub async fn set_contrast(
+    monitor_id: String,
+    value: u32,
+) -> Result<(), String> {
+    set_monitor_contrast(&monitor_id, value).await
+}
+
+/// Sets contrast for all monitors (0-100, DDC-only).
+#[tauri::command]
+pub async fn set_all_contrast(
+    value: u32,
+) -> Result<(), String> {
+    set_all_monitors_contrast(value).await
+}
+
 /// Updates a monitor's custom label in preferences. Creates a new metadata entry
 /// if the monitor isn't tracked yet.
 #[tauri::command]
@@ -288,6 +325,7 @@ mod tests {
             name: name.into(),
             original_name: name.into(),
             brightness: 50,
+            contrast: None,
             supports_brightness: true,
             is_built_in,
             hidden: false,
@@ -325,6 +363,7 @@ mod tests {
             "name": "Dell U2723QE",
             "originalName": "Dell U2723QE",
             "brightness": 80,
+            "contrast": 60,
             "supportsBrightness": true,
             "isBuiltIn": false
         }"#;
@@ -441,6 +480,7 @@ mod tests {
             name: "Dell U2723QE".into(),
             display_type: "external".into(),
             brightness: Some(70),
+            contrast: Some(60),
         };
         let m = dj.into_monitor();
         assert_eq!(m.name, "Dell U2723QE");
@@ -455,6 +495,7 @@ mod tests {
             name: "Built-in Display".into(),
             display_type: "builtin".into(),
             brightness: Some(80),
+            contrast: None,
         };
         let m = dj.into_monitor();
         assert!(m.is_built_in);
@@ -469,6 +510,7 @@ mod tests {
             name: "Dell U2723QE".into(),
             display_type: "external".into(),
             brightness: Some(50),
+            contrast: Some(75),
         };
         let m = dj.into_monitor();
         assert!(!m.is_built_in);
@@ -483,6 +525,7 @@ mod tests {
             name: "Unknown".into(),
             display_type: "external".into(),
             brightness: None,
+            contrast: None,
         };
         let m = dj.into_monitor();
         assert_eq!(m.brightness, 50);

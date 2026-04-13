@@ -4,6 +4,7 @@ export interface Monitor {
   name: string;
   originalName: string;
   brightness: number;
+  contrast: number | null;
   supportsBrightness: boolean;
   isBuiltIn: boolean;
   hidden: boolean;
@@ -32,6 +33,7 @@ export interface Preferences {
   keyBindings: KeyBinding[];
   profiles: Profile[];
   nightModeSchedule: NightModeSchedule;
+  showContrast: boolean;
   debugLogging: boolean;
   launchAtLogin: boolean;
   monitorConfigs: MonitorMetadata[];
