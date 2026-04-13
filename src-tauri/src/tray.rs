@@ -30,7 +30,6 @@ fn http_get_then_emit(url: String, app: AppHandle, event: &'static str) {
 /// Builds the system tray icon, context menu, and event handlers.
 /// Handles left-click (toggle popup) and menu actions (dark/light mode, profiles, debug, quit).
 pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    // Debug status label (readonly)
     let debug_on = {
         if let Some(state) = app.try_state::<crate::AppState>() {
             state.preferences.lock().map(|p| p.debug_logging).unwrap_or(false)
@@ -38,15 +37,7 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
             false
         }
     };
-    let debug_status_label = if debug_on { "Debug: ON" } else { "Debug: OFF" };
-    let debug_status = MenuItemBuilder::with_id("debug_status", debug_status_label)
-        .enabled(false)
-        .build(app)?;
 
-    let port = crate::server_port();
-    let bridge_label = format!("Bridge: 127.0.0.1:{}", port);
-    let bridge = MenuItemBuilder::with_id("bridge", &bridge_label)
-        .build(app)?;
     let dark_mode = MenuItemBuilder::with_id("dark_mode", "Dark Mode").build(app)?;
     let light_mode = MenuItemBuilder::with_id("light_mode", "Light Mode").build(app)?;
 
@@ -71,30 +62,40 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     }
     let profiles_submenu = profiles_submenu.build()?;
 
-    let open_prefs =
-        MenuItemBuilder::with_id("open_prefs", "Open App Preferences").build(app)?;
-
-    // Debug submenu
+    // Debug submenu — items inside vary based on whether debug logging is on
     let debug_enable = MenuItemBuilder::with_id("debug_enable", "Enable Logging").build(app)?;
     let debug_disable = MenuItemBuilder::with_id("debug_disable", "Disable Logging").build(app)?;
     let debug_open = MenuItemBuilder::with_id("debug_open", "Open Debug Log").build(app)?;
-    let debug_submenu = SubmenuBuilder::new(app, "Debug")
-        .items(&[&debug_enable, &debug_disable, &debug_open])
-        .build()?;
+    let open_prefs =
+        MenuItemBuilder::with_id("open_prefs", "Open App Preferences").build(app)?;
+    let port = crate::server_port();
+    let bridge_label = format!("Bridge: 127.0.0.1:{}", port);
+    let bridge = MenuItemBuilder::with_id("bridge", &bridge_label).build(app)?;
+
+    let debug_submenu = if debug_on {
+        SubmenuBuilder::new(app, "Debug")
+            .item(&debug_disable)
+            .item(&debug_open)
+            .separator()
+            .item(&open_prefs)
+            .item(&bridge)
+            .build()?
+    } else {
+        SubmenuBuilder::new(app, "Debug")
+            .item(&debug_enable)
+            .separator()
+            .item(&open_prefs)
+            .build()?
+    };
 
     let reset_defaults =
         MenuItemBuilder::with_id("reset_defaults", "Reset to Default").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
     let menu = MenuBuilder::new(app)
-        .item(&debug_status)
-        .item(&bridge)
-        .separator()
         .items(&[&dark_mode, &light_mode])
         .separator()
         .item(&profiles_submenu)
-        .separator()
-        .items(&[&open_prefs])
         .separator()
         .item(&debug_submenu)
         .separator()
