@@ -33,6 +33,29 @@ fn find_available_port(start: u16) -> u16 {
     start
 }
 
+/// Fetch the `/debug` endpoint from the sidecar and prepend to the debug log.
+fn fetch_debug_on_startup(port: u16) {
+    let url = format!("http://127.0.0.1:{}/debug", port);
+    match reqwest::blocking::get(&url) {
+        Ok(resp) => {
+            if let Ok(body) = resp.text() {
+                let path = config::debug_log_path();
+                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                let header = format!(
+                    "[{}] === display-dj-cli debug dump (startup) ===\n{}\n[{}] === end debug dump ===\n",
+                    timestamp, body, timestamp
+                );
+                // Prepend to existing log content
+                let existing = std::fs::read_to_string(&path).unwrap_or_default();
+                std::fs::write(&path, format!("{}{}", header, existing)).ok();
+            }
+        }
+        Err(e) => {
+            log::warn!("Failed to fetch /debug endpoint: {}", e);
+        }
+    }
+}
+
 /// Wait for the display-dj server to become ready.
 fn wait_for_server(port: u16) {
     let url = format!("http://127.0.0.1:{}/health", port);
@@ -259,9 +282,13 @@ pub fn run() {
             let state = app.state::<AppState>();
             *state.sidecar_child.lock().unwrap() = Some(child);
 
-            // Wait for the server to be ready (in a background thread to not block UI)
+            // Wait for the server to be ready, then optionally dump debug info
+            let debug_enabled = state.preferences.lock().map(|p| p.debug_logging).unwrap_or(false);
             std::thread::spawn(move || {
                 wait_for_server(port);
+                if debug_enabled {
+                    fetch_debug_on_startup(port);
+                }
             });
 
             // Hide dock icon on macOS

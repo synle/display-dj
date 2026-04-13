@@ -182,7 +182,7 @@ impl Default for Preferences {
     }
 }
 
-const MAX_DEBUG_LOG_SIZE: u64 = 512 * 1024; // 512 KB
+const MAX_DEBUG_LOG_SIZE: u64 = 1024 * 1024; // 1 MB
 
 pub fn debug_log_path() -> PathBuf {
     config_dir().join("debug.log")
@@ -200,14 +200,14 @@ pub fn write_debug_log(state: &crate::AppState, message: &str) {
 
     let path = debug_log_path();
 
-    // Truncate if over size limit
+    // When over the size limit, trim the beginning and keep the last 80%
     if let Ok(meta) = std::fs::metadata(&path) {
         if meta.len() > MAX_DEBUG_LOG_SIZE {
-            // Keep the last half of the file
             if let Ok(content) = std::fs::read_to_string(&path) {
-                let half = content.len() / 2;
-                // Find the next newline after the midpoint to avoid splitting a line
-                let start = content[half..].find('\n').map(|i| half + i + 1).unwrap_or(half);
+                let keep = content.len() * 80 / 100;
+                let trim_at = content.len() - keep;
+                // Find the next newline after the trim point to avoid splitting a line
+                let start = content[trim_at..].find('\n').map(|i| trim_at + i + 1).unwrap_or(trim_at);
                 std::fs::write(&path, &content[start..]).ok();
             }
         }
