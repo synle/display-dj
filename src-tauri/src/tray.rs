@@ -27,6 +27,19 @@ fn http_get_then_emit(url: String, app: AppHandle, event: &'static str) {
 }
 
 pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // Debug status label (readonly)
+    let debug_on = {
+        if let Some(state) = app.try_state::<crate::AppState>() {
+            state.preferences.lock().map(|p| p.debug_logging).unwrap_or(false)
+        } else {
+            false
+        }
+    };
+    let debug_status_label = if debug_on { "Debug: ON" } else { "Debug: OFF" };
+    let debug_status = MenuItemBuilder::with_id("debug_status", debug_status_label)
+        .enabled(false)
+        .build(app)?;
+
     let port = crate::server_port();
     let bridge_label = format!("Bridge: 127.0.0.1:{}", port);
     let bridge = MenuItemBuilder::with_id("bridge", &bridge_label)
@@ -71,6 +84,7 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
     let menu = MenuBuilder::new(app)
+        .item(&debug_status)
         .item(&bridge)
         .separator()
         .items(&[&dark_mode, &light_mode])
