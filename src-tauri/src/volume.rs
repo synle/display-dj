@@ -15,18 +15,23 @@ fn base_url() -> String {
 #[tauri::command]
 pub async fn get_volume() -> Result<u32, String> {
     let url = format!("{}/get_volume", base_url());
+    log::info!("get_volume: GET {}", url);
     let resp: VolumeResponse = reqwest::get(&url).await
         .map_err(|e| format!("Failed to get volume: {}", e))?
         .json().await
         .map_err(|e| format!("Failed to parse volume response: {}", e))?;
+    log::info!("get_volume: volume={}", resp.volume);
     Ok(resp.volume)
 }
 
 /// Sets the system volume (clamped to 0-100) via the sidecar.
 #[tauri::command]
 pub async fn set_volume(value: u32) -> Result<(), String> {
-    let url = format!("{}/set_volume/{}", base_url(), value.min(100));
+    let clamped = value.min(100);
+    let url = format!("{}/set_volume/{}", base_url(), clamped);
+    log::info!("set_volume: value={} GET {}", clamped, url);
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set volume: {}", e))?;
+    log::info!("set_volume: done");
     Ok(())
 }

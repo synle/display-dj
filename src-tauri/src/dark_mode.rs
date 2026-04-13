@@ -15,11 +15,14 @@ fn base_url() -> String {
 #[tauri::command]
 pub async fn get_dark_mode() -> Result<bool, String> {
     let url = format!("{}/theme", base_url());
+    log::info!("get_dark_mode: GET {}", url);
     let resp: ThemeResponse = reqwest::get(&url).await
         .map_err(|e| format!("Failed to get theme: {}", e))?
         .json().await
         .map_err(|e| format!("Failed to parse theme response: {}", e))?;
-    Ok(resp.theme == "dark")
+    let is_dark = resp.theme == "dark";
+    log::info!("get_dark_mode: theme={} is_dark={}", resp.theme, is_dark);
+    Ok(is_dark)
 }
 
 /// Switches the OS theme to dark or light mode via the sidecar.
@@ -27,7 +30,9 @@ pub async fn get_dark_mode() -> Result<bool, String> {
 pub async fn set_dark_mode(enabled: bool) -> Result<(), String> {
     let route = if enabled { "dark" } else { "light" };
     let url = format!("{}/{}", base_url(), route);
+    log::info!("set_dark_mode: enabled={} GET {}", enabled, url);
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set dark mode: {}", e))?;
+    log::info!("set_dark_mode: done");
     Ok(())
 }

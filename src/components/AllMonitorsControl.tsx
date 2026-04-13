@@ -32,7 +32,7 @@ export default function AllMonitorsControl({
       />
       {showContrast && contrast !== null && (
         <Slider
-          icon={'\uD83D\uDD06'}
+          icon={'\u25D0'}
           value={contrast}
           onChange={onContrastChange}
           onIconClick={() => onContrastChange(contrast > 0 ? 0 : 100)}
