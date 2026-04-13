@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Preferences, NightModeSchedule } from "../types";
+import { Preferences, MonitorMetadata, NightModeSchedule } from "../types";
 import Slider from "./Slider";
 
 interface SettingsPanelProps {
@@ -13,6 +13,9 @@ export default function SettingsPanel({
   onPreferencesSaved,
 }: SettingsPanelProps) {
   const [prefs, setPrefs] = useState<Preferences | null>(null);
+  const [editingUid, setEditingUid] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const labelInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     invoke<Preferences>("get_preferences")
@@ -27,6 +30,9 @@ export default function SettingsPanel({
   if (!prefs) return null;
 
   const schedule = prefs.nightModeSchedule;
+  const configs = [...prefs.monitorConfigs].sort(
+    (a, b) => a.sortOrder - b.sortOrder || a.uid.localeCompare(b.uid)
+  );
 
   const updateField = <K extends keyof Preferences>(
     key: K,
@@ -47,6 +53,40 @@ export default function SettingsPanel({
           }
         : prev
     );
+  };
+
+  const updateMonitorConfig = (uid: string, patch: Partial<MonitorMetadata>) => {
+    setPrefs((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        monitorConfigs: prev.monitorConfigs.map((m) =>
+          m.uid === uid ? { ...m, ...patch } : m
+        ),
+      };
+    });
+  };
+
+  const swapMonitorOrder = (indexA: number, indexB: number) => {
+    if (!prefs) return;
+    const a = configs[indexA];
+    const b = configs[indexB];
+    if (!a || !b) return;
+    updateMonitorConfig(a.uid, { sortOrder: b.sortOrder });
+    updateMonitorConfig(b.uid, { sortOrder: a.sortOrder });
+  };
+
+  const startEditingLabel = (meta: MonitorMetadata) => {
+    setEditingUid(meta.uid);
+    setEditLabel(meta.label);
+    setTimeout(() => labelInputRef.current?.focus(), 0);
+  };
+
+  const finishEditingLabel = () => {
+    if (editingUid) {
+      updateMonitorConfig(editingUid, { label: editLabel.trim() });
+    }
+    setEditingUid(null);
   };
 
   const handleSave = async () => {
@@ -78,6 +118,74 @@ export default function SettingsPanel({
             max={100}
             onChange={(v) => updateField("minBrightness", v)}
           />
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="settings-section">
+          <label className="settings-label">Monitors</label>
+          <div className="settings-monitors-list">
+            {configs.map((meta, index) => {
+              const displayName = meta.label || meta.apiName || meta.uid;
+              return (
+                <div
+                  key={meta.uid}
+                  className={`settings-monitor-row${meta.hidden ? " settings-monitor-hidden" : ""}`}
+                >
+                  <div className="settings-monitor-reorder">
+                    <button
+                      className="monitor-reorder-btn"
+                      disabled={index === 0}
+                      onClick={() => swapMonitorOrder(index, index - 1)}
+                      title="Move up"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      className="monitor-reorder-btn"
+                      disabled={index === configs.length - 1}
+                      onClick={() => swapMonitorOrder(index, index + 1)}
+                      title="Move down"
+                    >
+                      ▼
+                    </button>
+                  </div>
+                  <div className="settings-monitor-name">
+                    {editingUid === meta.uid ? (
+                      <input
+                        ref={labelInputRef}
+                        className="monitor-name-input"
+                        value={editLabel}
+                        placeholder={meta.apiName}
+                        onChange={(e) => setEditLabel(e.target.value)}
+                        onBlur={finishEditingLabel}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") finishEditingLabel();
+                          if (e.key === "Escape") setEditingUid(null);
+                        }}
+                      />
+                    ) : (
+                      <button
+                        className="monitor-name"
+                        onClick={() => startEditingLabel(meta)}
+                      >
+                        {displayName}
+                      </button>
+                    )}
+                  </div>
+                  {meta.apiId !== "builtin" && (
+                    <button
+                      className="monitor-visibility-btn"
+                      onClick={() => updateMonitorConfig(meta.uid, { hidden: !meta.hidden })}
+                      title={meta.hidden ? "Show monitor" : "Hide monitor"}
+                    >
+                      {meta.hidden ? "Show" : "Hide"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="settings-divider" />

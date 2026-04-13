@@ -229,6 +229,7 @@ pub fn run() {
             display::set_all_brightness,
             display::rename_monitor,
             display::save_monitor_order,
+            display::set_monitor_visibility,
             dark_mode::get_dark_mode,
             dark_mode::set_dark_mode,
             volume::get_volume,

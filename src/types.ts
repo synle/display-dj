@@ -6,6 +6,7 @@ export interface Monitor {
   brightness: number;
   supportsBrightness: boolean;
   isBuiltIn: boolean;
+  hidden: boolean;
 }
 
 export interface MonitorMetadata {
@@ -14,6 +15,7 @@ export interface MonitorMetadata {
   apiName: string;
   label: string;
   sortOrder: number;
+  hidden: boolean;
 }
 
 export interface NightModeSchedule {

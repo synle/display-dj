@@ -20,6 +20,9 @@ pub struct MonitorMetadata {
     pub label: String,
     /// Sort order for UI display. Lower values come first.
     pub sort_order: i32,
+    /// Whether the monitor is hidden from the default UI view.
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -296,6 +299,7 @@ fn migrate_monitor_configs_if_needed(prefs: &mut Preferences) {
             api_name: "unknown".into(),
             label: old.name,
             sort_order: old.sort_order,
+            hidden: false,
         });
     }
 
@@ -503,6 +507,7 @@ mod tests {
             api_name: "Dell U2723QE".into(),
             label: "Main Monitor".into(),
             sort_order: 0,
+            hidden: false,
         };
         let json = serde_json::to_string(&meta).unwrap();
         assert!(json.contains("sortOrder"));
@@ -520,6 +525,7 @@ mod tests {
             api_name: "Built-in Display".into(),
             label: "MacBook Screen".into(),
             sort_order: 0,
+            hidden: false,
         };
         let json = serde_json::to_string(&meta).unwrap();
         let restored: MonitorMetadata = serde_json::from_str(&json).unwrap();
@@ -536,6 +542,7 @@ mod tests {
                 api_name: "Dell".into(),
                 label: "Left".into(),
                 sort_order: 0,
+                hidden: false,
             },
             MonitorMetadata {
                 uid: "2::LG".into(),
@@ -543,6 +550,7 @@ mod tests {
                 api_name: "LG".into(),
                 label: "".into(),
                 sort_order: 1,
+                hidden: false,
             },
         ];
         let json = serde_json::to_string_pretty(&prefs).unwrap();
@@ -616,6 +624,7 @@ mod tests {
             api_name: "Built-in Display".into(),
             label: "MacBook".into(),
             sort_order: 0,
+            hidden: false,
         }];
         let json = serde_json::to_string_pretty(&prefs).unwrap();
         std::fs::write(&path, &json).unwrap();
