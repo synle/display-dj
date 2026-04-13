@@ -376,7 +376,7 @@ pub fn set_debug_logging(state: &crate::AppState, enabled: bool) {
 
 #[tauri::command]
 pub fn get_app_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
+    env!("APP_VERSION").to_string()
 }
 
 #[cfg(test)]
