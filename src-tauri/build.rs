@@ -10,17 +10,23 @@ fn main() {
     tauri_build::build();
 }
 
-/// Read the sidecar version from tauri.conf.json `bundle.sidecarVersion`.
+/// Read the sidecar version. Prefers the `DISPLAY_DJ_CLI_VERSION` env var
+/// (set by CI workflow_dispatch), falls back to `displayDjCliVersion` in package.json.
 fn sidecar_version() -> String {
+    if let Ok(v) = std::env::var("DISPLAY_DJ_CLI_VERSION") {
+        if !v.is_empty() {
+            return v;
+        }
+    }
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let conf_path = manifest_dir.join("tauri.conf.json");
-    let conf: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(&conf_path).expect("failed to read tauri.conf.json"),
+    let pkg_path = manifest_dir.join("../package.json");
+    let pkg: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&pkg_path).expect("failed to read package.json"),
     )
-    .expect("failed to parse tauri.conf.json");
-    conf["bundle"]["sidecarVersion"]
+    .expect("failed to parse package.json");
+    pkg["displayDjCliVersion"]
         .as_str()
-        .expect("bundle.sidecarVersion missing in tauri.conf.json")
+        .expect("displayDjCliVersion missing in package.json")
         .to_string()
 }
 

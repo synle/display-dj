@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      display_dj_cli_version:
+        description: 'display-dj-cli version to use (e.g. v0.4.1). Leave empty for default from package.json.'
+        required: false
+        default: ''
+      tag:
+        description: 'Release tag (e.g. v2.0.1). Required for manual runs.'
+        required: true
 
 jobs:
   release:
@@ -60,11 +69,12 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISPLAY_DJ_CLI_VERSION: ${{ github.event.inputs.display_dj_cli_version }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Display DJ ${{ github.ref_name }}'
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: 'Display DJ ${{ github.event.inputs.tag || github.ref_name }}'
           releaseBody: |
-            ## Display DJ ${{ github.ref_name }}
+            ## Display DJ ${{ github.event.inputs.tag || github.ref_name }}
 
             ### Supported Platforms
             - **macOS** Apple Silicon (ARM64) - `.dmg`
