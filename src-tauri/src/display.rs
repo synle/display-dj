@@ -14,6 +14,8 @@ pub struct Monitor {
     pub brightness: u32,
     pub supports_brightness: bool,
     pub is_built_in: bool,
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 /// Response from the display-dj HTTP server's /get_all and /list endpoints.
@@ -37,6 +39,7 @@ impl DjDisplay {
             brightness: self.brightness.unwrap_or(50),
             supports_brightness: true,
             is_built_in,
+            hidden: false,
         }
     }
 }
@@ -87,6 +90,7 @@ fn merge_with_configs(
             if !meta.label.is_empty() {
                 monitor.name = meta.label.clone();
             }
+            monitor.hidden = meta.hidden;
         }
         result.push(monitor);
     }
@@ -137,6 +141,7 @@ fn ensure_metadata_for_monitors(
                 api_name: monitor.original_name.clone(),
                 label: String::new(),
                 sort_order: next_order + i as i32,
+                hidden: false,
             });
             changed = true;
         }
@@ -205,6 +210,7 @@ pub fn rename_monitor(
             api_name,
             label: name,
             sort_order: 0,
+            hidden: false,
         });
     }
     crate::config::save_preferences_to_disk(&prefs);
@@ -233,8 +239,23 @@ pub fn save_monitor_order(
                 api_name,
                 label: String::new(),
                 sort_order,
+                hidden: false,
             });
         }
+    }
+    crate::config::save_preferences_to_disk(&prefs);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_monitor_visibility(
+    state: tauri::State<'_, crate::AppState>,
+    uid: String,
+    hidden: bool,
+) -> Result<(), String> {
+    let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
+    if let Some(meta) = prefs.monitor_configs.iter_mut().find(|m| m.uid == uid) {
+        meta.hidden = hidden;
     }
     crate::config::save_preferences_to_disk(&prefs);
     Ok(())
@@ -253,6 +274,7 @@ mod tests {
             brightness: 50,
             supports_brightness: true,
             is_built_in,
+            hidden: false,
         }
     }
 
@@ -264,6 +286,7 @@ mod tests {
             api_name: parts.get(1).unwrap_or(&"").to_string(),
             label: label.into(),
             sort_order,
+            hidden: false,
         }
     }
 
@@ -459,6 +482,7 @@ mod tests {
             api_name: "unknown".into(),
             label: "My Dell".into(),
             sort_order: 0,
+            hidden: false,
         }];
         let changed = reconcile_migrated_configs(&monitors, &mut configs);
         assert!(changed);
@@ -523,6 +547,7 @@ mod tests {
                 api_name: "unknown".into(),
                 label: "Left Monitor".into(),
                 sort_order: 0,
+                hidden: false,
             },
             crate::config::MonitorMetadata {
                 uid: "2::unknown".into(),
@@ -530,6 +555,7 @@ mod tests {
                 api_name: "unknown".into(),
                 label: "Right Monitor".into(),
                 sort_order: 1,
+                hidden: false,
             },
             // One already-known entry (not migrated)
             crate::config::MonitorMetadata {
@@ -538,6 +564,7 @@ mod tests {
                 api_name: "Built-in Display".into(),
                 label: "MacBook".into(),
                 sort_order: 2,
+                hidden: false,
             },
         ];
         let changed = reconcile_migrated_configs(&monitors, &mut configs);

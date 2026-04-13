@@ -198,10 +198,13 @@ function App() {
     }
   };
 
+  // Only show non-hidden monitors in the main UI
+  const visibleMonitors = monitors.filter((m) => !m.hidden);
+
   // Calculate average brightness for "all monitors" view
-  const avgBrightness = monitors.length
+  const avgBrightness = visibleMonitors.length
     ? Math.round(
-        monitors.reduce((sum, m) => sum + m.brightness, 0) / monitors.length
+        visibleMonitors.reduce((sum, m) => sum + m.brightness, 0) / visibleMonitors.length
       )
     : 50;
 
@@ -218,35 +221,37 @@ function App() {
       {settingsOpen ? (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
-          onPreferencesSaved={fetchPreferences}
+          onPreferencesSaved={() => { fetchPreferences(); fetchMonitors(); }}
         />
       ) : (
       <div className="app-content">
-        {!expanded ? (
-          <AllMonitorsControl
-            brightness={avgBrightness}
-            onBrightnessChange={handleAllBrightness}
-            monitorCount={monitors.length}
-            minBrightness={minBrightness}
-          />
-        ) : (
-          <div className="monitors-list">
-            {monitors.map((monitor, index) => (
-              <MonitorControl
-                key={monitor.uid}
-                monitor={monitor}
-                onBrightnessChange={(v) =>
-                  handleMonitorBrightness(monitor.id, monitor.uid, v)
-                }
-                onRename={(name) => handleRename(monitor.uid, name)}
-                onMoveUp={() => handleReorder(index, "up")}
-                onMoveDown={() => handleReorder(index, "down")}
-                isFirst={index === 0}
-                isLast={index === monitors.length - 1}
-                minBrightness={minBrightness}
-              />
-            ))}
-          </div>
+        {visibleMonitors.length > 0 && (
+          !expanded ? (
+            <AllMonitorsControl
+              brightness={avgBrightness}
+              onBrightnessChange={handleAllBrightness}
+              monitorCount={visibleMonitors.length}
+              minBrightness={minBrightness}
+            />
+          ) : (
+            <div className="monitors-list">
+              {visibleMonitors.map((monitor, index) => (
+                <MonitorControl
+                  key={monitor.uid}
+                  monitor={monitor}
+                  onBrightnessChange={(v) =>
+                    handleMonitorBrightness(monitor.id, monitor.uid, v)
+                  }
+                  onRename={(name) => handleRename(monitor.uid, name)}
+                  onMoveUp={() => handleReorder(index, "up")}
+                  onMoveDown={() => handleReorder(index, "down")}
+                  isFirst={index === 0}
+                  isLast={index === visibleMonitors.length - 1}
+                  minBrightness={minBrightness}
+                />
+              ))}
+            </div>
+          )
         )}
 
         <VolumeControl value={volume} onChange={handleVolume} />
