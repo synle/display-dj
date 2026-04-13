@@ -380,9 +380,11 @@ pub fn position_window_near_tray(
         x, y, mon_x, mon_y, mon_w, mon_h, tray_in_top_half
     ));
 
-    // Clamp to monitor bounds
-    x = x.max(mon_x).min(mon_x + mon_w - win_w);
-    y = y.max(mon_y).min(mon_y + mon_h - win_h);
+    // Clamp to monitor bounds with a safety margin so the window is never
+    // flush against the screen edge (prevents content from being cut off).
+    let margin = 8.0 * target_scale;
+    x = x.max(mon_x + margin).min(mon_x + mon_w - win_w - margin);
+    y = y.max(mon_y + margin).min(mon_y + mon_h - win_h - margin);
 
     // Compensate for Tauri's set_position dividing by window_scale.
     // We computed (x, y) in the global physical space. Tauri will do:
