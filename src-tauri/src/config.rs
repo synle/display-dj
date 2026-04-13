@@ -338,56 +338,82 @@ pub fn reset_to_defaults() {
 /// Returns the current in-memory preferences to the frontend.
 #[tauri::command]
 pub fn get_preferences(state: tauri::State<'_, crate::AppState>) -> Result<Preferences, String> {
-    log::info!("get_preferences: reading in-memory preferences");
     let prefs = state.preferences.lock().map_err(|e| e.to_string())?;
-    log::info!(
-        "get_preferences: show_contrast={} min_brightness={} monitors={} profiles={}",
-        prefs.show_contrast, prefs.min_brightness, prefs.monitor_configs.len(), prefs.profiles.len()
+    write_debug_log(
+        &state,
+        &format!(
+            "get_preferences: show_contrast={} min_brightness={} monitors={} profiles={}",
+            prefs.show_contrast, prefs.min_brightness, prefs.monitor_configs.len(), prefs.profiles.len()
+        ),
     );
     Ok(prefs.clone())
 }
 
 /// Saves updated preferences from the frontend, syncs autostart with the OS, and persists to disk.
 #[tauri::command]
-pub async fn save_preferences(
+pub fn save_preferences(
     app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
     preferences: Preferences,
 ) -> Result<(), String> {
-    log::info!(
-        "save_preferences: show_contrast={} min_brightness={} launch_at_login={} debug_logging={} monitor_configs={} profiles={} night_mode_enabled={}",
-        preferences.show_contrast,
-        preferences.min_brightness,
-        preferences.launch_at_login,
-        preferences.debug_logging,
-        preferences.monitor_configs.len(),
-        preferences.profiles.len(),
-        preferences.night_mode_schedule.enabled,
+    write_debug_log(
+        &state,
+        &format!(
+            "save_preferences: show_contrast={} min_brightness={} launch_at_login={} debug_logging={} monitors={} profiles={} night_mode={}",
+            preferences.show_contrast,
+            preferences.min_brightness,
+            preferences.launch_at_login,
+            preferences.debug_logging,
+            preferences.monitor_configs.len(),
+            preferences.profiles.len(),
+            preferences.night_mode_schedule.enabled,
+        ),
     );
 
-    // Sync autostart with OS
-    log::info!("save_preferences: syncing autostart (launch_at_login={})", preferences.launch_at_login);
-    use tauri_plugin_autostart::ManagerExt;
-    let autostart = app.autolaunch();
-    if preferences.launch_at_login {
-        autostart.enable().map_err(|e| {
-            log::error!("save_preferences: autostart.enable() failed: {}", e);
-            e.to_string()
-        })?;
-    } else {
-        autostart.disable().map_err(|e| {
-            log::error!("save_preferences: autostart.disable() failed: {}", e);
-            e.to_string()
-        })?;
-    }
-    log::info!("save_preferences: autostart synced");
-
+    // Save to disk and update in-memory state first so the UI isn't blocked
     save_preferences_to_disk(&preferences);
-    log::info!("save_preferences: written to disk");
+    write_debug_log(&state, "save_preferences: written to disk");
+
+    // Check if launch_at_login actually changed before calling autostart
+    // (autostart.enable/disable can hang on some platforms)
+    let old_launch_at_login = state
+        .preferences
+        .lock()
+        .map(|p| p.launch_at_login)
+        .unwrap_or(false);
 
     let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
-    *prefs = preferences;
-    log::info!("save_preferences: in-memory state updated, done");
+    *prefs = preferences.clone();
+    drop(prefs); // release lock before autostart call
+    write_debug_log(&state, "save_preferences: in-memory state updated");
+
+    // Only sync autostart when the value actually changed
+    if preferences.launch_at_login != old_launch_at_login {
+        write_debug_log(
+            &state,
+            &format!(
+                "save_preferences: autostart changed {} -> {}, syncing",
+                old_launch_at_login, preferences.launch_at_login
+            ),
+        );
+        use tauri_plugin_autostart::ManagerExt;
+        let autostart = app.autolaunch();
+        let result = if preferences.launch_at_login {
+            autostart.enable()
+        } else {
+            autostart.disable()
+        };
+        if let Err(e) = result {
+            write_debug_log(&state, &format!("save_preferences: autostart error: {}", e));
+            log::error!("save_preferences: autostart failed: {}", e);
+            // Non-fatal: preferences are already saved, don't fail the whole operation
+        }
+        write_debug_log(&state, "save_preferences: autostart synced");
+    } else {
+        write_debug_log(&state, "save_preferences: launch_at_login unchanged, skipping autostart");
+    }
+
+    write_debug_log(&state, "save_preferences: done");
     Ok(())
 }
 
