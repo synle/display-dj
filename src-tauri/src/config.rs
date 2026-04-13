@@ -184,10 +184,13 @@ impl Default for Preferences {
 
 const MAX_DEBUG_LOG_SIZE: u64 = 1024 * 1024; // 1 MB
 
+/// Returns the path to the debug log file in the app's config directory.
 pub fn debug_log_path() -> PathBuf {
     config_dir().join("debug.log")
 }
 
+/// Appends a timestamped message to the debug log (no-op if debug logging is disabled).
+/// Auto-truncates the log file when it exceeds 1 MB, keeping the last 80%.
 pub fn write_debug_log(state: &crate::AppState, message: &str) {
     let enabled = state
         .preferences
@@ -226,6 +229,7 @@ pub fn write_debug_log(state: &crate::AppState, message: &str) {
     }
 }
 
+/// Returns the app's config directory (creates it if it doesn't exist).
 fn config_dir() -> PathBuf {
     let dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -234,10 +238,13 @@ fn config_dir() -> PathBuf {
     dir
 }
 
+/// Returns the path to the preferences.json file.
 fn preferences_path() -> PathBuf {
     config_dir().join("preferences.json")
 }
 
+/// Loads preferences from disk, falling back to defaults on missing/malformed JSON.
+/// Runs the legacy monitor-configs migration if needed.
 pub fn load_preferences() -> Preferences {
     let path = preferences_path();
     let mut prefs = match std::fs::read_to_string(&path) {
@@ -252,6 +259,7 @@ pub fn load_preferences() -> Preferences {
     prefs
 }
 
+/// Serializes preferences to pretty JSON and writes to disk.
 pub fn save_preferences_to_disk(prefs: &Preferences) {
     let path = preferences_path();
     if let Ok(json) = serde_json::to_string_pretty(prefs) {
@@ -310,6 +318,7 @@ fn migrate_monitor_configs_if_needed(prefs: &mut Preferences) {
     std::fs::rename(&old_path, &migrated_path).ok();
 }
 
+/// Backs up the current preferences file and resets to defaults.
 pub fn reset_to_defaults() {
     let now = chrono::Local::now().format("%Y%m%d_%H%M%S");
 
@@ -324,12 +333,14 @@ pub fn reset_to_defaults() {
 
 // -- Tauri commands --
 
+/// Returns the current in-memory preferences to the frontend.
 #[tauri::command]
 pub fn get_preferences(state: tauri::State<'_, crate::AppState>) -> Result<Preferences, String> {
     let prefs = state.preferences.lock().map_err(|e| e.to_string())?;
     Ok(prefs.clone())
 }
 
+/// Saves updated preferences from the frontend, syncs autostart with the OS, and persists to disk.
 #[tauri::command]
 pub fn save_preferences(
     app: tauri::AppHandle,
@@ -351,6 +362,7 @@ pub fn save_preferences(
     Ok(())
 }
 
+/// Opens the preferences.json file in the OS default editor.
 #[tauri::command]
 pub fn open_preferences_file() -> Result<(), String> {
     let path = preferences_path();
@@ -361,6 +373,7 @@ pub fn open_preferences_file() -> Result<(), String> {
     open::that(path).map_err(|e| e.to_string())
 }
 
+/// Opens the debug.log file in the OS default editor.
 #[tauri::command]
 pub fn open_debug_log() -> Result<(), String> {
     let path = debug_log_path();
@@ -378,6 +391,7 @@ pub fn set_debug_logging(state: &crate::AppState, enabled: bool) {
     }
 }
 
+/// Returns the app version string (set at compile time from package.json).
 #[tauri::command]
 pub fn get_app_version() -> String {
     env!("APP_VERSION").to_string()

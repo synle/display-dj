@@ -13,6 +13,7 @@ use tauri_plugin_shell::process::CommandChild;
 
 static SERVER_PORT: AtomicU16 = AtomicU16::new(51337);
 
+/// Returns the current display-dj sidecar HTTP server port.
 pub fn server_port() -> u16 {
     SERVER_PORT.load(Ordering::Relaxed)
 }
@@ -94,6 +95,8 @@ fn is_night_time(night_start: u32, day_start: u32, now: u32) -> bool {
     }
 }
 
+/// Check if the current time falls within the night mode schedule and apply
+/// the corresponding brightness and dark/light mode via the sidecar.
 fn check_night_mode_schedule(app: &tauri::AppHandle) {
     let schedule = {
         let state = app.state::<AppState>();
@@ -229,6 +232,8 @@ mod tests {
     }
 }
 
+/// Main entry point: builds the Tauri app, spawns the display-dj sidecar,
+/// sets up the system tray, registers shortcuts, and starts the event loop.
 pub fn run() {
     env_logger::init();
 

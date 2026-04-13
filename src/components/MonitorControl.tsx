@@ -13,6 +13,7 @@ interface MonitorControlProps {
   minBrightness: number;
 }
 
+/** Individual monitor control: editable name label, brightness slider, and reorder buttons. */
 export default function MonitorControl({
   monitor,
   onBrightnessChange,
@@ -27,12 +28,14 @@ export default function MonitorControl({
   const [editName, setEditName] = useState(monitor.name);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  /** Enters inline rename mode and focuses the input. */
   const startEditing = () => {
     setEditName(monitor.name);
     setEditing(true);
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
+  /** Commits the rename (or reverts on empty/unchanged input). */
   const finishEditing = () => {
     setEditing(false);
     const trimmed = editName.trim();
@@ -41,6 +44,7 @@ export default function MonitorControl({
     onRename(trimmed);
   };
 
+  /** Handles Enter (commit) and Escape (cancel) during inline rename. */
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       finishEditing();

@@ -13,6 +13,8 @@ import { Monitor, Preferences, Profile } from "./types";
 
 const ABSOLUTE_MIN_BRIGHTNESS = 5;
 
+/** Root component: manages all app state (monitors, dark mode, volume, preferences)
+ * and renders the main UI or settings panel. */
 function App() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [darkMode, setDarkMode] = useState(false);
@@ -24,6 +26,7 @@ function App() {
   const [version, setVersion] = useState("");
   const appRef = useRef<HTMLDivElement>(null);
 
+  /** Fetches the list of connected monitors from the backend. */
   const fetchMonitors = useCallback(async () => {
     try {
       const m = await invoke<Monitor[]>("get_monitors");
@@ -33,6 +36,7 @@ function App() {
     }
   }, []);
 
+  /** Fetches the current dark mode state from the backend. */
   const fetchDarkMode = useCallback(async () => {
     try {
       const dm = await invoke<boolean>("get_dark_mode");
@@ -42,6 +46,7 @@ function App() {
     }
   }, []);
 
+  /** Fetches the current system volume from the backend. */
   const fetchVolume = useCallback(async () => {
     try {
       const v = await invoke<number>("get_volume");
@@ -51,6 +56,7 @@ function App() {
     }
   }, []);
 
+  /** Fetches user preferences (min brightness, profiles) from the backend. */
   const fetchPreferences = useCallback(async () => {
     try {
       const prefs = await invoke<Preferences>("get_preferences");
@@ -106,6 +112,7 @@ function App() {
     return () => observer.disconnect();
   }, []);
 
+  /** Sets brightness for all monitors with optimistic UI update. */
   const handleAllBrightness = async (value: number) => {
     setMonitors((prev) => prev.map((m) => ({ ...m, brightness: value })));
     try {
@@ -116,6 +123,7 @@ function App() {
     }
   };
 
+  /** Sets brightness for a single monitor with optimistic UI update. */
   const handleMonitorBrightness = async (
     monitorId: string,
     uid: string,
@@ -132,6 +140,7 @@ function App() {
     }
   };
 
+  /** Renames a monitor's display label via the backend. */
   const handleRename = async (uid: string, name: string) => {
     try {
       await invoke("rename_monitor", { uid, name });
@@ -143,6 +152,7 @@ function App() {
     }
   };
 
+  /** Swaps a monitor's position in the list with its neighbor. */
   const handleReorder = async (index: number, direction: "up" | "down") => {
     const swapIndex = direction === "up" ? index - 1 : index + 1;
     if (swapIndex < 0 || swapIndex >= monitors.length) return;
@@ -169,6 +179,7 @@ function App() {
     }
   };
 
+  /** Toggles dark/light mode via the backend. */
   const handleDarkMode = async (enabled: boolean) => {
     try {
       await invoke("set_dark_mode", { enabled });
@@ -178,6 +189,7 @@ function App() {
     }
   };
 
+  /** Sets the system volume via the backend. */
   const handleVolume = async (value: number) => {
     try {
       await invoke("set_volume", { value });
@@ -187,6 +199,7 @@ function App() {
     }
   };
 
+  /** Applies a saved profile by index and refreshes all state. */
   const handleProfile = async (index: number) => {
     try {
       await invoke("apply_profile", { index });
