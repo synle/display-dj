@@ -165,7 +165,11 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                         let _ = window.hide();
                     } else {
                         if let Ok(Some(tray_rect)) = tray.rect() {
+                            // Store tray rect so resize handler can reposition
                             if let Some(state) = app.try_state::<crate::AppState>() {
+                                if let Ok(mut stored) = state.last_tray_rect.lock() {
+                                    *stored = Some(tray_rect);
+                                }
                                 crate::config::write_debug_log(
                                     &state,
                                     &format!(
@@ -248,7 +252,7 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
 /// When "Debug Logging" is enabled in preferences, every tray click writes
 /// detailed positioning data to `debug.log` in the config directory (capped
 /// at 512 KB). Open it via the tray menu → "Open Debug Log".
-fn position_window_near_tray(
+pub fn position_window_near_tray(
     window: &tauri::WebviewWindow,
     tray_rect: tauri::Rect,
     state: Option<tauri::State<'_, crate::AppState>>,

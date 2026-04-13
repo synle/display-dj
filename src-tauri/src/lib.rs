@@ -18,6 +18,7 @@ pub fn server_port() -> u16 {
 
 pub struct AppState {
     pub preferences: std::sync::Mutex<config::Preferences>,
+    pub last_tray_rect: std::sync::Mutex<Option<tauri::Rect>>,
 }
 
 /// Find an available port starting from the default.
@@ -217,6 +218,7 @@ pub fn run() {
         ))
         .manage(AppState {
             preferences: std::sync::Mutex::new(preferences.clone()),
+            last_tray_rect: std::sync::Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             display::get_monitors,
@@ -284,12 +286,27 @@ pub fn run() {
                 }
             });
 
-            // Hide window when it loses focus
+            // Hide window when it loses focus; reposition after content-driven resize
             if let Some(window) = app.get_webview_window("main") {
                 let win_clone = window.clone();
+                let app_handle = app.handle().clone();
                 window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Focused(false) = event {
-                        let _ = win_clone.hide();
+                    match event {
+                        tauri::WindowEvent::Focused(false) => {
+                            let _ = win_clone.hide();
+                        }
+                        tauri::WindowEvent::Resized(_) => {
+                            if win_clone.is_visible().unwrap_or(false) {
+                                let tray_rect = app_handle
+                                    .try_state::<AppState>()
+                                    .and_then(|s| s.last_tray_rect.lock().ok().and_then(|r| *r));
+                                if let Some(rect) = tray_rect {
+                                    let state = app_handle.try_state::<AppState>();
+                                    let _ = tray::position_window_near_tray(&win_clone, rect, state);
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 });
             }
