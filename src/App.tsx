@@ -107,11 +107,12 @@ function App() {
   }, []);
 
   const handleAllBrightness = async (value: number) => {
+    setMonitors((prev) => prev.map((m) => ({ ...m, brightness: value })));
     try {
       await invoke("set_all_brightness", { value });
-      setMonitors((prev) => prev.map((m) => ({ ...m, brightness: value })));
     } catch (e) {
       console.error("Failed to set brightness:", e);
+      fetchMonitors();
     }
   };
 
@@ -120,13 +121,14 @@ function App() {
     uid: string,
     value: number
   ) => {
+    setMonitors((prev) =>
+      prev.map((m) => (m.uid === uid ? { ...m, brightness: value } : m))
+    );
     try {
       await invoke("set_brightness", { monitorId, value });
-      setMonitors((prev) =>
-        prev.map((m) => (m.uid === uid ? { ...m, brightness: value } : m))
-      );
     } catch (e) {
       console.error("Failed to set brightness:", e);
+      fetchMonitors();
     }
   };
 
