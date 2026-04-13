@@ -101,6 +101,9 @@ Each monitor is identified by a composite UID: `{api_id}::{api_model_name}` (e.g
 - `MonitorMetadata` entries in `preferences.monitorConfigs` are **append-only** — new monitors are added on first detection, never removed on unplug. This preserves labels and sort order across plug/unplug cycles.
 - On startup, a one-time migration converts old `monitor-configs.json` entries into `MonitorMetadata` format within preferences.
 
+## Formatting
+After making changes to frontend code (`src/`), config files, or docs, always run `npx prettier --write` on the changed files before considering the task done. The prettier hook in `.claude/settings.json` handles this automatically for Edit/Write tool calls, but if you create or modify files via other means, run prettier manually.
+
 ## Key Conventions
 - All Rust structs sent to frontend use `#[serde(rename_all = "camelCase")]`
 - Tauri commands are snake_case in Rust, called with snake_case strings from frontend `invoke()`
