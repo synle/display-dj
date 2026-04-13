@@ -5,11 +5,13 @@ struct VolumeResponse {
     volume: u32,
 }
 
+/// Returns the base URL of the display-dj sidecar HTTP server.
 fn base_url() -> String {
     let port = crate::server_port();
     format!("http://127.0.0.1:{}", port)
 }
 
+/// Returns the current system volume (0-100) from the sidecar.
 #[tauri::command]
 pub async fn get_volume() -> Result<u32, String> {
     let url = format!("{}/get_volume", base_url());
@@ -20,6 +22,7 @@ pub async fn get_volume() -> Result<u32, String> {
     Ok(resp.volume)
 }
 
+/// Sets the system volume (clamped to 0-100) via the sidecar.
 #[tauri::command]
 pub async fn set_volume(value: u32) -> Result<(), String> {
     let url = format!("{}/set_volume/{}", base_url(), value.min(100));

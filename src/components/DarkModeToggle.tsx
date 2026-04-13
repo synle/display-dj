@@ -3,6 +3,7 @@ interface DarkModeToggleProps {
   onChange: (enabled: boolean) => void;
 }
 
+/** Dark/Light mode toggle buttons. */
 export default function DarkModeToggle({
   isDarkMode,
   onChange,

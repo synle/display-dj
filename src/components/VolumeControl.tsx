@@ -5,6 +5,7 @@ interface VolumeControlProps {
   onChange: (value: number) => void;
 }
 
+/** System volume slider with mute/unmute toggle on icon click. */
 export default function VolumeControl({ value, onChange }: VolumeControlProps) {
   return (
     <div className="volume-section">

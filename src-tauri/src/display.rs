@@ -28,6 +28,8 @@ struct DjDisplay {
 }
 
 impl DjDisplay {
+    /// Converts a sidecar API response into the app's Monitor struct,
+    /// computing the composite UID and defaulting brightness to 50 if unknown.
     fn into_monitor(self) -> Monitor {
         let is_built_in = self.display_type == "builtin";
         let uid = format!("{}::{}", self.id, self.name);
@@ -44,11 +46,13 @@ impl DjDisplay {
     }
 }
 
+/// Returns the base URL of the display-dj sidecar HTTP server.
 fn base_url() -> String {
     let port = crate::server_port();
     format!("http://127.0.0.1:{}", port)
 }
 
+/// Fetches all connected displays from the sidecar and converts them to Monitors.
 async fn detect_monitors() -> Vec<Monitor> {
     let url = format!("{}/get_all", base_url());
     let displays: Vec<DjDisplay> = match reqwest::get(&url).await {
@@ -61,6 +65,7 @@ async fn detect_monitors() -> Vec<Monitor> {
     displays.into_iter().map(|d| d.into_monitor()).collect()
 }
 
+/// Sets brightness for a single monitor via the sidecar, clamped to [min_brightness, 100].
 async fn set_monitor_brightness(monitor_id: &str, value: u32, min_brightness: u32) -> Result<(), String> {
     let url = format!("{}/set_one/{}/{}", base_url(), monitor_id, value.clamp(min_brightness, 100));
     reqwest::get(&url).await
@@ -68,6 +73,7 @@ async fn set_monitor_brightness(monitor_id: &str, value: u32, min_brightness: u3
     Ok(())
 }
 
+/// Sets brightness for all monitors via the sidecar, clamped to [min_brightness, 100].
 async fn set_all_monitors_brightness(value: u32, min_brightness: u32) -> Result<(), String> {
     let url = format!("{}/set_all/{}", base_url(), value.clamp(min_brightness, 100));
     reqwest::get(&url).await
@@ -79,6 +85,8 @@ async fn set_all_monitors_brightness(value: u32, min_brightness: u32) -> Result<
 // Common helpers
 // ===========================================================================
 
+/// Applies saved metadata (custom labels, hidden state) to detected monitors
+/// and sorts them by the user's configured sort order.
 fn merge_with_configs(
     monitors: Vec<Monitor>,
     configs: &[crate::config::MonitorMetadata],
@@ -153,6 +161,8 @@ fn ensure_metadata_for_monitors(
 // Tauri commands
 // ===========================================================================
 
+/// Returns all connected monitors with saved metadata applied.
+/// Reconciles migrated configs and ensures new monitors get metadata entries.
 #[tauri::command]
 pub async fn get_monitors(
     state: tauri::State<'_, crate::AppState>,
@@ -169,6 +179,7 @@ pub async fn get_monitors(
     Ok(merge_with_configs(monitors, &prefs.monitor_configs))
 }
 
+/// Sets brightness for a single monitor, enforcing the minimum brightness floor.
 #[tauri::command]
 pub async fn set_brightness(
     state: tauri::State<'_, crate::AppState>,
@@ -179,6 +190,7 @@ pub async fn set_brightness(
     set_monitor_brightness(&monitor_id, value, min).await
 }
 
+/// Sets brightness for all monitors, enforcing the minimum brightness floor.
 #[tauri::command]
 pub async fn set_all_brightness(
     state: tauri::State<'_, crate::AppState>,
@@ -188,6 +200,8 @@ pub async fn set_all_brightness(
     set_all_monitors_brightness(value, min).await
 }
 
+/// Updates a monitor's custom label in preferences. Creates a new metadata entry
+/// if the monitor isn't tracked yet.
 #[tauri::command]
 pub fn rename_monitor(
     state: tauri::State<'_, crate::AppState>,
@@ -217,6 +231,7 @@ pub fn rename_monitor(
     Ok(())
 }
 
+/// Persists the user's custom monitor sort order to preferences.
 #[tauri::command]
 pub fn save_monitor_order(
     state: tauri::State<'_, crate::AppState>,
@@ -247,6 +262,7 @@ pub fn save_monitor_order(
     Ok(())
 }
 
+/// Toggles a monitor's hidden state in preferences (hidden monitors are excluded from the main UI).
 #[tauri::command]
 pub fn set_monitor_visibility(
     state: tauri::State<'_, crate::AppState>,

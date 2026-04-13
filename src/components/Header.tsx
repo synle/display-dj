@@ -6,6 +6,7 @@ interface HeaderProps {
   settingsOpen: boolean;
 }
 
+/** App header with version display, settings gear button, and expand/collapse toggle. */
 export default function Header({
   version,
   expanded,

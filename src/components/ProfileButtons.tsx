@@ -8,10 +8,12 @@ interface ProfileButtonsProps {
   onActivate: (index: number) => void;
 }
 
+/** Returns the profile's display name, falling back to "Unnamed Profile #N". */
 function profileName(profile: Profile, index: number): string {
   return profile.name || `Unnamed Profile #${index + 1}`;
 }
 
+/** Row of profile quick-action buttons with overflow menu for 4+ profiles. */
 export default function ProfileButtons({
   profiles,
   onActivate,

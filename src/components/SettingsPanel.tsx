@@ -8,6 +8,8 @@ interface SettingsPanelProps {
   onPreferencesSaved: () => void;
 }
 
+/** Settings panel for configuring min brightness, monitor order/labels/visibility,
+ * night mode schedule, and launch-at-login. */
 export default function SettingsPanel({
   onClose,
   onPreferencesSaved,
@@ -34,6 +36,7 @@ export default function SettingsPanel({
     (a, b) => a.sortOrder - b.sortOrder || a.uid.localeCompare(b.uid)
   );
 
+  /** Updates a top-level preference field in local state. */
   const updateField = <K extends keyof Preferences>(
     key: K,
     value: Preferences[K]
@@ -41,6 +44,7 @@ export default function SettingsPanel({
     setPrefs((prev) => (prev ? { ...prev, [key]: value } : prev));
   };
 
+  /** Updates a field within the night mode schedule in local state. */
   const updateSchedule = <K extends keyof NightModeSchedule>(
     key: K,
     value: NightModeSchedule[K]
@@ -55,6 +59,7 @@ export default function SettingsPanel({
     );
   };
 
+  /** Patches a single monitor's metadata (label, hidden, sortOrder) in local state. */
   const updateMonitorConfig = (uid: string, patch: Partial<MonitorMetadata>) => {
     setPrefs((prev) => {
       if (!prev) return prev;
@@ -67,6 +72,7 @@ export default function SettingsPanel({
     });
   };
 
+  /** Swaps the sort order of two monitors in local state. */
   const swapMonitorOrder = (indexA: number, indexB: number) => {
     if (!prefs) return;
     const a = configs[indexA];
@@ -76,12 +82,14 @@ export default function SettingsPanel({
     updateMonitorConfig(b.uid, { sortOrder: a.sortOrder });
   };
 
+  /** Enters inline label edit mode for a monitor config row. */
   const startEditingLabel = (meta: MonitorMetadata) => {
     setEditingUid(meta.uid);
     setEditLabel(meta.label);
     setTimeout(() => labelInputRef.current?.focus(), 0);
   };
 
+  /** Commits the edited label to local state and exits edit mode. */
   const finishEditingLabel = () => {
     if (editingUid) {
       updateMonitorConfig(editingUid, { label: editLabel.trim() });
@@ -89,6 +97,7 @@ export default function SettingsPanel({
     setEditingUid(null);
   };
 
+  /** Saves all local preference changes to the backend and closes the panel. */
   const handleSave = async () => {
     if (!prefs) return;
     try {

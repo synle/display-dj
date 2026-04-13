@@ -10,6 +10,7 @@ interface SliderProps {
   onIconClick?: () => void;
 }
 
+/** Reusable range slider with optional icon, debounced onChange, and percentage display. */
 export default function Slider({
   icon,
   value,
@@ -26,6 +27,7 @@ export default function Slider({
     setLocalValue(value);
   }, [value]);
 
+  /** Debounces slider input to avoid flooding the backend with brightness/volume calls. */
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newValue = Number(e.target.value);

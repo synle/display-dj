@@ -7,6 +7,7 @@ interface AllMonitorsControlProps {
   minBrightness: number;
 }
 
+/** Combined brightness slider that controls all monitors at once. */
 export default function AllMonitorsControl({
   brightness,
   onBrightnessChange,

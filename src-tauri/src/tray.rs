@@ -6,6 +6,7 @@ use tauri::{
 
 use crate::config::{CommandValue, KeyBinding};
 
+/// Returns the base URL of the display-dj sidecar HTTP server.
 fn base_url() -> String {
     let port = crate::server_port();
     format!("http://127.0.0.1:{}", port)
@@ -26,6 +27,8 @@ fn http_get_then_emit(url: String, app: AppHandle, event: &'static str) {
     });
 }
 
+/// Builds the system tray icon, context menu, and event handlers.
+/// Handles left-click (toggle popup) and menu actions (dark/light mode, profiles, debug, quit).
 pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Debug status label (readonly)
     let debug_on = {
@@ -421,6 +424,8 @@ pub fn position_window_near_tray(
     Ok(())
 }
 
+/// Registers global keyboard shortcuts from the user's key binding preferences.
+/// Unregisters all existing shortcuts first, then re-registers from the provided bindings.
 pub fn register_shortcuts(app: &AppHandle, key_bindings: &[KeyBinding]) {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
@@ -450,6 +455,8 @@ pub fn register_shortcuts(app: &AppHandle, key_bindings: &[KeyBinding]) {
     }
 }
 
+/// Dispatches a command string (e.g. "command/changeBrightness/50") to the appropriate
+/// sidecar HTTP endpoint. Used by keyboard shortcuts, profiles, and tray menu actions.
 fn execute_command(app: &AppHandle, command: &str) {
     let parts: Vec<&str> = command.split('/').collect();
     let base = base_url();
@@ -523,6 +530,7 @@ fn execute_command(app: &AppHandle, command: &str) {
     }
 }
 
+/// Applies a saved profile by index, executing all of its commands.
 #[tauri::command]
 pub fn apply_profile(app: AppHandle, index: usize) -> Result<(), String> {
     execute_command(&app, &format!("command/changeProfile/{}", index));
