@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::SystemTime;
 
-const VERSION: &str = "v0.2.0";
+const VERSION: &str = "v0.4.1";
 const REPO: &str = "synle/display-dj-cli";
 
 fn main() {
