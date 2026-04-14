@@ -1,0 +1,126 @@
+name: Cleanup Artifacts, Draft Releases & Old Runs
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      keep_last:
+        description: 'Number of successful artifacts to keep'
+        required: false
+        default: '3'
+        type: number
+      keep_runs_days:
+        description: 'Delete runs older than N days'
+        required: false
+        default: '30'
+        type: number
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup artifacts, draft releases, and old runs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const KEEP_LAST = ${{ github.event.inputs.keep_last || 3 }};
+            const KEEP_RUNS_DAYS = ${{ github.event.inputs.keep_runs_days || 30 }};
+            const cutoffDate = new Date(Date.now() - KEEP_RUNS_DAYS * 24 * 60 * 60 * 1000);
+
+            // --- Cleanup Artifacts ---
+            console.log(`\n=== Artifact Cleanup (keeping last ${KEEP_LAST} successful) ===\n`);
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRunsForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                status: 'success',
+                per_page: 100,
+              }
+            );
+
+            const successRunIds = new Set(runs.map(r => r.id));
+
+            const artifacts = await github.paginate(
+              github.rest.actions.listArtifactsForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+              }
+            );
+
+            const successful = artifacts
+              .filter(a => successRunIds.has(a.workflow_run?.id))
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            const failed = artifacts
+              .filter(a => !successRunIds.has(a.workflow_run?.id));
+
+            const toDelete = [
+              ...successful.slice(KEEP_LAST),
+              ...failed,
+            ];
+
+            for (const artifact of toDelete) {
+              console.log(`Deleting artifact: ${artifact.name} (run: ${artifact.workflow_run?.id}, created: ${artifact.created_at})`);
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id,
+              });
+            }
+
+            console.log(`\nArtifacts — Kept: ${Math.min(KEEP_LAST, successful.length)}, Deleted: ${toDelete.length}`);
+
+            // --- Cleanup Draft Releases ---
+            console.log(`\n=== Draft Release Cleanup ===\n`);
+
+            const releases = await github.paginate(
+              github.rest.repos.listReleases,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+              }
+            );
+
+            const drafts = releases.filter(r => r.draft);
+
+            for (const draft of drafts) {
+              console.log(`Deleting draft release: ${draft.name || draft.tag_name} (created: ${draft.created_at})`);
+              await github.rest.repos.deleteRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: draft.id,
+              });
+            }
+
+            console.log(`\nDraft releases deleted: ${drafts.length}`);
+
+            // --- Cleanup Old Workflow Runs ---
+            console.log(`\n=== Workflow Run Cleanup (older than ${KEEP_RUNS_DAYS} days) ===\n`);
+
+            const allRuns = await github.paginate(
+              github.rest.actions.listWorkflowRunsForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+              }
+            );
+
+            const oldRuns = allRuns.filter(r => new Date(r.created_at) < cutoffDate);
+
+            for (const run of oldRuns) {
+              console.log(`Deleting run: #${run.run_number} ${run.name} (${run.status}, created: ${run.created_at})`);
+              await github.rest.actions.deleteWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run.id,
+              });
+            }
+
+            console.log(`\nWorkflow runs deleted: ${oldRuns.length}`);
