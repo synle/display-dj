@@ -46,6 +46,12 @@ fn expose_app_version() {
     println!("cargo:rerun-if-changed=tauri.conf.json");
 }
 
+/// Ensure the sidecar binary exists for the current build target.
+///
+/// Binaries are committed to the repo under `src-tauri/binaries/` for all
+/// platforms. The download is only a fallback: it runs when the binary is
+/// missing or has zero size (e.g. git-lfs placeholder or corrupt file).
+/// This means offline builds and CI caching work out of the box.
 fn download_sidecar() {
     let target = std::env::var("TARGET").expect("TARGET env var not set by Cargo");
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -64,19 +70,17 @@ fn download_sidecar() {
 
     let output = binaries_dir.join(sidecar_name);
 
-    // Skip download if binary already exists and is less than 1 day old
+    // Use the committed binary if it exists and has non-zero size
     if output.exists() {
-        if let Ok(metadata) = output.metadata() {
-            if let Ok(modified) = metadata.modified() {
-                let age = SystemTime::now().duration_since(modified).unwrap_or_default();
-                if age.as_secs() < 86400 {
-                    println!("Sidecar binary already exists and is recent: {}", output.display());
-                    return;
-                }
-            }
+        let size = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
+        if size > 0 {
+            println!("Sidecar binary already exists ({size} bytes): {}", output.display());
+            return;
         }
+        println!("Sidecar binary exists but is empty, re-downloading: {}", output.display());
     }
 
+    // Fallback: download from GitHub releases
     let version = sidecar_version();
     let url = format!("https://github.com/{REPO}/releases/download/{version}/{asset}");
     println!("Downloading display-dj {version} for {sidecar_name}...");
@@ -84,11 +88,23 @@ fn download_sidecar() {
     let status = Command::new("curl")
         .args(["-fSL", &url, "-o"])
         .arg(&output)
-        .status()
-        .expect("failed to run curl — is curl installed?");
+        .status();
 
-    if !status.success() {
-        panic!("curl failed to download {url}");
+    match status {
+        Ok(s) if s.success() => {
+            // Verify the download produced a non-empty file
+            let size = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
+            if size == 0 {
+                panic!("Downloaded sidecar is empty (0 bytes): {url}");
+            }
+            println!("Downloaded: {} ({size} bytes)", output.display());
+        }
+        Ok(_) => {
+            panic!("curl failed to download {url} — check the version and network");
+        }
+        Err(e) => {
+            panic!("failed to run curl: {e} — is curl installed?");
+        }
     }
 
     // Make executable on Unix
@@ -101,7 +117,4 @@ fn download_sidecar() {
         perms.set_mode(0o755);
         std::fs::set_permissions(&output, perms).expect("failed to chmod sidecar");
     }
-
-    let size = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
-    println!("Downloaded: {} ({size} bytes)", output.display());
 }
