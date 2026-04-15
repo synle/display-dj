@@ -102,6 +102,7 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
             src-tauri/target/${{ matrix.target }}/release/bundle/rpm/*.rpm
+          retention-days: 30
           compression-level: 9
           if-no-files-found: ignore
 
