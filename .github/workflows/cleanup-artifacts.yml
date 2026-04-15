@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       keep_last:
-        description: 'Number of successful builds to keep artifacts from'
+        description: 'Number of successful artifacts to keep'
         required: false
-        default: '1'
+        default: '3'
         type: number
       keep_runs_days:
         description: 'Delete runs older than N days'
@@ -24,7 +24,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const KEEP_LAST = ${{ github.event.inputs.keep_last || 1 }};
+            const KEEP_LAST = ${{ github.event.inputs.keep_last || 3 }};
             const KEEP_RUNS_DAYS = ${{ github.event.inputs.keep_runs_days || 30 }};
             const cutoffDate = new Date(Date.now() - KEEP_RUNS_DAYS * 24 * 60 * 60 * 1000);
 
@@ -59,12 +59,8 @@ jobs:
             const failed = artifacts
               .filter(a => !successRunIds.has(a.workflow_run?.id));
 
-            // Group successful artifacts by run, keep all artifacts from the last N runs
-            const runIds = [...new Set(successful.map(a => a.workflow_run?.id))];
-            const keepRunIds = new Set(runIds.slice(0, KEEP_LAST));
-
             const toDelete = [
-              ...successful.filter(a => !keepRunIds.has(a.workflow_run?.id)),
+              ...successful.slice(KEEP_LAST),
               ...failed,
             ];
 
@@ -77,7 +73,7 @@ jobs:
               });
             }
 
-            console.log(`\nArtifacts — Kept runs: ${keepRunIds.size}, Deleted artifacts: ${toDelete.length}`);
+            console.log(`\nArtifacts — Kept: ${Math.min(KEEP_LAST, successful.length)}, Deleted: ${toDelete.length}`);
 
             // --- Cleanup Draft Releases ---
             console.log(`\n=== Draft Release Cleanup ===\n`);

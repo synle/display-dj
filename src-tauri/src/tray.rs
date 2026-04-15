@@ -27,28 +27,6 @@ fn http_get_then_emit(url: String, app: AppHandle, event: &'static str) {
     });
 }
 
-/// Shows the popup window, emits refresh events, and sets focus.
-/// Used by both the tray left-click handler and the "Show Window" menu item.
-/// Sets `expect_focus_gain` so the focus-loss handler won't hide us until
-/// the window actually receives `Focused(true)`.
-fn show_popup_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        // Set flag so the focus-loss handler won't hide us until the window actually
-        // receives Focused(true). This suppresses the spurious Focused(false) that
-        // fires on Linux/X11 (and occasionally Windows) before focus arrives.
-        if let Some(state) = app.try_state::<crate::AppState>() {
-            if let Ok(mut e) = state.expect_focus_gain.lock() {
-                *e = true;
-            }
-        }
-        let _ = window.show();
-        let _ = window.set_focus();
-        let _ = app.emit("monitors-changed", ());
-        let _ = app.emit("dark-mode-changed", ());
-        let _ = app.emit("volume-changed", ());
-    }
-}
-
 /// Builds the system tray icon, context menu, and event handlers.
 /// Handles left-click (toggle popup) and menu actions (dark/light mode, profiles, debug, quit).
 pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -60,7 +38,6 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         }
     };
 
-    let show_window = MenuItemBuilder::with_id("show_window", "Show Window").build(app)?;
     let dark_mode = MenuItemBuilder::with_id("dark_mode", "Dark Mode").build(app)?;
     let light_mode = MenuItemBuilder::with_id("light_mode", "Light Mode").build(app)?;
 
@@ -116,8 +93,6 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
     let menu = MenuBuilder::new(app)
-        .item(&show_window)
-        .separator()
         .items(&[&dark_mode, &light_mode])
         .separator()
         .item(&profiles_submenu)
@@ -135,9 +110,6 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id().as_ref() {
-            "show_window" => {
-                show_popup_window(app);
-            }
             "bridge" => {
                 let url = base_url();
                 let _ = open::that(&url);
@@ -235,7 +207,12 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                                 );
                             }
                         }
-                        show_popup_window(app);
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        // Emit refresh events so frontend fetches latest monitor/dark-mode/volume state
+                        let _ = app.emit("monitors-changed", ());
+                        let _ = app.emit("dark-mode-changed", ());
+                        let _ = app.emit("volume-changed", ());
                     }
                 }
             }
