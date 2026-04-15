@@ -48,10 +48,10 @@ fn expose_app_version() {
 
 /// Ensure the sidecar binary exists for the current build target.
 ///
-/// Binaries are committed to the repo under `src-tauri/binaries/` for all
-/// platforms. The download is only a fallback: it runs when the binary is
-/// missing or has zero size (e.g. git-lfs placeholder or corrupt file).
-/// This means offline builds and CI caching work out of the box.
+/// Tries to download the latest binary from GitHub releases first. If the
+/// download fails (offline, network error, bad URL), falls back to the
+/// committed binary in `src-tauri/binaries/`. The committed binaries act
+/// as a safety net so builds never fail due to network issues.
 fn download_sidecar() {
     let target = std::env::var("TARGET").expect("TARGET env var not set by Cargo");
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -70,51 +70,48 @@ fn download_sidecar() {
 
     let output = binaries_dir.join(sidecar_name);
 
-    // Use the committed binary if it exists and has non-zero size
-    if output.exists() {
-        let size = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
-        if size > 0 {
-            println!("Sidecar binary already exists ({size} bytes): {}", output.display());
-            return;
-        }
-        println!("Sidecar binary exists but is empty, re-downloading: {}", output.display());
-    }
-
-    // Fallback: download from GitHub releases
+    // Try downloading from GitHub releases first (gets the latest for this version)
     let version = sidecar_version();
     let url = format!("https://github.com/{REPO}/releases/download/{version}/{asset}");
     println!("Downloading display-dj {version} for {sidecar_name}...");
 
-    let status = Command::new("curl")
-        .args(["-fSL", &url, "-o"])
+    let downloaded = Command::new("curl")
+        .args(["-fSL", "--connect-timeout", "10", &url, "-o"])
         .arg(&output)
-        .status();
+        .status()
+        .ok()
+        .map(|s| s.success())
+        .unwrap_or(false);
 
-    match status {
-        Ok(s) if s.success() => {
-            // Verify the download produced a non-empty file
-            let size = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
-            if size == 0 {
-                panic!("Downloaded sidecar is empty (0 bytes): {url}");
-            }
+    if downloaded {
+        let size = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
+        if size > 0 {
             println!("Downloaded: {} ({size} bytes)", output.display());
+            // Make executable on Unix
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&output)
+                    .expect("failed to read sidecar metadata")
+                    .permissions();
+                perms.set_mode(0o755);
+                std::fs::set_permissions(&output, perms).expect("failed to chmod sidecar");
+            }
+            return;
         }
-        Ok(_) => {
-            panic!("curl failed to download {url} — check the version and network");
-        }
-        Err(e) => {
-            panic!("failed to run curl: {e} — is curl installed?");
+        println!("Download produced empty file, falling back to committed binary");
+    } else {
+        println!("Download failed, falling back to committed binary");
+    }
+
+    // Fallback: use the committed binary already in the repo
+    if output.exists() {
+        let size = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
+        if size > 0 {
+            println!("Using committed sidecar binary ({size} bytes): {}", output.display());
+            return;
         }
     }
 
-    // Make executable on Unix
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&output)
-            .expect("failed to read sidecar metadata")
-            .permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&output, perms).expect("failed to chmod sidecar");
-    }
+    panic!("No sidecar binary available for {sidecar_name} — download failed and no committed binary found");
 }
