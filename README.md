@@ -82,7 +82,7 @@ Config files live in `~/Library/Application Support/display-dj/` (macOS), `%APPD
 
 ## Contributing
 
-See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup (per-platform), project structure, testing, and platform guides. See **[DEV.md](DEV.md)** for the architecture deep-dive: request lifecycle, layer-by-layer breakdown, data flow diagrams, and "where to edit" reference.
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup (per-platform), architecture, testing, project structure, and code walkthrough.
 
 ## Bug Reports & Suggestions
 
