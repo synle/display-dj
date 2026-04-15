@@ -371,14 +371,24 @@ pub async fn save_preferences(
         preferences.night_mode_schedule.enabled,
     );
 
-    // Sync autostart with OS only when the value actually changed
-    // (autostart.enable/disable can hang on some platforms)
+    // Save to disk and update in-memory state first so the UI isn't blocked
+    // even if autostart hangs
     let old_launch_at_login = state
         .preferences
         .lock()
         .map(|p| p.launch_at_login)
         .unwrap_or(false);
 
+    save_preferences_to_disk(&preferences);
+    log::info!("save_preferences: written to disk");
+
+    let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
+    *prefs = preferences.clone();
+    drop(prefs); // release lock before autostart call
+    log::info!("save_preferences: in-memory state updated");
+
+    // Sync autostart with OS only when the value actually changed
+    // (autostart.enable/disable can hang on some platforms)
     if preferences.launch_at_login != old_launch_at_login {
         log::info!("save_preferences: autostart changed {} -> {}, syncing", old_launch_at_login, preferences.launch_at_login);
         use tauri_plugin_autostart::ManagerExt;
@@ -397,12 +407,7 @@ pub async fn save_preferences(
         log::info!("save_preferences: launch_at_login unchanged, skipping autostart");
     }
 
-    save_preferences_to_disk(&preferences);
-    log::info!("save_preferences: written to disk");
-
-    let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
-    *prefs = preferences;
-    log::info!("save_preferences: in-memory state updated, done");
+    log::info!("save_preferences: done");
     Ok(())
 }
 
