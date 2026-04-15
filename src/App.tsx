@@ -8,6 +8,7 @@ import MonitorControl from './components/MonitorControl';
 import VolumeControl from './components/VolumeControl';
 import DarkModeToggle from './components/DarkModeToggle';
 import ProfileButtons from './components/ProfileButtons';
+import KeepAwakeToggle from './components/KeepAwakeToggle';
 import SettingsPanel from './components/SettingsPanel';
 import { Monitor, Preferences, Profile } from './types';
 
@@ -22,6 +23,7 @@ function App() {
   const [minBrightness, setMinBrightness] = useState(10);
   const [showContrast, setShowContrast] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [keepAwake, setKeepAwake] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [version, setVersion] = useState('');
@@ -57,6 +59,16 @@ function App() {
     }
   }, []);
 
+  /** Fetches the current keep-awake state from the backend. */
+  const fetchKeepAwake = useCallback(async () => {
+    try {
+      const active = await invoke<boolean>('get_keep_awake');
+      setKeepAwake(active);
+    } catch (e) {
+      console.error('Failed to get keep awake:', e);
+    }
+  }, []);
+
   /** Fetches user preferences (min brightness, profiles) from the backend. */
   const fetchPreferences = useCallback(async () => {
     try {
@@ -74,6 +86,7 @@ function App() {
     fetchDarkMode();
     fetchVolume();
     fetchPreferences();
+    fetchKeepAwake();
     invoke<string>('get_app_version')
       .then(setVersion)
       .catch(() => {});
@@ -89,6 +102,7 @@ function App() {
         fetchMonitors();
         fetchDarkMode();
         fetchVolume();
+        fetchKeepAwake();
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -99,7 +113,7 @@ function App() {
       unlisten3.then((f) => f());
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [fetchMonitors, fetchDarkMode, fetchVolume, fetchPreferences]);
+  }, [fetchMonitors, fetchDarkMode, fetchVolume, fetchPreferences, fetchKeepAwake]);
 
   // Auto-resize window to fit content
   useEffect(() => {
@@ -217,6 +231,16 @@ function App() {
     }
   };
 
+  /** Toggles the keep-awake state (prevents system from sleeping). */
+  const handleKeepAwake = async (enabled: boolean) => {
+    try {
+      await invoke('set_keep_awake', { enabled });
+      setKeepAwake(enabled);
+    } catch (e) {
+      console.error('Failed to set keep awake:', e);
+    }
+  };
+
   /** Applies a saved profile by index and refreshes all state. */
   const handleProfile = async (index: number) => {
     try {
@@ -299,6 +323,7 @@ function App() {
           <VolumeControl value={volume} onChange={handleVolume} />
           <DarkModeToggle isDarkMode={darkMode} onChange={handleDarkMode} />
           <ProfileButtons profiles={profiles} onActivate={handleProfile} />
+          <KeepAwakeToggle isActive={keepAwake} onChange={handleKeepAwake} />
         </div>
       )}
     </div>

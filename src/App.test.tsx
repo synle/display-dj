@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
-import App from "./App";
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
+import App from './App';
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -10,158 +10,174 @@ beforeEach(() => {
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
     switch (cmd) {
-      case "get_monitors":
+      case 'get_monitors':
         return Promise.resolve([
           {
-            id: "builtin-0",
-            uid: "builtin-0::Built-in Display",
-            name: "Built-in Display",
-            originalName: "Built-in Display",
+            id: 'builtin-0',
+            uid: 'builtin-0::Built-in Display',
+            name: 'Built-in Display',
+            originalName: 'Built-in Display',
             brightness: 50,
             supportsBrightness: true,
             isBuiltIn: true,
           },
         ]);
-      case "get_dark_mode":
+      case 'get_dark_mode':
         return Promise.resolve(false);
-      case "get_volume":
+      case 'get_volume':
         return Promise.resolve(50);
-      case "get_preferences":
+      case 'get_preferences':
         return Promise.resolve({
           showIndividualDisplays: false,
           minBrightness: 10,
           keyBindings: [],
           profiles: [
             {
-              name: "Presentation",
+              name: 'Presentation',
               command: [
-                "command/changeBrightness/100",
-                "command/changeDarkMode/light",
-                "command/changeVolume/50",
+                'command/changeBrightness/100',
+                'command/changeDarkMode/light',
+                'command/changeVolume/50',
               ],
             },
             {
-              name: "Focus",
+              name: 'Focus',
               command: [
-                "command/changeBrightness/80",
-                "command/changeDarkMode/dark",
-                "command/changeVolume/30",
+                'command/changeBrightness/80',
+                'command/changeDarkMode/dark',
+                'command/changeVolume/30',
               ],
             },
             {
-              name: "Daylight",
+              name: 'Daylight',
               command: [
-                "command/changeBrightness/100",
-                "command/changeDarkMode/light",
-                "command/changeVolume/100",
+                'command/changeBrightness/100',
+                'command/changeDarkMode/light',
+                'command/changeVolume/100',
               ],
             },
           ],
           nightModeSchedule: {
             enabled: false,
-            nightStart: "21:00",
+            nightStart: '21:00',
             nightBrightness: 20,
-            dayStart: "07:00",
+            dayStart: '07:00',
             dayBrightness: 100,
           },
           debugLogging: false,
           launchAtLogin: false,
           monitorConfigs: [],
         });
-      case "get_app_version":
-        return Promise.resolve("2.0.0");
+      case 'get_app_version':
+        return Promise.resolve('2.1.0');
+      case 'get_keep_awake':
+        return Promise.resolve(false);
       default:
         return Promise.resolve(undefined);
     }
   });
 });
 
-describe("App smoke test", () => {
-  it("renders without crashing", () => {
+describe('App smoke test', () => {
+  it('renders without crashing', () => {
     const { container } = render(<App />);
-    expect(container.querySelector(".app")).toBeInTheDocument();
+    expect(container.querySelector('.app')).toBeInTheDocument();
   });
 
-  it("renders the header with title", () => {
+  it('renders the header with title', () => {
     render(<App />);
-    expect(screen.getByText("Display DJ")).toBeInTheDocument();
+    expect(screen.getByText('Display DJ')).toBeInTheDocument();
   });
 
-  it("fetches initial data on mount", async () => {
+  it('fetches initial data on mount', async () => {
     render(<App />);
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("get_monitors");
-      expect(mockInvoke).toHaveBeenCalledWith("get_dark_mode");
-      expect(mockInvoke).toHaveBeenCalledWith("get_volume");
-      expect(mockInvoke).toHaveBeenCalledWith("get_app_version");
+      expect(mockInvoke).toHaveBeenCalledWith('get_monitors');
+      expect(mockInvoke).toHaveBeenCalledWith('get_dark_mode');
+      expect(mockInvoke).toHaveBeenCalledWith('get_volume');
+      expect(mockInvoke).toHaveBeenCalledWith('get_app_version');
     });
   });
 
-  it("displays version from backend", async () => {
+  it('displays version from backend', async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText("v2.0.0")).toBeInTheDocument();
+      expect(screen.getByText('v2.1.0')).toBeInTheDocument();
     });
   });
 
-  it("renders volume control", () => {
+  it('renders volume control', () => {
     render(<App />);
-    const sliders = screen.getAllByRole("slider");
+    const sliders = screen.getAllByRole('slider');
     expect(sliders.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders dark mode toggle", () => {
+  it('renders dark mode toggle', () => {
     render(<App />);
-    expect(screen.getByText("DARK", { exact: false })).toBeInTheDocument();
-    expect(screen.getByText("LIGHT", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText('DARK', { exact: false })).toBeInTheDocument();
+    expect(screen.getByText('LIGHT', { exact: false })).toBeInTheDocument();
   });
 
-  it("renders profile buttons", async () => {
+  it('renders profile buttons', async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText("Presentation")).toBeInTheDocument();
-      expect(screen.getByText("Focus")).toBeInTheDocument();
-      expect(screen.getByText("Daylight")).toBeInTheDocument();
+      expect(screen.getByText('Presentation')).toBeInTheDocument();
+      expect(screen.getByText('Focus')).toBeInTheDocument();
+      expect(screen.getByText('Daylight')).toBeInTheDocument();
     });
   });
 
-  it("shows all-monitors view by default (collapsed)", async () => {
+  it('renders keep awake toggle', async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText("All Monitors (1)")).toBeInTheDocument();
+      expect(screen.getByText('Keep Awake: Off')).toBeInTheDocument();
     });
   });
 
-  it("handles backend errors gracefully without crashing", async () => {
-    mockInvoke.mockRejectedValue(new Error("backend unavailable"));
+  it('fetches keep awake state on mount', async () => {
+    render(<App />);
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('get_keep_awake');
+    });
+  });
+
+  it('shows all-monitors view by default (collapsed)', async () => {
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
+    });
+  });
+
+  it('handles backend errors gracefully without crashing', async () => {
+    mockInvoke.mockRejectedValue(new Error('backend unavailable'));
     const { container } = render(<App />);
     // App should still render even if all backend calls fail
     await waitFor(() => {
-      expect(container.querySelector(".app")).toBeInTheDocument();
+      expect(container.querySelector('.app')).toBeInTheDocument();
     });
   });
 
-  it("renders collapsed and expanded views without JS errors", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it('renders collapsed and expanded views without JS errors', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const user = userEvent.setup();
 
     render(<App />);
 
     // Wait for initial data to load (collapsed view)
     await waitFor(() => {
-      expect(screen.getByText("All Monitors (1)")).toBeInTheDocument();
+      expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
     });
 
     // Expand to show individual monitors
-    await user.click(screen.getByTitle("Show individual monitors"));
+    await user.click(screen.getByTitle('Show individual monitors'));
     await waitFor(() => {
-      expect(screen.getByText("Built-in Display")).toBeInTheDocument();
+      expect(screen.getByText('Built-in Display')).toBeInTheDocument();
     });
 
     // Collapse back
-    await user.click(screen.getByTitle("Show all monitors control"));
+    await user.click(screen.getByTitle('Show all monitors control'));
     await waitFor(() => {
-      expect(screen.getByText("All Monitors (1)")).toBeInTheDocument();
+      expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
     });
 
     // No console.error calls should have occurred
@@ -169,46 +185,46 @@ describe("App smoke test", () => {
     errorSpy.mockRestore();
   });
 
-  it("renders with multiple monitors without JS errors", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it('renders with multiple monitors without JS errors', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockInvoke.mockImplementation((cmd: string) => {
       switch (cmd) {
-        case "get_monitors":
+        case 'get_monitors':
           return Promise.resolve([
             {
-              id: "builtin-0",
-              uid: "builtin-0::Built-in Display",
-              name: "Built-in Display",
-              originalName: "Built-in Display",
+              id: 'builtin-0',
+              uid: 'builtin-0::Built-in Display',
+              name: 'Built-in Display',
+              originalName: 'Built-in Display',
               brightness: 100,
               supportsBrightness: true,
               isBuiltIn: true,
             },
             {
-              id: "1",
-              uid: "1::Dell U2723QE",
-              name: "Dell U2723QE",
-              originalName: "Dell U2723QE",
+              id: '1',
+              uid: '1::Dell U2723QE',
+              name: 'Dell U2723QE',
+              originalName: 'Dell U2723QE',
               brightness: 80,
               supportsBrightness: true,
               isBuiltIn: false,
             },
             {
-              id: "2",
-              uid: "2::LG 27UK850",
-              name: "",
-              originalName: "LG 27UK850",
+              id: '2',
+              uid: '2::LG 27UK850',
+              name: '',
+              originalName: 'LG 27UK850',
               brightness: 60,
               supportsBrightness: true,
               isBuiltIn: false,
             },
           ]);
-        case "get_dark_mode":
+        case 'get_dark_mode':
           return Promise.resolve(true);
-        case "get_volume":
+        case 'get_volume':
           return Promise.resolve(75);
-        case "get_app_version":
-          return Promise.resolve("2.0.0");
+        case 'get_app_version':
+          return Promise.resolve('2.1.0');
         default:
           return Promise.resolve(undefined);
       }
@@ -219,69 +235,69 @@ describe("App smoke test", () => {
 
     // Collapsed view with 3 monitors
     await waitFor(() => {
-      expect(screen.getByText("All Monitors (3)")).toBeInTheDocument();
+      expect(screen.getByText('All Monitors (3)')).toBeInTheDocument();
     });
 
     // Expand to individual monitors
-    await user.click(screen.getByTitle("Show individual monitors"));
+    await user.click(screen.getByTitle('Show individual monitors'));
     await waitFor(() => {
-      expect(screen.getByText("Built-in Display")).toBeInTheDocument();
-      expect(screen.getByText("Dell U2723QE")).toBeInTheDocument();
+      expect(screen.getByText('Built-in Display')).toBeInTheDocument();
+      expect(screen.getByText('Dell U2723QE')).toBeInTheDocument();
       // Monitor with empty name should fall back to originalName
-      expect(screen.getByText("LG 27UK850")).toBeInTheDocument();
+      expect(screen.getByText('LG 27UK850')).toBeInTheDocument();
     });
 
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
   });
 
-  it("calls rename_monitor with uid (not id)", async () => {
+  it('calls rename_monitor with uid (not id)', async () => {
     const user = userEvent.setup();
     render(<App />);
 
     // Expand to individual monitors
     await waitFor(() => {
-      expect(screen.getByText("All Monitors (1)")).toBeInTheDocument();
+      expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
     });
-    await user.click(screen.getByTitle("Show individual monitors"));
+    await user.click(screen.getByTitle('Show individual monitors'));
     await waitFor(() => {
-      expect(screen.getByText("Built-in Display")).toBeInTheDocument();
+      expect(screen.getByText('Built-in Display')).toBeInTheDocument();
     });
 
     // Click monitor name to edit
-    await user.click(screen.getByText("Built-in Display"));
-    const input = screen.getByRole("textbox");
+    await user.click(screen.getByText('Built-in Display'));
+    const input = screen.getByRole('textbox');
     await user.clear(input);
-    await user.type(input, "MacBook{Enter}");
+    await user.type(input, 'MacBook{Enter}');
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("rename_monitor", {
-        uid: "builtin-0::Built-in Display",
-        name: "MacBook",
+      expect(mockInvoke).toHaveBeenCalledWith('rename_monitor', {
+        uid: 'builtin-0::Built-in Display',
+        name: 'MacBook',
       });
     });
   });
 
-  it("calls set_brightness with API id (not uid)", async () => {
+  it('calls set_brightness with API id (not uid)', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       switch (cmd) {
-        case "get_monitors":
+        case 'get_monitors':
           return Promise.resolve([
             {
-              id: "1",
-              uid: "1::Dell U2723QE",
-              name: "Dell U2723QE",
-              originalName: "Dell U2723QE",
+              id: '1',
+              uid: '1::Dell U2723QE',
+              name: 'Dell U2723QE',
+              originalName: 'Dell U2723QE',
               brightness: 50,
               supportsBrightness: true,
               isBuiltIn: false,
             },
           ]);
-        case "get_dark_mode":
+        case 'get_dark_mode':
           return Promise.resolve(false);
-        case "get_volume":
+        case 'get_volume':
           return Promise.resolve(50);
-        case "get_preferences":
+        case 'get_preferences':
           return Promise.resolve({
             showIndividualDisplays: false,
             minBrightness: 5,
@@ -289,18 +305,18 @@ describe("App smoke test", () => {
             profiles: [],
             nightModeSchedule: {
               enabled: false,
-              nightStart: "21:00",
+              nightStart: '21:00',
               nightBrightness: 20,
-              dayStart: "07:00",
+              dayStart: '07:00',
               dayBrightness: 100,
             },
             debugLogging: false,
             launchAtLogin: false,
             monitorConfigs: [],
           });
-        case "get_app_version":
-          return Promise.resolve("2.0.0");
-        case "set_brightness":
+        case 'get_app_version':
+          return Promise.resolve('2.1.0');
+        case 'set_brightness':
           return Promise.resolve(undefined);
         default:
           return Promise.resolve(undefined);
@@ -312,21 +328,21 @@ describe("App smoke test", () => {
 
     // Expand to individual monitors
     await waitFor(() => {
-      expect(screen.getByText("All Monitors (1)")).toBeInTheDocument();
+      expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
     });
-    await user.click(screen.getByTitle("Show individual monitors"));
+    await user.click(screen.getByTitle('Show individual monitors'));
     await waitFor(() => {
-      expect(screen.getByText("Dell U2723QE")).toBeInTheDocument();
+      expect(screen.getByText('Dell U2723QE')).toBeInTheDocument();
     });
 
     // Click the monitor icon to toggle brightness (triggers set_brightness)
-    const icon = screen.getByText("\uD83D\uDDA5");
+    const icon = screen.getByText('\uD83D\uDDA5');
     await user.click(icon);
 
     await waitFor(() => {
       // Should use API id "1" (not uid "1::Dell U2723QE")
-      expect(mockInvoke).toHaveBeenCalledWith("set_brightness", {
-        monitorId: "1",
+      expect(mockInvoke).toHaveBeenCalledWith('set_brightness', {
+        monitorId: '1',
         value: 5,
       });
     });
