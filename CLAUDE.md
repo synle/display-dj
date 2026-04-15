@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Cross-platform desktop system tray application for controlling monitor brightness, contrast, dark mode, and volume. Built with **Tauri v2** (Rust backend) + **React 18** (TypeScript frontend) + **Vite 6**.
+Cross-platform desktop system tray application for controlling monitor brightness, contrast, dark mode, volume, and keep-awake (sleep prevention). Built with **Tauri v2** (Rust backend) + **React 18** (TypeScript frontend) + **Vite 6**.
 
 Display and dark mode operations are delegated to the [display-dj CLI](https://github.com/synle/display-dj-cli), which runs as a bundled HTTP server sidecar. The Tauri backend makes HTTP requests to it. Volume control remains platform-specific in Rust.
 
@@ -30,15 +30,16 @@ cd src-tauri && cargo test  # Run all Rust backend tests
 ### Frontend Tests (Vitest + React Testing Library)
 
 - **Setup**: `src/test/setup.ts` — Configures jsdom, jest-dom matchers, and Tauri API mocks
-- **Unit tests**: `src/components/*.test.tsx` — Tests for each component (Header, Slider, DarkModeToggle, VolumeControl, AllMonitorsControl, MonitorControl)
+- **Unit tests**: `src/components/*.test.tsx` — Tests for each component (Header, Slider, DarkModeToggle, VolumeControl, AllMonitorsControl, MonitorControl, KeepAwakeToggle)
 - **Smoke test**: `src/App.test.tsx` — Verifies App renders without errors, fetches initial data, handles backend failures gracefully
 - Tauri `invoke()` and `listen()` are mocked globally in the test setup
 
 ### Backend Tests (Rust)
 
-- **Unit tests**: Inline `#[cfg(test)]` modules in `config.rs` and `display.rs`
+- **Unit tests**: Inline `#[cfg(test)]` modules in `config.rs`, `display.rs`, and `keep_awake.rs`
   - `config.rs`: Serialization/deserialization, defaults, camelCase conventions, file roundtrips, CommandValue enum variants, MonitorMetadata serde, effective min brightness, backward-compatible deserialization of old configs, preferences with monitorConfigs roundtrip
   - `display.rs`: `DjDisplay` to `Monitor` conversion (including uid computation), `merge_with_configs` (rename, sort), `reconcile_migrated_configs`, `ensure_metadata_for_monitors`, Monitor serde
+  - `keep_awake.rs`: KeepAwake guard creation, Mutex<Option<KeepAwake>> pattern (enable/disable/re-enable)
 - **Smoke test**: `src-tauri/tests/smoke.rs` — Integration test verifying the crate compiles, links, and public API (AppState, run) is accessible
 
 ### CI
@@ -76,6 +77,7 @@ These are documented inline in `config.rs` with WARNING comments.
 - Preferences use `#[serde(default)]` so old config files missing new fields gracefully fall back to defaults
 - Brightness values are clamped to `effective_min_brightness()` which enforces an absolute floor of 5
 - Contrast is DDC-only (`Option<u32>` / `number | null`): built-in displays return `null`. The contrast slider is hidden by default and toggled via the `showContrast` preference in Settings
+- Keep Awake uses the `keepawake` crate (v0.6) to prevent system idle sleep and display sleep. The guard is stored as `Mutex<Option<KeepAwake>>` in `AppState` — creating the guard enables keep-awake, dropping it (setting to `None`) releases the assertion. Works on macOS (IOKit), Windows (SetThreadExecutionState), and Linux (D-Bus). The `set_keep_awake` command is `async` to avoid the tray icon pitfall.
 
 ## Related Projects
 
@@ -83,7 +85,7 @@ These are documented inline in `config.rs` with WARNING comments.
 
 ## Dependencies
 
-The display-dj CLI sidecar handles all platform-specific display dependencies internally. No external tools need to be installed for display control.
+The display-dj CLI sidecar handles all platform-specific display dependencies internally. No external tools need to be installed for display control. The `keepawake` crate handles sleep prevention natively on all platforms (macOS IOKit, Windows SetThreadExecutionState, Linux D-Bus).
 
 ### Sidecar binaries
 

@@ -1,6 +1,7 @@
 mod config;
 mod dark_mode;
 mod display;
+mod keep_awake;
 mod tray;
 mod volume;
 
@@ -27,6 +28,9 @@ pub struct AppState {
     /// (a known issue on Linux/X11 and some Windows configurations).
     /// Cleared when `Focused(true)` fires, so subsequent focus-loss auto-hides normally.
     pub expect_focus_gain: std::sync::Mutex<bool>,
+    /// Holds the active keep-awake guard. When `Some`, the system is prevented
+    /// from sleeping. Dropping the guard (setting to `None`) releases the assertion.
+    pub keep_awake: std::sync::Mutex<Option<keepawake::KeepAwake>>,
 }
 
 /// Find an available port starting from the default.
@@ -256,6 +260,7 @@ pub fn run() {
             last_tray_rect: std::sync::Mutex::new(None),
             sidecar_child: std::sync::Mutex::new(None),
             expect_focus_gain: std::sync::Mutex::new(false),
+            keep_awake: std::sync::Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             display::get_monitors,
@@ -276,6 +281,8 @@ pub fn run() {
             config::open_debug_log,
             config::get_app_version,
             tray::apply_profile,
+            keep_awake::get_keep_awake,
+            keep_awake::set_keep_awake,
         ])
         .setup(move |app| {
             // Find an available port and store it
