@@ -348,6 +348,12 @@ pub fn get_preferences(state: tauri::State<'_, crate::AppState>) -> Result<Prefe
 }
 
 /// Saves updated preferences from the frontend, syncs autostart with the OS, and persists to disk.
+///
+/// WARNING: This MUST remain `async`. Changing to sync `pub fn` causes Tauri
+/// on macOS to run the command on a blocking thread that starves the
+/// main-thread run-loop, preventing `on_tray_icon_event` from ever firing —
+/// both left-click and right-click on the tray icon stop working entirely.
+/// (See dropped commit 57a1704 for the broken version.)
 #[tauri::command]
 pub async fn save_preferences(
     app: tauri::AppHandle,
@@ -365,22 +371,31 @@ pub async fn save_preferences(
         preferences.night_mode_schedule.enabled,
     );
 
-    // Sync autostart with OS
-    log::info!("save_preferences: syncing autostart (launch_at_login={})", preferences.launch_at_login);
-    use tauri_plugin_autostart::ManagerExt;
-    let autostart = app.autolaunch();
-    if preferences.launch_at_login {
-        autostart.enable().map_err(|e| {
-            log::error!("save_preferences: autostart.enable() failed: {}", e);
-            e.to_string()
-        })?;
+    // Sync autostart with OS only when the value actually changed
+    // (autostart.enable/disable can hang on some platforms)
+    let old_launch_at_login = state
+        .preferences
+        .lock()
+        .map(|p| p.launch_at_login)
+        .unwrap_or(false);
+
+    if preferences.launch_at_login != old_launch_at_login {
+        log::info!("save_preferences: autostart changed {} -> {}, syncing", old_launch_at_login, preferences.launch_at_login);
+        use tauri_plugin_autostart::ManagerExt;
+        let autostart = app.autolaunch();
+        let result = if preferences.launch_at_login {
+            autostart.enable()
+        } else {
+            autostart.disable()
+        };
+        if let Err(e) = result {
+            // Non-fatal: preferences are already saved, don't fail the whole operation
+            log::error!("save_preferences: autostart failed: {}", e);
+        }
+        log::info!("save_preferences: autostart synced");
     } else {
-        autostart.disable().map_err(|e| {
-            log::error!("save_preferences: autostart.disable() failed: {}", e);
-            e.to_string()
-        })?;
+        log::info!("save_preferences: launch_at_login unchanged, skipping autostart");
     }
-    log::info!("save_preferences: autostart synced");
 
     save_preferences_to_disk(&preferences);
     log::info!("save_preferences: written to disk");
