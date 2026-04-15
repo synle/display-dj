@@ -57,6 +57,16 @@ After making changes to frontend code (`src/`), config files, or docs, always ru
 4. **Method comments**: Always add doc comments to all new functions and methods. Rust uses `///` doc comments; TypeScript/React uses `/** */` JSDoc comments. Every public function, Tauri command, React component, and non-trivial helper must have a comment describing what it does.
 5. **CLI sidecar version bumps**: When updating `displayDjCliVersion` in `package.json`, always check the [display-dj-cli changelog and commits](https://github.com/synle/display-dj-cli) for upstream changes (new endpoints, changed response formats, removed features). Update our code to use any new APIs and remove usage of deprecated ones. Document the changes in CLAUDE.md and CONTRIBUTING.md.
 
+## macOS Tray Icon Pitfall (Critical)
+
+On macOS, two patterns in Tauri command handlers break the system tray icon — both left-click and right-click stop working entirely:
+
+1. **Sync Tauri commands that access `AppState`**: Declaring a `#[tauri::command]` as `pub fn` (sync) instead of `pub async fn` causes Tauri to run it on a blocking thread that starves the macOS main-thread run-loop, preventing `on_tray_icon_event` from firing. All Tauri commands that access `State<'_, AppState>` must be `async`.
+
+2. **`write_debug_log()` in frequently-called sync commands**: `write_debug_log()` locks `state.preferences` to check `debug_logging`. Using it in `get_preferences` (sync, called on every frontend render) creates enough mutex contention to starve the run-loop. Use `log::info!` instead in sync commands. `write_debug_log()` is safe in async/infrequent commands like `save_preferences`.
+
+These are documented inline in `config.rs` with WARNING comments.
+
 ## Key Conventions
 
 - All Rust structs sent to frontend use `#[serde(rename_all = "camelCase")]`

@@ -80,6 +80,10 @@ Config files live in `~/Library/Application Support/display-dj/` (macOS), `%APPD
 - Built-in HDMI on base M1/M2 Macs doesn't support DDC/CI -- use USB-C/DisplayPort
 - Linux global shortcuts may not work under Wayland (X11 works fine)
 
+### Developer Note: macOS Tray Icon
+
+If tray icon clicks stop working on macOS after code changes, the most likely causes are: (1) a Tauri command was changed from `async` to sync, or (2) `write_debug_log()` was added to a frequently-called sync command. Both starve the macOS main-thread run-loop. See `config.rs` inline warnings and [DEV.md](DEV.md) rules 9-10 for details.
+
 ## Contributing
 
 See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup (per-platform), project structure, testing, and platform guides. See **[DEV.md](DEV.md)** for the architecture deep-dive: request lifecycle, layer-by-layer breakdown, data flow diagrams, and "where to edit" reference.
