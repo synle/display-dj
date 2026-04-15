@@ -43,7 +43,7 @@ cd src-tauri && cargo test  # Run all Rust backend tests
 
 ### CI
 
-GitHub Actions (`build.yml`) runs `npm test` and `cargo test` on all platforms (macOS ARM/Intel, Windows, Linux) for every push and PR.
+GitHub Actions (`build.yml`) runs `npm test` and `cargo test` on all platforms (macOS ARM/Intel, Windows, Linux) for every push and PR. On PRs, a comment is posted with download links for each platform's build artifacts.
 
 ## Formatting
 
@@ -85,16 +85,30 @@ These are documented inline in `config.rs` with WARNING comments.
 
 The display-dj CLI sidecar handles all platform-specific display dependencies internally. No external tools need to be installed for display control.
 
-The sidecar version is defined in `package.json` under `displayDjCliVersion`. The Rust build script (`src-tauri/build.rs`) reads this at compile time and downloads the matching release from GitHub. The `DISPLAY_DJ_CLI_VERSION` env var can override it (used by CI `workflow_dispatch`).
+### Sidecar binaries
 
-For manual builds, download from [display-dj-cli releases](https://github.com/synle/display-dj-cli/releases) or build from source:
+Pre-built sidecar binaries for all 6 platforms are committed in `src-tauri/binaries/`. The build script (`src-tauri/build.rs`) tries to download the latest from GitHub releases first, then falls back to the committed binary if the download fails (offline, timeout, etc.).
+
+The sidecar version is defined in `package.json` under `displayDjCliVersion`. The `DISPLAY_DJ_CLI_VERSION` env var can override it (used by CI `workflow_dispatch`).
+
+To update the committed binaries after a version bump, run from the project root:
 
 ```bash
-git clone https://github.com/synle/display-dj-cli.git
-cd display-dj-cli
-cargo build --release
-cp target/release/display-dj ../display-dj2/src-tauri/binaries/display-dj-server-<target-triple>
+VERSION=$(node -p "require('./package.json').displayDjCliVersion")
+cd src-tauri/binaries
+curl -fSL "https://github.com/synle/display-dj-cli/releases/download/${VERSION}/display-dj-macos-arm64" -o display-dj-server-aarch64-apple-darwin
+curl -fSL "https://github.com/synle/display-dj-cli/releases/download/${VERSION}/display-dj-macos-x64" -o display-dj-server-x86_64-apple-darwin
+curl -fSL "https://github.com/synle/display-dj-cli/releases/download/${VERSION}/display-dj-windows-x64.exe" -o display-dj-server-x86_64-pc-windows-msvc.exe
+curl -fSL "https://github.com/synle/display-dj-cli/releases/download/${VERSION}/display-dj-windows-arm64.exe" -o display-dj-server-aarch64-pc-windows-msvc.exe
+curl -fSL "https://github.com/synle/display-dj-cli/releases/download/${VERSION}/display-dj-linux-x64" -o display-dj-server-x86_64-unknown-linux-gnu
+curl -fSL "https://github.com/synle/display-dj-cli/releases/download/${VERSION}/display-dj-linux-arm64" -o display-dj-server-aarch64-unknown-linux-gnu
+chmod 755 display-dj-server-*
 ```
+
+### CI
+
+- **`build.yml`**: Runs tests and builds on all platforms for every push and PR. On PRs, posts a comment with artifact download links.
+- **`release.yml`**: Triggered by `v*` tags. Builds all platforms and uploads artifacts to a GitHub release (created as draft, publish manually).
 
 ### Linux (additional)
 

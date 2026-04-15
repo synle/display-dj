@@ -584,7 +584,9 @@ Format: `command/<action>/<value>`
 
 ## display-dj CLI Sidecar
 
-The [display-dj CLI](https://github.com/synle/display-dj-cli) is bundled as a Tauri sidecar. The version is defined in `package.json` under `displayDjCliVersion`. The build script (`src-tauri/build.rs`) downloads the matching release at compile time.
+The [display-dj CLI](https://github.com/synle/display-dj-cli) is bundled as a Tauri sidecar. The version is defined in `package.json` under `displayDjCliVersion`.
+
+Pre-built binaries for all 6 platforms are committed to the repo. The build script (`src-tauri/build.rs`) tries to download the latest from GitHub releases first (10s timeout), then falls back to the committed binary if the download fails. This enables offline builds and faster CI.
 
 ### Sidecar binaries
 
@@ -633,12 +635,13 @@ kill %1
 
 ## Troubleshooting
 
-| Problem                               | Fix                                                                                             |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `command not found: rustc`            | Run `source "$HOME/.cargo/env"` or reopen terminal                                              |
-| First build takes 5+ minutes          | Normal. Rust compiles from source. Subsequent runs are ~5-15s                                   |
-| App launched but can't find it        | System tray app. macOS: menu bar top-right. Windows: system tray bottom-right. Linux: top panel |
-| "sidecar not found"                   | Binary missing from `src-tauri/binaries/`. See [sidecar section](#display-dj-cli-sidecar)       |
-| "server did not become ready"         | Check binary is executable (`chmod +x`), port available (`lsof -i :51337`), test directly       |
-| "No displays found"                   | Run `./src-tauri/binaries/display-dj-server-* list` directly. Linux: check `ddcutil detect`     |
-| Dark mode toggle does nothing (Linux) | Requires GNOME. Check `echo $XDG_CURRENT_DESKTOP`                                               |
+| Problem                                 | Fix                                                                                                                            |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `command not found: rustc`              | Run `source "$HOME/.cargo/env"` or reopen terminal                                                                             |
+| First build takes 5+ minutes            | Normal. Rust compiles from source. Subsequent runs are ~5-15s                                                                  |
+| App launched but can't find it          | System tray app. macOS: menu bar top-right. Windows: system tray bottom-right. Linux: top panel                                |
+| "sidecar not found"                     | Binary missing from `src-tauri/binaries/`. See [sidecar section](#display-dj-cli-sidecar)                                      |
+| "server did not become ready"           | Check binary is executable (`chmod +x`), port available (`lsof -i :51337`), test directly                                      |
+| "No displays found"                     | Run `./src-tauri/binaries/display-dj-server-* list` directly. Linux: check `ddcutil detect`                                    |
+| Dark mode toggle does nothing (Linux)   | Requires GNOME. Check `echo $XDG_CURRENT_DESKTOP`                                                                              |
+| macOS "System Events" permission prompt | Expected on first launch. Volume control uses `osascript` which requires System Events access. Click Allow — only prompts once |
