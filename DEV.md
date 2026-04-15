@@ -416,6 +416,10 @@ lib.rs background thread (every 60s)
 
 8. **The sidecar port is global.** Set once at startup in `AtomicU16`, accessed everywhere via `crate::server_port()`. All modules use `base_url()` to build HTTP URLs.
 
+9. **Tauri commands accessing AppState must be `async` on macOS.** Sync `#[tauri::command]` functions that take `State<'_, AppState>` block the macOS main-thread run-loop, preventing tray icon click events from firing. This was the root cause of a hard-to-diagnose bug where both left-click and right-click on the tray icon stopped working. See `config.rs` `save_preferences` for the documented warning.
+
+10. **Do not use `write_debug_log()` in frequently-called sync commands.** `write_debug_log()` locks `state.preferences` to check the `debug_logging` flag. In sync Tauri commands called on every frontend render (like `get_preferences`), this mutex contention starves the macOS run-loop and breaks tray icon events. Use `log::info!` in those paths. `write_debug_log()` is safe in async or infrequently-called commands.
+
 ---
 
 ## Where to Edit
@@ -443,12 +447,15 @@ Quick reference for common tasks:
 
 ### 1. Define the Rust function
 
-In the appropriate module (e.g., `display.rs`):
+In the appropriate module (e.g., `display.rs`). **Use `async fn` if the command accesses `State<'_, AppState>`** — sync commands with state access break macOS tray icon events (see rule 9):
 
 ```rust
 /// Does something useful.
 #[tauri::command]
-pub async fn my_new_command(some_param: String) -> Result<String, String> {
+pub async fn my_new_command(
+    state: tauri::State<'_, crate::AppState>,
+    some_param: String,
+) -> Result<String, String> {
     Ok(format!("Hello {}", some_param))
 }
 ```
@@ -613,13 +620,14 @@ kill %1
 
 ## Known Limitations
 
-| Limitation                  | Details                                                      |
-| --------------------------- | ------------------------------------------------------------ |
-| DDC/CI not universal        | Budget monitors and some HDMI connections may not support it |
-| Built-in HDMI on base M1/M2 | No DDC/CI support. Use USB-C/DisplayPort                     |
-| Global shortcuts on Wayland | Wayland restricts global hotkey capture. X11 works fine      |
-| Tray left-click on Linux    | AppIndicator doesn't always fire left-click                  |
-| Dark mode on non-GNOME      | `gsettings` is GNOME-specific. KDE, XFCE not supported       |
+| Limitation                  | Details                                                                                                   |
+| --------------------------- | --------------------------------------------------------------------------------------------------------- |
+| DDC/CI not universal        | Budget monitors and some HDMI connections may not support it                                              |
+| Built-in HDMI on base M1/M2 | No DDC/CI support. Use USB-C/DisplayPort                                                                  |
+| Global shortcuts on Wayland | Wayland restricts global hotkey capture. X11 works fine                                                   |
+| Tray clicks dead on macOS   | Sync Tauri commands or `write_debug_log()` in hot sync commands starve the run-loop. See rules 9-10 above |
+| Tray left-click on Linux    | AppIndicator doesn't always fire left-click                                                               |
+| Dark mode on non-GNOME      | `gsettings` is GNOME-specific. KDE, XFCE not supported                                                    |
 
 ---
 
