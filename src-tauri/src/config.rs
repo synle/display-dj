@@ -336,9 +336,14 @@ pub fn reset_to_defaults() {
 // -- Tauri commands --
 
 /// Returns the current in-memory preferences to the frontend.
+///
+/// WARNING: Do NOT use `write_debug_log()` here. This is a sync command called
+/// frequently by the frontend. `write_debug_log` locks `state.preferences` to
+/// check `debug_logging`, and that extra mutex contention on a sync Tauri command
+/// starves the macOS main-thread run-loop — breaking tray icon click events.
+/// Use `log::info!` instead.
 #[tauri::command]
 pub fn get_preferences(state: tauri::State<'_, crate::AppState>) -> Result<Preferences, String> {
-    log::info!("get_preferences: reading in-memory preferences");
     let prefs = state.preferences.lock().map_err(|e| e.to_string())?;
     log::info!(
         "get_preferences: show_contrast={} min_brightness={} monitors={} profiles={}",
@@ -354,21 +359,28 @@ pub fn get_preferences(state: tauri::State<'_, crate::AppState>) -> Result<Prefe
 /// main-thread run-loop, preventing `on_tray_icon_event` from ever firing —
 /// both left-click and right-click on the tray icon stop working entirely.
 /// (See dropped commit 57a1704 for the broken version.)
+///
+/// Note: `write_debug_log()` is safe here (unlike in `get_preferences`) because
+/// this is async and only called on explicit user save, so the brief mutex lock
+/// does not create contention with the main-thread run-loop.
 #[tauri::command]
 pub async fn save_preferences(
     app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
     preferences: Preferences,
 ) -> Result<(), String> {
-    log::info!(
-        "save_preferences: show_contrast={} min_brightness={} launch_at_login={} debug_logging={} monitor_configs={} profiles={} night_mode_enabled={}",
-        preferences.show_contrast,
-        preferences.min_brightness,
-        preferences.launch_at_login,
-        preferences.debug_logging,
-        preferences.monitor_configs.len(),
-        preferences.profiles.len(),
-        preferences.night_mode_schedule.enabled,
+    write_debug_log(
+        &state,
+        &format!(
+            "save_preferences: show_contrast={} min_brightness={} launch_at_login={} debug_logging={} monitors={} profiles={} night_mode={}",
+            preferences.show_contrast,
+            preferences.min_brightness,
+            preferences.launch_at_login,
+            preferences.debug_logging,
+            preferences.monitor_configs.len(),
+            preferences.profiles.len(),
+            preferences.night_mode_schedule.enabled,
+        ),
     );
 
     // Save to disk and update in-memory state first so the UI isn't blocked
