@@ -22,6 +22,11 @@ pub struct AppState {
     pub preferences: std::sync::Mutex<config::Preferences>,
     pub last_tray_rect: std::sync::Mutex<Option<tauri::Rect>>,
     pub sidecar_child: std::sync::Mutex<Option<CommandChild>>,
+    /// True while we're waiting for the window to gain focus after being shown.
+    /// Blocks spurious `Focused(false)` events that fire before `Focused(true)`
+    /// (a known issue on Linux/X11 and some Windows configurations).
+    /// Cleared when `Focused(true)` fires, so subsequent focus-loss auto-hides normally.
+    pub expect_focus_gain: std::sync::Mutex<bool>,
 }
 
 /// Find an available port starting from the default.
@@ -250,6 +255,7 @@ pub fn run() {
             preferences: std::sync::Mutex::new(preferences.clone()),
             last_tray_rect: std::sync::Mutex::new(None),
             sidecar_child: std::sync::Mutex::new(None),
+            expect_focus_gain: std::sync::Mutex::new(false),
         })
         .invoke_handler(tauri::generate_handler![
             display::get_monitors,
@@ -334,8 +340,25 @@ pub fn run() {
                 let app_handle = app.handle().clone();
                 window.on_window_event(move |event| {
                     match event {
+                        tauri::WindowEvent::Focused(true) => {
+                            // Window gained focus: clear the flag so future focus-loss hides normally.
+                            if let Some(state) = app_handle.try_state::<AppState>() {
+                                if let Ok(mut e) = state.expect_focus_gain.lock() {
+                                    *e = false;
+                                }
+                            }
+                        }
                         tauri::WindowEvent::Focused(false) => {
-                            let _ = win_clone.hide();
+                            // Skip hide if we're still waiting for the window to gain focus.
+                            // On Linux/X11 a spurious Focused(false) fires before Focused(true)
+                            // right after show(); the boolean flag blocks that false positive.
+                            let expecting = app_handle
+                                .try_state::<AppState>()
+                                .and_then(|s| s.expect_focus_gain.lock().ok().map(|e| *e))
+                                .unwrap_or(false);
+                            if !expecting {
+                                let _ = win_clone.hide();
+                            }
                         }
                         tauri::WindowEvent::Resized(_) => {
                             if win_clone.is_visible().unwrap_or(false) {
