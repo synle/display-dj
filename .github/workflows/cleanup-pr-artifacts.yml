@@ -1,0 +1,18 @@
+name: cleanup-pr-artifacts
+
+on:
+  pull_request:
+    types: [closed]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    # https://github.com/synle/gha-workflows/blob/main/.github/workflows/cleanup-pr-artifacts.yml
+    uses: synle/gha-workflows/.github/workflows/cleanup-pr-artifacts.yml@main
+    permissions:
+      actions: write
+    with:
+      delete-runs: false
