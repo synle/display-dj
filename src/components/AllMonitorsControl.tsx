@@ -8,9 +8,11 @@ interface AllMonitorsControlProps {
   showContrast: boolean;
   monitorCount: number;
   minBrightness: number;
+  onExpand: () => void;
 }
 
-/** Combined brightness and optional contrast slider that controls all monitors at once. */
+/** Combined brightness and optional contrast slider that controls all monitors at once.
+ * Includes an expand chevron to switch to individual monitor view. */
 export default function AllMonitorsControl({
   brightness,
   onBrightnessChange,
@@ -19,10 +21,16 @@ export default function AllMonitorsControl({
   showContrast,
   monitorCount,
   minBrightness,
+  onExpand,
 }: AllMonitorsControlProps) {
   return (
     <div className='all-monitors-section'>
-      <div className='section-label'>All Monitors ({monitorCount})</div>
+      <div className='section-label-row'>
+        <span className='section-label'>All Monitors ({monitorCount})</span>
+        <button className='section-toggle' onClick={onExpand} title='Show individual monitors'>
+          <span className='chevron'>&#9662;</span>
+        </button>
+      </div>
       <Slider
         icon='☀'
         value={brightness}
