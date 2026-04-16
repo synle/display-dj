@@ -39,6 +39,7 @@
 - [ ] **Brightness fade transitions** — Smooth animated transitions when changing brightness (e.g., fade from 100% to 20% over 500ms) instead of instant jumps. Makes night mode and profile switches feel less jarring, especially in dark rooms where a sudden brightness change is blinding. Implement as a series of small DDC/CI steps on a timer in the backend — the frontend slider can stay instant for responsiveness.
 - [ ] **Monitor grouping** — Group monitors (e.g., "Desk Left", "Desk Right") and control grouped monitors together with a single slider. Useful for users with 3+ monitors where some share a purpose (e.g., two side monitors for reference, one center for focus). Store group assignments in `monitor-configs.json` and render a group slider above the individual sliders in the expanded view.
 - [ ] **Notification on profile/schedule activation** — Show a system notification when a profile or scheduled change activates, so the user knows why brightness/dark mode just changed. Without this, night mode kicking in at 9 PM can feel like a bug if the user forgot they enabled it. Use Tauri's `notification` plugin — already available in the v2 plugin ecosystem.
+- [ ] **Do Not Disturb / Focus Mode toggle** — System-wide DND toggle that silences notifications. Distinct from Keep Awake (which prevents sleep) — DND suppresses notification banners while the system remains alert. Tray menu toggle, popup UI button, and bindable `command/changeDND/toggle` command. Per-platform: macOS uses `shortcuts run` CLI or private DoNotDisturbKit; Windows uses registry write (`NOC_GLOBAL_SETTING_TOASTS_ENABLED`); Linux GNOME uses `gsettings`. See [research notes](#do-not-disturb--focus-mode-research) below.
 
 ### Larger Features
 
@@ -363,3 +364,167 @@ Use the webcam as a light sensor — works on any machine with a camera, includi
 - For ALS path: poll every ~2-5 seconds (no event-based API on macOS)
 - For camera path: capture only at startup and popup open — no background polling
 - Keep ALS and camera code isolated for easy updates when platform APIs change
+
+### Do Not Disturb / Focus Mode Research
+
+**TLDR:** Feasible on all three platforms but no unified API exists. macOS is the hardest (no public API, relies on Shortcuts.app or private frameworks); Windows is straightforward (registry write, no elevation); Linux GNOME is excellent (`gsettings`), but other DEs each need their own approach. This is a notification-silencing toggle — **not** the same as Keep Awake, which prevents the system from sleeping.
+
+#### Relationship to Keep Awake
+
+Keep Awake (`keepawake` crate) holds a power assertion that prevents idle sleep and display sleep. DND/Focus Mode suppresses notification banners and sounds. They are orthogonal — a user might want either, both, or neither:
+
+- **Keep Awake ON + DND OFF:** Screen stays on, notifications still appear (e.g., monitoring a dashboard)
+- **Keep Awake OFF + DND ON:** Screen can sleep normally, but no notification interruptions (e.g., deep focus work)
+- **Both ON:** Presentation mode — screen stays on, no interruptions
+- **Both OFF:** Normal behavior
+
+The existing "Focus" profile (brightness 80%, dark mode, volume 30%) is a _profile_ that bundles display/audio commands. A `command/changeDND/on` command could be added to that profile's command list, making it a true focus mode.
+
+#### macOS — Focus Mode (macOS 12+ Monterey)
+
+Apple replaced the old Do Not Disturb with a multi-mode "Focus" system in Monterey. There is **no public API** for toggling Focus modes programmatically.
+
+**Approaches:**
+
+1. **Shortcuts.app CLI (recommended):**
+   - Create a Shortcut named "Toggle DND" that uses the "Set Focus" action
+   - Invoke from Rust: `std::process::Command::new("shortcuts").args(["run", "Toggle DND"])`
+   - Pros: Apple-sanctioned, survives OS updates, no private API risk
+   - Cons: Requires one-time user setup (creating the Shortcut), needs Automation permission
+   - The app could include a first-run guide or "Set up DND" button that opens Shortcuts.app
+
+2. **Private `DoNotDisturbKit.framework`:**
+   - `DNDStateService` in `/System/Library/PrivateFrameworks/DoNotDisturbKit.framework`
+   - Apps like "One Switch" and "TopNotch" appear to use this
+   - Access via `objc` crate (already a dependency for macOS tiling)
+   - Pros: No user setup, instant toggle
+   - Cons: Private API, could break on any macOS update, App Store would reject it (not relevant for this app but worth noting)
+
+3. **Reading current state:**
+   - Observe `com.apple.donotdisturb.state` distributed notification for changes
+   - Read `~/Library/DoNotDisturb/DB/ModeConfigurations.json` (undocumented, read-only)
+   - Or query `DNDStateService` for current assertion state
+
+**Recommendation for this app:** Start with the Shortcuts.app approach. Provide a "Set up DND integration" button in Settings that either opens a pre-built `.shortcut` file or shows instructions. Fall back gracefully if the Shortcut doesn't exist (show a warning, don't crash). Consider adding private API support behind a `dndUsePrivateAPI` preference flag for power users who accept the risk.
+
+**Rust implementation:** Shell out via `tauri_plugin_shell` or `std::process::Command`. The `objc` crate is already in `Cargo.toml` for macOS tiling if private API support is added later.
+
+#### Windows — Focus Assist / Do Not Disturb
+
+Windows 10 called it "Focus Assist" (Quiet Hours); Windows 11 renamed it "Do Not Disturb." Both use the same registry path.
+
+**Approach: Registry (recommended):**
+
+- **Key:** `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings`
+- **Value:** `NOC_GLOBAL_SETTING_TOASTS_ENABLED` (DWORD)
+  - `0` = DND on (toasts disabled)
+  - `1` = DND off (toasts enabled)
+- Write with `winreg` crate, then broadcast `WM_SETTINGCHANGE` so the shell picks up the change immediately
+- **No elevation required** — HKCU is the current user's hive
+
+**Reading state:** Same registry read — `RegGetValue` on the key above.
+
+**Alternative — WNF (Windows Notification Facility):**
+
+- Monitor `WNF_SHEL_QUIET_MOMENT_SHELL_MODE_CHANGED` for state changes
+- Internal, undocumented, but used by Windows shell components
+- Not recommended for toggling, only for observing
+
+**Rust implementation:**
+
+```rust
+use winreg::enums::*;
+use winreg::RegKey;
+
+fn set_dnd(enabled: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let key = hkcu.open_subkey_with_flags(
+        r"Software\Microsoft\Windows\CurrentVersion\Notifications\Settings",
+        KEY_SET_VALUE,
+    )?;
+    // 0 = toasts disabled (DND on), 1 = toasts enabled (DND off)
+    key.set_value("NOC_GLOBAL_SETTING_TOASTS_ENABLED", &(if enabled { 0u32 } else { 1u32 }))?;
+    Ok(())
+}
+```
+
+**Permissions:** None beyond normal user rights.
+
+#### Linux — Desktop Environment Dependent
+
+No unified DND API exists on Linux. Each notification daemon has its own control mechanism.
+
+**GNOME (largest DE — excellent support):**
+
+- **Toggle:** `gsettings set org.gnome.desktop.notifications show-banners false`
+- **Read:** `gsettings get org.gnome.desktop.notifications show-banners`
+- Official, stable, well-documented GSettings schema
+- Works on GNOME 3.38+ (covers Ubuntu 20.04+, Fedora 33+, etc.)
+- Rust: shell out to `gsettings` or use `gio` crate for direct GSettings access
+
+**KDE Plasma (good support):**
+
+- **Toggle via D-Bus:** `qdbus org.freedesktop.Notifications /org/freedesktop/Notifications org.freedesktop.Notifications.Inhibit "display-dj" "User toggled DND"`
+- **Toggle via KConfig:** `kwriteconfig5 --file kglobalrc --group Notifications --key DoNotDisturb true`
+- Rust: shell out to `qdbus`/`kwriteconfig5`, or use `zbus` crate for native D-Bus
+
+**Dunst (popular standalone notification daemon):**
+
+- **Toggle:** `dunstctl set-paused true` / `dunstctl set-paused false` / `dunstctl set-paused toggle`
+- **Read:** `dunstctl is-paused`
+- Simple, reliable, widely used on i3/sway/bspwm setups
+
+**Other notification daemons:**
+
+- **mako (Wayland):** `makoctl set-mode do-not-disturb` / `makoctl set-mode default`
+- **deadd:** No CLI control
+- **swaync:** `swaync-client --toggle-dnd`
+
+**Detection strategy:** At startup, probe for the notification system in priority order:
+
+1. Check if `gsettings` schema `org.gnome.desktop.notifications` exists (covers GNOME, Budgie, Cinnamon)
+2. Check if KDE D-Bus service is available
+3. Check if `dunstctl` is on PATH
+4. Check if `makoctl` is on PATH
+5. Check if `swaync-client` is on PATH
+6. If none found, disable DND feature and hide the toggle
+
+#### DND Platform Summary
+
+| Platform        | API Type          | Feasibility | Approach                                            | Permissions           | Rust Crate/Tool         |
+| --------------- | ----------------- | ----------- | --------------------------------------------------- | --------------------- | ----------------------- |
+| **macOS**       | Private/Shortcuts | Moderate    | `shortcuts run` CLI or private `DoNotDisturbKit`    | Automation permission | `std::process::Command` |
+| **Windows**     | Registry          | Excellent   | `winreg` write to `HKCU\...\Notifications\Settings` | None (HKCU)           | `winreg`                |
+| **Linux GNOME** | GSettings         | Excellent   | `gsettings set org.gnome.desktop.notifications`     | None                  | `std::process::Command` |
+| **Linux KDE**   | D-Bus/KConfig     | Good        | `qdbus` or `kwriteconfig5`                          | None                  | `std::process::Command` |
+| **Linux Dunst** | CLI               | Excellent   | `dunstctl set-paused toggle`                        | None                  | `std::process::Command` |
+| **Linux Other** | Varies            | Poor        | Per-daemon CLI tools                                | None                  | `std::process::Command` |
+
+#### Implementation Notes
+
+**Architecture — follows the Keep Awake pattern:**
+
+1. **New Rust module `src-tauri/src/dnd.rs`** — contains `get_dnd` and `set_dnd` Tauri commands, with `#[cfg(target_os)]` blocks for per-platform logic
+2. **AppState field** — add `dnd_active: std::sync::Mutex<bool>` to track DND state (mirrors `keep_awake: Mutex<Option<KeepAwake>>`)
+3. **Tauri commands** — register `get_dnd` and `set_dnd` in the `invoke_handler!` macro in `lib.rs`
+4. **Frontend component `DndToggle.tsx`** — toggle button matching `KeepAwakeToggle.tsx` style, placed adjacent to it in `App.tsx`
+5. **Command routing** — add `command/changeDND/toggle`, `command/changeDND/on`, `command/changeDND/off` to `execute_command()` in `tray.rs` so it works from keyboard shortcuts and profiles
+6. **Tray menu** — optional tray menu toggle item, or rely on popup UI + keyboard shortcuts
+
+**State synchronization:**
+
+- On app startup and `visibilitychange`, call `get_dnd` to read the OS DND state (not just in-memory state)
+- After `set_dnd`, verify the state actually changed (macOS Shortcuts approach can fail silently)
+- Emit a `dnd-changed` event so the frontend refreshes
+
+**Profile integration:**
+
+- The existing "Focus" profile could include `command/changeDND/on` in its command list
+- `command/changeDND/toggle` can be bound to a keyboard shortcut
+- This reuses the existing command dispatch system with zero new plumbing
+
+**Graceful degradation:**
+
+- Detect platform support at startup (especially on Linux where the notification daemon varies)
+- If DND is not supported (e.g., unknown Linux DE), hide the toggle entirely from the UI
+- On macOS, if the "Toggle DND" shortcut doesn't exist, show a one-time setup prompt instead of silently failing
