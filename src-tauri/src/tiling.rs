@@ -983,8 +983,12 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
 
 // --- Snap zone detection ---
 
-/// Edge and corner trigger sizes in points.
-const EDGE_TRIGGER: f64 = 5.0;
+/// Snap trigger sizes in points.
+/// Side edges (left/right) — how close the cursor must be to trigger a half snap.
+const SIDE_EDGE_TRIGGER: f64 = 10.0;
+/// Top edge — how close to the top to trigger maximize.
+const TOP_EDGE_TRIGGER: f64 = 20.0;
+/// Corner zones — square size at each screen corner for quarter snaps.
 const CORNER_TRIGGER: f64 = 50.0;
 
 /// Detect which snap zone the cursor is in, if any.
@@ -1001,10 +1005,10 @@ fn detect_snap_zone(cx: f64, cy: f64, displays: &[Rect]) -> Option<(TilingLayout
         let top = cy - d.y;
         let bottom = d.y + d.height - cy;
 
-        let at_left = left < EDGE_TRIGGER;
-        let at_right = right < EDGE_TRIGGER;
-        let at_top = top < EDGE_TRIGGER;
-        let at_bottom = bottom < EDGE_TRIGGER;
+        let at_left = left < SIDE_EDGE_TRIGGER;
+        let at_right = right < SIDE_EDGE_TRIGGER;
+        let at_top = top < TOP_EDGE_TRIGGER;
+        let at_bottom = bottom < SIDE_EDGE_TRIGGER;
         let in_corner_top = top < CORNER_TRIGGER;
         let in_corner_bottom = bottom < CORNER_TRIGGER;
         let in_corner_left = left < CORNER_TRIGGER;
