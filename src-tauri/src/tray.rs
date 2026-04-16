@@ -554,6 +554,18 @@ fn execute_command(app: &AppHandle, command: &str) {
                 }
             }
         }
+        ["command", "tile", layout] => {
+            #[cfg(target_os = "macos")]
+            {
+                let app_clone = app.clone();
+                let layout = layout.to_string();
+                std::thread::spawn(move || {
+                    crate::tiling::execute_tile(&app_clone, &layout);
+                });
+            }
+            #[cfg(not(target_os = "macos"))]
+            log::warn!("Tiling is not yet supported on this platform: {}", layout);
+        }
         _ => {
             log::warn!("Unknown command: {}", command);
         }

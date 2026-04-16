@@ -4,6 +4,31 @@ use std::path::PathBuf;
 /// Absolute floor for brightness — never allow less than this regardless of user config.
 pub const ABSOLUTE_MIN_BRIGHTNESS: u32 = 5;
 
+/// Tiling window manager preferences.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TilingPreferences {
+    /// Master toggle to enable/disable all tiling features.
+    pub enabled: bool,
+    /// Percentage for half splits (affects halves and quarter corners).
+    pub half_ratio: u32,
+    /// Percentage for third splits. Center/middle = 100 - 2*third.
+    pub third_ratio: u32,
+    /// Gap in points between tiled windows and screen edges.
+    pub gap: u32,
+}
+
+impl Default for TilingPreferences {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            half_ratio: 50,
+            third_ratio: 33,
+            gap: 0,
+        }
+    }
+}
+
 /// Per-monitor metadata stored in preferences. Acts as a persistent registry —
 /// entries are added when a monitor is first detected and never removed on unplug,
 /// so labels and sort order survive across plug/unplug cycles.
@@ -61,6 +86,7 @@ pub struct Preferences {
     pub debug_logging: bool,
     pub launch_at_login: bool,
     pub monitor_configs: Vec<MonitorMetadata>,
+    pub tiling: TilingPreferences,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -180,6 +206,7 @@ impl Default for Preferences {
             debug_logging: false,
             launch_at_login: false,
             monitor_configs: Vec::new(),
+            tiling: TilingPreferences::default(),
         }
     }
 }
