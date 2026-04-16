@@ -996,16 +996,40 @@ fn detect_snap_zone(
     top_edge: f64,
     corner: f64,
 ) -> Option<(TilingLayout, usize)> {
-    for (i, d) in displays.iter().enumerate() {
-        // Check if cursor is within this display
-        if cx < d.x || cx >= d.x + d.width || cy < d.y || cy >= d.y + d.height {
-            continue;
-        }
+    // Two-pass: first check displays whose bounds contain the cursor (exact match),
+    // then check displays where the cursor is just outside (overflow into menu bar/dock).
+    // This prevents the margin expansion from stealing a cursor that belongs to an adjacent display.
+    let passes: &[bool] = &[false, true]; // false = exact only, true = with margin
+    for &allow_overflow in passes {
+        for (i, d) in displays.iter().enumerate() {
+            let in_bounds = cx >= d.x && cx < d.x + d.width && cy >= d.y && cy < d.y + d.height;
 
-        let left = cx - d.x;
-        let right = d.x + d.width - cx;
-        let top = cy - d.y;
-        let bottom = d.y + d.height - cy;
+            if !allow_overflow && !in_bounds {
+                continue;
+            }
+            if allow_overflow && in_bounds {
+                continue; // already checked in first pass
+            }
+            if allow_overflow {
+                // Only match if cursor is near this display (within margin)
+                let margin = corner.max(side_edge).max(top_edge);
+                if cx < d.x - margin
+                    || cx >= d.x + d.width + margin
+                    || cy < d.y - margin
+                    || cy >= d.y + d.height + margin
+                {
+                    continue;
+                }
+            }
+
+            // Clamp cursor to display bounds — treats "past the edge" the same as
+            // "at the edge", so the snap zone extends through the menu bar / dock.
+            let clamped_x = cx.clamp(d.x, d.x + d.width - 1.0);
+            let clamped_y = cy.clamp(d.y, d.y + d.height - 1.0);
+            let left = clamped_x - d.x;
+            let right = d.x + d.width - clamped_x;
+            let top = clamped_y - d.y;
+            let bottom = d.y + d.height - clamped_y;
 
         let at_left = left < side_edge;
         let at_right = right < side_edge;
@@ -1041,8 +1065,8 @@ fn detect_snap_zone(
             return Some((TilingLayout::Maximize, i));
         }
 
-        // No snap zone on this display
-        return None;
+        // Cursor is on/near this display but not in a snap zone
+        }
     }
     None
 }
@@ -1635,5 +1659,22 @@ mod tests {
         // Left edge of second monitor
         let result = detect_snap_zone(1922.0, 540.0, &displays, 10.0, 10.0, 50.0);
         assert_eq!(result, Some((TilingLayout::LeftHalf, 1)));
+    }
+
+    #[test]
+    fn test_snap_cursor_above_display_into_menu_bar() {
+        // Cursor above the display (in menu bar) should still trigger maximize
+        let displays = vec![display(0.0, 25.0, 1920.0, 1055.0)];
+        // y = 20 is above the display (top at y=25) — should clamp and trigger top edge
+        let result = detect_snap_zone(960.0, 20.0, &displays, 10.0, 10.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::Maximize, 0)));
+    }
+
+    #[test]
+    fn test_snap_cursor_past_left_edge() {
+        // Cursor past the left edge should still trigger left half
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let result = detect_snap_zone(-3.0, 540.0, &displays, 10.0, 10.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::LeftHalf, 0)));
     }
 }
