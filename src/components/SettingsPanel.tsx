@@ -287,6 +287,34 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                   </a>
                 </div>
               )}
+              {prefs.tiling?.enabled && (
+                <div style={{ marginTop: '8px' }}>
+                  <label className='settings-label'>Exposé Grid Size</label>
+                  <Slider
+                    value={Math.round(Math.sqrt(prefs.tiling?.exposeMaxWindows ?? 16))}
+                    min={2}
+                    max={5}
+                    onChange={(v) =>
+                      updateField('tiling', {
+                        ...prefs.tiling,
+                        exposeMaxWindows: v * v,
+                      })
+                    }
+                    showValue={false}
+                  />
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      color: '#666',
+                      marginTop: '2px',
+                      display: 'block',
+                    }}>
+                    {Math.round(Math.sqrt(prefs.tiling?.exposeMaxWindows ?? 16))} &times;{' '}
+                    {Math.round(Math.sqrt(prefs.tiling?.exposeMaxWindows ?? 16))} ={' '}
+                    {prefs.tiling?.exposeMaxWindows ?? 16} windows per screen
+                  </span>
+                </div>
+              )}
             </div>
             <div className='settings-divider' />
           </>
