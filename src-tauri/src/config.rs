@@ -24,8 +24,6 @@ pub struct TilingPreferences {
     pub corner_trigger: u32,
     /// Exposé: maximum number of windows to show in the grid.
     pub expose_max_windows: u32,
-    /// Exposé: sort app groups by "recent" (most recently used first) or "alphabetical".
-    pub expose_sort_by: String,
 }
 
 impl Default for TilingPreferences {
@@ -38,8 +36,7 @@ impl Default for TilingPreferences {
             side_edge_trigger: 10,
             top_edge_trigger: 10,
             corner_trigger: 50,
-            expose_max_windows: 25,
-            expose_sort_by: "recent".into(),
+            expose_max_windows: 16,
         }
     }
 }

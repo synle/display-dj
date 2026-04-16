@@ -919,13 +919,14 @@ unsafe fn dict_get_bounds(dict: CFDictionaryRef) -> Option<Rect> {
     })
 }
 
-/// Get all normal windows via CGWindowList (including minimized and other-space windows).
+/// Get all on-screen normal windows via CGWindowList.
 /// Filters out desktop elements, tiny windows (< 50x50), and non-normal layers.
+/// "On-screen" includes windows visible on any display, not just the focused one.
 fn get_all_windows() -> Vec<WindowInfo> {
     let mut windows = Vec::new();
     unsafe {
         let list = CGWindowListCopyWindowInfo(
-            K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS,
+            K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS,
             K_CG_NULL_WINDOW_ID,
         );
         if list.is_null() {
@@ -1000,88 +1001,56 @@ pub fn execute_expose(app: &AppHandle) {
     }
 }
 
-/// Spread all windows into a grid on the current display.
-fn spread_expose(app: &AppHandle) {
-    // Read preferences
-    let (max_windows, sort_by, gap) = {
-        let state = app.state::<crate::AppState>();
-        let prefs = match state.preferences.lock() {
-            Ok(p) => p,
-            Err(_) => return,
-        };
-        (
-            prefs.tiling.expose_max_windows as usize,
-            prefs.tiling.expose_sort_by.clone(),
-            prefs.tiling.gap,
-        )
-    };
-
-    // Get all on-screen windows
-    let all_windows = get_all_windows();
-    if all_windows.is_empty() {
-        log::info!("expose: no windows found");
-        return;
-    }
-
-    // Get displays
-    let displays = get_display_visible_frames();
-    if displays.is_empty() {
-        return;
-    }
-
-    // Determine which display to use (where the frontmost window is)
-    let target_display = find_display_for_window(&all_windows[0].bounds, &displays);
-    let display = &displays[target_display];
-
-    // Group by owner_pid, keeping insertion order
-    let mut app_groups: Vec<(String, i32, Vec<&WindowInfo>)> = Vec::new();
-    for w in &all_windows {
-        if let Some(group) = app_groups.iter_mut().find(|(_, pid, _)| *pid == w.owner_pid) {
-            group.2.push(w);
+/// Build a deterministic, alphabetically-sorted window list from all windows.
+/// Groups by app name (case-insensitive), sorts groups alphabetically,
+/// sorts windows within each group by window_id for stability.
+fn build_sorted_window_list(windows: &[WindowInfo], max: usize) -> Vec<&WindowInfo> {
+    let mut app_groups: Vec<(String, Vec<&WindowInfo>)> = Vec::new();
+    for w in windows {
+        if let Some(group) = app_groups.iter_mut().find(|(name, _)| *name == w.owner_name) {
+            group.1.push(w);
         } else {
-            app_groups.push((w.owner_name.clone(), w.owner_pid, vec![w]));
+            app_groups.push((w.owner_name.clone(), vec![w]));
         }
     }
-
-    // Sort app groups
-    if sort_by == "alphabetical" {
-        app_groups.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    // Sort groups alphabetically by app name (case-insensitive)
+    app_groups.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    // Sort windows within each group by window_id for deterministic order
+    for (_, wins) in &mut app_groups {
+        wins.sort_by_key(|w| w.window_id);
     }
-    // "recent" keeps the CGWindowList order (already sorted by most recently used)
-
-    // Flatten into ordered window list, capped at max
-    let ordered: Vec<&WindowInfo> = app_groups
+    app_groups
         .iter()
-        .flat_map(|(_, _, wins)| wins.iter().copied())
-        .take(max_windows)
-        .collect();
+        .flat_map(|(_, wins)| wins.iter().copied())
+        .take(max)
+        .collect()
+}
 
-    if ordered.is_empty() {
-        return;
-    }
-
+/// Lay out windows in a grid on a single display. Returns the number of windows placed.
+/// `offset` is the starting index into `ordered` for this display.
+fn layout_grid_on_display(
+    ordered: &[&WindowInfo],
+    display: &Rect,
+    gap: f64,
+    saved: &mut HashMap<u32, Rect>,
+) -> usize {
     let n = ordered.len();
+    if n == 0 {
+        return 0;
+    }
     let cols = (n as f64).sqrt().ceil() as usize;
     let rows = (n + cols - 1) / cols;
-
-    let g = gap as f64;
-    let cell_w = (display.width - g * (cols as f64 + 1.0)) / cols as f64;
-    let cell_h = (display.height - g * (rows as f64 + 1.0)) / rows as f64;
-
-    // Save original positions and move windows
-    let mut saved = expose_saved().lock().unwrap();
-    saved.clear();
+    let cell_w = (display.width - gap * (cols as f64 + 1.0)) / cols as f64;
+    let cell_h = (display.height - gap * (rows as f64 + 1.0)) / rows as f64;
 
     for (idx, win_info) in ordered.iter().enumerate() {
         let col = idx % cols;
         let row = idx / cols;
-        let x = display.x + g + col as f64 * (cell_w + g);
-        let y = display.y + g + row as f64 * (cell_h + g);
+        let x = display.x + gap + col as f64 * (cell_w + gap);
+        let y = display.y + gap + row as f64 * (cell_h + gap);
 
-        // Save original position
         saved.insert(win_info.window_id, win_info.bounds.clone());
 
-        // Move window using AX API: find AXUIElement by PID + window ID
         unsafe {
             if let Some(ax_win) = get_ax_window_by_id(win_info.owner_pid, win_info.window_id) {
                 set_window_rect(
@@ -1096,15 +1065,71 @@ fn spread_expose(app: &AppHandle) {
             }
         }
     }
+    n
+}
+
+/// Spread all windows into grids, filling display 1 first then overflowing to display 2, etc.
+/// Each display holds up to `max_windows` before overflowing to the next.
+fn spread_expose(app: &AppHandle) {
+    let (max_per_display, gap) = {
+        let state = app.state::<crate::AppState>();
+        let prefs = match state.preferences.lock() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        (prefs.tiling.expose_max_windows as usize, prefs.tiling.gap)
+    };
+
+    // Normalize: unminimize and un-fullscreen all windows first
+    let (unmin, unfs) = normalize_all_windows();
+    if unmin > 0 || unfs > 0 {
+        log::info!(
+            "expose: normalized {} unminimized, {} un-fullscreened",
+            unmin,
+            unfs
+        );
+        // Brief pause to let macOS finish animations before re-fetching
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+
+    // Re-fetch windows after normalization
+    let all_windows = get_all_windows();
+    if all_windows.is_empty() {
+        log::info!("expose: no windows found");
+        return;
+    }
+
+    let displays = get_display_visible_frames();
+    if displays.is_empty() {
+        return;
+    }
+
+    // Total cap = per-display cap * number of displays
+    let total_cap = max_per_display * displays.len();
+    let ordered = build_sorted_window_list(&all_windows, total_cap);
+    if ordered.is_empty() {
+        return;
+    }
+
+    let mut saved = expose_saved().lock().unwrap();
+    saved.clear();
+
+    let g = gap as f64;
+    let mut offset = 0;
+    let n = ordered.len();
+    for (i, display) in displays.iter().enumerate() {
+        if offset >= n {
+            break;
+        }
+        let count = (n - offset).min(max_per_display);
+        let slice = &ordered[offset..offset + count];
+        layout_grid_on_display(slice, display, g, &mut saved);
+        log::info!("expose: placed {} windows on display {}", count, i);
+        offset += count;
+    }
 
     EXPOSE_ACTIVE.store(true, Ordering::Relaxed);
-    log::info!(
-        "expose: spread {} windows into {}x{} grid on display {}",
-        n,
-        cols,
-        rows,
-        target_display
-    );
+    log::info!("expose: spread {} windows across {} displays", n.min(offset), displays.len());
 }
 
 /// Restore all windows to their pre-exposé positions.
@@ -1173,29 +1198,8 @@ unsafe fn get_ax_window_by_id(pid: i32, target_wid: u32) -> Option<CfRef> {
 }
 
 // ===========================================================================
-// App Exposé — show only the active app's windows, minimize everything else
+// Window normalization — unminimize and un-fullscreen before exposé
 // ===========================================================================
-
-/// Whether app exposé is currently active.
-static APP_EXPOSE_ACTIVE: AtomicBool = AtomicBool::new(false);
-
-/// Saved positions of the active app's windows before app exposé, keyed by CGWindowID.
-static APP_EXPOSE_SAVED: std::sync::OnceLock<std::sync::Mutex<HashMap<u32, Rect>>> =
-    std::sync::OnceLock::new();
-
-/// Window IDs of windows we minimized during app exposé (so we can unminimize them on restore).
-static APP_EXPOSE_MINIMIZED: std::sync::OnceLock<std::sync::Mutex<Vec<(i32, u32)>>> =
-    std::sync::OnceLock::new();
-
-/// Get the saved-positions mutex for app exposé.
-fn app_expose_saved() -> &'static std::sync::Mutex<HashMap<u32, Rect>> {
-    APP_EXPOSE_SAVED.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
-}
-
-/// Get the minimized-windows list for app exposé.
-fn app_expose_minimized() -> &'static std::sync::Mutex<Vec<(i32, u32)>> {
-    APP_EXPOSE_MINIMIZED.get_or_init(|| std::sync::Mutex::new(Vec::new()))
-}
 
 /// Set the AXMinimized attribute on a window.
 unsafe fn set_window_minimized(ax_win: &CfRef, minimized: bool) -> bool {
@@ -1215,9 +1219,171 @@ unsafe fn set_window_minimized(ax_win: &CfRef, minimized: bool) -> bool {
     AXUIElementSetAttributeValue(ax_win.as_ptr(), attr.as_ptr(), val) == K_AX_ERROR_SUCCESS
 }
 
+/// Check if a window is minimized via AXMinimized.
+unsafe fn is_window_minimized(ax_win: &CfRef) -> bool {
+    let attr = match cfstr("AXMinimized") {
+        Some(a) => a,
+        None => return false,
+    };
+    let mut val: CFTypeRef = std::ptr::null();
+    if AXUIElementCopyAttributeValue(ax_win.as_ptr(), attr.as_ptr(), &mut val)
+        != K_AX_ERROR_SUCCESS
+    {
+        return false;
+    }
+    if val.is_null() {
+        return false;
+    }
+    extern "C" {
+        static kCFBooleanTrue: CFTypeRef;
+    }
+    let result = val == kCFBooleanTrue;
+    CFRelease(val);
+    result
+}
+
+/// Check if a window is in native fullscreen via AXFullScreen.
+unsafe fn is_window_fullscreen(ax_win: &CfRef) -> bool {
+    let attr = match cfstr("AXFullScreen") {
+        Some(a) => a,
+        None => return false,
+    };
+    let mut val: CFTypeRef = std::ptr::null();
+    if AXUIElementCopyAttributeValue(ax_win.as_ptr(), attr.as_ptr(), &mut val)
+        != K_AX_ERROR_SUCCESS
+    {
+        return false;
+    }
+    if val.is_null() {
+        return false;
+    }
+    extern "C" {
+        static kCFBooleanTrue: CFTypeRef;
+    }
+    let result = val == kCFBooleanTrue;
+    CFRelease(val);
+    result
+}
+
+/// Set AXFullScreen on a window.
+unsafe fn set_window_fullscreen(ax_win: &CfRef, fullscreen: bool) -> bool {
+    let attr = match cfstr("AXFullScreen") {
+        Some(a) => a,
+        None => return false,
+    };
+    extern "C" {
+        static kCFBooleanTrue: CFTypeRef;
+        static kCFBooleanFalse: CFTypeRef;
+    }
+    let val = if fullscreen {
+        kCFBooleanTrue
+    } else {
+        kCFBooleanFalse
+    };
+    AXUIElementSetAttributeValue(ax_win.as_ptr(), attr.as_ptr(), val) == K_AX_ERROR_SUCCESS
+}
+
+/// Get all AX windows for a given app PID. Returns (window_element, window_id) pairs.
+unsafe fn get_all_ax_windows_for_pid(pid: i32) -> Vec<(CfRef, u32)> {
+    let mut result = Vec::new();
+    extern "C" {
+        fn AXUIElementCreateApplication(pid: i32) -> CFTypeRef;
+        fn CFRetain(cf: CFTypeRef) -> CFTypeRef;
+    }
+    let app_el = match CfRef::new(AXUIElementCreateApplication(pid)) {
+        Some(e) => e,
+        None => return result,
+    };
+    let attr = match cfstr("AXWindows") {
+        Some(a) => a,
+        None => return result,
+    };
+    let mut windows_ref: CFTypeRef = std::ptr::null();
+    if AXUIElementCopyAttributeValue(app_el.as_ptr(), attr.as_ptr(), &mut windows_ref)
+        != K_AX_ERROR_SUCCESS
+    {
+        return result;
+    }
+    let windows_arr = match CfRef::new(windows_ref) {
+        Some(a) => a,
+        None => return result,
+    };
+    let count = CFArrayGetCount(windows_arr.as_ptr() as CFArrayRef);
+    for i in 0..count {
+        let win_el = CFArrayGetValueAtIndex(windows_arr.as_ptr() as CFArrayRef, i);
+        if win_el.is_null() {
+            continue;
+        }
+        let mut wid: u32 = 0;
+        if _AXUIElementGetWindow(win_el, &mut wid) == K_AX_ERROR_SUCCESS {
+            CFRetain(win_el);
+            if let Some(cf) = CfRef::new(win_el) {
+                result.push((cf, wid));
+            }
+        }
+    }
+    result
+}
+
+/// Normalize all windows: unminimize minimized windows and exit fullscreen.
+/// Returns the number of windows that were changed (for logging).
+/// After calling this, the caller should re-fetch the window list since
+/// windows may now be visible that weren't before.
+fn normalize_all_windows() -> (usize, usize) {
+    // Collect unique PIDs from on-screen windows first, then also check
+    // all running GUI apps for minimized windows (which won't appear in CGWindowList).
+    let mut pids: Vec<i32> = Vec::new();
+
+    // Get on-screen windows for their PIDs
+    let on_screen = get_all_windows();
+    for w in &on_screen {
+        if !pids.contains(&w.owner_pid) {
+            pids.push(w.owner_pid);
+        }
+    }
+
+    let mut unminimized = 0;
+    let mut unfullscreened = 0;
+
+    unsafe {
+        for &pid in &pids {
+            let ax_windows = get_all_ax_windows_for_pid(pid);
+            for (ax_win, _wid) in &ax_windows {
+                if is_window_minimized(ax_win) {
+                    if set_window_minimized(ax_win, false) {
+                        unminimized += 1;
+                    }
+                }
+                if is_window_fullscreen(ax_win) {
+                    if set_window_fullscreen(ax_win, false) {
+                        unfullscreened += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    (unminimized, unfullscreened)
+}
+
+// ===========================================================================
+// App Exposé — show only the active app's windows in a grid
+// ===========================================================================
+
+/// Whether app exposé is currently active.
+static APP_EXPOSE_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Saved positions of the active app's windows before app exposé, keyed by CGWindowID.
+static APP_EXPOSE_SAVED: std::sync::OnceLock<std::sync::Mutex<HashMap<u32, Rect>>> =
+    std::sync::OnceLock::new();
+
+/// Get the saved-positions mutex for app exposé.
+fn app_expose_saved() -> &'static std::sync::Mutex<HashMap<u32, Rect>> {
+    APP_EXPOSE_SAVED.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
 /// Execute the app exposé command. Toggles between spread and restore.
-/// When activated, minimizes all windows not belonging to the frontmost app,
-/// then lays out the frontmost app's windows in a grid (like Exposé but app-scoped).
+/// When activated, lays out the frontmost app's windows in a grid across all displays.
 pub fn execute_expose_app(app: &AppHandle) {
     if !unsafe { AXIsProcessTrusted() } {
         log::warn!("app_expose: Accessibility permission not granted");
@@ -1231,9 +1397,9 @@ pub fn execute_expose_app(app: &AppHandle) {
     }
 }
 
-/// Spread only the frontmost app's windows into a grid, minimizing all others.
+/// Spread only the frontmost app's windows into a grid, filling display 1 first then overflowing.
 fn spread_expose_app(app: &AppHandle) {
-    let (max_windows, gap) = {
+    let (max_per_display, gap) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
@@ -1242,101 +1408,80 @@ fn spread_expose_app(app: &AppHandle) {
         (prefs.tiling.expose_max_windows as usize, prefs.tiling.gap)
     };
 
-    let all_windows = get_all_windows();
-    if all_windows.is_empty() {
+    // Identify the target app before normalization (frontmost window)
+    let pre_windows = get_all_windows();
+    if pre_windows.is_empty() {
         log::info!("app_expose: no windows found");
         return;
     }
+    let target_pid = pre_windows[0].owner_pid;
+    let target_app = pre_windows[0].owner_name.clone();
 
-    // The frontmost window determines the target app
-    let target_pid = all_windows[0].owner_pid;
-    let target_app = all_windows[0].owner_name.clone();
+    // Normalize: unminimize and un-fullscreen all windows of the target app
+    let (unmin, unfs) = normalize_all_windows();
+    if unmin > 0 || unfs > 0 {
+        log::info!(
+            "app_expose: normalized {} unminimized, {} un-fullscreened",
+            unmin,
+            unfs
+        );
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
 
-    // Split into app windows vs other windows
-    let app_windows: Vec<&WindowInfo> = all_windows
-        .iter()
-        .filter(|w| w.owner_pid == target_pid)
-        .take(max_windows)
-        .collect();
-    let other_windows: Vec<&WindowInfo> = all_windows
-        .iter()
-        .filter(|w| w.owner_pid != target_pid)
-        .collect();
-
-    if app_windows.is_empty() {
+    // Re-fetch windows after normalization
+    let all_windows = get_all_windows();
+    if all_windows.is_empty() {
         return;
     }
 
-    // Get displays
     let displays = get_display_visible_frames();
     if displays.is_empty() {
         return;
     }
 
-    let target_display = find_display_for_window(&app_windows[0].bounds, &displays);
-    let display = &displays[target_display];
+    // Total cap = per-display cap * number of displays
+    let total_cap = max_per_display * displays.len();
 
-    // Minimize all other windows
-    let mut minimized_list = app_expose_minimized().lock().unwrap();
-    minimized_list.clear();
-    for w in &other_windows {
-        unsafe {
-            if let Some(ax_win) = get_ax_window_by_id(w.owner_pid, w.window_id) {
-                if set_window_minimized(&ax_win, true) {
-                    minimized_list.push((w.owner_pid, w.window_id));
-                }
-            }
-        }
+    // Filter to target app's windows, sorted by window_id for determinism
+    let mut app_windows: Vec<&WindowInfo> = all_windows
+        .iter()
+        .filter(|w| w.owner_pid == target_pid)
+        .take(total_cap)
+        .collect();
+    app_windows.sort_by_key(|w| w.window_id);
+
+    if app_windows.is_empty() {
+        return;
     }
-
-    // Grid layout for the app's windows
-    let n = app_windows.len();
-    let cols = (n as f64).sqrt().ceil() as usize;
-    let rows = (n + cols - 1) / cols;
-    let g = gap as f64;
-    let cell_w = (display.width - g * (cols as f64 + 1.0)) / cols as f64;
-    let cell_h = (display.height - g * (rows as f64 + 1.0)) / rows as f64;
 
     let mut saved = app_expose_saved().lock().unwrap();
     saved.clear();
 
-    for (idx, win_info) in app_windows.iter().enumerate() {
-        let col = idx % cols;
-        let row = idx / cols;
-        let x = display.x + g + col as f64 * (cell_w + g);
-        let y = display.y + g + row as f64 * (cell_h + g);
-
-        saved.insert(win_info.window_id, win_info.bounds.clone());
-
-        unsafe {
-            if let Some(ax_win) = get_ax_window_by_id(win_info.owner_pid, win_info.window_id) {
-                set_window_rect(
-                    &ax_win,
-                    &Rect {
-                        x,
-                        y,
-                        width: cell_w,
-                        height: cell_h,
-                    },
-                );
-            }
+    let g = gap as f64;
+    let n = app_windows.len();
+    let mut offset = 0;
+    for (i, display) in displays.iter().enumerate() {
+        if offset >= n {
+            break;
         }
+        let count = (n - offset).min(max_per_display);
+        let slice = &app_windows[offset..offset + count];
+        layout_grid_on_display(slice, display, g, &mut saved);
+        log::info!("app_expose: placed {} windows on display {}", count, i);
+        offset += count;
     }
 
     APP_EXPOSE_ACTIVE.store(true, Ordering::Relaxed);
     log::info!(
-        "app_expose: spread {} windows of '{}' into {}x{} grid, minimized {} others",
-        n,
+        "app_expose: spread {} windows of '{}' across {} displays",
+        n.min(offset),
         target_app,
-        cols,
-        rows,
-        minimized_list.len()
+        displays.len()
     );
 }
 
-/// Restore all windows after app exposé: unminimize others, restore app window positions.
+/// Restore app windows to their pre-exposé positions.
 fn restore_expose_app(_app: &AppHandle) {
-    // Restore app windows to original positions
     let mut saved = app_expose_saved().lock().unwrap();
     let all_windows = get_all_windows();
 
@@ -1349,29 +1494,11 @@ fn restore_expose_app(_app: &AppHandle) {
             }
         }
     }
-    let app_count = saved.len();
+
+    let count = saved.len();
     saved.clear();
-
-    // Unminimize windows we minimized
-    let mut minimized_list = app_expose_minimized().lock().unwrap();
-    let mut restored = 0;
-    for &(pid, wid) in minimized_list.iter() {
-        unsafe {
-            if let Some(ax_win) = get_ax_window_by_id(pid, wid) {
-                if set_window_minimized(&ax_win, false) {
-                    restored += 1;
-                }
-            }
-        }
-    }
-    minimized_list.clear();
-
     APP_EXPOSE_ACTIVE.store(false, Ordering::Relaxed);
-    log::info!(
-        "app_expose: restored {} app windows, unminimized {} others",
-        app_count,
-        restored
-    );
+    log::info!("app_expose: restored {} windows", count);
 }
 
 // ===========================================================================
