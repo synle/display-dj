@@ -1,72 +1,94 @@
 [![Build](https://github.com/synle/display-dj/actions/workflows/build.yml/badge.svg)](https://github.com/synle/display-dj/actions/workflows/build.yml)
 
-# display-dj
+# Display DJ
 
-A cross-platform desktop app for controlling monitor brightness, contrast, dark mode, and volume -- all from one system tray popup. Works with both built-in laptop displays and external monitors via DDC/CI. Supports **macOS**, **Windows**, and **Linux**.
-
-## Downloads
-
-Grab the latest release from the [Releases](../../releases) page.
-
-| Platform                    | File                                       |
-| --------------------------- | ------------------------------------------ |
-| macOS Apple Silicon (ARM64) | `Display DJ_x.x.x_aarch64.dmg`             |
-| macOS Intel (x64)           | `Display DJ_x.x.x_x64.dmg`                 |
-| Windows (x64)               | `Display DJ_x.x.x_x64-setup.exe` / `.msi`  |
-| Linux (x64)                 | `Display DJ_x.x.x_amd64.deb` / `.AppImage` |
+A cross-platform desktop system tray app for controlling monitor brightness, contrast, dark mode, volume, and more -- all from one popup. Works with both built-in laptop displays and external monitors via DDC/CI. Supports **macOS**, **Windows**, and **Linux**.
 
 ## Features
 
-- **Monitor brightness** -- one slider for all monitors, or expand for individual control
-- **Monitor contrast** -- DDC contrast control for external monitors (enable in Settings)
-- **Dark mode toggle** -- system-wide dark/light switch
+- **Brightness control** -- a single slider to adjust all monitors at once, or expand to control each monitor individually
+- **Contrast control** -- DDC/CI contrast adjustment for external monitors (enable in Settings)
+- **Dark mode toggle** -- system-wide dark/light mode switch
 - **Volume control** -- system volume slider with mute indicator
-- **Night mode schedule** -- auto-set brightness and dark/light mode on a time schedule (e.g., dim at 9 PM, bright at 7 AM)
-- **Settings panel** -- in-app UI for min brightness, show/hide contrast, monitor config, night mode schedule, and launch at login
-- **Global keyboard shortcuts** -- work even when the app isn't focused (configurable via settings or `preferences.json`)
-- **Monitor renaming** -- click a display name to rename it
-- **Profiles** -- save and apply preset combinations of brightness, contrast, dark mode, and volume
-- **System tray app** -- lives in your menu bar / system tray, no dock/taskbar clutter
+- **Keep Awake** -- prevent your system from sleeping with a single toggle (macOS, Windows, Linux)
+- **Night mode schedule** -- automatically set brightness and dark/light mode on a time-based schedule (e.g., dim at 9 PM, bright at 7 AM)
+- **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
+- **Global keyboard shortcuts** -- work even when the app isn't focused; fully configurable
+- **Monitor renaming** -- click any display name to give it a custom label
+- **Settings panel** -- configure min brightness, contrast visibility, monitor ordering, night mode schedule, and launch at login
+- **System tray app** -- lives in your menu bar / system tray with no dock or taskbar clutter
 
-## Quick Start (Development)
+## Download & Install
 
-**Prerequisites**: [Node.js](https://nodejs.org) 18+, [Rust](https://www.rust-lang.org/tools/install) 1.77+
+Grab the latest release from the **[Releases](../../releases)** page.
 
-```bash
-git clone <repo-url>
-cd display-dj2
-npm install
-npx tauri dev
-```
+### macOS
 
-The first build takes a few minutes while Rust compiles from source. After that, incremental builds take ~5-15 seconds.
+| Chip          | File                           |
+| ------------- | ------------------------------ |
+| Apple Silicon | `Display DJ_2.1.0_aarch64.dmg` |
+| Intel         | `Display DJ_2.1.0_x64.dmg`     |
 
-The app appears in your **system tray** (not as a regular window):
+1. Download the `.dmg` for your chip
+2. Open the `.dmg` and drag **Display DJ** into your **Applications** folder
+3. Launch **Display DJ** from Applications -- it will appear in your **menu bar** (top-right)
 
-- **macOS**: menu bar, top-right
-- **Windows**: system tray, bottom-right (click `^` if hidden)
-- **Linux**: top panel (may need the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/))
+> **First launch note:** macOS Gatekeeper may show _"Display DJ is damaged and can't be opened"_ or _"unidentified developer"_ because the app is not notarized via the App Store. See the [macOS Gatekeeper fix](#macos-gatekeeper-fix) below.
 
-> **Platform-specific dependencies** (external monitor tools, Tauri build libraries, etc.) are covered in **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+### Windows
 
-## Common Commands
+| Architecture | File                             |
+| ------------ | -------------------------------- |
+| x64          | `Display DJ_2.1.0_x64-setup.exe` |
+| x64          | `Display DJ_2.1.0_x64_en-US.msi` |
 
-| Command                      | What it does                                 |
-| ---------------------------- | -------------------------------------------- |
-| `npx tauri dev`              | Run the full app in dev mode with hot reload |
-| `npx tauri build`            | Production build (binary + installer)        |
-| `npm test`                   | Run frontend tests                           |
-| `cd src-tauri && cargo test` | Run backend tests                            |
+1. Download either the `.exe` installer or the `.msi`
+2. Run the installer and follow the prompts
+3. Launch **Display DJ** -- it will appear in your **system tray** (bottom-right; click `^` if hidden)
+
+### Linux
+
+| Format   | File                              |
+| -------- | --------------------------------- |
+| Debian   | `Display DJ_2.1.0_amd64.deb`      |
+| AppImage | `Display DJ_2.1.0_amd64.AppImage` |
+| RPM      | `Display.DJ-2.1.0-1.x86_64.rpm`   |
+
+1. Install via your preferred format:
+
+   ```bash
+   # Debian / Ubuntu
+   sudo dpkg -i "Display DJ_2.1.0_amd64.deb"
+
+   # RPM-based (Fedora, etc.)
+   sudo rpm -i Display.DJ-2.1.0-1.x86_64.rpm
+
+   # AppImage (no install needed)
+   chmod +x "Display DJ_2.1.0_amd64.AppImage"
+   ./"Display DJ_2.1.0_amd64.AppImage"
+   ```
+
+2. Install the required display-control dependencies:
+   ```bash
+   sudo apt install ddcutil brightnessctl i2c-tools
+   sudo modprobe i2c-dev
+   sudo usermod -aG i2c $USER
+   ```
+3. The app appears in your **top panel** (you may need the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/) on GNOME)
 
 ## Configuration
 
-Config files live in `~/Library/Application Support/display-dj/` (macOS), `%APPDATA%\display-dj\` (Windows), or `~/.config/display-dj/` (Linux).
+Config files are stored in:
 
-- **`preferences.json`** -- keyboard shortcuts, min brightness, night mode schedule, profiles, per-monitor metadata (labels, sort order)
+- **macOS**: `~/Library/Application Support/display-dj/`
+- **Windows**: `%APPDATA%\display-dj\`
+- **Linux**: `~/.config/display-dj/`
+
+The main config file is **`preferences.json`** -- it holds keyboard shortcuts, min brightness, night mode schedule, profiles, and per-monitor metadata (labels, sort order).
 
 ### Default Keyboard Shortcuts
 
-| Keys            | Command                      |
+| Keys            | Action                       |
 | --------------- | ---------------------------- |
 | Shift + Escape  | Toggle Dark Mode             |
 | Shift + F1      | Brightness 10% + Dark Mode   |
@@ -77,27 +99,31 @@ Config files live in `~/Library/Application Support/display-dj/` (macOS), `%APPD
 ## Known Issues
 
 - Not every external monitor supports DDC/CI (some budget models and certain HDMI connections)
-- Built-in HDMI on base M1/M2 Macs doesn't support DDC/CI -- use USB-C/DisplayPort
+- Built-in HDMI on base M1/M2 Macs doesn't support DDC/CI -- use USB-C or DisplayPort instead
 - Linux global shortcuts may not work under Wayland (X11 works fine)
 
-### Developer Note: macOS Tray Icon
+## macOS Gatekeeper Fix
 
-If tray icon clicks stop working on macOS after code changes, the most likely causes are: (1) a Tauri command was changed from `async` to sync, or (2) `write_debug_log()` was added to a frequently-called sync command. Both starve the macOS main-thread run-loop. See `config.rs` inline warnings and [DEV.md](DEV.md) rules 9-10 for details.
+macOS Gatekeeper quarantines apps downloaded outside the App Store by setting an extended attribute (`com.apple.quarantine`) on the `.app` bundle. This causes the _"app is damaged and can't be opened"_ or _"unidentified developer"_ error when you try to launch the app.
 
-## Contributing
+To fix this, open **Terminal** and run:
 
-See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup (per-platform), project structure, testing, and platform guides. See **[DEV.md](DEV.md)** for the architecture deep-dive: request lifecycle, layer-by-layer breakdown, data flow diagrams, and "where to edit" reference.
+```bash
+xattr -cr "/Applications/Display DJ.app"
+```
 
-## Bug Reports & Suggestions
-
-Use the [Issues](../../issues) page. Please include your OS version, monitor model(s), and connection type.
-
-## display-dj CLI
-
-Display and dark mode operations are handled by the [display-dj CLI](https://github.com/synle/display-dj-cli), which runs as a bundled HTTP server sidecar. The correct version is downloaded automatically during the build (via `build.rs`).
-
-To manually download or build from source, see the [display-dj CLI releases](https://github.com/synle/display-dj-cli/releases) and the [sidecar setup guide](CONTRIBUTING.md#display-dj-cli-sidecar).
+This recursively clears the quarantine flag so macOS allows the app to run. You only need to do this once after the initial install (or after updating to a new version).
 
 ## Tech Stack
 
 [Tauri v2](https://v2.tauri.app/) (Rust) + React 18 + TypeScript + Vite 6 + [display-dj CLI](https://github.com/synle/display-dj-cli)
+
+Display and dark mode operations are handled by the bundled [display-dj CLI](https://github.com/synle/display-dj-cli) sidecar -- no external tools need to be installed on macOS or Windows.
+
+## Contributing
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup, project structure, testing, and platform guides. See **[DEV.md](DEV.md)** for the architecture deep-dive.
+
+## Bug Reports & Suggestions
+
+Use the [Issues](../../issues) page. Please include your OS version, monitor model(s), and connection type.

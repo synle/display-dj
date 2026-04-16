@@ -61,4 +61,21 @@ describe("Header", () => {
     const chevron = container.querySelector(".chevron");
     expect(chevron).not.toHaveClass("expanded");
   });
+
+  it("hides the expand/collapse button when settings is open", () => {
+    render(<Header {...defaultProps} settingsOpen={true} />);
+    expect(
+      screen.queryByTitle("Show individual monitors"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTitle("Show all monitors control"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the expand/collapse button when settings is closed", () => {
+    render(<Header {...defaultProps} settingsOpen={false} />);
+    expect(
+      screen.getByTitle("Show individual monitors"),
+    ).toBeInTheDocument();
+  });
 });
