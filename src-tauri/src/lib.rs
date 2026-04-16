@@ -16,6 +16,22 @@ use tauri_plugin_shell::process::CommandChild;
 
 static SERVER_PORT: AtomicU16 = AtomicU16::new(51337);
 
+/// Stub tiling commands for non-macOS platforms.
+#[cfg(not(target_os = "macos"))]
+mod tiling_stubs {
+    /// Tiling is not supported on this platform.
+    #[tauri::command]
+    pub fn get_tiling_supported() -> bool {
+        false
+    }
+
+    /// Accessibility check is macOS-only; always returns false elsewhere.
+    #[tauri::command]
+    pub fn get_accessibility_trusted() -> bool {
+        false
+    }
+}
+
 /// Returns the current display-dj sidecar HTTP server port.
 pub fn server_port() -> u16 {
     SERVER_PORT.load(Ordering::Relaxed)
@@ -290,6 +306,14 @@ pub fn run() {
             tray::apply_profile,
             keep_awake::get_keep_awake,
             keep_awake::set_keep_awake,
+            #[cfg(target_os = "macos")]
+            tiling::get_tiling_supported,
+            #[cfg(target_os = "macos")]
+            tiling::get_accessibility_trusted,
+            #[cfg(not(target_os = "macos"))]
+            tiling_stubs::get_tiling_supported,
+            #[cfg(not(target_os = "macos"))]
+            tiling_stubs::get_accessibility_trusted,
         ])
         .setup(move |app| {
             // Find an available port and store it

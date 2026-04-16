@@ -15,7 +15,8 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
 - **Global keyboard shortcuts** -- work even when the app isn't focused; fully configurable
 - **Monitor renaming** -- click any display name to give it a custom label
-- **Settings panel** -- configure min brightness, contrast visibility, monitor ordering, night mode schedule, and launch at login
+- **Window tiling** (macOS) -- tile windows to halves, thirds, two-thirds, quarters, or maximize via keyboard shortcuts or tray menu. See [Window Tiling](#window-tiling-macos) below
+- **Settings panel** -- configure min brightness, contrast visibility, monitor ordering, night mode schedule, tiling, and launch at login
 - **System tray app** -- lives in your menu bar / system tray with no dock or taskbar clutter
 
 ## Download & Install
@@ -95,6 +96,46 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 | Shift + F2      | Brightness 100% + Light Mode |
 | Shift + F3-F5   | Brightness 0% / 50% / 100%   |
 | Shift + F10-F12 | Volume 0% / 10% / 100%       |
+
+**Window Tiling** (macOS only):
+
+| Keys                  | Action                           |
+| --------------------- | -------------------------------- |
+| Ctrl + Shift + Left   | Left Third                       |
+| Ctrl + Shift + Right  | Right Third                      |
+| Ctrl + Shift + Up     | Left Two-Thirds                  |
+| Ctrl + Shift + Down   | Right Two-Thirds                 |
+| Ctrl + Shift + D/C/G  | Left/Center/Right Third          |
+| Ctrl + Shift + I/O    | Top-Left/Top-Right Quarter       |
+| Ctrl + Shift + K/L    | Bottom-Left/Bottom-Right Quarter |
+| Ctrl + Shift + M or / | Maximize                         |
+
+## Window Tiling (macOS)
+
+Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or maximize using keyboard shortcuts or the **Tiling** submenu in the tray icon's right-click menu.
+
+### Enabling Tiling
+
+1. Open the tray menu and go to **Tiling > Enable Tiling**, or toggle **Enable Window Tiling** in the Settings panel
+2. Grant **Accessibility permission** (required for tiling to move/resize other apps' windows):
+   - Open **System Settings > Privacy & Security > Accessibility**
+   - Click the **+** button
+   - Add **Display DJ** (from `/Applications/Display DJ.app`)
+   - Make sure the toggle next to it is **on**
+   - If running in development mode (`npx tauri dev`), add your **terminal app** (e.g., iTerm, Terminal.app) instead
+
+> **Note:** Tiling will not work without Accessibility permission. The Settings panel shows a warning with a link to these instructions if permission is missing.
+
+### Tiling Preferences
+
+Tiling settings are stored in `preferences.json` under the `tiling` key:
+
+| Setting      | Default | Description                                              |
+| ------------ | ------- | -------------------------------------------------------- |
+| `enabled`    | `true`  | Master toggle for all tiling features                    |
+| `halfRatio`  | `50`    | Percentage for half splits (affects halves and quarters) |
+| `thirdRatio` | `33`    | Percentage for third splits (center = 100 - 2 x third)   |
+| `gap`        | `0`     | Padding in points around the tiling area                 |
 
 ## Known Issues
 
