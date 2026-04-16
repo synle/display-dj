@@ -16,6 +16,12 @@ pub struct TilingPreferences {
     pub third_ratio: u32,
     /// Gap in points between tiled windows and screen edges.
     pub gap: u32,
+    /// Tile Snap: pixel width of the side edge hot zone (left/right/bottom).
+    pub side_edge_trigger: u32,
+    /// Tile Snap: pixel height of the top edge hot zone (maximize trigger).
+    pub top_edge_trigger: u32,
+    /// Tile Snap: pixel size of the corner hot zone (quarter tile trigger).
+    pub corner_trigger: u32,
 }
 
 impl Default for TilingPreferences {
@@ -25,6 +31,9 @@ impl Default for TilingPreferences {
             half_ratio: 50,
             third_ratio: 33,
             gap: 0,
+            side_edge_trigger: 10,
+            top_edge_trigger: 20,
+            corner_trigger: 50,
         }
     }
 }

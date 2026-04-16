@@ -32,6 +32,9 @@ export interface TilingPreferences {
   halfRatio: number;
   thirdRatio: number;
   gap: number;
+  sideEdgeTrigger: number;
+  topEdgeTrigger: number;
+  cornerTrigger: number;
 }
 
 export interface Preferences {

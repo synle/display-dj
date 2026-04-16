@@ -983,17 +983,19 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
 
 // --- Snap zone detection ---
 
-/// Snap trigger sizes in points.
-/// Side edges (left/right) — how close the cursor must be to trigger a half snap.
-const SIDE_EDGE_TRIGGER: f64 = 10.0;
-/// Top edge — how close to the top to trigger maximize.
-const TOP_EDGE_TRIGGER: f64 = 20.0;
-/// Corner zones — square size at each screen corner for quarter snaps.
-const CORNER_TRIGGER: f64 = 50.0;
-
 /// Detect which snap zone the cursor is in, if any.
 /// Returns the target layout and display index.
-fn detect_snap_zone(cx: f64, cy: f64, displays: &[Rect]) -> Option<(TilingLayout, usize)> {
+/// `side_edge`: pixel trigger for left/right/bottom edges.
+/// `top_edge`: pixel trigger for top edge (maximize).
+/// `corner`: pixel trigger for corner zones (quarters).
+fn detect_snap_zone(
+    cx: f64,
+    cy: f64,
+    displays: &[Rect],
+    side_edge: f64,
+    top_edge: f64,
+    corner: f64,
+) -> Option<(TilingLayout, usize)> {
     for (i, d) in displays.iter().enumerate() {
         // Check if cursor is within this display
         if cx < d.x || cx >= d.x + d.width || cy < d.y || cy >= d.y + d.height {
@@ -1005,14 +1007,14 @@ fn detect_snap_zone(cx: f64, cy: f64, displays: &[Rect]) -> Option<(TilingLayout
         let top = cy - d.y;
         let bottom = d.y + d.height - cy;
 
-        let at_left = left < SIDE_EDGE_TRIGGER;
-        let at_right = right < SIDE_EDGE_TRIGGER;
-        let at_top = top < TOP_EDGE_TRIGGER;
-        let at_bottom = bottom < SIDE_EDGE_TRIGGER;
-        let in_corner_top = top < CORNER_TRIGGER;
-        let in_corner_bottom = bottom < CORNER_TRIGGER;
-        let in_corner_left = left < CORNER_TRIGGER;
-        let in_corner_right = right < CORNER_TRIGGER;
+        let at_left = left < side_edge;
+        let at_right = right < side_edge;
+        let at_top = top < top_edge;
+        let at_bottom = bottom < side_edge;
+        let in_corner_top = top < corner;
+        let in_corner_bottom = bottom < corner;
+        let in_corner_left = left < corner;
+        let in_corner_right = right < corner;
 
         // Corners take priority (check first)
         if at_left && in_corner_top || at_top && in_corner_left {
@@ -1069,6 +1071,9 @@ struct SnapState {
     half_ratio: u32,
     third_ratio: u32,
     gap: u32,
+    side_edge_trigger: f64,
+    top_edge_trigger: f64,
+    corner_trigger: f64,
 }
 
 /// CGEventTap callback — runs on the event tap background thread.
@@ -1128,6 +1133,9 @@ extern "C" fn snap_event_callback(
                 state.half_ratio = tp.half_ratio;
                 state.third_ratio = tp.third_ratio;
                 state.gap = tp.gap;
+                state.side_edge_trigger = tp.side_edge_trigger as f64;
+                state.top_edge_trigger = tp.top_edge_trigger as f64;
+                state.corner_trigger = tp.corner_trigger as f64;
             }
         }
 
@@ -1136,7 +1144,14 @@ extern "C" fn snap_event_callback(
                 return event;
             }
 
-            let zone = detect_snap_zone(cursor.x, cursor.y, &state.displays);
+            let zone = detect_snap_zone(
+                cursor.x,
+                cursor.y,
+                &state.displays,
+                state.side_edge_trigger,
+                state.top_edge_trigger,
+                state.corner_trigger,
+            );
 
             match zone {
                 Some((layout, display_idx)) => {
@@ -1238,6 +1253,9 @@ pub fn start_tile_snap(app: AppHandle) {
             half_ratio: 50,
             third_ratio: 33,
             gap: 0,
+            side_edge_trigger: 10.0,
+            top_edge_trigger: 20.0,
+            corner_trigger: 50.0,
         }),
     });
 
@@ -1553,21 +1571,21 @@ mod tests {
     fn test_snap_left_edge() {
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
         // Cursor at left edge, middle height
-        let result = detect_snap_zone(2.0, 540.0, &displays);
+        let result = detect_snap_zone(2.0, 540.0, &displays, 10.0, 20.0, 50.0);
         assert_eq!(result, Some((TilingLayout::LeftHalf, 0)));
     }
 
     #[test]
     fn test_snap_right_edge() {
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let result = detect_snap_zone(1918.0, 540.0, &displays);
+        let result = detect_snap_zone(1918.0, 540.0, &displays, 10.0, 20.0, 50.0);
         assert_eq!(result, Some((TilingLayout::RightHalf, 0)));
     }
 
     #[test]
     fn test_snap_top_edge() {
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let result = detect_snap_zone(960.0, 2.0, &displays);
+        let result = detect_snap_zone(960.0, 2.0, &displays, 10.0, 20.0, 50.0);
         assert_eq!(result, Some((TilingLayout::Maximize, 0)));
     }
 
@@ -1575,28 +1593,28 @@ mod tests {
     fn test_snap_top_left_corner() {
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
         // Cursor at top-left corner (within both edge and corner triggers)
-        let result = detect_snap_zone(2.0, 20.0, &displays);
+        let result = detect_snap_zone(2.0, 20.0, &displays, 10.0, 20.0, 50.0);
         assert_eq!(result, Some((TilingLayout::TopLeftQuarter, 0)));
     }
 
     #[test]
     fn test_snap_top_right_corner() {
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let result = detect_snap_zone(1918.0, 20.0, &displays);
+        let result = detect_snap_zone(1918.0, 20.0, &displays, 10.0, 20.0, 50.0);
         assert_eq!(result, Some((TilingLayout::TopRightQuarter, 0)));
     }
 
     #[test]
     fn test_snap_bottom_left_corner() {
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let result = detect_snap_zone(2.0, 1060.0, &displays);
+        let result = detect_snap_zone(2.0, 1060.0, &displays, 10.0, 20.0, 50.0);
         assert_eq!(result, Some((TilingLayout::BottomLeftQuarter, 0)));
     }
 
     #[test]
     fn test_snap_bottom_right_corner() {
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let result = detect_snap_zone(1918.0, 1060.0, &displays);
+        let result = detect_snap_zone(1918.0, 1060.0, &displays, 10.0, 20.0, 50.0);
         assert_eq!(result, Some((TilingLayout::BottomRightQuarter, 0)));
     }
 
@@ -1604,7 +1622,7 @@ mod tests {
     fn test_snap_no_zone_center() {
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
         // Cursor in the middle — no snap zone
-        let result = detect_snap_zone(960.0, 540.0, &displays);
+        let result = detect_snap_zone(960.0, 540.0, &displays, 10.0, 20.0, 50.0);
         assert_eq!(result, None);
     }
 
@@ -1615,7 +1633,7 @@ mod tests {
             display(1920.0, 0.0, 2560.0, 1440.0),
         ];
         // Left edge of second monitor
-        let result = detect_snap_zone(1922.0, 540.0, &displays);
+        let result = detect_snap_zone(1922.0, 540.0, &displays, 10.0, 20.0, 50.0);
         assert_eq!(result, Some((TilingLayout::LeftHalf, 1)));
     }
 }
