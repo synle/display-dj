@@ -681,23 +681,8 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
         return;
     }
 
-    let current_display = find_display_for_window(&win_rect, &displays);
-
-    // Determine target display (cycle if same layout already applied)
-    let target_display = {
-        let state = app.state::<crate::AppState>();
-        let ts = state.tiling_state.lock().unwrap();
-        if let Some(ws) = ts.windows.get(&window_id) {
-            if ws.layout == layout {
-                // Same layout — cycle to next display
-                (ws.display_index + 1) % displays.len()
-            } else {
-                current_display
-            }
-        } else {
-            current_display
-        }
-    };
+    // Always tile on the display the window is currently on
+    let target_display = find_display_for_window(&win_rect, &displays);
 
     // Save original position (only on first tile) and update state
     {
