@@ -32,7 +32,7 @@ impl Default for TilingPreferences {
             third_ratio: 33,
             gap: 0,
             side_edge_trigger: 10,
-            top_edge_trigger: 20,
+            top_edge_trigger: 10,
             corner_trigger: 50,
         }
     }
