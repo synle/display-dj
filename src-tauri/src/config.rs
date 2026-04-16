@@ -536,6 +536,14 @@ pub fn set_debug_logging(state: &crate::AppState, enabled: bool) {
     }
 }
 
+/// Set tiling.enabled in preferences and persist to disk. Used by tray Tiling submenu.
+pub fn set_tiling_enabled(state: &crate::AppState, enabled: bool) {
+    if let Ok(mut prefs) = state.preferences.lock() {
+        prefs.tiling.enabled = enabled;
+        save_preferences_to_disk(&prefs);
+    }
+}
+
 /// Returns the app version string (set at compile time from package.json).
 #[tauri::command]
 pub fn get_app_version() -> String {
