@@ -252,6 +252,21 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
           <label className='settings-checkbox-row'>
             <input
               type='checkbox'
+              checked={prefs.tiling?.enabled ?? true}
+              onChange={(e) =>
+                updateField('tiling', { ...prefs.tiling, enabled: e.target.checked })
+              }
+            />
+            <span>Enable Window Tiling</span>
+          </label>
+        </div>
+
+        <div className='settings-divider' />
+
+        <div className='settings-section'>
+          <label className='settings-checkbox-row'>
+            <input
+              type='checkbox'
               checked={prefs.launchAtLogin}
               onChange={(e) => updateField('launchAtLogin', e.target.checked)}
             />
