@@ -267,19 +267,24 @@ fn get_display_visible_frames() -> Vec<Rect> {
             None => return Vec::new(),
         };
 
-        // Primary screen height for Cocoa → CG coordinate conversion
-        let main_screen: *mut Object = msg_send![cls, mainScreen];
-        if main_screen.is_null() {
-            return Vec::new();
-        }
-        let main_frame: CGRect = msg_send![main_screen, frame];
-        let primary_h = main_frame.size.height;
-
         let screens: *mut Object = msg_send![cls, screens];
         if screens.is_null() {
             return Vec::new();
         }
         let count: usize = msg_send![screens, count];
+        if count == 0 {
+            return Vec::new();
+        }
+
+        // Primary screen height for Cocoa → CG coordinate conversion.
+        // MUST use screens[0] (the primary display with the menu bar), NOT
+        // mainScreen which returns whichever screen has keyboard focus.
+        // The Cocoa coordinate system origin is anchored to the primary display —
+        // using the wrong screen's height shifts all Y coordinates by the
+        // height difference between the focused and primary screens.
+        let primary_screen: *mut Object = msg_send![screens, objectAtIndex: 0usize];
+        let primary_frame: CGRect = msg_send![primary_screen, frame];
+        let primary_h = primary_frame.size.height;
 
         let mut frames = Vec::with_capacity(count);
         for i in 0..count {
