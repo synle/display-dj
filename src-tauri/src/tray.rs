@@ -49,9 +49,9 @@ fn show_popup_window(app: &AppHandle) {
     }
 }
 
-/// Builds the system tray icon, context menu, and event handlers.
-/// Handles left-click (toggle popup) and menu actions (dark/light mode, profiles, debug, quit).
-pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+/// Builds the tray context menu from current preferences.
+/// Called on initial setup and after any action that changes the menu (debug toggle, reset).
+fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
     let debug_on = {
         if let Some(state) = app.try_state::<crate::AppState>() {
             state.preferences.lock().map(|p| p.debug_logging).unwrap_or(false)
@@ -108,6 +108,7 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
             .item(&debug_enable)
             .separator()
             .item(&open_prefs)
+            .item(&bridge)
             .build()?
     };
 
@@ -156,6 +157,24 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .item(&quit)
         .build()?;
 
+    Ok(menu)
+}
+
+/// Rebuilds the tray context menu from current preferences and applies it.
+fn rebuild_tray_menu(app: &AppHandle) {
+    if let Ok(menu) = build_tray_menu(app) {
+        if let Some(tray) = app.tray_by_id("main-tray") {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
+}
+
+/// Builds the system tray icon, context menu, and event handlers.
+/// Handles left-click (toggle popup) and menu actions (dark/light mode, profiles, debug, quit).
+pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let handle = app.handle();
+    let menu = build_tray_menu(handle)?;
+
     TrayIconBuilder::with_id("main-tray")
         .icon(app.default_window_icon().unwrap().clone())
         .tooltip("Display DJ")
@@ -184,11 +203,13 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 if let Some(state) = app.try_state::<crate::AppState>() {
                     crate::config::set_debug_logging(&state, true);
                 }
+                rebuild_tray_menu(app);
             }
             "debug_disable" => {
                 if let Some(state) = app.try_state::<crate::AppState>() {
                     crate::config::set_debug_logging(&state, false);
                 }
+                rebuild_tray_menu(app);
             }
             "debug_open" => {
                 let _ = crate::config::open_debug_log();
@@ -204,6 +225,8 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 // Re-register shortcuts with default keybindings
                 let prefs = crate::config::Preferences::default();
                 register_shortcuts(app, &prefs.key_bindings);
+                // Rebuild tray menu to reflect reset state
+                rebuild_tray_menu(app);
                 // Notify frontend to refresh
                 let _ = app.emit("monitors-changed", ());
                 let _ = app.emit("dark-mode-changed", ());
