@@ -11,15 +11,35 @@ on:
         required: false
         default: ''
       tag:
-        description: 'Release tag (e.g. v2.0.1). Required for manual runs.'
-        required: true
+        description: 'Release tag (e.g. v2.0.1). Leave empty to use version from package.json.'
+        required: false
+        default: ''
       draft:
         description: 'Create as draft release'
         type: boolean
         default: false
 
 jobs:
+  resolve-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve release tag
+        id: resolve
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+            echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
   cleanup:
+    needs: resolve-tag
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -27,12 +47,12 @@ jobs:
       - name: Delete existing release for this tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          TAG: ${{ needs.resolve-tag.outputs.tag }}
         run: |
           gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes 2>/dev/null || true
 
   release:
-    needs: cleanup
+    needs: [resolve-tag, cleanup]
     permissions:
       contents: write
     strategy:
@@ -88,10 +108,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DISPLAY_DJ_CLI_VERSION: ${{ github.event.inputs.display_dj_cli_version }}
         with:
-          tagName: ${{ github.event.inputs.tag || github.ref_name }}
-          releaseName: 'Display DJ ${{ github.event.inputs.tag || github.ref_name }}'
+          tagName: ${{ needs.resolve-tag.outputs.tag }}
+          releaseName: 'Display DJ ${{ needs.resolve-tag.outputs.tag }}'
           releaseBody: |
-            ## Display DJ ${{ github.event.inputs.tag || github.ref_name }}
+            ## Display DJ ${{ needs.resolve-tag.outputs.tag }}
 
             ### Supported Platforms
             - **macOS** Apple Silicon (ARM64) - `.dmg`
