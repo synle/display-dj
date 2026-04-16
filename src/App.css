@@ -624,44 +624,6 @@ body,
   filter: invert(0.7);
 }
 
-.settings-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 10px 16px;
-  border-top: 1px solid var(--border);
-}
-
-.settings-btn {
-  font-size: 12px;
-  padding: 5px 14px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.settings-btn-cancel {
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-}
-
-.settings-btn-cancel:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.settings-btn-save {
-  background: var(--accent-dark);
-  color: #ffffff;
-  border-color: var(--accent-dark);
-}
-
-.settings-btn-save:hover {
-  background: var(--accent);
-  color: var(--bg-primary);
-}
-
 /* All monitors control */
 .all-monitors-section {
   display: flex;

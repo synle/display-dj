@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Preferences, MonitorMetadata, NightModeSchedule } from '../types';
 import Slider from './Slider';
@@ -9,7 +9,7 @@ interface SettingsPanelProps {
 }
 
 /** Settings panel for configuring min brightness, monitor order/labels/visibility,
- * night mode schedule, and launch-at-login. */
+ * night mode schedule, and launch-at-login. Auto-saves after each change. */
 export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsPanelProps) {
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [editingUid, setEditingUid] = useState<string | null>(null);
@@ -17,6 +17,8 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   const labelInputRef = useRef<HTMLInputElement>(null);
   const [tilingSupported, setTilingSupported] = useState(false);
   const [accessibilityTrusted, setAccessibilityTrusted] = useState(true);
+  const initialLoadRef = useRef(true);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     invoke<Preferences>('get_preferences')
@@ -24,6 +26,10 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         // Clamp values to UI slider ranges in case saved values are out of bounds
         p.minBrightness = Math.max(5, Math.min(100, p.minBrightness));
         setPrefs(p);
+        // Mark initial load complete after state settles
+        setTimeout(() => {
+          initialLoadRef.current = false;
+        }, 0);
       })
       .catch(console.error);
     invoke<boolean>('get_tiling_supported')
@@ -34,6 +40,32 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
       .catch(() => setAccessibilityTrusted(true));
   }, []);
 
+  /** Auto-save preferences after each change with debounce. */
+  const savePreferences = useCallback(
+    (prefsToSave: Preferences) => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      saveTimeoutRef.current = setTimeout(async () => {
+        try {
+          await invoke('save_preferences', { preferences: prefsToSave });
+          onPreferencesSaved();
+        } catch (e) {
+          console.error('Failed to save preferences:', e);
+        }
+      }, 300);
+    },
+    [onPreferencesSaved],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+
   if (!prefs) return null;
 
   const schedule = prefs.nightModeSchedule;
@@ -41,45 +73,73 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     (a, b) => a.sortOrder - b.sortOrder || a.uid.localeCompare(b.uid),
   );
 
-  /** Updates a top-level preference field in local state. */
+  /** Updates a top-level preference field and triggers auto-save. */
   const updateField = <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
-    setPrefs((prev) => (prev ? { ...prev, [key]: value } : prev));
+    setPrefs((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, [key]: value };
+      if (!initialLoadRef.current) {
+        savePreferences(next);
+      }
+      return next;
+    });
   };
 
-  /** Updates a field within the night mode schedule in local state. */
+  /** Updates a field within the night mode schedule and triggers auto-save. */
   const updateSchedule = <K extends keyof NightModeSchedule>(
     key: K,
     value: NightModeSchedule[K],
   ) => {
-    setPrefs((prev) =>
-      prev
-        ? {
-            ...prev,
-            nightModeSchedule: { ...prev.nightModeSchedule, [key]: value },
-          }
-        : prev,
-    );
-  };
-
-  /** Patches a single monitor's metadata (label, hidden, sortOrder) in local state. */
-  const updateMonitorConfig = (uid: string, patch: Partial<MonitorMetadata>) => {
     setPrefs((prev) => {
       if (!prev) return prev;
-      return {
+      const next = {
         ...prev,
-        monitorConfigs: prev.monitorConfigs.map((m) => (m.uid === uid ? { ...m, ...patch } : m)),
+        nightModeSchedule: { ...prev.nightModeSchedule, [key]: value },
       };
+      if (!initialLoadRef.current) {
+        savePreferences(next);
+      }
+      return next;
     });
   };
 
-  /** Swaps the sort order of two monitors in local state. */
+  /** Patches a single monitor's metadata and triggers auto-save. */
+  const updateMonitorConfig = (uid: string, patch: Partial<MonitorMetadata>) => {
+    setPrefs((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        monitorConfigs: prev.monitorConfigs.map((m) => (m.uid === uid ? { ...m, ...patch } : m)),
+      };
+      if (!initialLoadRef.current) {
+        savePreferences(next);
+      }
+      return next;
+    });
+  };
+
+  /** Swaps the sort order of two monitors. */
   const swapMonitorOrder = (indexA: number, indexB: number) => {
     if (!prefs) return;
     const a = configs[indexA];
     const b = configs[indexB];
     if (!a || !b) return;
-    updateMonitorConfig(a.uid, { sortOrder: b.sortOrder });
-    updateMonitorConfig(b.uid, { sortOrder: a.sortOrder });
+    // Apply both changes at once to avoid double-save
+    setPrefs((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        monitorConfigs: prev.monitorConfigs.map((m) => {
+          if (m.uid === a.uid) return { ...m, sortOrder: b.sortOrder };
+          if (m.uid === b.uid) return { ...m, sortOrder: a.sortOrder };
+          return m;
+        }),
+      };
+      if (!initialLoadRef.current) {
+        savePreferences(next);
+      }
+      return next;
+    });
   };
 
   /** Enters inline label edit mode for a monitor config row. */
@@ -89,24 +149,12 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     setTimeout(() => labelInputRef.current?.focus(), 0);
   };
 
-  /** Commits the edited label to local state and exits edit mode. */
+  /** Commits the edited label and exits edit mode. */
   const finishEditingLabel = () => {
     if (editingUid) {
       updateMonitorConfig(editingUid, { label: editLabel.trim() });
     }
     setEditingUid(null);
-  };
-
-  /** Saves all local preference changes to the backend and closes the panel. */
-  const handleSave = async () => {
-    if (!prefs) return;
-    try {
-      await invoke('save_preferences', { preferences: prefs });
-      onPreferencesSaved();
-      onClose();
-    } catch (e) {
-      console.error('Failed to save preferences:', e);
-    }
   };
 
   return (
@@ -330,15 +378,6 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             <span>Launch at Login</span>
           </label>
         </div>
-      </div>
-
-      <div className='settings-footer'>
-        <button className='settings-btn settings-btn-cancel' onClick={onClose}>
-          Cancel
-        </button>
-        <button className='settings-btn settings-btn-save' onClick={handleSave}>
-          Save
-        </button>
       </div>
     </div>
   );
