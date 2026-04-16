@@ -166,7 +166,7 @@ impl Rect {
     }
 }
 
-/// One of the 17 supported tiling layouts.
+/// One of the 19 supported tiling layouts.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TilingLayout {
     LeftHalf,
@@ -181,6 +181,8 @@ pub enum TilingLayout {
     BottomThird,
     LeftTwoThirds,
     RightTwoThirds,
+    TopTwoThirds,
+    BottomTwoThirds,
     TopLeftQuarter,
     TopRightQuarter,
     BottomLeftQuarter,
@@ -204,6 +206,8 @@ impl TilingLayout {
             "bottomThird" => Some(Self::BottomThird),
             "leftTwoThirds" => Some(Self::LeftTwoThirds),
             "rightTwoThirds" => Some(Self::RightTwoThirds),
+            "topTwoThirds" => Some(Self::TopTwoThirds),
+            "bottomTwoThirds" => Some(Self::BottomTwoThirds),
             "topLeftQuarter" => Some(Self::TopLeftQuarter),
             "topRightQuarter" => Some(Self::TopRightQuarter),
             "bottomLeftQuarter" => Some(Self::BottomLeftQuarter),
@@ -535,6 +539,18 @@ pub fn calculate_target_rect(
             width: dw * (1.0 - t),
             height: dh,
         },
+        TilingLayout::TopTwoThirds => Rect {
+            x: dx,
+            y: dy,
+            width: dw,
+            height: dh * (1.0 - t),
+        },
+        TilingLayout::BottomTwoThirds => Rect {
+            x: dx,
+            y: dy + dh * t,
+            width: dw,
+            height: dh * (1.0 - t),
+        },
 
         // Quarters
         TilingLayout::TopLeftQuarter => Rect {
@@ -784,6 +800,17 @@ mod tests {
     // -- TilingLayout::parse --
 
     #[test]
+    fn test_vertical_two_thirds() {
+        let d = display(0.0, 0.0, 1920.0, 900.0);
+        let top = calculate_target_rect(TilingLayout::TopTwoThirds, &d, 50, 33, 0);
+        let bot = calculate_target_rect(TilingLayout::BottomTwoThirds, &d, 50, 33, 0);
+        // top two-thirds = 1.0 - 0.33 = 0.67 => 603
+        assert!(rect_approx(&top, 0.0, 0.0, 1920.0, 603.0));
+        // bottom two-thirds starts at third = 0.33 => 297
+        assert!(rect_approx(&bot, 0.0, 297.0, 1920.0, 603.0));
+    }
+
+    #[test]
     fn test_parse_all_layouts() {
         assert_eq!(TilingLayout::parse("leftHalf"), Some(TilingLayout::LeftHalf));
         assert_eq!(TilingLayout::parse("rightHalf"), Some(TilingLayout::RightHalf));
@@ -797,6 +824,8 @@ mod tests {
         assert_eq!(TilingLayout::parse("bottomThird"), Some(TilingLayout::BottomThird));
         assert_eq!(TilingLayout::parse("leftTwoThirds"), Some(TilingLayout::LeftTwoThirds));
         assert_eq!(TilingLayout::parse("rightTwoThirds"), Some(TilingLayout::RightTwoThirds));
+        assert_eq!(TilingLayout::parse("topTwoThirds"), Some(TilingLayout::TopTwoThirds));
+        assert_eq!(TilingLayout::parse("bottomTwoThirds"), Some(TilingLayout::BottomTwoThirds));
         assert_eq!(
             TilingLayout::parse("topLeftQuarter"),
             Some(TilingLayout::TopLeftQuarter)

@@ -129,6 +129,8 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .separator()
         .item(&MenuItemBuilder::with_id("tile_leftTwoThirds", "Left Two-Thirds").build(app)?)
         .item(&MenuItemBuilder::with_id("tile_rightTwoThirds", "Right Two-Thirds").build(app)?)
+        .item(&MenuItemBuilder::with_id("tile_topTwoThirds", "Top Two-Thirds").build(app)?)
+        .item(&MenuItemBuilder::with_id("tile_bottomTwoThirds", "Bottom Two-Thirds").build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id("tile_maximize", "Maximize").build(app)?)
         .item(&MenuItemBuilder::with_id("tile_restore", "Restore").build(app)?)
