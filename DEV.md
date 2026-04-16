@@ -57,6 +57,8 @@ Display DJ is a system tray app built with [Tauri v2](https://v2.tauri.app/). A 
 │  display.rs ── brightness/contrast (HTTP) ───┼───┼──┐ │
 │  dark_mode.rs ── theme toggle (HTTP) ────────┼───┼──┤ │
 │  volume.rs ── system volume (platform) ──────┘   │  │ │
+│  tiling.rs ── window tiling (macOS only,         │  │ │
+│               Accessibility API, no sidecar)     │  │ │
 │  config.rs ── preferences persistence            │  │ │
 │  tray.rs ── tray menu, window positioning,       │  │ │
 │             keyboard shortcut dispatch ──────────┘  │ │
@@ -123,7 +125,8 @@ display-dj2/
 │       ├── dark_mode.rs          # Dark mode read/write via HTTP to sidecar
 │       ├── volume.rs             # System volume (platform-specific: osascript/PowerShell/pactl)
 │       ├── config.rs             # Preferences + monitor metadata persistence
-│       └── tray.rs               # System tray menu, window positioning, shortcuts
+│       ├── tray.rs               # System tray menu, window positioning, shortcuts
+│       └── tiling.rs             # Window tiling via macOS Accessibility API (macOS only)
 │
 ├── .github/workflows/
 │   ├── build.yml                 # CI: tests + build on PRs (macOS/Windows/Linux)
@@ -249,6 +252,7 @@ All registered commands:
 | `volume`    | `get_volume`, `set_volume`                                                                                                                                   |
 | `config`    | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `get_app_version`                                                          |
 | `tray`      | `apply_profile`                                                                                                                                              |
+| `tiling`    | `get_tiling_supported`, `get_accessibility_trusted` (macOS; stubs return `false` on other platforms)                                                         |
 
 Events emitted by backend:
 
@@ -262,14 +266,15 @@ Events emitted by backend:
 
 Each `#[tauri::command]` function lives in its domain module. They validate input, read/write shared state (`AppState`), and delegate to the sidecar or platform APIs.
 
-| File           | Responsibility                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------- |
-| `lib.rs`       | App bootstrap: sidecar launch, port discovery, plugins, state, tray init, night mode scheduler    |
-| `display.rs`   | Monitor CRUD via HTTP to sidecar. Converts `DjDisplay` -> `Monitor`. Merges with config metadata. |
-| `dark_mode.rs` | Dark mode get/set via HTTP to sidecar (`/theme`, `/dark`, `/light`)                               |
-| `volume.rs`    | System volume get/set (platform-specific, no sidecar)                                             |
-| `config.rs`    | Preferences JSON persistence, defaults, migration, min brightness                                 |
-| `tray.rs`      | Tray menu, window positioning, keyboard shortcut registration/dispatch                            |
+| File           | Responsibility                                                                                     |
+| -------------- | -------------------------------------------------------------------------------------------------- |
+| `lib.rs`       | App bootstrap: sidecar launch, port discovery, plugins, state, tray init, night mode scheduler     |
+| `display.rs`   | Monitor CRUD via HTTP to sidecar. Converts `DjDisplay` -> `Monitor`. Merges with config metadata.  |
+| `dark_mode.rs` | Dark mode get/set via HTTP to sidecar (`/theme`, `/dark`, `/light`)                                |
+| `volume.rs`    | System volume get/set (platform-specific, no sidecar)                                              |
+| `config.rs`    | Preferences JSON persistence, defaults, migration, min brightness                                  |
+| `tray.rs`      | Tray menu, window positioning, keyboard shortcut registration/dispatch                             |
+| `tiling.rs`    | macOS window tiling via Accessibility API (AXUIElement). 19 layouts, multi-monitor, platform-gated |
 
 Shared state (`AppState` in `lib.rs`):
 
@@ -307,15 +312,23 @@ Sidecar lifecycle:
 3. Polls `/health` until ready (up to 5 seconds)
 4. On app exit, `child.kill()` terminates the sidecar
 
-### 5. Platform-Specific Code (`volume.rs`)
+### 5. Platform-Specific Code (`volume.rs`, `tiling.rs`)
 
-Volume is the only module with `#[cfg(target_os)]` conditional compilation:
+Two modules have `#[cfg(target_os)]` conditional compilation:
 
 | Platform | Method                                                                      |
 | -------- | --------------------------------------------------------------------------- |
 | macOS    | `osascript` -- CoreAudio `get volume settings` / `set volume output volume` |
 | Windows  | PowerShell + inline C# `Add-Type` for WASAPI COM (`IAudioEndpointVolume`)   |
 | Linux    | `pactl get-sink-volume` / `pactl set-sink-volume`                           |
+
+**Window Tiling** (`tiling.rs`) -- macOS only, no sidecar involved:
+
+| Platform | Method                                                                                  |
+| -------- | --------------------------------------------------------------------------------------- |
+| macOS    | Accessibility API (`AXUIElement`) to move/resize windows, `NSScreen` for display bounds |
+| Windows  | Not yet implemented (planned: Win32 `SetWindowPos`)                                     |
+| Linux    | Not yet implemented (planned: X11/EWMH, Wayland per-compositor IPC)                     |
 
 ---
 
@@ -400,7 +413,7 @@ lib.rs background thread (every 60s)
 
 ## Key Architectural Rules
 
-1. **No platform-specific display code in Rust.** All display and dark mode operations go through the HTTP sidecar. Only `volume.rs` has `#[cfg(target_os)]` blocks.
+1. **No platform-specific display code in Rust.** All display and dark mode operations go through the HTTP sidecar. Only `volume.rs` and `tiling.rs` have `#[cfg(target_os)]` blocks. Tiling uses native OS APIs directly (no sidecar).
 
 2. **snake_case commands, camelCase parameters.** Tauri commands are `snake_case` in Rust and called with `snake_case` strings from the frontend. Parameter objects use `camelCase` keys -- serde converts automatically via `#[serde(rename_all = "camelCase")]`.
 
@@ -435,7 +448,8 @@ Quick reference for common tasks:
 | New Tauri command               | Domain module (Rust), `lib.rs` (register in `invoke_handler`), frontend component                          |
 | New keyboard shortcut command   | `tray.rs` (`execute_command` match arm), `config.rs` (default keybinding)                                  |
 | New UI component                | `src/components/NewComponent.tsx` + `NewComponent.test.tsx`, wire into `App.tsx`                           |
-| Tray menu change                | `tray.rs` (`setup_tray`)                                                                                   |
+| Tray menu change                | `tray.rs` (`build_tray_menu`)                                                                              |
+| Window tiling (macOS)           | `tiling.rs` (layouts, AX API), `tray.rs` (Tiling submenu), `config.rs` (`TilingPreferences`)               |
 | Window positioning              | `tray.rs` (`position_window_near_tray`) -- read the doc comment first!                                     |
 | Night mode schedule logic       | `lib.rs` (`check_night_mode_schedule`, `is_night_time`)                                                    |
 | Sidecar version bump            | `package.json` (`displayDjCliVersion`), review [upstream changes](https://github.com/synle/display-dj-cli) |
@@ -535,17 +549,18 @@ Config directory: `~/Library/Application Support/display-dj/` (macOS), `%APPDATA
 
 ### preferences.json
 
-| Field                    | Type   | Default               | Purpose                                            |
-| ------------------------ | ------ | --------------------- | -------------------------------------------------- |
-| `showIndividualDisplays` | bool   | `false`               | Start in expanded view                             |
-| `brightnessDelta`        | number | `10`                  | Step size for keyboard shortcut brightness changes |
-| `contrastDelta`          | number | `10`                  | Step size for contrast changes                     |
-| `minBrightness`          | number | `10`                  | Minimum brightness floor (absolute floor: 5)       |
-| `showContrast`           | bool   | `false`               | Show contrast sliders in the UI                    |
-| `nightModeSchedule`      | object | disabled, 21:00-07:00 | Auto brightness + dark mode by time of day         |
-| `keyBindings`            | array  | 9 default bindings    | Global keyboard shortcuts                          |
-| `profiles`               | array  | `[]`                  | Saved brightness/contrast/dark mode/volume presets |
-| `monitorConfigs`         | array  | `[]`                  | Per-monitor metadata (label, sort order, hidden)   |
+| Field                    | Type   | Default               | Purpose                                                      |
+| ------------------------ | ------ | --------------------- | ------------------------------------------------------------ |
+| `showIndividualDisplays` | bool   | `false`               | Start in expanded view                                       |
+| `brightnessDelta`        | number | `10`                  | Step size for keyboard shortcut brightness changes           |
+| `contrastDelta`          | number | `10`                  | Step size for contrast changes                               |
+| `minBrightness`          | number | `10`                  | Minimum brightness floor (absolute floor: 5)                 |
+| `showContrast`           | bool   | `false`               | Show contrast sliders in the UI                              |
+| `nightModeSchedule`      | object | disabled, 21:00-07:00 | Auto brightness + dark mode by time of day                   |
+| `keyBindings`            | array  | 9 default bindings    | Global keyboard shortcuts                                    |
+| `profiles`               | array  | `[]`                  | Saved brightness/contrast/dark mode/volume presets           |
+| `monitorConfigs`         | array  | `[]`                  | Per-monitor metadata (label, sort order, hidden)             |
+| `tiling`                 | object | enabled, 50/33/0      | Window tiling settings (enabled, halfRatio, thirdRatio, gap) |
 
 ### Night mode schedule fields
 
@@ -561,13 +576,14 @@ Config directory: `~/Library/Application Support/display-dj/` (macOS), `%APPDATA
 
 Format: `command/<action>/<value>`
 
-| Action             | Values                       | Effect                        |
-| ------------------ | ---------------------------- | ----------------------------- |
-| `changeBrightness` | 0-100                        | Sets all monitors' brightness |
-| `changeContrast`   | 0-100                        | Sets all monitors' contrast   |
-| `changeDarkMode`   | `toggle`, `dark`, `light`    | Toggles or sets dark mode     |
-| `changeVolume`     | 0-100                        | Sets system volume            |
-| `changeProfile`    | Profile index (0, 1, 2, ...) | Applies a saved profile       |
+| Action             | Values                                               | Effect                            |
+| ------------------ | ---------------------------------------------------- | --------------------------------- |
+| `changeBrightness` | 0-100                                                | Sets all monitors' brightness     |
+| `changeContrast`   | 0-100                                                | Sets all monitors' contrast       |
+| `changeDarkMode`   | `toggle`, `dark`, `light`                            | Toggles or sets dark mode         |
+| `changeVolume`     | 0-100                                                | Sets system volume                |
+| `changeProfile`    | Profile index (0, 1, 2, ...)                         | Applies a saved profile           |
+| `tile`             | Layout name (e.g. `leftHalf`, `maximize`, `restore`) | Tiles focused window (macOS only) |
 
 ### Monitor metadata (monitorConfigs)
 
@@ -622,14 +638,16 @@ kill %1
 
 ## Known Limitations
 
-| Limitation                  | Details                                                                                                   |
-| --------------------------- | --------------------------------------------------------------------------------------------------------- |
-| DDC/CI not universal        | Budget monitors and some HDMI connections may not support it                                              |
-| Built-in HDMI on base M1/M2 | No DDC/CI support. Use USB-C/DisplayPort                                                                  |
-| Global shortcuts on Wayland | Wayland restricts global hotkey capture. X11 works fine                                                   |
-| Tray clicks dead on macOS   | Sync Tauri commands or `write_debug_log()` in hot sync commands starve the run-loop. See rules 9-10 above |
-| Tray left-click on Linux    | AppIndicator doesn't always fire left-click                                                               |
-| Dark mode on non-GNOME      | `gsettings` is GNOME-specific. KDE, XFCE not supported                                                    |
+| Limitation                    | Details                                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| DDC/CI not universal          | Budget monitors and some HDMI connections may not support it                                                  |
+| Built-in HDMI on base M1/M2   | No DDC/CI support. Use USB-C/DisplayPort                                                                      |
+| Global shortcuts on Wayland   | Wayland restricts global hotkey capture. X11 works fine                                                       |
+| Tray clicks dead on macOS     | Sync Tauri commands or `write_debug_log()` in hot sync commands starve the run-loop. See rules 9-10 above     |
+| Tiling requires Accessibility | macOS tiling needs Accessibility permission. Without it, tile commands silently do nothing                    |
+| Tiling macOS-only             | Window tiling is only implemented for macOS. On Windows/Linux the tray submenu and Settings toggle are hidden |
+| Tray left-click on Linux      | AppIndicator doesn't always fire left-click                                                                   |
+| Dark mode on non-GNOME        | `gsettings` is GNOME-specific. KDE, XFCE not supported                                                        |
 
 ---
 
