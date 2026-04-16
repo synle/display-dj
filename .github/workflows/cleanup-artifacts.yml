@@ -1,4 +1,4 @@
-name: Cleanup Artifacts & Old Runs
+name: Cleanup Artifacts (Scheduled)
 
 on:
   schedule:
