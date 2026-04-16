@@ -112,6 +112,19 @@ chmod 755 display-dj-server-*
 - **`build.yml`**: Runs tests and builds on all platforms for every push and PR. On PRs, posts a comment with artifact download links.
 - **`release.yml`**: Triggered by `v*` tags. Builds all platforms and uploads artifacts to a GitHub release (created as draft, publish manually).
 
+## GitHub Raw File URLs
+
+When fetching raw file content from GitHub repos, always use the `?raw=true` blob URL format:
+
+```
+https://github.com/{owner}/{repo}/blob/head/{path}?raw=true
+```
+
+Do NOT use:
+
+- `https://api.github.com/repos/{owner}/{repo}/contents/{path}` (GitHub Contents API)
+- `https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}`
+
 ### Linux (additional)
 
 ```bash

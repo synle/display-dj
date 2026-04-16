@@ -28,19 +28,21 @@ export default function Header({
         >
           &#9881;
         </button>
-        <button
-          className="header-toggle"
-          onClick={onToggle}
-          title={
-            expanded
-              ? "Show all monitors control"
-              : "Show individual monitors"
-          }
-        >
-          <span className={`chevron ${expanded ? "expanded" : ""}`}>
-            &#9662;
-          </span>
-        </button>
+        {!settingsOpen && (
+          <button
+            className="header-toggle"
+            onClick={onToggle}
+            title={
+              expanded
+                ? "Show all monitors control"
+                : "Show individual monitors"
+            }
+          >
+            <span className={`chevron ${expanded ? "expanded" : ""}`}>
+              &#9662;
+            </span>
+          </button>
+        )}
       </div>
     </div>
   );
