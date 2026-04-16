@@ -130,12 +130,15 @@ Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or 
 
 Tiling settings are stored in `preferences.json` under the `tiling` key:
 
-| Setting      | Default | Description                                              |
-| ------------ | ------- | -------------------------------------------------------- |
-| `enabled`    | `true`  | Master toggle for all tiling features                    |
-| `halfRatio`  | `50`    | Percentage for half splits (affects halves and quarters) |
-| `thirdRatio` | `33`    | Percentage for third splits (center = 100 - 2 x third)   |
-| `gap`        | `0`     | Padding in points around the tiling area                 |
+| Setting           | Default | Description                                              |
+| ----------------- | ------- | -------------------------------------------------------- |
+| `enabled`         | `true`  | Master toggle for all tiling features                    |
+| `halfRatio`       | `50`    | Percentage for half splits (affects halves and quarters) |
+| `thirdRatio`      | `33`    | Percentage for third splits (center = 100 - 2 x third)   |
+| `gap`             | `0`     | Padding in points around the tiling area                 |
+| `sideEdgeTrigger` | `10`    | Tile Snap: pixel width of left/right/bottom edge zone    |
+| `topEdgeTrigger`  | `10`    | Tile Snap: pixel height of top edge zone (maximize)      |
+| `cornerTrigger`   | `50`    | Tile Snap: pixel size of corner zone (quarter tiles)     |
 
 ## Known Issues
 
