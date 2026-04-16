@@ -132,6 +132,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let tiling_submenu = if tiling_on {
         SubmenuBuilder::new(app, "Tiling")
             .item(&MenuItemBuilder::with_id("tiling_disable", "Disable Tiling").build(app)?)
+            .item(&MenuItemBuilder::with_id("tile_expose", "Exposé").build(app)?)
             .separator()
             .item(&MenuItemBuilder::with_id("tile_leftHalf", "Left Half").build(app)?)
             .item(&MenuItemBuilder::with_id("tile_rightHalf", "Right Half").build(app)?)
@@ -154,8 +155,6 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .separator()
             .item(&MenuItemBuilder::with_id("tile_maximize", "Maximize").build(app)?)
             .item(&MenuItemBuilder::with_id("tile_restore", "Restore").build(app)?)
-            .separator()
-            .item(&MenuItemBuilder::with_id("tile_expose", "Exposé").build(app)?)
             .build()?
     } else {
         SubmenuBuilder::new(app, "Tiling")

@@ -246,6 +246,11 @@ impl Default for Preferences {
                     key: "Shift+Ctrl+/".into(),
                     command: CommandValue::Single("command/tile/maximize".into()),
                 },
+                // Tiling: exposé
+                KeyBinding {
+                    key: "Shift+Ctrl+E".into(),
+                    command: CommandValue::Single("command/tile/expose".into()),
+                },
             ],
             profiles: vec![
                 Profile {
@@ -574,7 +579,7 @@ mod tests {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.min_brightness, 10);
-        assert_eq!(prefs.key_bindings.len(), 22);
+        assert_eq!(prefs.key_bindings.len(), 23);
     }
 
     #[test]
@@ -788,7 +793,7 @@ mod tests {
         let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(loaded.min_brightness, 10);
-        assert_eq!(loaded.key_bindings.len(), 22);
+        assert_eq!(loaded.key_bindings.len(), 23);
 
         std::fs::remove_dir_all(&dir).ok();
     }
