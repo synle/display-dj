@@ -363,6 +363,15 @@ pub fn run() {
                 let _ = autostart.disable();
             }
 
+            // Start aero snap (mouse edge snapping) on macOS
+            #[cfg(target_os = "macos")]
+            {
+                if preferences.tiling.enabled {
+                    let snap_handle = app.handle().clone();
+                    tiling::start_aero_snap(snap_handle);
+                }
+            }
+
             // Start night mode schedule checker
             let schedule_handle = app.handle().clone();
             std::thread::spawn(move || {
