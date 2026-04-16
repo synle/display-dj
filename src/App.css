@@ -315,7 +315,41 @@ body,
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.section-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 4px;
+}
+
+.section-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+}
+
+.section-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.section-toggle .chevron {
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+
+.section-toggle .chevron.expanded {
+  transform: rotate(180deg);
 }
 
 /* Volume section */

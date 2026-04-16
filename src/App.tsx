@@ -273,8 +273,6 @@ function App() {
     <div className='app' ref={appRef} data-theme={darkMode ? 'dark' : 'light'}>
       <Header
         version={version}
-        expanded={expanded}
-        onToggle={() => setExpanded(!expanded)}
         onSettingsToggle={() => setSettingsOpen(!settingsOpen)}
         settingsOpen={settingsOpen}
       />
@@ -299,9 +297,19 @@ function App() {
                 showContrast={showContrast}
                 monitorCount={visibleMonitors.length}
                 minBrightness={minBrightness}
+                onExpand={() => setExpanded(true)}
               />
             ) : (
               <div className='monitors-list'>
+                <div className='section-label-row'>
+                  <span className='section-label'>All Monitors ({visibleMonitors.length})</span>
+                  <button
+                    className='section-toggle'
+                    onClick={() => setExpanded(false)}
+                    title='Show all monitors control'>
+                    <span className='chevron expanded'>&#9662;</span>
+                  </button>
+                </div>
                 {visibleMonitors.map((monitor, index) => (
                   <MonitorControl
                     key={monitor.uid}
