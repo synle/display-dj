@@ -174,6 +174,63 @@ impl Default for Preferences {
                     key: "Shift+F12".into(),
                     command: CommandValue::Single("command/changeVolume/100".into()),
                 },
+                // Tiling: thirds via arrow keys
+                KeyBinding {
+                    key: "Shift+Ctrl+Left".into(),
+                    command: CommandValue::Single("command/tile/leftThird".into()),
+                },
+                KeyBinding {
+                    key: "Shift+Ctrl+Right".into(),
+                    command: CommandValue::Single("command/tile/rightThird".into()),
+                },
+                // Tiling: two-thirds via up/down
+                KeyBinding {
+                    key: "Shift+Ctrl+Up".into(),
+                    command: CommandValue::Single("command/tile/leftTwoThirds".into()),
+                },
+                KeyBinding {
+                    key: "Shift+Ctrl+Down".into(),
+                    command: CommandValue::Single("command/tile/rightTwoThirds".into()),
+                },
+                // Tiling: thirds via D/C/G
+                KeyBinding {
+                    key: "Shift+Ctrl+D".into(),
+                    command: CommandValue::Single("command/tile/leftThird".into()),
+                },
+                KeyBinding {
+                    key: "Shift+Ctrl+C".into(),
+                    command: CommandValue::Single("command/tile/centerThird".into()),
+                },
+                KeyBinding {
+                    key: "Shift+Ctrl+G".into(),
+                    command: CommandValue::Single("command/tile/rightThird".into()),
+                },
+                // Tiling: quarters via I/O/K/L (keyboard layout)
+                KeyBinding {
+                    key: "Shift+Ctrl+I".into(),
+                    command: CommandValue::Single("command/tile/topLeftQuarter".into()),
+                },
+                KeyBinding {
+                    key: "Shift+Ctrl+O".into(),
+                    command: CommandValue::Single("command/tile/topRightQuarter".into()),
+                },
+                KeyBinding {
+                    key: "Shift+Ctrl+K".into(),
+                    command: CommandValue::Single("command/tile/bottomLeftQuarter".into()),
+                },
+                KeyBinding {
+                    key: "Shift+Ctrl+L".into(),
+                    command: CommandValue::Single("command/tile/bottomRightQuarter".into()),
+                },
+                // Tiling: maximize
+                KeyBinding {
+                    key: "Shift+Ctrl+M".into(),
+                    command: CommandValue::Single("command/tile/maximize".into()),
+                },
+                KeyBinding {
+                    key: "Shift+Ctrl+/".into(),
+                    command: CommandValue::Single("command/tile/maximize".into()),
+                },
             ],
             profiles: vec![
                 Profile {
@@ -494,7 +551,7 @@ mod tests {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.min_brightness, 10);
-        assert_eq!(prefs.key_bindings.len(), 9);
+        assert_eq!(prefs.key_bindings.len(), 22);
     }
 
     #[test]
@@ -708,7 +765,7 @@ mod tests {
         let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(loaded.min_brightness, 10);
-        assert_eq!(loaded.key_bindings.len(), 9);
+        assert_eq!(loaded.key_bindings.len(), 22);
 
         std::fs::remove_dir_all(&dir).ok();
     }
