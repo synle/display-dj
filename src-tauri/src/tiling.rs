@@ -800,6 +800,379 @@ fn execute_restore(app: &AppHandle) {
 }
 
 // ===========================================================================
+// Exposé — lay out all windows in a grid for overview
+// ===========================================================================
+
+// --- CGWindowList FFI ---
+
+type CFArrayRef = *const c_void;
+type CFDictionaryRef = *const c_void;
+
+const K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY: u32 = 1;
+const K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS: u32 = 1 << 4;
+const K_CG_NULL_WINDOW_ID: u32 = 0;
+
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGWindowListCopyWindowInfo(option: u32, relative_to: u32) -> CFArrayRef;
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    fn CFArrayGetCount(array: CFArrayRef) -> i64;
+    fn CFArrayGetValueAtIndex(array: CFArrayRef, idx: i64) -> *const c_void;
+    fn CFDictionaryGetValue(dict: CFDictionaryRef, key: *const c_void) -> *const c_void;
+    fn CFNumberGetValue(number: *const c_void, typ: i64, out: *mut c_void) -> bool;
+    fn CFStringGetCStringPtr(string: *const c_void, encoding: u32) -> *const c_char;
+    fn CFStringGetCString(
+        string: *const c_void,
+        buffer: *mut c_char,
+        buffer_size: i64,
+        encoding: u32,
+    ) -> bool;
+}
+
+const K_CF_NUMBER_SINT32_TYPE: i64 = 3;
+const K_CF_NUMBER_SINT64_TYPE: i64 = 4;
+
+/// Info about an on-screen window from CGWindowList.
+#[derive(Debug)]
+struct WindowInfo {
+    window_id: u32,
+    owner_pid: i32,
+    owner_name: String,
+    layer: i32,
+    bounds: Rect,
+}
+
+/// Read a CFString value from a CFDictionary.
+unsafe fn dict_get_string(dict: CFDictionaryRef, key_str: &str) -> Option<String> {
+    let key = cfstr(key_str)?;
+    let val = CFDictionaryGetValue(dict, key.as_ptr());
+    if val.is_null() {
+        return None;
+    }
+    // Try fast path (direct pointer)
+    let ptr = CFStringGetCStringPtr(val, K_CF_STRING_ENCODING_UTF8);
+    if !ptr.is_null() {
+        return Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned());
+    }
+    // Slow path (copy to buffer)
+    let mut buf = [0i8; 512];
+    if CFStringGetCString(val, buf.as_mut_ptr(), 512, K_CF_STRING_ENCODING_UTF8) {
+        Some(
+            std::ffi::CStr::from_ptr(buf.as_ptr())
+                .to_string_lossy()
+                .into_owned(),
+        )
+    } else {
+        None
+    }
+}
+
+/// Read an i32 from a CFNumber in a CFDictionary.
+unsafe fn dict_get_i32(dict: CFDictionaryRef, key_str: &str) -> Option<i32> {
+    let key = cfstr(key_str)?;
+    let val = CFDictionaryGetValue(dict, key.as_ptr());
+    if val.is_null() {
+        return None;
+    }
+    let mut out: i32 = 0;
+    if CFNumberGetValue(val, K_CF_NUMBER_SINT32_TYPE, &mut out as *mut i32 as *mut c_void) {
+        Some(out)
+    } else {
+        None
+    }
+}
+
+/// Read an i64 from a CFNumber in a CFDictionary.
+unsafe fn dict_get_i64(dict: CFDictionaryRef, key_str: &str) -> Option<i64> {
+    let key = cfstr(key_str)?;
+    let val = CFDictionaryGetValue(dict, key.as_ptr());
+    if val.is_null() {
+        return None;
+    }
+    let mut out: i64 = 0;
+    if CFNumberGetValue(val, K_CF_NUMBER_SINT64_TYPE, &mut out as *mut i64 as *mut c_void) {
+        Some(out)
+    } else {
+        None
+    }
+}
+
+/// Read the bounds dict (X, Y, Width, Height) from a CGWindowList entry.
+unsafe fn dict_get_bounds(dict: CFDictionaryRef) -> Option<Rect> {
+    let key = cfstr("kCGWindowBounds")?;
+    let bounds_dict = CFDictionaryGetValue(dict, key.as_ptr());
+    if bounds_dict.is_null() {
+        return None;
+    }
+    let x = dict_get_i32(bounds_dict, "X")? as f64;
+    let y = dict_get_i32(bounds_dict, "Y")? as f64;
+    let w = dict_get_i32(bounds_dict, "Width")? as f64;
+    let h = dict_get_i32(bounds_dict, "Height")? as f64;
+    Some(Rect {
+        x,
+        y,
+        width: w,
+        height: h,
+    })
+}
+
+/// Get all on-screen normal windows via CGWindowList.
+/// Filters out desktop elements, tiny windows (< 50x50), and non-normal layers.
+fn get_all_windows() -> Vec<WindowInfo> {
+    let mut windows = Vec::new();
+    unsafe {
+        let list = CGWindowListCopyWindowInfo(
+            K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS,
+            K_CG_NULL_WINDOW_ID,
+        );
+        if list.is_null() {
+            return windows;
+        }
+        let count = CFArrayGetCount(list);
+        for i in 0..count {
+            let dict = CFArrayGetValueAtIndex(list, i);
+            if dict.is_null() {
+                continue;
+            }
+
+            let layer = dict_get_i32(dict, "kCGWindowLayer").unwrap_or(-1);
+            // Only normal windows (layer 0)
+            if layer != 0 {
+                continue;
+            }
+
+            let wid = dict_get_i32(dict, "kCGWindowNumber").unwrap_or(0) as u32;
+            let pid = dict_get_i32(dict, "kCGWindowOwnerPID").unwrap_or(0);
+            let owner = dict_get_string(dict, "kCGWindowOwnerName").unwrap_or_default();
+            let bounds = match dict_get_bounds(dict) {
+                Some(b) => b,
+                None => continue,
+            };
+
+            // Skip tiny windows (toolbars, status items, etc.)
+            if bounds.width < 50.0 || bounds.height < 50.0 {
+                continue;
+            }
+
+            windows.push(WindowInfo {
+                window_id: wid,
+                owner_pid: pid,
+                owner_name: owner,
+                layer,
+                bounds,
+            });
+        }
+        CFRelease(list);
+    }
+    windows
+}
+
+// --- Exposé state ---
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Whether exposé is currently active (windows are spread out).
+static EXPOSE_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Saved positions of all windows before exposé, keyed by CGWindowID.
+static EXPOSE_SAVED: std::sync::OnceLock<std::sync::Mutex<HashMap<u32, Rect>>> =
+    std::sync::OnceLock::new();
+
+fn expose_saved() -> &'static std::sync::Mutex<HashMap<u32, Rect>> {
+    EXPOSE_SAVED.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+/// Execute the exposé command. Toggles between spread and restore.
+pub fn execute_expose(app: &AppHandle) {
+    if !unsafe { AXIsProcessTrusted() } {
+        log::warn!("expose: Accessibility permission not granted");
+        return;
+    }
+
+    // Toggle: if active, restore all; if inactive, spread all
+    if EXPOSE_ACTIVE.load(Ordering::Relaxed) {
+        restore_expose(app);
+    } else {
+        spread_expose(app);
+    }
+}
+
+/// Spread all windows into a grid on the current display.
+fn spread_expose(app: &AppHandle) {
+    // Read preferences
+    let (max_windows, sort_by, gap) = {
+        let state = app.state::<crate::AppState>();
+        let prefs = match state.preferences.lock() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        (
+            prefs.tiling.expose_max_windows as usize,
+            prefs.tiling.expose_sort_by.clone(),
+            prefs.tiling.gap,
+        )
+    };
+
+    // Get all on-screen windows
+    let all_windows = get_all_windows();
+    if all_windows.is_empty() {
+        log::info!("expose: no windows found");
+        return;
+    }
+
+    // Get displays
+    let displays = get_display_visible_frames();
+    if displays.is_empty() {
+        return;
+    }
+
+    // Determine which display to use (where the frontmost window is)
+    let target_display = find_display_for_window(&all_windows[0].bounds, &displays);
+    let display = &displays[target_display];
+
+    // Group by owner_pid, keeping insertion order
+    let mut app_groups: Vec<(String, i32, Vec<&WindowInfo>)> = Vec::new();
+    for w in &all_windows {
+        if let Some(group) = app_groups.iter_mut().find(|(_, pid, _)| *pid == w.owner_pid) {
+            group.2.push(w);
+        } else {
+            app_groups.push((w.owner_name.clone(), w.owner_pid, vec![w]));
+        }
+    }
+
+    // Sort app groups
+    if sort_by == "alphabetical" {
+        app_groups.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    }
+    // "recent" keeps the CGWindowList order (already sorted by most recently used)
+
+    // Flatten into ordered window list, capped at max
+    let ordered: Vec<&WindowInfo> = app_groups
+        .iter()
+        .flat_map(|(_, _, wins)| wins.iter().copied())
+        .take(max_windows)
+        .collect();
+
+    if ordered.is_empty() {
+        return;
+    }
+
+    let n = ordered.len();
+    let cols = (n as f64).sqrt().ceil() as usize;
+    let rows = (n + cols - 1) / cols;
+
+    let g = gap as f64;
+    let cell_w = (display.width - g * (cols as f64 + 1.0)) / cols as f64;
+    let cell_h = (display.height - g * (rows as f64 + 1.0)) / rows as f64;
+
+    // Save original positions and move windows
+    let mut saved = expose_saved().lock().unwrap();
+    saved.clear();
+
+    for (idx, win_info) in ordered.iter().enumerate() {
+        let col = idx % cols;
+        let row = idx / cols;
+        let x = display.x + g + col as f64 * (cell_w + g);
+        let y = display.y + g + row as f64 * (cell_h + g);
+
+        // Save original position
+        saved.insert(win_info.window_id, win_info.bounds.clone());
+
+        // Move window using AX API: find AXUIElement by PID + window ID
+        unsafe {
+            if let Some(ax_win) = get_ax_window_by_id(win_info.owner_pid, win_info.window_id) {
+                set_window_rect(
+                    &ax_win,
+                    &Rect {
+                        x,
+                        y,
+                        width: cell_w,
+                        height: cell_h,
+                    },
+                );
+            }
+        }
+    }
+
+    EXPOSE_ACTIVE.store(true, Ordering::Relaxed);
+    log::info!(
+        "expose: spread {} windows into {}x{} grid on display {}",
+        n,
+        cols,
+        rows,
+        target_display
+    );
+}
+
+/// Restore all windows to their pre-exposé positions.
+fn restore_expose(_app: &AppHandle) {
+    let mut saved = expose_saved().lock().unwrap();
+
+    for (&wid, rect) in saved.iter() {
+        // We need PID to create AXUIElement — scan all windows to find it
+        let all_windows = get_all_windows();
+        if let Some(info) = all_windows.iter().find(|w| w.window_id == wid) {
+            unsafe {
+                if let Some(ax_win) = get_ax_window_by_id(info.owner_pid, wid) {
+                    set_window_rect(&ax_win, rect);
+                }
+            }
+        }
+    }
+
+    let count = saved.len();
+    saved.clear();
+    EXPOSE_ACTIVE.store(false, Ordering::Relaxed);
+    log::info!("expose: restored {} windows", count);
+}
+
+/// Get an AXUIElement for a specific window by PID and CGWindowID.
+/// Enumerates the app's windows and matches by _AXUIElementGetWindow.
+unsafe fn get_ax_window_by_id(pid: i32, target_wid: u32) -> Option<CfRef> {
+    let app_key = cfstr("AXApplication")?;
+    let _ = app_key; // not needed — we create element from PID
+
+    // Create AXUIElement for the app
+    extern "C" {
+        fn AXUIElementCreateApplication(pid: i32) -> CFTypeRef;
+    }
+    let app_el = CfRef::new(AXUIElementCreateApplication(pid))?;
+
+    // Get the app's windows
+    let attr = cfstr("AXWindows")?;
+    let mut windows_ref: CFTypeRef = std::ptr::null();
+    if AXUIElementCopyAttributeValue(app_el.as_ptr(), attr.as_ptr(), &mut windows_ref)
+        != K_AX_ERROR_SUCCESS
+    {
+        return None;
+    }
+    let windows_arr = CfRef::new(windows_ref)?;
+
+    // Iterate windows and find the one matching target_wid
+    let count = CFArrayGetCount(windows_arr.as_ptr() as CFArrayRef);
+    for i in 0..count {
+        let win_el = CFArrayGetValueAtIndex(windows_arr.as_ptr() as CFArrayRef, i);
+        if win_el.is_null() {
+            continue;
+        }
+        let mut wid: u32 = 0;
+        if _AXUIElementGetWindow(win_el, &mut wid) == K_AX_ERROR_SUCCESS && wid == target_wid {
+            // Retain the element since CFArrayGetValueAtIndex doesn't give us ownership
+            extern "C" {
+                fn CFRetain(cf: CFTypeRef) -> CFTypeRef;
+            }
+            CFRetain(win_el);
+            return CfRef::new(win_el);
+        }
+    }
+
+    None
+}
+
+// ===========================================================================
 // Tile Snap — mouse edge snapping with preview overlay
 // ===========================================================================
 

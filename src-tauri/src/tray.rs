@@ -94,6 +94,8 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let port = crate::server_port();
     let bridge_label = format!("Bridge: 127.0.0.1:{}", port);
     let bridge = MenuItemBuilder::with_id("bridge", &bridge_label).build(app)?;
+    let force_refresh =
+        MenuItemBuilder::with_id("force_refresh", "Force Refresh").build(app)?;
 
     let debug_submenu = if debug_on {
         SubmenuBuilder::new(app, "Debug")
@@ -102,6 +104,8 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .separator()
             .item(&open_prefs)
             .item(&bridge)
+            .separator()
+            .item(&force_refresh)
             .build()?
     } else {
         SubmenuBuilder::new(app, "Debug")
@@ -109,6 +113,8 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .separator()
             .item(&open_prefs)
             .item(&bridge)
+            .separator()
+            .item(&force_refresh)
             .build()?
     };
 
@@ -148,6 +154,8 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .separator()
             .item(&MenuItemBuilder::with_id("tile_maximize", "Maximize").build(app)?)
             .item(&MenuItemBuilder::with_id("tile_restore", "Restore").build(app)?)
+            .separator()
+            .item(&MenuItemBuilder::with_id("tile_expose", "Exposé").build(app)?)
             .build()?
     } else {
         SubmenuBuilder::new(app, "Tiling")
@@ -264,6 +272,22 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 // Rebuild tray menu to reflect reset state
                 rebuild_tray_menu(app);
                 // Notify frontend to refresh
+                let _ = app.emit("monitors-changed", ());
+                let _ = app.emit("dark-mode-changed", ());
+                let _ = app.emit("volume-changed", ());
+            }
+            "force_refresh" => {
+                // Reload preferences from disk into in-memory state
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    if let Ok(mut prefs) = state.preferences.lock() {
+                        *prefs = crate::config::load_preferences();
+                        // Re-register shortcuts with reloaded keybindings
+                        register_shortcuts(app, &prefs.key_bindings);
+                    }
+                }
+                // Rebuild tray menu to reflect any preference changes
+                rebuild_tray_menu(app);
+                // Notify frontend to refresh all data
                 let _ = app.emit("monitors-changed", ());
                 let _ = app.emit("dark-mode-changed", ());
                 let _ = app.emit("volume-changed", ());
@@ -646,11 +670,18 @@ fn execute_command(app: &AppHandle, command: &str) {
         ["command", "tile", layout] => {
             #[cfg(target_os = "macos")]
             {
-                let app_clone = app.clone();
-                let layout = layout.to_string();
-                std::thread::spawn(move || {
-                    crate::tiling::execute_tile(&app_clone, &layout);
-                });
+                if *layout == "expose" {
+                    let app_clone = app.clone();
+                    std::thread::spawn(move || {
+                        crate::tiling::execute_expose(&app_clone);
+                    });
+                } else {
+                    let app_clone = app.clone();
+                    let layout = layout.to_string();
+                    std::thread::spawn(move || {
+                        crate::tiling::execute_tile(&app_clone, &layout);
+                    });
+                }
             }
             #[cfg(not(target_os = "macos"))]
             log::warn!("Tiling is not yet supported on this platform: {}", layout);
