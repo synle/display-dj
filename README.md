@@ -26,8 +26,8 @@ Grab the latest release from the **[Releases](../../releases)** page.
 
 | Chip          | File                           |
 | ------------- | ------------------------------ |
-| Apple Silicon | `Display DJ_2.1.0_aarch64.dmg` |
-| Intel         | `Display DJ_2.1.0_x64.dmg`     |
+| Apple Silicon | `Display DJ_2.1.1_aarch64.dmg` |
+| Intel         | `Display DJ_2.1.1_x64.dmg`     |
 
 1. Download the `.dmg` for your chip
 2. Open the `.dmg` and drag **Display DJ** into your **Applications** folder
@@ -39,8 +39,8 @@ Grab the latest release from the **[Releases](../../releases)** page.
 
 | Architecture | File                             |
 | ------------ | -------------------------------- |
-| x64          | `Display DJ_2.1.0_x64-setup.exe` |
-| x64          | `Display DJ_2.1.0_x64_en-US.msi` |
+| x64          | `Display DJ_2.1.1_x64-setup.exe` |
+| x64          | `Display DJ_2.1.1_x64_en-US.msi` |
 
 1. Download either the `.exe` installer or the `.msi`
 2. Run the installer and follow the prompts
@@ -50,22 +50,22 @@ Grab the latest release from the **[Releases](../../releases)** page.
 
 | Format   | File                              |
 | -------- | --------------------------------- |
-| Debian   | `Display DJ_2.1.0_amd64.deb`      |
-| AppImage | `Display DJ_2.1.0_amd64.AppImage` |
-| RPM      | `Display.DJ-2.1.0-1.x86_64.rpm`   |
+| Debian   | `Display DJ_2.1.1_amd64.deb`      |
+| AppImage | `Display DJ_2.1.1_amd64.AppImage` |
+| RPM      | `Display.DJ-2.1.1-1.x86_64.rpm`   |
 
 1. Install via your preferred format:
 
    ```bash
    # Debian / Ubuntu
-   sudo dpkg -i "Display DJ_2.1.0_amd64.deb"
+   sudo dpkg -i "Display DJ_2.1.1_amd64.deb"
 
    # RPM-based (Fedora, etc.)
-   sudo rpm -i Display.DJ-2.1.0-1.x86_64.rpm
+   sudo rpm -i Display.DJ-2.1.1-1.x86_64.rpm
 
    # AppImage (no install needed)
-   chmod +x "Display DJ_2.1.0_amd64.AppImage"
-   ./"Display DJ_2.1.0_amd64.AppImage"
+   chmod +x "Display DJ_2.1.1_amd64.AppImage"
+   ./"Display DJ_2.1.1_amd64.AppImage"
    ```
 
 2. Install the required display-control dependencies:
