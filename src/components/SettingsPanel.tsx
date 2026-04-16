@@ -257,39 +257,40 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         <div className='settings-divider' />
 
         {tilingSupported && (
-          <div className='settings-section'>
-            <label className='settings-checkbox-row'>
-              <input
-                type='checkbox'
-                checked={prefs.tiling?.enabled ?? true}
-                onChange={(e) =>
-                  updateField('tiling', { ...prefs.tiling, enabled: e.target.checked })
-                }
-              />
-              <span>Enable Window Tiling</span>
-            </label>
-            {prefs.tiling?.enabled && !accessibilityTrusted && (
-              <div
-                style={{
-                  fontSize: '11px',
-                  color: '#e67700',
-                  marginTop: '4px',
-                  paddingLeft: '22px',
-                }}>
-                ⚠ Accessibility permission required.{' '}
-                <a
-                  href='https://github.com/synle/display-dj#window-tiling-macos'
-                  target='_blank'
-                  rel='noopener noreferrer'
-                  style={{ color: '#e67700' }}>
-                  Learn how to enable
-                </a>
-              </div>
-            )}
-          </div>
+          <>
+            <div className='settings-section'>
+              <label className='settings-checkbox-row'>
+                <input
+                  type='checkbox'
+                  checked={prefs.tiling?.enabled ?? true}
+                  onChange={(e) =>
+                    updateField('tiling', { ...prefs.tiling, enabled: e.target.checked })
+                  }
+                />
+                <span>Enable Window Tiling</span>
+              </label>
+              {prefs.tiling?.enabled && !accessibilityTrusted && (
+                <div
+                  style={{
+                    fontSize: '11px',
+                    color: '#e67700',
+                    marginTop: '4px',
+                    paddingLeft: '22px',
+                  }}>
+                  ⚠ Accessibility permission required.{' '}
+                  <a
+                    href='https://github.com/synle/display-dj#window-tiling-macos'
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    style={{ color: '#e67700' }}>
+                    Learn how to enable
+                  </a>
+                </div>
+              )}
+            </div>
+            <div className='settings-divider' />
+          </>
         )}
-
-        <div className='settings-divider' />
 
         <div className='settings-section'>
           <label className='settings-checkbox-row'>
