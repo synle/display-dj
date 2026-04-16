@@ -112,7 +112,8 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .build()?
     };
 
-    // Tiling submenu — toggle + layouts (only shown when enabled)
+    // Tiling submenu — macOS only, toggle + layouts (only shown when enabled)
+    #[cfg(target_os = "macos")]
     let tiling_on = {
         if let Some(state) = app.try_state::<crate::AppState>() {
             state.preferences.lock().map(|p| p.tiling.enabled).unwrap_or(true)
@@ -121,6 +122,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         }
     };
 
+    #[cfg(target_os = "macos")]
     let tiling_submenu = if tiling_on {
         SubmenuBuilder::new(app, "Tiling")
             .item(&MenuItemBuilder::with_id("tiling_disable", "Disable Tiling").build(app)?)
@@ -157,14 +159,20 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         MenuItemBuilder::with_id("reset_defaults", "Reset to Default").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
-    let menu = MenuBuilder::new(app)
+    let mut menu = MenuBuilder::new(app)
         .item(&show_window)
         .separator()
         .items(&[&dark_mode, &light_mode])
         .separator()
-        .item(&profiles_submenu)
-        .separator()
-        .item(&tiling_submenu)
+        .item(&profiles_submenu);
+
+    // Tiling submenu only on macOS (tiling not yet supported on other platforms)
+    #[cfg(target_os = "macos")]
+    {
+        menu = menu.separator().item(&tiling_submenu);
+    }
+
+    let menu = menu
         .separator()
         .item(&debug_submenu)
         .separator()

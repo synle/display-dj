@@ -15,6 +15,8 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   const [editingUid, setEditingUid] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const labelInputRef = useRef<HTMLInputElement>(null);
+  const [tilingSupported, setTilingSupported] = useState(false);
+  const [accessibilityTrusted, setAccessibilityTrusted] = useState(true);
 
   useEffect(() => {
     invoke<Preferences>('get_preferences')
@@ -24,6 +26,12 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         setPrefs(p);
       })
       .catch(console.error);
+    invoke<boolean>('get_tiling_supported')
+      .then(setTilingSupported)
+      .catch(() => setTilingSupported(false));
+    invoke<boolean>('get_accessibility_trusted')
+      .then(setAccessibilityTrusted)
+      .catch(() => setAccessibilityTrusted(true));
   }, []);
 
   if (!prefs) return null;
@@ -248,18 +256,38 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
 
         <div className='settings-divider' />
 
-        <div className='settings-section'>
-          <label className='settings-checkbox-row'>
-            <input
-              type='checkbox'
-              checked={prefs.tiling?.enabled ?? true}
-              onChange={(e) =>
-                updateField('tiling', { ...prefs.tiling, enabled: e.target.checked })
-              }
-            />
-            <span>Enable Window Tiling</span>
-          </label>
-        </div>
+        {tilingSupported && (
+          <div className='settings-section'>
+            <label className='settings-checkbox-row'>
+              <input
+                type='checkbox'
+                checked={prefs.tiling?.enabled ?? true}
+                onChange={(e) =>
+                  updateField('tiling', { ...prefs.tiling, enabled: e.target.checked })
+                }
+              />
+              <span>Enable Window Tiling</span>
+            </label>
+            {prefs.tiling?.enabled && !accessibilityTrusted && (
+              <div
+                style={{
+                  fontSize: '11px',
+                  color: '#e67700',
+                  marginTop: '4px',
+                  paddingLeft: '22px',
+                }}>
+                ⚠ Accessibility permission required.{' '}
+                <a
+                  href='https://github.com/synle/display-dj#window-tiling-macos'
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  style={{ color: '#e67700' }}>
+                  Learn how to enable
+                </a>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className='settings-divider' />
 

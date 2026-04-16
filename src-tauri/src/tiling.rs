@@ -619,6 +619,28 @@ fn find_display_for_window(rect: &Rect, displays: &[Rect]) -> usize {
 }
 
 // ---------------------------------------------------------------------------
+// Accessibility permission check
+// ---------------------------------------------------------------------------
+
+/// Returns true if the app has macOS Accessibility permission.
+pub fn is_accessibility_trusted() -> bool {
+    unsafe { AXIsProcessTrusted() }
+}
+
+/// Tauri command: check if tiling is supported on this platform.
+/// Returns true only on macOS (tiling not yet implemented on other platforms).
+#[tauri::command]
+pub fn get_tiling_supported() -> bool {
+    true // This module is only compiled on macOS
+}
+
+/// Tauri command: check if macOS Accessibility permission is granted.
+#[tauri::command]
+pub fn get_accessibility_trusted() -> bool {
+    is_accessibility_trusted()
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
