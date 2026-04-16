@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Preferences, MonitorMetadata, NightModeSchedule } from '../types';
+import { Preferences, MonitorMetadata, NightModeSchedule, TilingPreferences } from '../types';
 import Slider from './Slider';
 
 interface SettingsPanelProps {
@@ -8,10 +8,10 @@ interface SettingsPanelProps {
   onPreferencesSaved: () => void;
 }
 
-/** Settings panel for configuring min brightness, monitor order/labels/visibility,
- * night mode schedule, and launch-at-login. Auto-saves after each change. */
+/** Settings panel with two tabs: General and Tiling. Auto-saves after each change. */
 export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsPanelProps) {
   const [prefs, setPrefs] = useState<Preferences | null>(null);
+  const [activeTab, setActiveTab] = useState<'general' | 'tiling'>('general');
   const [editingUid, setEditingUid] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const labelInputRef = useRef<HTMLInputElement>(null);
@@ -23,10 +23,8 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   useEffect(() => {
     invoke<Preferences>('get_preferences')
       .then((p) => {
-        // Clamp values to UI slider ranges in case saved values are out of bounds
         p.minBrightness = Math.max(5, Math.min(100, p.minBrightness));
         setPrefs(p);
-        // Mark initial load complete after state settles
         setTimeout(() => {
           initialLoadRef.current = false;
         }, 0);
@@ -78,9 +76,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     setPrefs((prev) => {
       if (!prev) return prev;
       const next = { ...prev, [key]: value };
-      if (!initialLoadRef.current) {
-        savePreferences(next);
-      }
+      if (!initialLoadRef.current) savePreferences(next);
       return next;
     });
   };
@@ -96,9 +92,20 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         ...prev,
         nightModeSchedule: { ...prev.nightModeSchedule, [key]: value },
       };
-      if (!initialLoadRef.current) {
-        savePreferences(next);
-      }
+      if (!initialLoadRef.current) savePreferences(next);
+      return next;
+    });
+  };
+
+  /** Updates a field within the tiling preferences and triggers auto-save. */
+  const updateTiling = <K extends keyof TilingPreferences>(key: K, value: TilingPreferences[K]) => {
+    setPrefs((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        tiling: { ...prev.tiling, [key]: value },
+      };
+      if (!initialLoadRef.current) savePreferences(next);
       return next;
     });
   };
@@ -111,9 +118,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         ...prev,
         monitorConfigs: prev.monitorConfigs.map((m) => (m.uid === uid ? { ...m, ...patch } : m)),
       };
-      if (!initialLoadRef.current) {
-        savePreferences(next);
-      }
+      if (!initialLoadRef.current) savePreferences(next);
       return next;
     });
   };
@@ -124,7 +129,6 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     const a = configs[indexA];
     const b = configs[indexB];
     if (!a || !b) return;
-    // Apply both changes at once to avoid double-save
     setPrefs((prev) => {
       if (!prev) return prev;
       const next = {
@@ -135,9 +139,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
           return m;
         }),
       };
-      if (!initialLoadRef.current) {
-        savePreferences(next);
-      }
+      if (!initialLoadRef.current) savePreferences(next);
       return next;
     });
   };
@@ -157,6 +159,9 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     setEditingUid(null);
   };
 
+  const tiling = prefs.tiling;
+  const gridSize = Math.round(Math.sqrt(tiling?.exposeMaxWindows ?? 16));
+
   return (
     <div className='settings-panel'>
       <div className='settings-header'>
@@ -166,158 +171,186 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         </button>
       </div>
 
+      {tilingSupported && (
+        <div className='settings-tabs'>
+          <button
+            className={`settings-tab${activeTab === 'general' ? ' settings-tab-active' : ''}`}
+            onClick={() => setActiveTab('general')}>
+            General
+          </button>
+          <button
+            className={`settings-tab${activeTab === 'tiling' ? ' settings-tab-active' : ''}`}
+            onClick={() => setActiveTab('tiling')}>
+            Tiling
+          </button>
+        </div>
+      )}
+
       <div className='settings-body'>
-        <div className='settings-section'>
-          <label className='settings-label'>Min Brightness</label>
-          <Slider
-            value={prefs.minBrightness}
-            min={5}
-            max={100}
-            onChange={(v) => updateField('minBrightness', v)}
-          />
-        </div>
-
-        <div className='settings-section'>
-          <label className='settings-checkbox-row'>
-            <input
-              type='checkbox'
-              checked={prefs.showContrast}
-              onChange={(e) => updateField('showContrast', e.target.checked)}
-            />
-            <span>Show Contrast Slider</span>
-          </label>
-        </div>
-
-        <div className='settings-divider' />
-
-        <div className='settings-section'>
-          <label className='settings-label'>Monitors</label>
-          <div className='settings-monitors-list'>
-            {configs.map((meta, index) => {
-              const displayName = meta.label || meta.apiName || meta.uid;
-              return (
-                <div
-                  key={meta.uid}
-                  className={`settings-monitor-row${meta.hidden ? ' settings-monitor-hidden' : ''}`}>
-                  <div className='settings-monitor-reorder'>
-                    <button
-                      className='monitor-reorder-btn'
-                      disabled={index === 0}
-                      onClick={() => swapMonitorOrder(index, index - 1)}
-                      title='Move up'>
-                      ▲
-                    </button>
-                    <button
-                      className='monitor-reorder-btn'
-                      disabled={index === configs.length - 1}
-                      onClick={() => swapMonitorOrder(index, index + 1)}
-                      title='Move down'>
-                      ▼
-                    </button>
-                  </div>
-                  <div className='settings-monitor-name'>
-                    {editingUid === meta.uid ? (
-                      <input
-                        ref={labelInputRef}
-                        className='monitor-name-input'
-                        value={editLabel}
-                        placeholder={meta.apiName}
-                        onChange={(e) => setEditLabel(e.target.value)}
-                        onBlur={finishEditingLabel}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') finishEditingLabel();
-                          if (e.key === 'Escape') setEditingUid(null);
-                        }}
-                      />
-                    ) : (
-                      <button className='monitor-name' onClick={() => startEditingLabel(meta)}>
-                        {displayName}
-                      </button>
-                    )}
-                  </div>
-                  {meta.apiId !== 'builtin' && (
-                    <button
-                      className='monitor-visibility-btn'
-                      onClick={() => updateMonitorConfig(meta.uid, { hidden: !meta.hidden })}
-                      title={meta.hidden ? 'Show monitor' : 'Hide monitor'}>
-                      {meta.hidden ? 'Show' : 'Hide'}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className='settings-divider' />
-
-        <div className='settings-section'>
-          <label className='settings-checkbox-row'>
-            <input
-              type='checkbox'
-              checked={schedule.enabled}
-              onChange={(e) => updateSchedule('enabled', e.target.checked)}
-            />
-            <span>Night Mode Schedule</span>
-          </label>
-        </div>
-
-        {schedule.enabled && (
+        {activeTab === 'general' && (
           <>
             <div className='settings-section'>
-              <div className='settings-schedule-header'>
-                <label className='settings-label'>Night</label>
-                <input
-                  type='time'
-                  className='settings-time-input'
-                  value={schedule.nightStart}
-                  onChange={(e) => updateSchedule('nightStart', e.target.value)}
-                />
-              </div>
+              <label className='settings-label'>Min Brightness</label>
               <Slider
-                value={schedule.nightBrightness}
+                value={prefs.minBrightness}
                 min={5}
                 max={100}
-                onChange={(v) => updateSchedule('nightBrightness', v)}
+                onChange={(v) => updateField('minBrightness', v)}
               />
             </div>
 
             <div className='settings-section'>
-              <div className='settings-schedule-header'>
-                <label className='settings-label'>Day</label>
+              <label className='settings-checkbox-row'>
                 <input
-                  type='time'
-                  className='settings-time-input'
-                  value={schedule.dayStart}
-                  onChange={(e) => updateSchedule('dayStart', e.target.value)}
+                  type='checkbox'
+                  checked={prefs.showContrast}
+                  onChange={(e) => updateField('showContrast', e.target.checked)}
                 />
+                <span>Show Contrast Slider</span>
+              </label>
+            </div>
+
+            <div className='settings-divider' />
+
+            <div className='settings-section'>
+              <label className='settings-label'>Monitors</label>
+              <div className='settings-monitors-list'>
+                {configs.map((meta, index) => {
+                  const displayName = meta.label || meta.apiName || meta.uid;
+                  return (
+                    <div
+                      key={meta.uid}
+                      className={`settings-monitor-row${meta.hidden ? ' settings-monitor-hidden' : ''}`}>
+                      <div className='settings-monitor-reorder'>
+                        <button
+                          className='monitor-reorder-btn'
+                          disabled={index === 0}
+                          onClick={() => swapMonitorOrder(index, index - 1)}
+                          title='Move up'>
+                          ▲
+                        </button>
+                        <button
+                          className='monitor-reorder-btn'
+                          disabled={index === configs.length - 1}
+                          onClick={() => swapMonitorOrder(index, index + 1)}
+                          title='Move down'>
+                          ▼
+                        </button>
+                      </div>
+                      <div className='settings-monitor-name'>
+                        {editingUid === meta.uid ? (
+                          <input
+                            ref={labelInputRef}
+                            className='monitor-name-input'
+                            value={editLabel}
+                            placeholder={meta.apiName}
+                            onChange={(e) => setEditLabel(e.target.value)}
+                            onBlur={finishEditingLabel}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') finishEditingLabel();
+                              if (e.key === 'Escape') setEditingUid(null);
+                            }}
+                          />
+                        ) : (
+                          <button className='monitor-name' onClick={() => startEditingLabel(meta)}>
+                            {displayName}
+                          </button>
+                        )}
+                      </div>
+                      {meta.apiId !== 'builtin' && (
+                        <button
+                          className='monitor-visibility-btn'
+                          onClick={() => updateMonitorConfig(meta.uid, { hidden: !meta.hidden })}
+                          title={meta.hidden ? 'Show monitor' : 'Hide monitor'}>
+                          {meta.hidden ? 'Show' : 'Hide'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <Slider
-                value={schedule.dayBrightness}
-                min={5}
-                max={100}
-                onChange={(v) => updateSchedule('dayBrightness', v)}
-              />
+            </div>
+
+            <div className='settings-divider' />
+
+            <div className='settings-section'>
+              <label className='settings-checkbox-row'>
+                <input
+                  type='checkbox'
+                  checked={schedule.enabled}
+                  onChange={(e) => updateSchedule('enabled', e.target.checked)}
+                />
+                <span>Night Mode Schedule</span>
+              </label>
+            </div>
+
+            {schedule.enabled && (
+              <>
+                <div className='settings-section'>
+                  <div className='settings-schedule-header'>
+                    <label className='settings-label'>Night</label>
+                    <input
+                      type='time'
+                      className='settings-time-input'
+                      value={schedule.nightStart}
+                      onChange={(e) => updateSchedule('nightStart', e.target.value)}
+                    />
+                  </div>
+                  <Slider
+                    value={schedule.nightBrightness}
+                    min={5}
+                    max={100}
+                    onChange={(v) => updateSchedule('nightBrightness', v)}
+                  />
+                </div>
+
+                <div className='settings-section'>
+                  <div className='settings-schedule-header'>
+                    <label className='settings-label'>Day</label>
+                    <input
+                      type='time'
+                      className='settings-time-input'
+                      value={schedule.dayStart}
+                      onChange={(e) => updateSchedule('dayStart', e.target.value)}
+                    />
+                  </div>
+                  <Slider
+                    value={schedule.dayBrightness}
+                    min={5}
+                    max={100}
+                    onChange={(v) => updateSchedule('dayBrightness', v)}
+                  />
+                </div>
+              </>
+            )}
+
+            <div className='settings-divider' />
+
+            <div className='settings-section'>
+              <label className='settings-checkbox-row'>
+                <input
+                  type='checkbox'
+                  checked={prefs.launchAtLogin}
+                  onChange={(e) => updateField('launchAtLogin', e.target.checked)}
+                />
+                <span>Launch at Login</span>
+              </label>
             </div>
           </>
         )}
 
-        <div className='settings-divider' />
-
-        {tilingSupported && (
+        {activeTab === 'tiling' && (
           <>
             <div className='settings-section'>
               <label className='settings-checkbox-row'>
                 <input
                   type='checkbox'
-                  checked={prefs.tiling?.enabled ?? true}
-                  onChange={(e) =>
-                    updateField('tiling', { ...prefs.tiling, enabled: e.target.checked })
-                  }
+                  checked={tiling?.enabled ?? true}
+                  onChange={(e) => updateTiling('enabled', e.target.checked)}
                 />
                 <span>Enable Window Tiling</span>
               </label>
-              {prefs.tiling?.enabled && !accessibilityTrusted && (
+              {tiling?.enabled && !accessibilityTrusted && (
                 <div
                   style={{
                     fontSize: '11px',
@@ -335,19 +368,52 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                   </a>
                 </div>
               )}
-              {prefs.tiling?.enabled && (
-                <div style={{ marginTop: '8px' }}>
+            </div>
+
+            {tiling?.enabled && (
+              <>
+                <div className='settings-divider' />
+
+                <div className='settings-section'>
+                  <label className='settings-label'>Snap Zones</label>
+                  <div style={{ marginTop: '4px' }}>
+                    <label className='settings-label'>Side Edge</label>
+                    <Slider
+                      value={tiling?.sideEdgeTrigger ?? 10}
+                      min={0}
+                      max={100}
+                      onChange={(v) => updateTiling('sideEdgeTrigger', v)}
+                    />
+                  </div>
+                  <div style={{ marginTop: '4px' }}>
+                    <label className='settings-label'>Top Edge</label>
+                    <Slider
+                      value={tiling?.topEdgeTrigger ?? 10}
+                      min={0}
+                      max={100}
+                      onChange={(v) => updateTiling('topEdgeTrigger', v)}
+                    />
+                  </div>
+                  <div style={{ marginTop: '4px' }}>
+                    <label className='settings-label'>Corner</label>
+                    <Slider
+                      value={tiling?.cornerTrigger ?? 50}
+                      min={0}
+                      max={200}
+                      onChange={(v) => updateTiling('cornerTrigger', v)}
+                    />
+                  </div>
+                </div>
+
+                <div className='settings-divider' />
+
+                <div className='settings-section'>
                   <label className='settings-label'>Exposé Grid Size</label>
                   <Slider
-                    value={Math.round(Math.sqrt(prefs.tiling?.exposeMaxWindows ?? 16))}
+                    value={gridSize}
                     min={2}
                     max={5}
-                    onChange={(v) =>
-                      updateField('tiling', {
-                        ...prefs.tiling,
-                        exposeMaxWindows: v * v,
-                      })
-                    }
+                    onChange={(v) => updateTiling('exposeMaxWindows', v * v)}
                     showValue={false}
                   />
                   <span
@@ -357,27 +423,14 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       marginTop: '2px',
                       display: 'block',
                     }}>
-                    {Math.round(Math.sqrt(prefs.tiling?.exposeMaxWindows ?? 16))} &times;{' '}
-                    {Math.round(Math.sqrt(prefs.tiling?.exposeMaxWindows ?? 16))} ={' '}
-                    {prefs.tiling?.exposeMaxWindows ?? 16} windows per screen
+                    {gridSize} &times; {gridSize} = {tiling?.exposeMaxWindows ?? 16} windows per
+                    screen
                   </span>
                 </div>
-              )}
-            </div>
-            <div className='settings-divider' />
+              </>
+            )}
           </>
         )}
-
-        <div className='settings-section'>
-          <label className='settings-checkbox-row'>
-            <input
-              type='checkbox'
-              checked={prefs.launchAtLogin}
-              onChange={(e) => updateField('launchAtLogin', e.target.checked)}
-            />
-            <span>Launch at Login</span>
-          </label>
-        </div>
       </div>
     </div>
   );
