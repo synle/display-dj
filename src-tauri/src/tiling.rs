@@ -800,7 +800,7 @@ fn execute_restore(app: &AppHandle) {
 }
 
 // ===========================================================================
-// Aero Snap — mouse edge snapping with preview overlay
+// Tile Snap — mouse edge snapping with preview overlay
 // ===========================================================================
 
 // --- CGEvent FFI ---
@@ -1215,9 +1215,9 @@ extern "C" fn snap_event_callback(
     event
 }
 
-/// Start the aero snap event tap on a background thread.
+/// Start the tile snap event tap on a background thread.
 /// Call once during app setup. Requires Accessibility permission.
-pub fn start_aero_snap(app: AppHandle) {
+pub fn start_tile_snap(app: AppHandle) {
     // Create overlay window on the main thread
     init_overlay_on_main_thread();
 
@@ -1258,7 +1258,7 @@ pub fn start_aero_snap(app: AppHandle) {
 
             if tap.is_null() {
                 log::warn!(
-                    "aero_snap: Failed to create CGEventTap. \
+                    "tile_snap: Failed to create CGEventTap. \
                      Accessibility permission may not be granted."
                 );
                 return;
@@ -1273,7 +1273,7 @@ pub fn start_aero_snap(app: AppHandle) {
             let source =
                 CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
             if source.is_null() {
-                log::warn!("aero_snap: Failed to create run loop source");
+                log::warn!("tile_snap: Failed to create run loop source");
                 return;
             }
 
@@ -1281,7 +1281,7 @@ pub fn start_aero_snap(app: AppHandle) {
             CFRunLoopAddSource(run_loop, source, kCFRunLoopCommonModes);
             CGEventTapEnable(tap, true);
 
-            log::info!("aero_snap: Event tap started, listening for window drags");
+            log::info!("tile_snap: Event tap started, listening for window drags");
             CFRunLoopRun(); // blocks forever
         }
     });

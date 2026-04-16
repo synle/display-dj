@@ -86,9 +86,9 @@
 - [x] Original position saved per-window for restore
 - [x] macOS Accessibility API (AXUIElement) with NSScreen visible frames
 
-##### Phase 2: Aero Snap (Mouse Edge Snapping)
+##### Phase 2: Tile Snap (Mouse Edge Snapping) — DONE
 
-Drag a window to a screen edge or corner to trigger tiling — like Windows Aero Snap or macOS Sequoia snap. Requires:
+Drag a window to a screen edge or corner to trigger tiling. Requires:
 
 1. **Monitor system-wide mouse events during window drags** — use `CGEventTap` to detect mouse movement while a window is being dragged
 2. **Detect when a drag reaches an edge/corner** — check cursor position against configurable edge trigger zones (`tilingEdgeTriggerSize`, `tilingCornerTriggerSize`)
