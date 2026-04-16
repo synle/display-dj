@@ -72,12 +72,41 @@
 - **The Sway/Hyprland irony:** Easiest Wayland backends to implement, but those users already chose those compositors for tiling. The users who need tiling most (GNOME, KDE) are the hardest to support.
 - **Global hotkeys:** `global-hotkey` crate (from Tauri) covers macOS + Windows + Linux X11. Wayland has no standard global hotkey API — compositor must handle it.
 
-#### Recommended Priority Order
+#### Implementation Phases
 
-1. **Phase 1:** macOS + Windows + Linux X11 — covers most users, all proven approaches
-2. **Phase 2:** KDE Wayland — moderate effort, users actually want tiling help
-3. **Phase 3:** Evaluate GNOME Wayland — largest user base but highest maintenance cost. Users who want tiling on GNOME already use Forge/PaperWM as native extensions.
-4. **Skip or deprioritize:** Sway + Hyprland — those users already have tiling built into their compositor
+##### Phase 1: Keyboard & Menu Tiling (macOS — DONE)
+
+- [x] 19 tiling layouts (halves, thirds, two-thirds, quarters, maximize, restore)
+- [x] Tiling commands via `command/tile/{layout}` bound to keyboard shortcuts
+- [x] Tiling submenu in system tray right-click menu with enable/disable toggle
+- [x] Enable/disable toggle in Settings panel UI
+- [x] Customizable split ratios (halfRatio, thirdRatio) and gap padding in preferences
+- [x] Multi-monitor support — tiles on the display the window is currently on
+- [x] Original position saved per-window for restore
+- [x] macOS Accessibility API (AXUIElement) with NSScreen visible frames
+
+##### Phase 2: Aero Snap (Mouse Edge Snapping)
+
+Drag a window to a screen edge or corner to trigger tiling — like Windows Aero Snap or macOS Sequoia snap. Requires:
+
+1. **Monitor system-wide mouse events during window drags** — use `CGEventTap` to detect mouse movement while a window is being dragged
+2. **Detect when a drag reaches an edge/corner** — check cursor position against configurable edge trigger zones (`tilingEdgeTriggerSize`, `tilingCornerTriggerSize`)
+3. **Show a translucent preview overlay** — render a transparent overlay window showing where the window will tile before the user drops it
+4. **Apply the tile on drop** — when the user releases the mouse in an edge/corner zone, tile the window to that layout
+
+Corner detection takes priority over edge detection (top-left corner should not trigger maximize just because cursor touches the top edge). Mouse snapping always targets the display the cursor is on.
+
+##### Phase 3: Exposé-Style Window Spread
+
+A `tile_expose` command that lays out all open windows in a grid for overview — like macOS Exposé / Mission Control but using tiling positions. Groups windows by app, computes best-fit grid, lays them out top-left to bottom-right. Toggle behavior: pressing again restores all windows to original positions. See detailed spec below.
+
+#### Platform Priority Order
+
+1. **macOS** — Phase 1 done, Phase 2/3 planned
+2. **Windows + Linux X11** — same Phase 1 features, proven approaches
+3. **KDE Wayland** — moderate effort, users actually want tiling help
+4. **GNOME Wayland** — largest user base but highest maintenance cost
+5. **Skip or deprioritize:** Sway + Hyprland — those users already have tiling built into their compositor
 
 #### Tiling Layouts & Requirements
 
@@ -189,7 +218,7 @@ Mouse snapping does **not** trigger the repeat-to-cycle-displays behavior — th
 
 When a tiled window is dragged away from its snapped position and `tilingRestoreOnUntile` is enabled, the window returns to its original size/position from before it was tiled.
 
-##### Nice to Have: Exposé-Style Window Spread (not required for Phase 1)
+##### Phase 3: Exposé-Style Window Spread
 
 A command that lays out all open windows in a grid so you can see everything at once — like macOS Exposé / Mission Control, but using tiling positions instead of fancy animations.
 
