@@ -130,8 +130,16 @@ function App() {
     return () => observer.disconnect();
   }, []);
 
+  /** Tracked value for the "all monitors" brightness slider.
+   * Not derived from monitors to avoid jumpy recalculations on fetch. */
+  const [allBrightness, setAllBrightness] = useState(50);
+
+  /** Tracked value for the "all monitors" contrast slider. */
+  const [allContrast, setAllContrast] = useState(50);
+
   /** Sets brightness for all monitors with optimistic UI update. */
   const handleAllBrightness = async (value: number) => {
+    setAllBrightness(value);
     setMonitors((prev) => prev.map((m) => ({ ...m, brightness: value })));
     try {
       await invoke('set_all_brightness', { value });
@@ -154,6 +162,7 @@ function App() {
 
   /** Sets contrast for all monitors with optimistic UI update. */
   const handleAllContrast = async (value: number) => {
+    setAllContrast(value);
     setMonitors((prev) => prev.map((m) => (m.contrast !== null ? { ...m, contrast: value } : m)));
     try {
       await invoke('set_all_contrast', { value });
@@ -256,18 +265,8 @@ function App() {
   // Only show non-hidden monitors in the main UI
   const visibleMonitors = monitors.filter((m) => !m.hidden);
 
-  // Calculate average brightness for "all monitors" view
-  const avgBrightness = visibleMonitors.length
-    ? Math.round(visibleMonitors.reduce((sum, m) => sum + m.brightness, 0) / visibleMonitors.length)
-    : 50;
-
-  // Calculate average contrast for monitors that support it
-  const contrastMonitors = visibleMonitors.filter((m) => m.contrast !== null);
-  const avgContrast = contrastMonitors.length
-    ? Math.round(
-        contrastMonitors.reduce((sum, m) => sum + (m.contrast ?? 0), 0) / contrastMonitors.length,
-      )
-    : null;
+  // Whether any visible monitor supports contrast (used to show/hide the contrast slider)
+  const hasContrast = visibleMonitors.some((m) => m.contrast !== null);
 
   return (
     <div className='app' ref={appRef} data-theme={darkMode ? 'dark' : 'light'}>
@@ -290,9 +289,9 @@ function App() {
           {visibleMonitors.length > 0 &&
             (!expanded ? (
               <AllMonitorsControl
-                brightness={avgBrightness}
+                brightness={allBrightness}
                 onBrightnessChange={handleAllBrightness}
-                contrast={avgContrast}
+                contrast={hasContrast ? allContrast : null}
                 onContrastChange={handleAllContrast}
                 showContrast={showContrast}
                 monitorCount={visibleMonitors.length}
