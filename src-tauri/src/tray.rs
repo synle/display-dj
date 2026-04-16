@@ -111,6 +111,29 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
             .build()?
     };
 
+    // Tiling submenu — quick access to common tiling layouts
+    let tiling_submenu = SubmenuBuilder::new(app, "Tiling")
+        .item(&MenuItemBuilder::with_id("tile_leftHalf", "Left Half").build(app)?)
+        .item(&MenuItemBuilder::with_id("tile_rightHalf", "Right Half").build(app)?)
+        .item(&MenuItemBuilder::with_id("tile_topHalf", "Top Half").build(app)?)
+        .item(&MenuItemBuilder::with_id("tile_bottomHalf", "Bottom Half").build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("tile_topLeftQuarter", "Top Left").build(app)?)
+        .item(&MenuItemBuilder::with_id("tile_topRightQuarter", "Top Right").build(app)?)
+        .item(&MenuItemBuilder::with_id("tile_bottomLeftQuarter", "Bottom Left").build(app)?)
+        .item(&MenuItemBuilder::with_id("tile_bottomRightQuarter", "Bottom Right").build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("tile_leftThird", "Left Third").build(app)?)
+        .item(&MenuItemBuilder::with_id("tile_centerThird", "Center Third").build(app)?)
+        .item(&MenuItemBuilder::with_id("tile_rightThird", "Right Third").build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("tile_leftTwoThirds", "Left Two-Thirds").build(app)?)
+        .item(&MenuItemBuilder::with_id("tile_rightTwoThirds", "Right Two-Thirds").build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("tile_maximize", "Maximize").build(app)?)
+        .item(&MenuItemBuilder::with_id("tile_restore", "Restore").build(app)?)
+        .build()?;
+
     let reset_defaults =
         MenuItemBuilder::with_id("reset_defaults", "Reset to Default").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
@@ -121,6 +144,8 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .items(&[&dark_mode, &light_mode])
         .separator()
         .item(&profiles_submenu)
+        .separator()
+        .item(&tiling_submenu)
         .separator()
         .item(&debug_submenu)
         .separator()
@@ -186,7 +211,10 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 app.exit(0);
             }
             other => {
-                if let Some(idx_str) = other.strip_prefix("profile_") {
+                if let Some(layout) = other.strip_prefix("tile_") {
+                    let cmd = format!("command/tile/{}", layout);
+                    execute_command(app, &cmd);
+                } else if let Some(idx_str) = other.strip_prefix("profile_") {
                     if let Ok(idx) = idx_str.parse::<usize>() {
                         let cmd = format!("command/changeProfile/{}", idx);
                         execute_command(app, &cmd);
