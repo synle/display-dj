@@ -799,6 +799,494 @@ fn execute_restore(app: &AppHandle) {
     }
 }
 
+// ===========================================================================
+// Aero Snap — mouse edge snapping with preview overlay
+// ===========================================================================
+
+// --- CGEvent FFI ---
+
+type CGEventRef = *mut c_void;
+type CGEventTapProxy = *mut c_void;
+type CFMachPortRef = *mut c_void;
+type CFRunLoopSourceRef = *mut c_void;
+type CFRunLoopRef = *mut c_void;
+type DispatchQueue = *mut c_void;
+
+const K_CG_SESSION_EVENT_TAP: u32 = 1;
+const K_CG_HEAD_INSERT_EVENT_TAP: u32 = 0;
+const K_CG_EVENT_TAP_OPTION_LISTEN_ONLY: u32 = 1;
+const K_CG_EVENT_LEFT_MOUSE_DOWN: u32 = 1;
+const K_CG_EVENT_LEFT_MOUSE_UP: u32 = 2;
+const K_CG_EVENT_LEFT_MOUSE_DRAGGED: u32 = 6;
+const K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFFFFFE;
+
+/// CGEventTap callback signature.
+type CGEventTapCallBack = extern "C" fn(
+    proxy: CGEventTapProxy,
+    event_type: u32,
+    event: CGEventRef,
+    user_info: *mut c_void,
+) -> CGEventRef;
+
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGEventTapCreate(
+        tap: u32,
+        place: u32,
+        options: u32,
+        events_of_interest: u64,
+        callback: CGEventTapCallBack,
+        user_info: *mut c_void,
+    ) -> CFMachPortRef;
+    fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
+    fn CGEventGetLocation(event: CGEventRef) -> CGPoint;
+    fn CFMachPortCreateRunLoopSource(
+        allocator: CFAllocatorRef,
+        port: CFMachPortRef,
+        order: i64,
+    ) -> CFRunLoopSourceRef;
+    fn CFRunLoopGetCurrent() -> CFRunLoopRef;
+    fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
+    fn CFRunLoopRun();
+}
+
+extern "C" {
+    fn dispatch_async_f(
+        queue: DispatchQueue,
+        context: *mut c_void,
+        work: extern "C" fn(*mut c_void),
+    );
+    /// `_dispatch_main_q` is the actual symbol for the main dispatch queue.
+    /// `dispatch_get_main_queue()` is a macro/inline that returns `&_dispatch_main_q`.
+    static _dispatch_main_q: std::ffi::c_char;
+    static kCFRunLoopCommonModes: CFStringRef;
+}
+
+/// Returns a pointer to the main dispatch queue.
+fn dispatch_get_main_queue() -> DispatchQueue {
+    unsafe { &_dispatch_main_q as *const _ as DispatchQueue }
+}
+
+// --- Overlay window (NSWindow, main thread only) ---
+
+/// Commands dispatched to the main thread for overlay window management.
+enum OverlayCmd {
+    Show { x: f64, y: f64, w: f64, h: f64 },
+    Hide,
+}
+
+/// Global overlay NSWindow pointer. Only accessed from the main thread.
+static OVERLAY_PTR: std::sync::OnceLock<std::sync::atomic::AtomicUsize> =
+    std::sync::OnceLock::new();
+
+/// Initialize the overlay on the main thread. Call once during app setup.
+fn init_overlay_on_main_thread() {
+    OVERLAY_PTR.get_or_init(|| {
+        let ptr = unsafe { create_overlay_window() };
+        std::sync::atomic::AtomicUsize::new(ptr as usize)
+    });
+}
+
+/// Create a borderless, transparent, click-through NSWindow for the snap preview.
+#[allow(unexpected_cfgs)]
+unsafe fn create_overlay_window() -> *mut c_void {
+    use objc::{msg_send, sel, sel_impl};
+    use objc::runtime::Object;
+
+    let cls = objc::runtime::Class::get("NSWindow").unwrap();
+    let window: *mut Object = msg_send![cls, alloc];
+    let rect = CGRect {
+        origin: CGPoint { x: 0.0, y: 0.0 },
+        size: CGSize { width: 1.0, height: 1.0 },
+    };
+    let window: *mut Object = msg_send![window,
+        initWithContentRect:rect
+        styleMask:0u64
+        backing:2u64
+        defer:false
+    ];
+
+    // Semi-transparent blue background
+    let color_cls = objc::runtime::Class::get("NSColor").unwrap();
+    let color: *mut Object = msg_send![color_cls,
+        colorWithRed:0.2f64
+        green:0.5f64
+        blue:1.0f64
+        alpha:0.2f64
+    ];
+    let _: () = msg_send![window, setBackgroundColor: color];
+    let _: () = msg_send![window, setOpaque: false];
+    let _: () = msg_send![window, setHasShadow: false];
+    // NSStatusWindowLevel = 25 — above dragged windows
+    let _: () = msg_send![window, setLevel: 25i64];
+    // Click-through: mouse events pass through to windows below
+    let _: () = msg_send![window, setIgnoresMouseEvents: true];
+    let _: () = msg_send![window, setReleasedWhenClosed: false];
+
+    window as *mut c_void
+}
+
+/// Dispatch an overlay command to the main thread.
+fn dispatch_overlay(cmd: OverlayCmd) {
+    let boxed = Box::into_raw(Box::new(cmd)) as *mut c_void;
+    unsafe {
+        dispatch_async_f(dispatch_get_main_queue(), boxed, run_overlay_cmd);
+    }
+}
+
+/// Callback executed on the main thread to show/hide the overlay.
+#[allow(unexpected_cfgs)]
+extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
+    let cmd = unsafe { Box::from_raw(ctx as *mut OverlayCmd) };
+    let ptr = match OVERLAY_PTR.get() {
+        Some(p) => p.load(std::sync::atomic::Ordering::Relaxed) as *mut c_void,
+        None => return,
+    };
+    if ptr.is_null() {
+        return;
+    }
+
+    unsafe {
+        use objc::{msg_send, sel, sel_impl};
+        use objc::runtime::Object;
+
+        let window = ptr as *mut Object;
+
+        match *cmd {
+            OverlayCmd::Show { x, y, w, h } => {
+                // Convert CG coords (top-left origin) to Cocoa coords (bottom-left origin)
+                let cls = objc::runtime::Class::get("NSScreen").unwrap();
+                let screens: *mut Object = msg_send![cls, screens];
+                let count: usize = msg_send![screens, count];
+                let primary_h = if count > 0 {
+                    let screen: *mut Object = msg_send![screens, objectAtIndex: 0usize];
+                    let frame: CGRect = msg_send![screen, frame];
+                    frame.size.height
+                } else {
+                    1080.0
+                };
+
+                let cocoa_y = primary_h - y - h;
+                let frame = CGRect {
+                    origin: CGPoint { x, y: cocoa_y },
+                    size: CGSize { width: w, height: h },
+                };
+                let _: () = msg_send![window, setFrame:frame display:true];
+                let _: () = msg_send![window, orderFront:std::ptr::null::<Object>()];
+            }
+            OverlayCmd::Hide => {
+                let _: () = msg_send![window, orderOut:std::ptr::null::<Object>()];
+            }
+        }
+    }
+}
+
+// --- Snap zone detection ---
+
+/// Edge and corner trigger sizes in points.
+const EDGE_TRIGGER: f64 = 5.0;
+const CORNER_TRIGGER: f64 = 50.0;
+
+/// Detect which snap zone the cursor is in, if any.
+/// Returns the target layout and display index.
+fn detect_snap_zone(cx: f64, cy: f64, displays: &[Rect]) -> Option<(TilingLayout, usize)> {
+    for (i, d) in displays.iter().enumerate() {
+        // Check if cursor is within this display
+        if cx < d.x || cx >= d.x + d.width || cy < d.y || cy >= d.y + d.height {
+            continue;
+        }
+
+        let left = cx - d.x;
+        let right = d.x + d.width - cx;
+        let top = cy - d.y;
+        let bottom = d.y + d.height - cy;
+
+        let at_left = left < EDGE_TRIGGER;
+        let at_right = right < EDGE_TRIGGER;
+        let at_top = top < EDGE_TRIGGER;
+        let at_bottom = bottom < EDGE_TRIGGER;
+        let in_corner_top = top < CORNER_TRIGGER;
+        let in_corner_bottom = bottom < CORNER_TRIGGER;
+        let in_corner_left = left < CORNER_TRIGGER;
+        let in_corner_right = right < CORNER_TRIGGER;
+
+        // Corners take priority (check first)
+        if at_left && in_corner_top || at_top && in_corner_left {
+            return Some((TilingLayout::TopLeftQuarter, i));
+        }
+        if at_right && in_corner_top || at_top && in_corner_right {
+            return Some((TilingLayout::TopRightQuarter, i));
+        }
+        if at_left && in_corner_bottom || at_bottom && in_corner_left {
+            return Some((TilingLayout::BottomLeftQuarter, i));
+        }
+        if at_right && in_corner_bottom || at_bottom && in_corner_right {
+            return Some((TilingLayout::BottomRightQuarter, i));
+        }
+
+        // Edges
+        if at_left {
+            return Some((TilingLayout::LeftHalf, i));
+        }
+        if at_right {
+            return Some((TilingLayout::RightHalf, i));
+        }
+        if at_top {
+            return Some((TilingLayout::Maximize, i));
+        }
+
+        // No snap zone on this display
+        return None;
+    }
+    None
+}
+
+// --- Aero snap state and event tap ---
+
+/// Shared state between the CGEventTap callback and the main app.
+struct SnapContext {
+    app: AppHandle,
+    tap: std::sync::Mutex<CFMachPortRef>,
+    state: std::sync::Mutex<SnapState>,
+}
+
+// Safety: the raw pointers in SnapContext (CFMachPortRef) are only accessed
+// from the event tap thread after initialization, protected by Mutex.
+unsafe impl Send for SnapContext {}
+unsafe impl Sync for SnapContext {}
+
+struct SnapState {
+    dragging: bool,
+    drag_confirmed: bool,
+    drag_start_window_pos: Option<(f64, f64)>,
+    current_layout: Option<TilingLayout>,
+    current_display: usize,
+    displays: Vec<Rect>,
+    half_ratio: u32,
+    third_ratio: u32,
+    gap: u32,
+}
+
+/// CGEventTap callback — runs on the event tap background thread.
+extern "C" fn snap_event_callback(
+    _proxy: CGEventTapProxy,
+    event_type: u32,
+    event: CGEventRef,
+    user_info: *mut c_void,
+) -> CGEventRef {
+    // Re-enable tap if it was disabled by timeout
+    if event_type == K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT {
+        let ctx = unsafe { &*(user_info as *const SnapContext) };
+        if let Ok(tap) = ctx.tap.lock() {
+            if !tap.is_null() {
+                unsafe { CGEventTapEnable(*tap, true) };
+            }
+        }
+        return event;
+    }
+
+    let ctx = unsafe { &*(user_info as *const SnapContext) };
+
+    // Check if tiling is enabled
+    let enabled = ctx
+        .app
+        .try_state::<crate::AppState>()
+        .and_then(|s| s.preferences.lock().ok().map(|p| p.tiling.enabled))
+        .unwrap_or(false);
+    if !enabled {
+        return event;
+    }
+
+    let cursor = unsafe { CGEventGetLocation(event) };
+
+    let mut state = match ctx.state.try_lock() {
+        Ok(s) => s,
+        Err(_) => return event, // skip if contended
+    };
+
+    match event_type {
+        K_CG_EVENT_LEFT_MOUSE_DOWN => {
+            state.dragging = true;
+            state.drag_confirmed = false;
+            state.current_layout = None;
+            // Get focused window position for later verification
+            state.drag_start_window_pos = unsafe {
+                get_focused_window()
+                    .and_then(|w| get_window_rect(&w).map(|r| (r.x, r.y)))
+            };
+            // Refresh display frames and preferences
+            state.displays = get_display_visible_frames();
+            let prefs = ctx
+                .app
+                .try_state::<crate::AppState>()
+                .and_then(|s| s.preferences.lock().ok().map(|p| p.tiling.clone()));
+            if let Some(tp) = prefs {
+                state.half_ratio = tp.half_ratio;
+                state.third_ratio = tp.third_ratio;
+                state.gap = tp.gap;
+            }
+        }
+
+        K_CG_EVENT_LEFT_MOUSE_DRAGGED => {
+            if !state.dragging || state.displays.is_empty() {
+                return event;
+            }
+
+            let zone = detect_snap_zone(cursor.x, cursor.y, &state.displays);
+
+            match zone {
+                Some((layout, display_idx)) => {
+                    // Only show overlay if layout changed
+                    if state.current_layout != Some(layout) || state.current_display != display_idx
+                    {
+                        state.current_layout = Some(layout);
+                        state.current_display = display_idx;
+                        let target = calculate_target_rect(
+                            layout,
+                            &state.displays[display_idx],
+                            state.half_ratio,
+                            state.third_ratio,
+                            state.gap,
+                        );
+                        dispatch_overlay(OverlayCmd::Show {
+                            x: target.x,
+                            y: target.y,
+                            w: target.width,
+                            h: target.height,
+                        });
+                    }
+                }
+                None => {
+                    if state.current_layout.is_some() {
+                        state.current_layout = None;
+                        dispatch_overlay(OverlayCmd::Hide);
+                    }
+                }
+            }
+        }
+
+        K_CG_EVENT_LEFT_MOUSE_UP => {
+            let was_in_zone = state.current_layout;
+            let start_pos = state.drag_start_window_pos;
+            state.dragging = false;
+            state.drag_confirmed = false;
+            state.current_layout = None;
+
+            // Hide overlay
+            dispatch_overlay(OverlayCmd::Hide);
+
+            // If cursor was in a snap zone, verify the window actually moved
+            if let Some(layout) = was_in_zone {
+                let window_moved = unsafe {
+                    get_focused_window().map_or(false, |w| {
+                        let cur_pos = get_window_rect(&w).map(|r| (r.x, r.y));
+                        match (start_pos, cur_pos) {
+                            (Some((sx, sy)), Some((cx, cy))) => {
+                                (cx - sx).abs() > 10.0 || (cy - sy).abs() > 10.0
+                            }
+                            _ => false,
+                        }
+                    })
+                };
+
+                if window_moved {
+                    let layout_str = match layout {
+                        TilingLayout::LeftHalf => "leftHalf",
+                        TilingLayout::RightHalf => "rightHalf",
+                        TilingLayout::Maximize => "maximize",
+                        TilingLayout::TopLeftQuarter => "topLeftQuarter",
+                        TilingLayout::TopRightQuarter => "topRightQuarter",
+                        TilingLayout::BottomLeftQuarter => "bottomLeftQuarter",
+                        TilingLayout::BottomRightQuarter => "bottomRightQuarter",
+                        _ => return event,
+                    };
+                    let app = ctx.app.clone();
+                    let ls = layout_str.to_string();
+                    std::thread::spawn(move || {
+                        execute_tile(&app, &ls);
+                    });
+                }
+            }
+        }
+
+        _ => {}
+    }
+
+    event
+}
+
+/// Start the aero snap event tap on a background thread.
+/// Call once during app setup. Requires Accessibility permission.
+pub fn start_aero_snap(app: AppHandle) {
+    // Create overlay window on the main thread
+    init_overlay_on_main_thread();
+
+    let ctx = std::sync::Arc::new(SnapContext {
+        app,
+        tap: std::sync::Mutex::new(std::ptr::null_mut()),
+        state: std::sync::Mutex::new(SnapState {
+            dragging: false,
+            drag_confirmed: false,
+            drag_start_window_pos: None,
+            current_layout: None,
+            current_display: 0,
+            displays: Vec::new(),
+            half_ratio: 50,
+            third_ratio: 33,
+            gap: 0,
+        }),
+    });
+
+    // Leak the Arc so it lives for the app's lifetime.
+    let raw_addr = std::sync::Arc::into_raw(ctx) as usize;
+
+    std::thread::spawn(move || {
+        let raw = raw_addr as *mut c_void;
+        unsafe {
+            let mask: u64 = (1 << K_CG_EVENT_LEFT_MOUSE_DOWN)
+                | (1 << K_CG_EVENT_LEFT_MOUSE_UP)
+                | (1 << K_CG_EVENT_LEFT_MOUSE_DRAGGED);
+
+            let tap = CGEventTapCreate(
+                K_CG_SESSION_EVENT_TAP,
+                K_CG_HEAD_INSERT_EVENT_TAP,
+                K_CG_EVENT_TAP_OPTION_LISTEN_ONLY,
+                mask,
+                snap_event_callback,
+                raw,
+            );
+
+            if tap.is_null() {
+                log::warn!(
+                    "aero_snap: Failed to create CGEventTap. \
+                     Accessibility permission may not be granted."
+                );
+                return;
+            }
+
+            // Store tap ref for re-enabling on timeout
+            let ctx = &*(raw as *const SnapContext);
+            if let Ok(mut t) = ctx.tap.lock() {
+                *t = tap;
+            }
+
+            let source =
+                CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
+            if source.is_null() {
+                log::warn!("aero_snap: Failed to create run loop source");
+                return;
+            }
+
+            let run_loop = CFRunLoopGetCurrent();
+            CFRunLoopAddSource(run_loop, source, kCFRunLoopCommonModes);
+            CGEventTapEnable(tap, true);
+
+            log::info!("aero_snap: Event tap started, listening for window drags");
+            CFRunLoopRun(); // blocks forever
+        }
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1053,5 +1541,77 @@ mod tests {
     fn test_tiling_state_new() {
         let state = TilingState::new();
         assert!(state.windows.is_empty());
+    }
+
+    // -- Snap zone detection --
+
+    #[test]
+    fn test_snap_left_edge() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        // Cursor at left edge, middle height
+        let result = detect_snap_zone(2.0, 540.0, &displays);
+        assert_eq!(result, Some((TilingLayout::LeftHalf, 0)));
+    }
+
+    #[test]
+    fn test_snap_right_edge() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let result = detect_snap_zone(1918.0, 540.0, &displays);
+        assert_eq!(result, Some((TilingLayout::RightHalf, 0)));
+    }
+
+    #[test]
+    fn test_snap_top_edge() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let result = detect_snap_zone(960.0, 2.0, &displays);
+        assert_eq!(result, Some((TilingLayout::Maximize, 0)));
+    }
+
+    #[test]
+    fn test_snap_top_left_corner() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        // Cursor at top-left corner (within both edge and corner triggers)
+        let result = detect_snap_zone(2.0, 20.0, &displays);
+        assert_eq!(result, Some((TilingLayout::TopLeftQuarter, 0)));
+    }
+
+    #[test]
+    fn test_snap_top_right_corner() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let result = detect_snap_zone(1918.0, 20.0, &displays);
+        assert_eq!(result, Some((TilingLayout::TopRightQuarter, 0)));
+    }
+
+    #[test]
+    fn test_snap_bottom_left_corner() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let result = detect_snap_zone(2.0, 1060.0, &displays);
+        assert_eq!(result, Some((TilingLayout::BottomLeftQuarter, 0)));
+    }
+
+    #[test]
+    fn test_snap_bottom_right_corner() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let result = detect_snap_zone(1918.0, 1060.0, &displays);
+        assert_eq!(result, Some((TilingLayout::BottomRightQuarter, 0)));
+    }
+
+    #[test]
+    fn test_snap_no_zone_center() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        // Cursor in the middle — no snap zone
+        let result = detect_snap_zone(960.0, 540.0, &displays);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_snap_second_monitor() {
+        let displays = vec![
+            display(0.0, 0.0, 1920.0, 1080.0),
+            display(1920.0, 0.0, 2560.0, 1440.0),
+        ];
+        // Left edge of second monitor
+        let result = detect_snap_zone(1922.0, 540.0, &displays);
+        assert_eq!(result, Some((TilingLayout::LeftHalf, 1)));
     }
 }
