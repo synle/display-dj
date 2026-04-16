@@ -13,9 +13,26 @@ on:
       tag:
         description: 'Release tag (e.g. v2.0.1). Required for manual runs.'
         required: true
+      draft:
+        description: 'Create as draft release'
+        type: boolean
+        default: false
 
 jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete existing release for this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes 2>/dev/null || true
+
   release:
+    needs: cleanup
     permissions:
       contents: write
     strategy:
@@ -85,6 +102,6 @@ jobs:
             ### Requirements
             - Display control is handled by the bundled [display-dj CLI](https://github.com/synle/display-dj-cli) sidecar — no external tools needed on macOS or Windows
             - **Linux**: Install `ddcutil` and `brightnessctl` for display control: `sudo apt install ddcutil brightnessctl i2c-tools`
-          releaseDraft: true
+          releaseDraft: ${{ github.event.inputs.draft || 'true' }}
           prerelease: false
           args: ${{ matrix.args }}
