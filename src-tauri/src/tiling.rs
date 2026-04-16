@@ -1011,20 +1011,23 @@ fn detect_snap_zone(
                 continue; // already checked in first pass
             }
             if allow_overflow {
-                // Only match if cursor is near this display (within margin)
-                let margin = corner.max(side_edge).max(top_edge);
-                if cx < d.x - margin
-                    || cx >= d.x + d.width + margin
-                    || cy < d.y - margin
-                    || cy >= d.y + d.height + margin
+                // Only allow vertical overflow (top/bottom — menu bar and dock).
+                // Horizontal overflow would bleed into adjacent side-by-side displays.
+                let v_margin = corner.max(top_edge);
+                if cx < d.x
+                    || cx >= d.x + d.width
+                    || cy < d.y - v_margin
+                    || cy >= d.y + d.height + v_margin
                 {
                     continue;
                 }
             }
 
-            // Clamp cursor to display bounds — treats "past the edge" the same as
-            // "at the edge", so the snap zone extends through the menu bar / dock.
-            let clamped_x = cx.clamp(d.x, d.x + d.width - 1.0);
+            // Clamp cursor vertically to display bounds — treats "above/below
+            // the edge" the same as "at the edge" so snap zones extend through
+            // the menu bar / dock. No horizontal clamping to avoid bleeding
+            // into adjacent displays.
+            let clamped_x = cx;
             let clamped_y = cy.clamp(d.y, d.y + d.height - 1.0);
             let left = clamped_x - d.x;
             let right = d.x + d.width - clamped_x;
@@ -1671,10 +1674,11 @@ mod tests {
     }
 
     #[test]
-    fn test_snap_cursor_past_left_edge() {
-        // Cursor past the left edge should still trigger left half
+    fn test_snap_no_horizontal_overflow() {
+        // Cursor past the left edge should NOT trigger — horizontal overflow
+        // is disabled to prevent bleeding into adjacent side-by-side displays.
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
         let result = detect_snap_zone(-3.0, 540.0, &displays, 10.0, 10.0, 50.0);
-        assert_eq!(result, Some((TilingLayout::LeftHalf, 0)));
+        assert_eq!(result, None);
     }
 }
