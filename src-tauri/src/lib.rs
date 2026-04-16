@@ -2,6 +2,8 @@ mod config;
 mod dark_mode;
 mod display;
 mod keep_awake;
+#[cfg(target_os = "macos")]
+mod tiling;
 mod tray;
 mod volume;
 
@@ -31,6 +33,9 @@ pub struct AppState {
     /// Holds the active keep-awake guard. When `Some`, the system is prevented
     /// from sleeping. Dropping the guard (setting to `None`) releases the assertion.
     pub keep_awake: std::sync::Mutex<Option<keepawake::KeepAwake>>,
+    /// Per-window tiling state (original positions, current layout, display index).
+    #[cfg(target_os = "macos")]
+    pub tiling_state: std::sync::Mutex<tiling::TilingState>,
 }
 
 /// Find an available port starting from the default.
@@ -261,6 +266,8 @@ pub fn run() {
             sidecar_child: std::sync::Mutex::new(None),
             expect_focus_gain: std::sync::Mutex::new(false),
             keep_awake: std::sync::Mutex::new(None),
+            #[cfg(target_os = "macos")]
+            tiling_state: std::sync::Mutex::new(tiling::TilingState::new()),
         })
         .invoke_handler(tauri::generate_handler![
             display::get_monitors,

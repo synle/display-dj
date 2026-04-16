@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Cross-platform desktop system tray application for controlling monitor brightness, contrast, dark mode, volume, and keep-awake (sleep prevention). Built with **Tauri v2** (Rust backend) + **React 18** (TypeScript frontend) + **Vite 6**.
+Cross-platform desktop system tray application for controlling monitor brightness, contrast, dark mode, volume, keep-awake (sleep prevention), and **window tiling** (macOS). Built with **Tauri v2** (Rust backend) + **React 18** (TypeScript frontend) + **Vite 6**.
 
 Display and dark mode operations are delegated to the [display-dj CLI](https://github.com/synle/display-dj-cli), which runs as a bundled HTTP server sidecar. The Tauri backend makes HTTP requests to it. Volume control remains platform-specific in Rust.
 
@@ -36,10 +36,11 @@ cd src-tauri && cargo test  # Run all Rust backend tests
 
 ### Backend Tests (Rust)
 
-- **Unit tests**: Inline `#[cfg(test)]` modules in `config.rs`, `display.rs`, and `keep_awake.rs`
+- **Unit tests**: Inline `#[cfg(test)]` modules in `config.rs`, `display.rs`, `keep_awake.rs`, and `tiling.rs`
   - `config.rs`: Serialization/deserialization, defaults, camelCase conventions, file roundtrips, CommandValue enum variants, MonitorMetadata serde, effective min brightness, backward-compatible deserialization of old configs, preferences with monitorConfigs roundtrip
   - `display.rs`: `DjDisplay` to `Monitor` conversion (including uid computation), `merge_with_configs` (rename, sort), `reconcile_migrated_configs`, `ensure_metadata_for_monitors`, Monitor serde
   - `keep_awake.rs`: KeepAwake guard creation, Mutex<Option<KeepAwake>> pattern (enable/disable/re-enable)
+  - `tiling.rs` (macOS only): TilingLayout parsing, layout calculation for all 17 layouts (halves, thirds, two-thirds, quarters, maximize), gap/padding math, multi-monitor display detection, custom ratio support, TilingState creation
 - **Smoke test**: `src-tauri/tests/smoke.rs` — Integration test verifying the crate compiles, links, and public API (AppState, run) is accessible
 
 ### CI
@@ -78,6 +79,7 @@ These are documented inline in `config.rs` with WARNING comments.
 - Brightness values are clamped to `effective_min_brightness()` which enforces an absolute floor of 5
 - Contrast is DDC-only (`Option<u32>` / `number | null`): built-in displays return `null`. The contrast slider is hidden by default and toggled via the `showContrast` preference in Settings
 - Keep Awake uses the `keepawake` crate (v0.6) to prevent system idle sleep and display sleep. The guard is stored as `Mutex<Option<KeepAwake>>` in `AppState` — creating the guard enables keep-awake, dropping it (setting to `None`) releases the assertion. Works on macOS (IOKit), Windows (SetThreadExecutionState), and Linux (D-Bus). The `set_keep_awake` command is `async` to avoid the tray icon pitfall.
+- **Window Tiling** (macOS only, `tiling.rs`): Uses the macOS Accessibility API (`AXUIElement`) to move/resize the focused window. Requires Accessibility permission. 17 layouts (halves, thirds, two-thirds, quarters, maximize) plus restore. Triggered via `command/tile/{layoutName}` commands bound to keyboard shortcuts. State tracked per-window by CGWindowID in `AppState.tiling_state`. Uses `_AXUIElementGetWindow` (private API, stable since macOS 10.6) to bridge AXUIElement to CGWindowID. NSScreen visible frames are used for display bounds (accounts for menu bar/dock). Repeat-to-cycle-displays: pressing the same layout again moves the window to the next monitor. Preferences: `tiling.enabled`, `tiling.halfRatio` (default 50), `tiling.thirdRatio` (default 33), `tiling.gap` (default 0). The `objc` crate (v0.2) is used for NSScreen interop; all other macOS FFI (AX API, CoreFoundation) is raw `extern "C"`.
 
 ## Related Projects
 
