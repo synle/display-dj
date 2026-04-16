@@ -133,6 +133,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         SubmenuBuilder::new(app, "Tiling")
             .item(&MenuItemBuilder::with_id("tiling_disable", "Disable Tiling").build(app)?)
             .item(&MenuItemBuilder::with_id("tile_expose", "Exposé").build(app)?)
+            .item(&MenuItemBuilder::with_id("tile_exposeApp", "App Exposé").build(app)?)
             .separator()
             .item(&MenuItemBuilder::with_id("tile_leftHalf", "Left Half").build(app)?)
             .item(&MenuItemBuilder::with_id("tile_rightHalf", "Right Half").build(app)?)
@@ -673,6 +674,11 @@ fn execute_command(app: &AppHandle, command: &str) {
                     let app_clone = app.clone();
                     std::thread::spawn(move || {
                         crate::tiling::execute_expose(&app_clone);
+                    });
+                } else if *layout == "exposeApp" {
+                    let app_clone = app.clone();
+                    std::thread::spawn(move || {
+                        crate::tiling::execute_expose_app(&app_clone);
                     });
                 } else {
                     let app_clone = app.clone();

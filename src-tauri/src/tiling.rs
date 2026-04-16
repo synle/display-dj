@@ -919,13 +919,13 @@ unsafe fn dict_get_bounds(dict: CFDictionaryRef) -> Option<Rect> {
     })
 }
 
-/// Get all on-screen normal windows via CGWindowList.
+/// Get all normal windows via CGWindowList (including minimized and other-space windows).
 /// Filters out desktop elements, tiny windows (< 50x50), and non-normal layers.
 fn get_all_windows() -> Vec<WindowInfo> {
     let mut windows = Vec::new();
     unsafe {
         let list = CGWindowListCopyWindowInfo(
-            K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS,
+            K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS,
             K_CG_NULL_WINDOW_ID,
         );
         if list.is_null() {
@@ -1170,6 +1170,208 @@ unsafe fn get_ax_window_by_id(pid: i32, target_wid: u32) -> Option<CfRef> {
     }
 
     None
+}
+
+// ===========================================================================
+// App Exposé — show only the active app's windows, minimize everything else
+// ===========================================================================
+
+/// Whether app exposé is currently active.
+static APP_EXPOSE_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Saved positions of the active app's windows before app exposé, keyed by CGWindowID.
+static APP_EXPOSE_SAVED: std::sync::OnceLock<std::sync::Mutex<HashMap<u32, Rect>>> =
+    std::sync::OnceLock::new();
+
+/// Window IDs of windows we minimized during app exposé (so we can unminimize them on restore).
+static APP_EXPOSE_MINIMIZED: std::sync::OnceLock<std::sync::Mutex<Vec<(i32, u32)>>> =
+    std::sync::OnceLock::new();
+
+/// Get the saved-positions mutex for app exposé.
+fn app_expose_saved() -> &'static std::sync::Mutex<HashMap<u32, Rect>> {
+    APP_EXPOSE_SAVED.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+/// Get the minimized-windows list for app exposé.
+fn app_expose_minimized() -> &'static std::sync::Mutex<Vec<(i32, u32)>> {
+    APP_EXPOSE_MINIMIZED.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+/// Set the AXMinimized attribute on a window.
+unsafe fn set_window_minimized(ax_win: &CfRef, minimized: bool) -> bool {
+    let attr = match cfstr("AXMinimized") {
+        Some(a) => a,
+        None => return false,
+    };
+    extern "C" {
+        static kCFBooleanTrue: CFTypeRef;
+        static kCFBooleanFalse: CFTypeRef;
+    }
+    let val = if minimized {
+        kCFBooleanTrue
+    } else {
+        kCFBooleanFalse
+    };
+    AXUIElementSetAttributeValue(ax_win.as_ptr(), attr.as_ptr(), val) == K_AX_ERROR_SUCCESS
+}
+
+/// Execute the app exposé command. Toggles between spread and restore.
+/// When activated, minimizes all windows not belonging to the frontmost app,
+/// then lays out the frontmost app's windows in a grid (like Exposé but app-scoped).
+pub fn execute_expose_app(app: &AppHandle) {
+    if !unsafe { AXIsProcessTrusted() } {
+        log::warn!("app_expose: Accessibility permission not granted");
+        return;
+    }
+
+    if APP_EXPOSE_ACTIVE.load(Ordering::Relaxed) {
+        restore_expose_app(app);
+    } else {
+        spread_expose_app(app);
+    }
+}
+
+/// Spread only the frontmost app's windows into a grid, minimizing all others.
+fn spread_expose_app(app: &AppHandle) {
+    let (max_windows, gap) = {
+        let state = app.state::<crate::AppState>();
+        let prefs = match state.preferences.lock() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        (prefs.tiling.expose_max_windows as usize, prefs.tiling.gap)
+    };
+
+    let all_windows = get_all_windows();
+    if all_windows.is_empty() {
+        log::info!("app_expose: no windows found");
+        return;
+    }
+
+    // The frontmost window determines the target app
+    let target_pid = all_windows[0].owner_pid;
+    let target_app = all_windows[0].owner_name.clone();
+
+    // Split into app windows vs other windows
+    let app_windows: Vec<&WindowInfo> = all_windows
+        .iter()
+        .filter(|w| w.owner_pid == target_pid)
+        .take(max_windows)
+        .collect();
+    let other_windows: Vec<&WindowInfo> = all_windows
+        .iter()
+        .filter(|w| w.owner_pid != target_pid)
+        .collect();
+
+    if app_windows.is_empty() {
+        return;
+    }
+
+    // Get displays
+    let displays = get_display_visible_frames();
+    if displays.is_empty() {
+        return;
+    }
+
+    let target_display = find_display_for_window(&app_windows[0].bounds, &displays);
+    let display = &displays[target_display];
+
+    // Minimize all other windows
+    let mut minimized_list = app_expose_minimized().lock().unwrap();
+    minimized_list.clear();
+    for w in &other_windows {
+        unsafe {
+            if let Some(ax_win) = get_ax_window_by_id(w.owner_pid, w.window_id) {
+                if set_window_minimized(&ax_win, true) {
+                    minimized_list.push((w.owner_pid, w.window_id));
+                }
+            }
+        }
+    }
+
+    // Grid layout for the app's windows
+    let n = app_windows.len();
+    let cols = (n as f64).sqrt().ceil() as usize;
+    let rows = (n + cols - 1) / cols;
+    let g = gap as f64;
+    let cell_w = (display.width - g * (cols as f64 + 1.0)) / cols as f64;
+    let cell_h = (display.height - g * (rows as f64 + 1.0)) / rows as f64;
+
+    let mut saved = app_expose_saved().lock().unwrap();
+    saved.clear();
+
+    for (idx, win_info) in app_windows.iter().enumerate() {
+        let col = idx % cols;
+        let row = idx / cols;
+        let x = display.x + g + col as f64 * (cell_w + g);
+        let y = display.y + g + row as f64 * (cell_h + g);
+
+        saved.insert(win_info.window_id, win_info.bounds.clone());
+
+        unsafe {
+            if let Some(ax_win) = get_ax_window_by_id(win_info.owner_pid, win_info.window_id) {
+                set_window_rect(
+                    &ax_win,
+                    &Rect {
+                        x,
+                        y,
+                        width: cell_w,
+                        height: cell_h,
+                    },
+                );
+            }
+        }
+    }
+
+    APP_EXPOSE_ACTIVE.store(true, Ordering::Relaxed);
+    log::info!(
+        "app_expose: spread {} windows of '{}' into {}x{} grid, minimized {} others",
+        n,
+        target_app,
+        cols,
+        rows,
+        minimized_list.len()
+    );
+}
+
+/// Restore all windows after app exposé: unminimize others, restore app window positions.
+fn restore_expose_app(_app: &AppHandle) {
+    // Restore app windows to original positions
+    let mut saved = app_expose_saved().lock().unwrap();
+    let all_windows = get_all_windows();
+
+    for (&wid, rect) in saved.iter() {
+        if let Some(info) = all_windows.iter().find(|w| w.window_id == wid) {
+            unsafe {
+                if let Some(ax_win) = get_ax_window_by_id(info.owner_pid, wid) {
+                    set_window_rect(&ax_win, rect);
+                }
+            }
+        }
+    }
+    let app_count = saved.len();
+    saved.clear();
+
+    // Unminimize windows we minimized
+    let mut minimized_list = app_expose_minimized().lock().unwrap();
+    let mut restored = 0;
+    for &(pid, wid) in minimized_list.iter() {
+        unsafe {
+            if let Some(ax_win) = get_ax_window_by_id(pid, wid) {
+                if set_window_minimized(&ax_win, false) {
+                    restored += 1;
+                }
+            }
+        }
+    }
+    minimized_list.clear();
+
+    APP_EXPOSE_ACTIVE.store(false, Ordering::Relaxed);
+    log::info!(
+        "app_expose: restored {} app windows, unminimized {} others",
+        app_count,
+        restored
+    );
 }
 
 // ===========================================================================

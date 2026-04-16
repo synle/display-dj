@@ -70,6 +70,17 @@ fn download_sidecar() {
 
     let output = binaries_dir.join(sidecar_name);
 
+    // Skip download if the binary already exists and is non-empty (avoids
+    // re-downloading on every build, which triggers the file watcher in
+    // `tauri dev` and causes an infinite rebuild loop).
+    if output.exists() {
+        let size = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
+        if size > 0 {
+            println!("Sidecar binary already exists ({size} bytes): {}", output.display());
+            return;
+        }
+    }
+
     // Try downloading from GitHub releases first (gets the latest for this version)
     let version = sidecar_version();
     let url = format!("https://github.com/{REPO}/releases/download/{version}/{asset}");
