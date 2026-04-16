@@ -27,6 +27,13 @@ export interface NightModeSchedule {
   dayBrightness: number;
 }
 
+export interface TilingPreferences {
+  enabled: boolean;
+  halfRatio: number;
+  thirdRatio: number;
+  gap: number;
+}
+
 export interface Preferences {
   showIndividualDisplays: boolean;
   minBrightness: number;
@@ -37,6 +44,7 @@ export interface Preferences {
   debugLogging: boolean;
   launchAtLogin: boolean;
   monitorConfigs: MonitorMetadata[];
+  tiling: TilingPreferences;
 }
 
 export interface KeyBinding {
