@@ -44,6 +44,191 @@
 - [ ] **CLI companion commands** — Allow controlling the running app from the terminal (e.g., `display-dj2 set-brightness 50`, `display-dj2 activate-profile Focus`). Useful for scripting, automation, and integration with tools like Raycast, Alfred, or shell aliases. Implement by having the CLI send HTTP requests to the running app's sidecar server, or use Tauri's single-instance plugin to forward args to the running instance.
 - [ ] **Display hot-plug handling** — Detect when monitors are connected/disconnected and auto-apply saved configs (brightness, name, sort order) for recognized monitors without manual refresh. Currently, plugging in a monitor requires reopening the popup to see it. Use a platform event listener or poll `get_all` on a timer, diff against the known monitor list, and emit `monitors-changed` when the set changes. Recognize returning monitors by their display ID and restore their last-known brightness and name.
 
+### Cross-Platform Tiling Window Manager
+
+**Goal:** Build a cross-platform tiling window manager supporting macOS, Windows, and Linux.
+
+#### Platform Support Matrix
+
+| Platform | API / Mechanism | Rust Crate | Difficulty | Notes |
+|---|---|---|---|---|
+| **macOS** | Accessibility API (`AXUIElement`) | `accessibility-sys`, `core-graphics` | Medium | Proven by AeroSpace, GlazeWM. Needs Accessibility permission. No SIP disable needed. |
+| **Windows** | Win32 (`EnumWindows`, `SetWindowPos`, `SetWinEventHook`) | `windows` (official Microsoft) | Medium | Proven by komorebi, GlazeWM. No elevation needed. Invisible DWM borders need compensation. |
+| **Linux X11** | X11/XCB + EWMH protocol | `x11rb` | Easy | Most permissive — any client can manipulate any window. Covers all X11 desktops. |
+| **Linux Wayland: Sway** | i3-compatible IPC (JSON over Unix socket) | `swayipc` | Medium | Full move/resize/layout control. But Sway users already have tiling built in. |
+| **Linux Wayland: Hyprland** | `hyprctl` IPC socket | `hyprland` | Medium | Good IPC. But Hyprland users already have tiling built in. |
+| **Linux Wayland: KDE** | D-Bus + KWin scripts (JS/TS) | `zbus` | Medium-Hard | Needs a KWin script sidecar. Polonium is the reference implementation. |
+| **Linux Wayland: GNOME** | GNOME Shell extension (JS) only | `zbus` + JS extension sidecar | Hard | No external IPC. Must write a JS extension that runs inside gnome-shell. Breaks on every major GNOME release. Largest user base but most hostile to external WM control. |
+
+#### Key Findings
+
+- **Only one cross-platform tiling WM exists:** GlazeWM (Rust, macOS + Windows). Nothing covers all three OSes.
+- **GlazeWM's architecture is the model:** Rust workspace with a `wm-platform` crate defining traits (`NativeWindow`, `NativeMonitor`), `#[cfg(target_os)]`-gated platform backends.
+- **Wayland has no universal window management protocol.** Each compositor has its own IPC, requiring separate backends.
+- **The GNOME problem:** GNOME deliberately prevents external window management. Requires a GNOME Shell JS extension sidecar communicating with the Rust daemon via D-Bus. Fragile and high-maintenance.
+- **The Sway/Hyprland irony:** Easiest Wayland backends to implement, but those users already chose those compositors for tiling. The users who need tiling most (GNOME, KDE) are the hardest to support.
+- **Global hotkeys:** `global-hotkey` crate (from Tauri) covers macOS + Windows + Linux X11. Wayland has no standard global hotkey API — compositor must handle it.
+
+#### Recommended Priority Order
+
+1. **Phase 1:** macOS + Windows + Linux X11 — covers most users, all proven approaches
+2. **Phase 2:** KDE Wayland — moderate effort, users actually want tiling help
+3. **Phase 3:** Evaluate GNOME Wayland — largest user base but highest maintenance cost. Users who want tiling on GNOME already use Forge/PaperWM as native extensions.
+4. **Skip or deprioritize:** Sway + Hyprland — those users already have tiling built into their compositor
+
+#### Tiling Layouts & Requirements
+
+##### Supported Layouts
+
+| Layout | Position | Size |
+|---|---|---|
+| **Left half** | Left edge | 50% width, 100% height |
+| **Right half** | Right edge | 50% width, 100% height |
+| **Top half** | Top edge | 100% width, 50% height |
+| **Bottom half** | Bottom edge | 100% width, 50% height |
+| **Left third** | Left edge | 33% width, 100% height |
+| **Center third** | Centered | 33% width, 100% height |
+| **Right third** | Right edge | 33% width, 100% height |
+| **Top third** | Top edge | 100% width, 33% height |
+| **Middle third** | Centered vertically | 100% width, 33% height |
+| **Bottom third** | Bottom edge | 100% width, 33% height |
+| **Left two-thirds** | Left edge | 67% width, 100% height |
+| **Right two-thirds** | Right edge | 67% width, 100% height |
+| **Top-left quarter** | Top-left corner | 50% width, 50% height |
+| **Top-right quarter** | Top-right corner | 50% width, 50% height |
+| **Bottom-left quarter** | Bottom-left corner | 50% width, 50% height |
+| **Bottom-right quarter** | Bottom-right corner | 50% width, 50% height |
+| **Maximize** | Full screen | 100% width, 100% height |
+
+##### Tiling Preferences (stored in app preferences)
+
+All tiling settings live in the app's `preferences.json` alongside existing display-dj settings.
+
+| Setting | Default | Description |
+|---|---|---|
+| **`tilingHalfRatio`** | `50` | Percentage for half splits. Affects halves and quarter corners. |
+| **`tilingThirdRatio`** | `33` | Percentage for third splits. Center/middle = `100 - 2×third`. |
+| **`tilingGap`** | `0` | Gap in pixels between tiled windows and screen edges. 0 = flush, 8-16 = nice spacing. |
+| **`tilingEdgeTriggerSize`** | `5` | Pixel width of the hot zone along screen edges/corners for mouse snapping. Larger = easier to trigger. |
+| **`tilingCornerTriggerSize`** | `50` | Pixel size of the corner hot zone (square). Must be larger than edge trigger so corners take priority. |
+| **`tilingAnimationDuration`** | `150` | Milliseconds for the snap animation. 0 = instant. |
+| **`tilingShowPreview`** | `true` | Show a translucent overlay preview when dragging to an edge/corner before dropping. |
+| **`tilingExcludedApps`** | `[]` | List of app names/bundle IDs to never tile (e.g., system dialogs, floating utilities). These windows are ignored by both keyboard shortcuts and mouse snapping. |
+| **`tilingRespectDockMenuBar`** | `true` | Tile within usable screen area (excluding dock/taskbar/menu bar). When false, tile over the full screen. |
+| **`tilingMonitorOrder`** | `[]` | Ordered list of monitor IDs defining the cycle order for repeat-to-cycle-displays. Empty = use OS default left-to-right order. |
+| **`tilingRestoreOnUntile`** | `true` | When a tiled window is dragged away from its tiled position, restore its original size/position from before it was tiled. |
+| **`tilingEnabled`** | `true` | Master toggle to enable/disable all tiling features. |
+
+Examples for split ratios:
+- `tilingHalfRatio: 60` → "left half" = 60% width, "right half" = 40%. Quarters use 60%/40% splits.
+- `tilingThirdRatio: 40` → "left third" = 40%, "center third" = 20% (100 - 40 - 40), "right third" = 40%. "Left two-thirds" = 60%.
+
+The center/middle third is always the remainder: `100% - (2 × third ratio)`. The setting controls the outer slices.
+
+##### Tiling Commands
+
+Each tiling action is a command that can be bound to a keyboard shortcut, just like existing display-dj commands (brightness, volume, dark mode). Users bind them in `preferences.json` under `keyBindings`.
+
+| Command | Description |
+|---|---|
+| `tile_left_half` | Tile focused window to left half |
+| `tile_right_half` | Tile focused window to right half |
+| `tile_top_half` | Tile focused window to top half |
+| `tile_bottom_half` | Tile focused window to bottom half |
+| `tile_left_third` | Tile focused window to left third |
+| `tile_center_third` | Tile focused window to center third |
+| `tile_right_third` | Tile focused window to right third |
+| `tile_top_third` | Tile focused window to top third |
+| `tile_middle_third` | Tile focused window to middle third |
+| `tile_bottom_third` | Tile focused window to bottom third |
+| `tile_left_two_thirds` | Tile focused window to left two-thirds |
+| `tile_right_two_thirds` | Tile focused window to right two-thirds |
+| `tile_top_left_quarter` | Tile focused window to top-left corner |
+| `tile_top_right_quarter` | Tile focused window to top-right corner |
+| `tile_bottom_left_quarter` | Tile focused window to bottom-left corner |
+| `tile_bottom_right_quarter` | Tile focused window to bottom-right corner |
+| `tile_maximize` | Maximize focused window |
+| `tile_restore` | Restore focused window to pre-tiled size and position |
+
+All commands follow the repeat-to-cycle-displays behavior: if the window is already in the target layout, the command moves it to the next display in the same layout.
+
+##### Repeat-to-Cycle-Displays Behavior
+
+When a keyboard shortcut is triggered and the window is **already in that exact layout on the current display**, the window moves to the **next display** in the same layout position. Repeated presses cycle through all connected displays and then wrap back to the first. Cycle order follows `tilingMonitorOrder` if set, otherwise OS default left-to-right.
+
+Example with 3 monitors:
+1. Press "left half" → window snaps to left half of **Monitor 1**
+2. Press "left half" again → window moves to left half of **Monitor 2**
+3. Press "left half" again → window moves to left half of **Monitor 3**
+4. Press "left half" again → window moves back to left half of **Monitor 1**
+
+This means every keyboard shortcut doubles as a "move to next monitor" command when the window is already in the target layout. No separate "send to monitor" hotkeys needed.
+
+##### Mouse Edge Snapping
+
+Dragging a window to a screen edge or corner triggers a snap preview (like macOS Sequoia / Windows 11 Snap). On drop, the window tiles to that zone. Preview overlay is controlled by `tilingShowPreview`.
+
+| Mouse Position | Resulting Layout |
+|---|---|
+| **Left edge** | Left half |
+| **Right edge** | Right half |
+| **Top edge** | Maximize |
+| **Top-left corner** | Top-left quarter |
+| **Top-right corner** | Top-right quarter |
+| **Bottom-left corner** | Bottom-left quarter |
+| **Bottom-right corner** | Bottom-right quarter |
+
+Corner detection uses `tilingCornerTriggerSize` (larger zone) and takes priority over edge detection (`tilingEdgeTriggerSize`). This prevents top-left corner from accidentally triggering maximize.
+
+Mouse snapping does **not** trigger the repeat-to-cycle-displays behavior — that is keyboard-only. Mouse snapping always targets the display the cursor is on.
+
+When a tiled window is dragged away from its snapped position and `tilingRestoreOnUntile` is enabled, the window returns to its original size/position from before it was tiled.
+
+##### Nice to Have: Exposé-Style Window Spread (not required for Phase 1)
+
+A command that lays out all open windows in a grid so you can see everything at once — like macOS Exposé / Mission Control, but using tiling positions instead of fancy animations.
+
+**Command:** `tile_expose`
+
+**Behavior:**
+
+1. **Group windows by app** — e.g., all VS Code windows together, all Chrome windows together, all Terminal windows together.
+2. **Count total windows** across all groups.
+3. **Compute grid size** — find the best-fit grid (rows × columns) for the total window count on the current display. Aim for roughly square cells. E.g., 6 windows → 3×2 grid, 9 windows → 3×3, 5 windows → 3×2 with one empty cell.
+4. **Lay out top-left to bottom-right** — place windows one by one into the grid, filling left-to-right, top-to-bottom. Windows within the same app group are placed adjacent to each other.
+5. **Save all original positions** — so `tile_restore` (or pressing `tile_expose` again) can put everything back.
+
+**Example** — 8 windows (3 VS Code, 3 Chrome, 2 Terminal) on a 1920×1080 display:
+
+```
+┌──────────┬──────────┬──────────┐
+│ VS Code 1│ VS Code 2│ VS Code 3│   row 1 (640×540 each)
+├──────────┼──────────┼──────────┤
+│ Chrome 1 │ Chrome 2 │ Chrome 3 │   row 2
+├──────────┼──────────┴──────────┤
+│Terminal 1│ Terminal 2│          │   row 3 (last cell empty)
+└──────────┴──────────┴──────────┘
+```
+
+**Grid sizing heuristic:**
+- `cols = ceil(sqrt(window_count))`
+- `rows = ceil(window_count / cols)`
+- Cell size = `(screen_width / cols)` × `(screen_height / rows)`
+- Respects `tilingGap` between cells
+
+**Toggle behavior:** Pressing `tile_expose` when already in exposé mode restores all windows to their original positions (same as `tile_restore` but for all windows at once).
+
+#### Reference Projects
+
+| Project | Platform | Language | Stars | Key Takeaway |
+|---|---|---|---|---|
+| **GlazeWM** | macOS + Windows | Rust | ~12k | Only cross-platform tiling WM. Architecture reference. |
+| **komorebi** | Windows | Rust | ~15k | Best Rust Win32 tiling reference. |
+| **AeroSpace** | macOS | Swift | ~20k | Best macOS approach (no SIP, no private APIs, virtual workspace emulation). |
+| **yabai** | macOS | C | ~29k | Most feature-complete macOS WM but uses private APIs and optional SIP disable. |
+| **Forge** | GNOME Wayland | JS | — | GNOME Shell extension reference for tiling. |
+| **Polonium** | KDE Wayland | TS/JS | — | KWin script reference for tiling. |
+
 ### Ambient Light Adaptation Research
 
 **TLDR:** Feasible but fragile on macOS (undocumented IOKit, could break any update), solid on Windows (official UWP API), hit-or-miss on Linux (sysfs, hardware-dependent). No cross-platform Rust crate exists — needs per-platform code. Should be opt-in with graceful degradation.
