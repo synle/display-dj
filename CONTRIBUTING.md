@@ -101,7 +101,7 @@ display-dj2/
 │   ├── test/
 │   │   └── setup.ts              # Vitest setup: jsdom, jest-dom matchers, Tauri API mocks
 │   └── components/
-│       ├── Header.tsx            # "Display DJ v2.0.0" + expand/collapse chevron
+│       ├── Header.tsx            # "Display DJ v{version}" + expand/collapse chevron
 │       ├── Header.test.tsx
 │       ├── Slider.tsx            # Reusable range slider with icon, debounced onChange
 │       ├── Slider.test.tsx
@@ -326,7 +326,7 @@ Events are used when keyboard shortcuts change brightness/volume/dark mode from 
 - `showContrast: boolean` -- whether contrast sliders are visible (from preferences)
 - `profiles: Profile[]` -- saved profiles from preferences
 - `expanded: boolean` -- collapsed (all-monitors) vs expanded (individual) view
-- `version: string` -- app version from Cargo.toml
+- `version: string` -- app version from `tauri.conf.json` (via `build.rs` compile-time env var `APP_VERSION`)
 
 **Data flow**:
 
@@ -489,8 +489,8 @@ Steps: checkout -> Node 20 -> Rust stable -> Linux deps (Ubuntu only) -> `npm in
 Triggers on `v*` tags. Uses `tauri-apps/tauri-action` to build and upload platform installers to a GitHub draft release.
 
 ```bash
-git tag v2.0.1
-git push origin v2.0.1
+git tag v3.0.0
+git push origin v3.0.0
 ```
 
 ---
@@ -549,9 +549,9 @@ npx tauri build
 
 | Platform | Output                                                                                                                                         |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS    | `src-tauri/target/release/bundle/dmg/Display DJ_2.0.0_aarch64.dmg`                                                                             |
-| Windows  | `src-tauri\target\release\bundle\nsis\Display DJ_2.0.0_x64-setup.exe`                                                                          |
-| Linux    | `src-tauri/target/release/bundle/deb/display-dj_2.0.0_amd64.deb`<br>`src-tauri/target/release/bundle/appimage/display-dj_2.0.0_amd64.AppImage` |
+| macOS    | `src-tauri/target/release/bundle/dmg/Display DJ_3.0.0_aarch64.dmg`                                                                             |
+| Windows  | `src-tauri\target\release\bundle\nsis\Display DJ_3.0.0_x64-setup.exe`                                                                          |
+| Linux    | `src-tauri/target/release/bundle/deb/display-dj_3.0.0_amd64.deb`<br>`src-tauri/target/release/bundle/appimage/display-dj_3.0.0_amd64.AppImage` |
 
 ---
 
