@@ -1,4 +1,4 @@
-# Display DJ v2
+# Display DJ v3
 
 ## Project Overview
 
@@ -18,6 +18,19 @@ npx tauri dev        # Run full app in development mode
 npx tauri build      # Production build (binary + .app/.dmg/.msi/.deb)
 cargo check          # Check Rust compilation (from src-tauri/)
 ```
+
+## Versioning
+
+The **single source of truth** for the app version is `src-tauri/tauri.conf.json` → `"version"`. This controls:
+
+1. **UI header**: `build.rs` reads `tauri.conf.json` and sets the compile-time env var `APP_VERSION`. The Tauri command `get_app_version()` (`config.rs`) returns it. The frontend `Header.tsx` displays it as "Display DJ v{version}".
+2. **Installer/bundle metadata**: Tauri uses this version for `.app`, `.dmg`, `.msi`, `.deb` bundles (shown in macOS "Get Info", Windows "Properties", etc.).
+
+Other version fields:
+
+- `package.json` → `"version"`: Set to `0.0.0`. Not used by the app (not published to npm).
+- `Cargo.toml` → `version`: Set to `0.0.0`. Not used (the crate is not published).
+- Release versioning is driven by git tags (`v*` triggers `release.yml`).
 
 ## Testing
 

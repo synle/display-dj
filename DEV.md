@@ -1,6 +1,6 @@
 # Developer Guide
 
-Full architecture reference for Display DJ v2. Read this before making changes.
+Full architecture reference for Display DJ v3. Read this before making changes.
 
 ---
 
@@ -23,6 +23,7 @@ Full architecture reference for Display DJ v2. Read this before making changes.
 - [Window Positioning (multi-monitor DPI)](#window-positioning-multi-monitor-dpi)
 - [Monitor Identity (UID scheme)](#monitor-identity-uid-scheme)
 - [Configuration Files](#configuration-files)
+- [App Versioning](#app-versioning)
 - [display-dj CLI Sidecar](#display-dj-cli-sidecar)
 - [Known Limitations](#known-limitations)
 - [Troubleshooting](#troubleshooting)
@@ -112,7 +113,7 @@ display-dj2/
 │
 ├── src-tauri/                    # Backend (Rust + Tauri v2)
 │   ├── Cargo.toml                # Rust dependencies
-│   ├── build.rs                  # Downloads sidecar binary at compile time
+│   ├── build.rs                  # Downloads sidecar binary + sets APP_VERSION from tauri.conf.json
 │   ├── tauri.conf.json           # App config: window, tray icon, sidecar, bundling
 │   ├── binaries/                 # display-dj CLI sidecar (per-platform)
 │   ├── capabilities/default.json # Security permissions for frontend JS
@@ -595,6 +596,36 @@ Format: `command/<action>/<value>`
 | `label`     | string | User-set name (empty = use apiName)           |
 | `sortOrder` | number | Display order in UI (lower = higher)          |
 | `hidden`    | bool   | Whether the monitor is hidden from main UI    |
+
+---
+
+## App Versioning
+
+The app version flows from a single source through the build pipeline to the UI:
+
+```
+tauri.conf.json ("version": "3.0.0")
+       │
+       ▼
+build.rs reads it at compile time
+       │
+       ▼
+cargo:rustc-env=APP_VERSION=3.0.0
+       │
+       ▼
+config.rs: get_app_version() → env!("APP_VERSION")
+       │
+       ▼
+App.tsx: invoke("get_app_version") → setVersion()
+       │
+       ▼
+Header.tsx: "Display DJ v3.0.0"
+```
+
+- `tauri.conf.json` → `"version"`: The single source of truth. Controls both the UI header and installer/bundle metadata.
+- `package.json` → `"version"`: `0.0.0` — not used (not published to npm).
+- `Cargo.toml` → `version`: `0.0.0` — not used (crate not published).
+- Release versioning is driven by git tags (`v*` triggers `release.yml`).
 
 ---
 
