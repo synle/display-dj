@@ -18,14 +18,22 @@ on:
         description: 'Create as draft release'
         type: boolean
         default: false
+      release_notes:
+        description: 'Custom release notes (optional). Prepended before the changelog.'
+        required: false
+        default: ''
 
 jobs:
   resolve-tag:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
+      body: ${{ steps.body.outputs.body }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Resolve release tag
         id: resolve
         run: |
@@ -37,6 +45,76 @@ jobs:
             VERSION=$(node -p "require('./package.json').version")
             echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Generate release body
+        id: body
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          USER_NOTES: ${{ github.event.inputs.release_notes }}
+        run: |
+          # Find the previous release tag
+          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | grep -v "^${TAG}$" | head -1)
+          CURRENT_SHA=$(git rev-parse HEAD)
+
+          # Build changelog from commits (max 10)
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+            CHANGELOG=$(git log --oneline --no-decorate -10 "$RANGE")
+            TOTAL=$(git rev-list --count "$RANGE")
+            PREV_SHA=$(git rev-parse "$PREV_TAG")
+          else
+            CHANGELOG=$(git log --oneline --no-decorate -10)
+            TOTAL=$(git rev-list --count HEAD)
+            PREV_SHA=""
+          fi
+
+          # Start building the body
+          {
+            echo "## Display DJ ${TAG}"
+            echo ""
+
+            # User-provided notes at the top
+            if [ -n "$USER_NOTES" ]; then
+              echo "$USER_NOTES"
+              echo ""
+            fi
+
+            # Changelog section
+            echo "### Changes"
+            echo ""
+            echo '```'
+            echo "$CHANGELOG"
+            if [ "$TOTAL" -gt 10 ]; then
+              echo "... and $((TOTAL - 10)) more commits"
+            fi
+            echo '```'
+            echo ""
+
+            # Full diff link
+            if [ -n "$PREV_SHA" ]; then
+              echo "[Full diff: ${PREV_TAG}...${TAG}](https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${TAG})"
+              echo ""
+            fi
+
+            # Install instructions at the bottom
+            echo "### Supported Platforms"
+            echo "- **macOS** Apple Silicon (ARM64) - \`.dmg\`"
+            echo "- **macOS** Intel (x64) - \`.dmg\`"
+            echo "- **Windows** (x64) - \`.msi\` / \`.exe\`"
+            echo "- **Linux** (x64) - \`.deb\` / \`.AppImage\`"
+            echo ""
+            echo "### Requirements"
+            echo "- Display control is handled by the bundled [display-dj CLI](https://github.com/synle/display-dj-cli) sidecar — no external tools needed on macOS or Windows"
+            echo "- **macOS Window Tiling**: Requires Accessibility permission. Go to System Settings > Privacy & Security > Accessibility and add Display DJ. See [setup instructions](https://github.com/synle/display-dj#window-tiling-macos)"
+            echo "- **Linux**: Install \`ddcutil\` and \`brightnessctl\` for display control: \`sudo apt install ddcutil brightnessctl i2c-tools\`"
+          } > body.md
+
+          # Output as multiline string
+          {
+            echo "body<<BODY_EOF"
+            cat body.md
+            echo "BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
 
   cleanup:
     needs: resolve-tag
@@ -110,19 +188,7 @@ jobs:
         with:
           tagName: ${{ needs.resolve-tag.outputs.tag }}
           releaseName: 'Display DJ ${{ needs.resolve-tag.outputs.tag }}'
-          releaseBody: |
-            ## Display DJ ${{ needs.resolve-tag.outputs.tag }}
-
-            ### Supported Platforms
-            - **macOS** Apple Silicon (ARM64) - `.dmg`
-            - **macOS** Intel (x64) - `.dmg`
-            - **Windows** (x64) - `.msi` / `.exe`
-            - **Linux** (x64) - `.deb` / `.AppImage`
-
-            ### Requirements
-            - Display control is handled by the bundled [display-dj CLI](https://github.com/synle/display-dj-cli) sidecar — no external tools needed on macOS or Windows
-            - **macOS Window Tiling**: Requires Accessibility permission. Go to System Settings > Privacy & Security > Accessibility and add Display DJ. See [setup instructions](https://github.com/synle/display-dj#window-tiling-macos)
-            - **Linux**: Install `ddcutil` and `brightnessctl` for display control: `sudo apt install ddcutil brightnessctl i2c-tools`
+          releaseBody: ${{ needs.resolve-tag.outputs.body }}
           releaseDraft: ${{ github.event.inputs.draft || 'true' }}
           prerelease: false
           args: ${{ matrix.args }}
