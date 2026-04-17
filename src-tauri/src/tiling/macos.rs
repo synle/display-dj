@@ -13,7 +13,7 @@ use tauri::{AppHandle, Manager};
 
 use super::{
     build_sorted_window_list, calculate_target_rect, find_display_for_window,
-    layout_grid_on_display, Rect, TilingLayout, WindowInfo, WindowState,
+    layout_across_displays, layout_grid_on_display, Rect, TilingLayout, WindowInfo, WindowState,
 };
 
 // ---------------------------------------------------------------------------
@@ -769,22 +769,11 @@ fn spread_expose(app: &AppHandle) {
     }
 
     let g = gap as f64;
-    let mut offset = 0;
-    let n = ordered.len();
-    for (i, display) in displays.iter().enumerate() {
-        if offset >= n {
-            break;
-        }
-        let count = (n - offset).min(max_per_display);
-        let slice = &ordered[offset..offset + count];
-        layout_grid_on_display(slice, display, g, &set_window_rect_via_ax);
-        log::info!("expose: placed {} windows on display {}", count, i);
-        offset += count;
-    }
+    let placed = layout_across_displays(&ordered, &displays, max_per_display, g, &set_window_rect_via_ax);
 
     log::info!(
         "expose: spread {} windows across {} displays",
-        n.min(offset),
+        placed,
         displays.len()
     );
 }
@@ -1082,22 +1071,11 @@ fn spread_expose_app(app: &AppHandle) {
     }
 
     let g = gap as f64;
-    let n = app_windows.len();
-    let mut offset = 0;
-    for (i, display) in displays.iter().enumerate() {
-        if offset >= n {
-            break;
-        }
-        let count = (n - offset).min(max_per_display);
-        let slice = &app_windows[offset..offset + count];
-        layout_grid_on_display(slice, display, g, &set_window_rect_via_ax);
-        log::info!("app_expose: placed {} windows on display {}", count, i);
-        offset += count;
-    }
+    let placed = layout_across_displays(&app_windows, &displays, max_per_display, g, &set_window_rect_via_ax);
 
     log::info!(
         "app_expose: spread {} windows of '{}' across {} displays",
-        n.min(offset),
+        placed,
         target_app,
         displays.len()
     );

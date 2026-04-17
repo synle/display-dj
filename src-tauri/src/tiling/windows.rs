@@ -6,7 +6,7 @@
 
 use super::{
     build_sorted_window_list, calculate_target_rect, find_display_for_window,
-    layout_grid_on_display, Rect, TilingLayout, WindowInfo, WindowState,
+    layout_across_displays, layout_grid_on_display, Rect, TilingLayout, WindowInfo, WindowState,
 };
 use tauri::{AppHandle, Manager};
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT, TRUE};
@@ -529,26 +529,15 @@ pub fn execute_expose(app: &AppHandle) {
     }
 
     let g = gap as f64;
-    let mut offset = 0;
-    let n = ordered.len();
-    for (i, display) in displays.iter().enumerate() {
-        if offset >= n {
-            break;
-        }
-        let count = (n - offset).min(max_per_display);
-        let slice = &ordered[offset..offset + count];
-        layout_grid_on_display(slice, display, g, &|win_info, rect| {
-            let hwnd = HWND(win_info.window_id as isize as *mut _);
-            set_hwnd_rect(hwnd, rect);
-            unsafe { let _ = BringWindowToTop(hwnd); }
-        });
-        log::info!("expose: placed {} windows on display {}", count, i);
-        offset += count;
-    }
+    let placed = layout_across_displays(&ordered, &displays, max_per_display, g, &|win_info, rect| {
+        let hwnd = HWND(win_info.window_id as isize as *mut _);
+        set_hwnd_rect(hwnd, rect);
+        unsafe { let _ = BringWindowToTop(hwnd); }
+    });
 
     log::info!(
         "expose: spread {} windows across {} displays",
-        n.min(offset),
+        placed,
         displays.len()
     );
 }
@@ -613,26 +602,15 @@ pub fn execute_expose_app(app: &AppHandle) {
     }
 
     let g = gap as f64;
-    let n = app_windows.len();
-    let mut offset = 0;
-    for (i, display) in displays.iter().enumerate() {
-        if offset >= n {
-            break;
-        }
-        let count = (n - offset).min(max_per_display);
-        let slice = &app_windows[offset..offset + count];
-        layout_grid_on_display(slice, display, g, &|win_info, rect| {
-            let hwnd = HWND(win_info.window_id as isize as *mut _);
-            set_hwnd_rect(hwnd, rect);
-            unsafe { let _ = BringWindowToTop(hwnd); }
-        });
-        log::info!("app_expose: placed {} windows on display {}", count, i);
-        offset += count;
-    }
+    let placed = layout_across_displays(&app_windows, &displays, max_per_display, g, &|win_info, rect| {
+        let hwnd = HWND(win_info.window_id as isize as *mut _);
+        set_hwnd_rect(hwnd, rect);
+        unsafe { let _ = BringWindowToTop(hwnd); }
+    });
 
     log::info!(
         "app_expose: spread {} windows of '{}' across {} displays",
-        n.min(offset),
+        placed,
         target_app,
         displays.len()
     );
