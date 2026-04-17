@@ -118,7 +118,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .build()?
     };
 
-    // Tiling submenu — macOS only, toggle + layouts (only shown when enabled)
+    // Tiling submenu — macOS + Windows, toggle + layouts (only shown when enabled)
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     let tiling_on = {
         if let Some(state) = app.try_state::<crate::AppState>() {
@@ -174,7 +174,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         .separator()
         .item(&profiles_submenu);
 
-    // Tiling submenu only on macOS (tiling not yet supported on other platforms)
+    // Tiling submenu on macOS + Windows (not yet supported on Linux)
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         menu = menu.separator().item(&tiling_submenu);
