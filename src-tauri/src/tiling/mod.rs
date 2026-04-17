@@ -11,6 +11,8 @@ use tauri::AppHandle;
 mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(target_os = "linux")]
+mod linux;
 
 // ---------------------------------------------------------------------------
 // Public types (shared across platforms)
@@ -585,13 +587,25 @@ pub(crate) fn detect_snap_zone(
 // ---------------------------------------------------------------------------
 
 /// Tauri command: check if tiling is supported on this platform.
+/// On Linux, checks at runtime whether X11 is available.
 #[tauri::command]
 pub fn get_tiling_supported() -> bool {
-    cfg!(any(target_os = "macos", target_os = "windows"))
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        true
+    }
+    #[cfg(target_os = "linux")]
+    {
+        linux::is_x11_available()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        false
+    }
 }
 
 /// Tauri command: check if accessibility/permissions are granted for tiling.
-/// On Windows, no special permission is needed — always returns true.
+/// On Windows and Linux (X11), no special permission is needed — always returns true.
 #[tauri::command]
 pub fn get_accessibility_trusted() -> bool {
     #[cfg(target_os = "macos")]
@@ -602,7 +616,11 @@ pub fn get_accessibility_trusted() -> bool {
     {
         true // Win32 window management needs no special permissions
     }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
+    {
+        true // X11 allows any client to manipulate windows
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         false
     }
@@ -615,7 +633,9 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     macos::execute_tile(app, layout_str);
     #[cfg(target_os = "windows")]
     windows::execute_tile(app, layout_str);
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
+    linux::execute_tile(app, layout_str);
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (app, layout_str);
         log::warn!("tiling: not supported on this platform");
@@ -628,7 +648,9 @@ pub fn execute_expose(app: &AppHandle) {
     macos::execute_expose(app);
     #[cfg(target_os = "windows")]
     windows::execute_expose(app);
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
+    linux::execute_expose(app);
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = app;
         log::warn!("expose: not supported on this platform");
@@ -641,7 +663,9 @@ pub fn execute_expose_app(app: &AppHandle) {
     macos::execute_expose_app(app);
     #[cfg(target_os = "windows")]
     windows::execute_expose_app(app);
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
+    linux::execute_expose_app(app);
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = app;
         log::warn!("app_expose: not supported on this platform");
