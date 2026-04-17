@@ -411,25 +411,38 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 <div className='settings-divider' />
 
                 <div className='settings-section'>
-                  <label className='settings-label'>Exposé Grid Size</label>
-                  <Slider
-                    value={gridSize}
-                    min={2}
-                    max={5}
-                    onChange={(v) => updateTiling('exposeMaxWindows', v * v)}
-                    showValue={false}
-                  />
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      color: '#666',
-                      marginTop: '2px',
-                      display: 'block',
-                    }}>
-                    {gridSize} &times; {gridSize} = {tiling?.exposeMaxWindows ?? 16} windows per
-                    screen
-                  </span>
+                  <label className='settings-checkbox-row'>
+                    <input
+                      type='checkbox'
+                      checked={tiling?.exposeEnabled ?? true}
+                      onChange={(e) => updateTiling('exposeEnabled', e.target.checked)}
+                    />
+                    <span>Enable Exposé</span>
+                  </label>
                 </div>
+
+                {(tiling?.exposeEnabled ?? true) && (
+                  <div className='settings-section'>
+                    <label className='settings-label'>Exposé Grid Size</label>
+                    <Slider
+                      value={gridSize}
+                      min={2}
+                      max={5}
+                      onChange={(v) => updateTiling('exposeMaxWindows', v * v)}
+                      showValue={false}
+                    />
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        color: '#666',
+                        marginTop: '2px',
+                        display: 'block',
+                      }}>
+                      {gridSize} &times; {gridSize} = {tiling?.exposeMaxWindows ?? 16} windows per
+                      screen
+                    </span>
+                  </div>
+                )}
               </>
             )}
           </>

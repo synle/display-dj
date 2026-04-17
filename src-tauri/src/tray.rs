@@ -89,6 +89,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let debug_enable = MenuItemBuilder::with_id("debug_enable", "Enable Logging").build(app)?;
     let debug_disable = MenuItemBuilder::with_id("debug_disable", "Disable Logging").build(app)?;
     let debug_open = MenuItemBuilder::with_id("debug_open", "Open Debug Log").build(app)?;
+    let debug_dump = MenuItemBuilder::with_id("debug_dump", "Dump Debug Info").build(app)?;
     let open_prefs =
         MenuItemBuilder::with_id("open_prefs", "Open App Preferences").build(app)?;
     let port = crate::server_port();
@@ -101,6 +102,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         SubmenuBuilder::new(app, "Debug")
             .item(&debug_disable)
             .item(&debug_open)
+            .item(&debug_dump)
             .separator()
             .item(&open_prefs)
             .item(&bridge)
@@ -110,6 +112,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     } else {
         SubmenuBuilder::new(app, "Debug")
             .item(&debug_enable)
+            .item(&debug_dump)
             .separator()
             .item(&open_prefs)
             .item(&bridge)
@@ -118,13 +121,17 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .build()?
     };
 
-    // Tiling submenu — macOS + Windows, toggle + layouts (only shown when enabled)
+    // Tiling submenu — macOS + Windows + Linux, toggle + layouts (only shown when enabled)
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-    let tiling_on = {
+    let (tiling_on, expose_on) = {
         if let Some(state) = app.try_state::<crate::AppState>() {
-            state.preferences.lock().map(|p| p.tiling.enabled).unwrap_or(true)
+            state
+                .preferences
+                .lock()
+                .map(|p| (p.tiling.enabled, p.tiling.expose_enabled))
+                .unwrap_or((true, true))
         } else {
-            true
+            (true, true)
         }
     };
 
@@ -132,8 +139,6 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let tiling_submenu = if tiling_on {
         SubmenuBuilder::new(app, "Tiling")
             .item(&MenuItemBuilder::with_id("tiling_disable", "Disable Tiling").build(app)?)
-            .item(&MenuItemBuilder::with_id("tile_expose", "Exposé").build(app)?)
-            .item(&MenuItemBuilder::with_id("tile_exposeApp", "App Exposé").build(app)?)
             .separator()
             .item(&MenuItemBuilder::with_id("tile_leftHalf", "Left Half").build(app)?)
             .item(&MenuItemBuilder::with_id("tile_rightHalf", "Right Half").build(app)?)
@@ -163,6 +168,40 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .build()?
     };
 
+    // Exposé submenu — only visible when tiling is supported (same platform gate)
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    let expose_submenu = if expose_on {
+        let mut builder = SubmenuBuilder::new(app, "Exposé")
+            .item(&MenuItemBuilder::with_id("expose_disable", "Disable Exposé").build(app)?)
+            .separator()
+            .item(&MenuItemBuilder::with_id("tile_expose", "Exposé").build(app)?)
+            .item(&MenuItemBuilder::with_id("tile_exposeApp", "App Exposé").build(app)?)
+            .separator();
+        // Grid size options
+        let expose_max = if let Some(state) = app.try_state::<crate::AppState>() {
+            state
+                .preferences
+                .lock()
+                .map(|p| p.tiling.expose_max_windows)
+                .unwrap_or(16)
+        } else {
+            16
+        };
+        for &size in &[2u32, 3, 4, 5] {
+            let val = size * size;
+            let check = if val == expose_max { "● " } else { "   " };
+            let label = format!("{}{} \u{00d7} {} = {} windows", check, size, size, val);
+            let id = format!("expose_grid_{}", size);
+            builder =
+                builder.item(&MenuItemBuilder::with_id(&id, &label).build(app)?);
+        }
+        builder.build()?
+    } else {
+        SubmenuBuilder::new(app, "Exposé")
+            .item(&MenuItemBuilder::with_id("expose_enable", "Enable Exposé").build(app)?)
+            .build()?
+    };
+
     let reset_defaults =
         MenuItemBuilder::with_id("reset_defaults", "Reset to Default").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
@@ -174,10 +213,10 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         .separator()
         .item(&profiles_submenu);
 
-    // Tiling submenu on macOS + Windows + Linux (X11)
+    // Tiling + Exposé submenus on macOS + Windows + Linux (X11)
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     {
-        menu = menu.separator().item(&tiling_submenu);
+        menu = menu.separator().item(&tiling_submenu).item(&expose_submenu);
     }
 
     let menu = menu
@@ -243,6 +282,18 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 }
                 rebuild_tray_menu(app);
             }
+            "expose_enable" => {
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    crate::config::set_expose_enabled(&state, true);
+                }
+                rebuild_tray_menu(app);
+            }
+            "expose_disable" => {
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    crate::config::set_expose_enabled(&state, false);
+                }
+                rebuild_tray_menu(app);
+            }
             "debug_enable" => {
                 if let Some(state) = app.try_state::<crate::AppState>() {
                     crate::config::set_debug_logging(&state, true);
@@ -257,6 +308,9 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
             }
             "debug_open" => {
                 let _ = crate::config::open_debug_log();
+            }
+            "debug_dump" => {
+                dump_debug_info(app);
             }
             "reset_defaults" => {
                 crate::config::reset_to_defaults();
@@ -303,6 +357,17 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                     if let Ok(idx) = idx_str.parse::<usize>() {
                         let cmd = format!("command/changeProfile/{}", idx);
                         execute_command(app, &cmd);
+                    }
+                } else if let Some(size_str) = other.strip_prefix("expose_grid_") {
+                    if let Ok(size) = size_str.parse::<u32>() {
+                        let val = size * size;
+                        if let Some(state) = app.try_state::<crate::AppState>() {
+                            if let Ok(mut prefs) = state.preferences.lock() {
+                                prefs.tiling.expose_max_windows = val;
+                                crate::config::save_preferences_to_disk(&prefs);
+                            }
+                        }
+                        rebuild_tray_menu(app);
                     }
                 }
             }
@@ -626,6 +691,101 @@ pub fn register_shortcuts(app: &AppHandle, key_bindings: &[KeyBinding]) {
         registered,
         failed
     );
+}
+
+/// Dumps current app state to the debug log for troubleshooting.
+/// Includes version, preferences, keybindings, tiling/exposé state, and platform info.
+fn dump_debug_info(app: &AppHandle) {
+    let mut lines: Vec<String> = Vec::new();
+    lines.push("=== DEBUG INFO DUMP ===".into());
+    lines.push(format!(
+        "version: {}",
+        crate::config::get_app_version()
+    ));
+    lines.push(format!("os: {} {}", std::env::consts::OS, std::env::consts::ARCH));
+    lines.push(format!("bridge: 127.0.0.1:{}", crate::server_port()));
+
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        if let Ok(prefs) = state.preferences.lock() {
+            lines.push(format!("debug_logging: {}", prefs.debug_logging));
+            lines.push(format!("launch_at_login: {}", prefs.launch_at_login));
+            lines.push(format!("show_individual_displays: {}", prefs.show_individual_displays));
+            lines.push(format!("show_contrast: {}", prefs.show_contrast));
+            lines.push(format!("min_brightness: {}", prefs.min_brightness));
+
+            // Tiling state
+            lines.push("--- tiling ---".into());
+            lines.push(format!("tiling.enabled: {}", prefs.tiling.enabled));
+            lines.push(format!("tiling.half_ratio: {}", prefs.tiling.half_ratio));
+            lines.push(format!("tiling.third_ratio: {}", prefs.tiling.third_ratio));
+            lines.push(format!("tiling.gap: {}", prefs.tiling.gap));
+            lines.push(format!("tiling.side_edge_trigger: {}", prefs.tiling.side_edge_trigger));
+            lines.push(format!("tiling.top_edge_trigger: {}", prefs.tiling.top_edge_trigger));
+            lines.push(format!("tiling.corner_trigger: {}", prefs.tiling.corner_trigger));
+
+            // Exposé state
+            lines.push("--- exposé ---".into());
+            lines.push(format!("tiling.expose_enabled: {}", prefs.tiling.expose_enabled));
+            lines.push(format!(
+                "tiling.expose_max_windows: {} ({}x{} grid)",
+                prefs.tiling.expose_max_windows,
+                (prefs.tiling.expose_max_windows as f64).sqrt().ceil() as u32,
+                (prefs.tiling.expose_max_windows as f64).sqrt().ceil() as u32,
+            ));
+
+            // Night mode
+            lines.push("--- night mode ---".into());
+            lines.push(format!(
+                "night_mode: enabled={}, night_start={}, day_start={}, night_brightness={}, day_brightness={}",
+                prefs.night_mode_schedule.enabled,
+                prefs.night_mode_schedule.night_start,
+                prefs.night_mode_schedule.day_start,
+                prefs.night_mode_schedule.night_brightness,
+                prefs.night_mode_schedule.day_brightness,
+            ));
+
+            // Keybindings
+            lines.push(format!("--- keybindings ({}) ---", prefs.key_bindings.len()));
+            for kb in &prefs.key_bindings {
+                let cmds = match &kb.command {
+                    crate::config::CommandValue::Single(c) => c.clone(),
+                    crate::config::CommandValue::Multiple(c) => c.join(", "),
+                };
+                lines.push(format!("  {} → {}", kb.key, cmds));
+            }
+
+            // Profiles
+            lines.push(format!("--- profiles ({}) ---", prefs.profiles.len()));
+            for (i, p) in prefs.profiles.iter().enumerate() {
+                let cmds = match &p.command {
+                    crate::config::CommandValue::Single(c) => c.clone(),
+                    crate::config::CommandValue::Multiple(c) => c.join(", "),
+                };
+                lines.push(format!("  [{}] {} → {}", i, p.name, cmds));
+            }
+
+            // Monitor configs
+            lines.push(format!(
+                "--- monitor configs ({}) ---",
+                prefs.monitor_configs.len()
+            ));
+            for mc in &prefs.monitor_configs {
+                lines.push(format!(
+                    "  uid={}, label=\"{}\", sort={}, hidden={}",
+                    mc.uid, mc.label, mc.sort_order, mc.hidden
+                ));
+            }
+        }
+    }
+
+    lines.push("=== END DEBUG INFO ===".into());
+    let output = lines.join("\n");
+    log::info!("{}", output);
+
+    // Also write to debug log file regardless of debug_logging preference
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        crate::config::write_debug_log(&state, &output);
+    }
 }
 
 /// Dispatches a command string (e.g. "command/changeBrightness/50") to the appropriate

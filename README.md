@@ -41,8 +41,8 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
 - **Global keyboard shortcuts** -- work even when the app isn't focused; fully configurable
 - **Monitor renaming** -- click any display name to give it a custom label
-- **Window tiling** (macOS + Windows) -- tile windows to halves, thirds, two-thirds, quarters, or maximize via keyboard shortcuts or tray menu
-- **Exposé** (macOS + Windows) -- spread all windows into a grid overview, or just the current app's windows. Deterministic alphabetical layout with multi-display overflow
+- **Window tiling** (macOS + Windows + Linux/X11) -- tile windows to halves, thirds, two-thirds, quarters, or maximize via keyboard shortcuts or tray menu
+- **Exposé** (macOS + Windows + Linux/X11) -- spread all windows into a grid overview, or just the current app's windows. Deterministic alphabetical layout with multi-display overflow. Has its own tray submenu with enable/disable toggle and grid size options
 - **Settings panel** -- tabbed UI (General + Tiling) with auto-save. Configure brightness, contrast, monitors, night mode, snap zones, exposé grid size, and launch at login
 - **System tray app** -- lives in your menu bar / system tray with no dock or taskbar clutter
 
@@ -124,7 +124,7 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 | Shift + F3-F5   | Brightness 0% / 50% / 100%   |
 | Shift + F10-F12 | Volume 0% / 10% / 100%       |
 
-**Window Tiling** (macOS + Windows):
+**Window Tiling** (macOS + Windows + Linux/X11):
 
 | Keys                  | Action                           |
 | --------------------- | -------------------------------- |
@@ -141,15 +141,15 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 | Ctrl + Shift + A      | App Exposé (current app only)    |
 | Ctrl + Down           | App Exposé (current app only)    |
 
-## Window Tiling (macOS + Windows)
+## Window Tiling (macOS + Windows + Linux/X11)
 
-Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or maximize using keyboard shortcuts or the **Tiling** submenu in the tray icon's right-click menu. All 19 layouts, restore, Exposé, and App Exposé work on both macOS and Windows. Tile Snap (mouse edge snapping) is currently macOS-only.
+Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or maximize using keyboard shortcuts or the **Tiling** submenu in the tray icon's right-click menu. All 19 layouts, restore, Exposé, and App Exposé work on macOS, Windows, and Linux (X11). Tile Snap (mouse edge snapping) is currently macOS-only.
 
 ### Exposé
 
 Two Exposé modes are available:
 
-- **Exposé** (Ctrl+Up or Ctrl+Shift+E) -- spreads all on-screen windows into a deterministic alphabetical grid. Fills the first display, then overflows to the next.
+- **Exposé** (Ctrl+Up or Ctrl+Shift+E) -- spreads all on-screen windows into a deterministic alphabetical grid. Fills the first display, then overflows to the next. Windows with minimum size constraints (e.g., Steam, Chrome) that don't fit in the grid automatically overflow to subsequent displays where cells are larger.
 - **App Exposé** (Ctrl+Down or Ctrl+Shift+A) -- grids only the frontmost app's windows across displays.
 
 Both modes normalize windows first (unminimize and exit fullscreen), then lay out a grid. Each invocation always re-lays out all windows (no toggle/restore). The grid size is configurable in Settings (Tiling tab) from 2x2 to 5x5 per screen.
@@ -187,6 +187,7 @@ Tiling settings are stored in `preferences.json` under the `tiling` key. They ca
 | `sideEdgeTrigger`  | `10`    | 5-50 px   | Tile Snap: width of left/right/bottom edge zone          |
 | `topEdgeTrigger`   | `10`    | 10-50 px  | Tile Snap: height of top edge zone (maximize)            |
 | `cornerTrigger`    | `50`    | 25-150 px | Tile Snap: size of corner zone (quarter tiles)           |
+| `exposeEnabled`    | `true`  | --        | Master toggle for Exposé features                        |
 | `exposeMaxWindows` | `16`    | 4-25      | Max windows per screen in Exposé (grid size squared)     |
 
 ## Known Issues
