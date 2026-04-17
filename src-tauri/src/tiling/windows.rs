@@ -86,10 +86,31 @@ fn get_foreground_hwnd() -> Option<HWND> {
     }
 }
 
-/// Get the current position and size of a window.
+/// Get the visible frame position and size of a window.
+/// Prefers DWM extended frame bounds (which exclude invisible DWM borders)
+/// over `GetWindowRect` (which includes them). This ensures that
+/// `find_display_for_window` and restore use the actual visible frame.
 fn get_hwnd_rect(hwnd: HWND) -> Option<Rect> {
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
     let mut rc = RECT::default();
     unsafe {
+        // Try DWM extended frame bounds first (visible frame without invisible borders)
+        if DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut rc as *mut RECT as *mut _,
+            std::mem::size_of::<RECT>() as u32,
+        )
+        .is_ok()
+        {
+            return Some(Rect {
+                x: rc.left as f64,
+                y: rc.top as f64,
+                width: (rc.right - rc.left) as f64,
+                height: (rc.bottom - rc.top) as f64,
+            });
+        }
+        // Fall back to GetWindowRect
         if GetWindowRect(hwnd, &mut rc).is_ok() {
             Some(Rect {
                 x: rc.left as f64,
@@ -103,16 +124,54 @@ fn get_hwnd_rect(hwnd: HWND) -> Option<Rect> {
     }
 }
 
-/// Move and resize a window to the given rect.
+/// Get the invisible DWM border offsets (left, top, right, bottom).
+/// On Windows 10/11, every window has ~7px invisible borders on each side
+/// (DWM drop shadows). `GetWindowRect` includes these invisible borders,
+/// and `SetWindowPos` positions including them. This function computes the
+/// difference between the full window rect and the visible (extended) frame
+/// so callers can compensate. Returns (0, 0, 0, 0) if DWM info is unavailable.
+fn get_dwm_border(hwnd: HWND) -> (i32, i32, i32, i32) {
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    let mut window_rect = RECT::default();
+    let mut frame_rect = RECT::default();
+    unsafe {
+        if GetWindowRect(hwnd, &mut window_rect).is_err() {
+            return (0, 0, 0, 0);
+        }
+        if DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut frame_rect as *mut RECT as *mut _,
+            std::mem::size_of::<RECT>() as u32,
+        )
+        .is_err()
+        {
+            return (0, 0, 0, 0);
+        }
+    }
+    (
+        frame_rect.left - window_rect.left,    // left border
+        frame_rect.top - window_rect.top,      // top border
+        window_rect.right - frame_rect.right,  // right border
+        window_rect.bottom - frame_rect.bottom, // bottom border
+    )
+}
+
+/// Move and resize a window to the given rect, compensating for invisible
+/// DWM borders. The rect specifies the desired *visible* frame position and
+/// size. Internally, `SetWindowPos` operates on the full window rect (which
+/// includes invisible borders), so we expand the position/size by the border
+/// offsets so the visible frame lands exactly where requested.
 fn set_hwnd_rect(hwnd: HWND, rect: &Rect) {
+    let (bl, bt, br, bb) = get_dwm_border(hwnd);
     unsafe {
         let _ = SetWindowPos(
             hwnd,
             HWND_TOP,
-            rect.x as i32,
-            rect.y as i32,
-            rect.width as i32,
-            rect.height as i32,
+            rect.x as i32 - bl,
+            rect.y as i32 - bt,
+            rect.width as i32 + bl + br,
+            rect.height as i32 + bt + bb,
             SWP_NOZORDER,
         );
     }
@@ -176,6 +235,27 @@ fn get_process_name(hwnd: HWND) -> String {
     }
 }
 
+/// Query the minimum window size via WM_GETMINMAXINFO.
+fn get_window_min_size(hwnd: HWND) -> Option<(f64, f64)> {
+    use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, MINMAXINFO, WM_GETMINMAXINFO};
+    let mut info = MINMAXINFO::default();
+    unsafe {
+        SendMessageW(
+            hwnd,
+            WM_GETMINMAXINFO,
+            windows::Win32::Foundation::WPARAM(0),
+            windows::Win32::Foundation::LPARAM(&mut info as *mut MINMAXINFO as isize),
+        );
+    }
+    let w = info.ptMinTrackSize.x as f64;
+    let h = info.ptMinTrackSize.y as f64;
+    if w > 0.0 && h > 0.0 {
+        Some((w, h))
+    } else {
+        None
+    }
+}
+
 /// Enumerate all visible, non-minimized top-level windows.
 /// Returns a list of WindowInfo with HWND stored as i64.
 fn get_all_windows() -> Vec<WindowInfo> {
@@ -229,6 +309,7 @@ fn get_all_windows() -> Vec<WindowInfo> {
                     width,
                     height,
                 },
+                min_size: None,
             });
 
             TRUE
@@ -424,10 +505,16 @@ pub fn execute_expose(app: &AppHandle) {
     // Restore minimized windows first
     restore_minimized_windows();
 
-    let all_windows = get_all_windows();
+    let mut all_windows = get_all_windows();
     if all_windows.is_empty() {
         log::info!("expose: no windows found");
         return;
+    }
+
+    // Populate min sizes via WM_GETMINMAXINFO for adaptive grid layout
+    for w in &mut all_windows {
+        let hwnd = HWND(w.window_id as isize as *mut _);
+        w.min_size = get_window_min_size(hwnd);
     }
 
     let displays = get_display_work_areas();
@@ -495,9 +582,15 @@ pub fn execute_expose_app(app: &AppHandle) {
     // Restore minimized windows
     restore_minimized_windows();
 
-    let all_windows = get_all_windows();
+    let mut all_windows = get_all_windows();
     if all_windows.is_empty() {
         return;
+    }
+
+    // Populate min sizes via WM_GETMINMAXINFO for adaptive grid layout
+    for w in &mut all_windows {
+        let hwnd = HWND(w.window_id as isize as *mut _);
+        w.min_size = get_window_min_size(hwnd);
     }
 
     let displays = get_display_work_areas();
