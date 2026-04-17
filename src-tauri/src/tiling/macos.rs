@@ -13,7 +13,7 @@ use tauri::{AppHandle, Manager};
 
 use super::{
     build_sorted_window_list, calculate_target_rect, find_display_for_window,
-    layout_across_displays, layout_grid_on_display, Rect, TilingLayout, WindowInfo, WindowState,
+    layout_across_displays, Rect, TilingLayout, WindowInfo, WindowState,
 };
 
 // ---------------------------------------------------------------------------
