@@ -1,6 +1,6 @@
 //! macOS window tiling via the Accessibility API.
 //!
-//! Provides window tiling commands (halves, thirds, quarters, maximize, restore)
+//! Provides window tiling commands (halves, thirds, quarters, maximize, restore, exposé)
 //! for macOS. Uses AXUIElement to get the focused window and move/resize it,
 //! and NSScreen to get display visible frames (accounting for menu bar and dock).
 //!
@@ -973,32 +973,14 @@ fn get_all_windows() -> Vec<WindowInfo> {
 
 // --- Exposé state ---
 
-use std::sync::atomic::{AtomicBool, Ordering};
-
-/// Whether exposé is currently active (windows are spread out).
-static EXPOSE_ACTIVE: AtomicBool = AtomicBool::new(false);
-
-/// Saved positions of all windows before exposé, keyed by CGWindowID.
-static EXPOSE_SAVED: std::sync::OnceLock<std::sync::Mutex<HashMap<u32, Rect>>> =
-    std::sync::OnceLock::new();
-
-fn expose_saved() -> &'static std::sync::Mutex<HashMap<u32, Rect>> {
-    EXPOSE_SAVED.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
-}
-
-/// Execute the exposé command. Toggles between spread and restore.
+/// Execute the exposé command. Lays out all on-screen windows in a grid.
 pub fn execute_expose(app: &AppHandle) {
     if !unsafe { AXIsProcessTrusted() } {
         log::warn!("expose: Accessibility permission not granted");
         return;
     }
 
-    // Toggle: if active, restore all; if inactive, spread all
-    if EXPOSE_ACTIVE.load(Ordering::Relaxed) {
-        restore_expose(app);
-    } else {
-        spread_expose(app);
-    }
+    spread_expose(app);
 }
 
 /// Build a deterministic, alphabetically-sorted window list from all windows.
@@ -1027,13 +1009,7 @@ fn build_sorted_window_list(windows: &[WindowInfo], max: usize) -> Vec<&WindowIn
 }
 
 /// Lay out windows in a grid on a single display. Returns the number of windows placed.
-/// `offset` is the starting index into `ordered` for this display.
-fn layout_grid_on_display(
-    ordered: &[&WindowInfo],
-    display: &Rect,
-    gap: f64,
-    saved: &mut HashMap<u32, Rect>,
-) -> usize {
+fn layout_grid_on_display(ordered: &[&WindowInfo], display: &Rect, gap: f64) -> usize {
     let n = ordered.len();
     if n == 0 {
         return 0;
@@ -1048,8 +1024,6 @@ fn layout_grid_on_display(
         let row = idx / cols;
         let x = display.x + gap + col as f64 * (cell_w + gap);
         let y = display.y + gap + row as f64 * (cell_h + gap);
-
-        saved.insert(win_info.window_id, win_info.bounds.clone());
 
         unsafe {
             if let Some(ax_win) = get_ax_window_by_id(win_info.owner_pid, win_info.window_id) {
@@ -1111,9 +1085,6 @@ fn spread_expose(app: &AppHandle) {
         return;
     }
 
-    let mut saved = expose_saved().lock().unwrap();
-    saved.clear();
-
     let g = gap as f64;
     let mut offset = 0;
     let n = ordered.len();
@@ -1123,35 +1094,16 @@ fn spread_expose(app: &AppHandle) {
         }
         let count = (n - offset).min(max_per_display);
         let slice = &ordered[offset..offset + count];
-        layout_grid_on_display(slice, display, g, &mut saved);
+        layout_grid_on_display(slice, display, g);
         log::info!("expose: placed {} windows on display {}", count, i);
         offset += count;
     }
 
-    EXPOSE_ACTIVE.store(true, Ordering::Relaxed);
-    log::info!("expose: spread {} windows across {} displays", n.min(offset), displays.len());
-}
-
-/// Restore all windows to their pre-exposé positions.
-fn restore_expose(_app: &AppHandle) {
-    let mut saved = expose_saved().lock().unwrap();
-
-    for (&wid, rect) in saved.iter() {
-        // We need PID to create AXUIElement — scan all windows to find it
-        let all_windows = get_all_windows();
-        if let Some(info) = all_windows.iter().find(|w| w.window_id == wid) {
-            unsafe {
-                if let Some(ax_win) = get_ax_window_by_id(info.owner_pid, wid) {
-                    set_window_rect(&ax_win, rect);
-                }
-            }
-        }
-    }
-
-    let count = saved.len();
-    saved.clear();
-    EXPOSE_ACTIVE.store(false, Ordering::Relaxed);
-    log::info!("expose: restored {} windows", count);
+    log::info!(
+        "expose: spread {} windows across {} displays",
+        n.min(offset),
+        displays.len()
+    );
 }
 
 /// Get an AXUIElement for a specific window by PID and CGWindowID.
@@ -1370,31 +1322,14 @@ fn normalize_all_windows() -> (usize, usize) {
 // App Exposé — show only the active app's windows in a grid
 // ===========================================================================
 
-/// Whether app exposé is currently active.
-static APP_EXPOSE_ACTIVE: AtomicBool = AtomicBool::new(false);
-
-/// Saved positions of the active app's windows before app exposé, keyed by CGWindowID.
-static APP_EXPOSE_SAVED: std::sync::OnceLock<std::sync::Mutex<HashMap<u32, Rect>>> =
-    std::sync::OnceLock::new();
-
-/// Get the saved-positions mutex for app exposé.
-fn app_expose_saved() -> &'static std::sync::Mutex<HashMap<u32, Rect>> {
-    APP_EXPOSE_SAVED.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
-}
-
-/// Execute the app exposé command. Toggles between spread and restore.
-/// When activated, lays out the frontmost app's windows in a grid across all displays.
+/// Execute the app exposé command. Lays out the frontmost app's windows in a grid.
 pub fn execute_expose_app(app: &AppHandle) {
     if !unsafe { AXIsProcessTrusted() } {
         log::warn!("app_expose: Accessibility permission not granted");
         return;
     }
 
-    if APP_EXPOSE_ACTIVE.load(Ordering::Relaxed) {
-        restore_expose_app(app);
-    } else {
-        spread_expose_app(app);
-    }
+    spread_expose_app(app);
 }
 
 /// Spread only the frontmost app's windows into a grid, filling display 1 first then overflowing.
@@ -1454,9 +1389,6 @@ fn spread_expose_app(app: &AppHandle) {
         return;
     }
 
-    let mut saved = app_expose_saved().lock().unwrap();
-    saved.clear();
-
     let g = gap as f64;
     let n = app_windows.len();
     let mut offset = 0;
@@ -1466,39 +1398,17 @@ fn spread_expose_app(app: &AppHandle) {
         }
         let count = (n - offset).min(max_per_display);
         let slice = &app_windows[offset..offset + count];
-        layout_grid_on_display(slice, display, g, &mut saved);
+        layout_grid_on_display(slice, display, g);
         log::info!("app_expose: placed {} windows on display {}", count, i);
         offset += count;
     }
 
-    APP_EXPOSE_ACTIVE.store(true, Ordering::Relaxed);
     log::info!(
         "app_expose: spread {} windows of '{}' across {} displays",
         n.min(offset),
         target_app,
         displays.len()
     );
-}
-
-/// Restore app windows to their pre-exposé positions.
-fn restore_expose_app(_app: &AppHandle) {
-    let mut saved = app_expose_saved().lock().unwrap();
-    let all_windows = get_all_windows();
-
-    for (&wid, rect) in saved.iter() {
-        if let Some(info) = all_windows.iter().find(|w| w.window_id == wid) {
-            unsafe {
-                if let Some(ax_win) = get_ax_window_by_id(info.owner_pid, wid) {
-                    set_window_rect(&ax_win, rect);
-                }
-            }
-        }
-    }
-
-    let count = saved.len();
-    saved.clear();
-    APP_EXPOSE_ACTIVE.store(false, Ordering::Relaxed);
-    log::info!("app_expose: restored {} windows", count);
 }
 
 // ===========================================================================
