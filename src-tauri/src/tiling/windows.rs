@@ -148,8 +148,13 @@ fn get_process_name(hwnd: HWND) -> String {
             Ok(h) => {
                 let mut buf = [0u16; 512];
                 let mut size = buf.len() as u32;
-                if QueryFullProcessImageNameW(h, PROCESS_NAME_FORMAT(0), &mut buf, &mut size)
-                    .is_ok()
+                if QueryFullProcessImageNameW(
+                    h,
+                    PROCESS_NAME_FORMAT(0),
+                    windows::core::PWSTR(buf.as_mut_ptr()),
+                    &mut size,
+                )
+                .is_ok()
                 {
                     let path = String::from_utf16_lossy(&buf[..size as usize]);
                     let _ = windows::Win32::Foundation::CloseHandle(h);
@@ -252,8 +257,13 @@ fn get_process_name_from_pid(pid: u32) -> String {
             Ok(h) => {
                 let mut buf = [0u16; 512];
                 let mut size = buf.len() as u32;
-                if QueryFullProcessImageNameW(h, PROCESS_NAME_FORMAT(0), &mut buf, &mut size)
-                    .is_ok()
+                if QueryFullProcessImageNameW(
+                    h,
+                    PROCESS_NAME_FORMAT(0),
+                    windows::core::PWSTR(buf.as_mut_ptr()),
+                    &mut size,
+                )
+                .is_ok()
                 {
                     let path = String::from_utf16_lossy(&buf[..size as usize]);
                     let _ = windows::Win32::Foundation::CloseHandle(h);
