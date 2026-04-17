@@ -41,9 +41,29 @@ fn expose_app_version() {
     )
     .expect("failed to parse tauri.conf.json");
     let version = conf["version"].as_str().expect("version missing in tauri.conf.json");
-    println!("cargo:rustc-env=APP_VERSION={version}");
-    // Re-run build script if tauri.conf.json changes
+
+    // Detect if this is a release build (tagged) or dev build.
+    // Release builds (CI) set TAURI_RELEASE=true; local/dev builds don't.
+    let is_release = std::env::var("TAURI_RELEASE").unwrap_or_default() == "true";
+
+    let app_version = if is_release {
+        version.to_string()
+    } else {
+        // Get short commit SHA for dev/beta builds
+        let short_sha = Command::new("git")
+            .args(["rev-parse", "--short", "HEAD"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        format!("{version} [beta - {short_sha}]")
+    };
+
+    println!("cargo:rustc-env=APP_VERSION={app_version}");
+    // Re-run build script if tauri.conf.json changes or git HEAD moves
     println!("cargo:rerun-if-changed=tauri.conf.json");
+    println!("cargo:rerun-if-changed=../.git/HEAD");
 }
 
 /// Ensure the sidecar binary exists for the current build target.
