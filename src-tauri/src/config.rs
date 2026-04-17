@@ -155,7 +155,7 @@ impl Default for Preferences {
                     key: "Shift+F1".into(),
                     command: CommandValue::Multiple(vec![
                         "command/changeDarkMode/dark".into(),
-                        "command/changeBrightness/10".into(),
+                        "command/changeBrightness/50".into(),
                     ]),
                 },
                 KeyBinding {
