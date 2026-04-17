@@ -380,8 +380,8 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <label className='settings-label'>Side Edge</label>
                     <Slider
                       value={tiling?.sideEdgeTrigger ?? 10}
-                      min={0}
-                      max={100}
+                      min={5}
+                      max={50}
                       unit='px'
                       onChange={(v) => updateTiling('sideEdgeTrigger', v)}
                     />
@@ -390,8 +390,8 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <label className='settings-label'>Top Edge</label>
                     <Slider
                       value={tiling?.topEdgeTrigger ?? 10}
-                      min={0}
-                      max={100}
+                      min={10}
+                      max={50}
                       unit='px'
                       onChange={(v) => updateTiling('topEdgeTrigger', v)}
                     />
@@ -400,8 +400,8 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <label className='settings-label'>Corner</label>
                     <Slider
                       value={tiling?.cornerTrigger ?? 50}
-                      min={0}
-                      max={200}
+                      min={25}
+                      max={150}
                       unit='px'
                       onChange={(v) => updateTiling('cornerTrigger', v)}
                     />
