@@ -107,7 +107,7 @@ A `tile_expose` command that lays out all open windows in a grid for overview �
 #### Platform Priority Order
 
 1. **macOS** — Phase 1 done, Phase 2 (Tile Snap) done, Phase 3 (Exposé) done
-2. **Windows** — Phase 1 done (v4.0.0: keyboard shortcuts + tray menu, all 19 layouts + restore + Exposé + App Exposé). Uses Win32 API (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`) via `windows` crate v0.58. No special permissions needed. Tile Snap (mouse edge snapping) not yet implemented.
+2. **Windows** — Phase 1 done, Phase 2 (Tile Snap) **skipped** (Windows Aero Snap already provides native edge/corner snapping — adding our own would conflict with the DWM and produce duplicate previews; keyboard/menu tiling covers thirds and custom ratios that Aero Snap lacks), Phase 3 (Exposé) done.
 3. **Linux X11** — same Phase 1 features, proven approaches (not yet started)
 4. **KDE Wayland** — moderate effort, users actually want tiling help
 5. **GNOME Wayland** — largest user base but highest maintenance cost
