@@ -119,7 +119,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     };
 
     // Tiling submenu — macOS + Windows, toggle + layouts (only shown when enabled)
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     let tiling_on = {
         if let Some(state) = app.try_state::<crate::AppState>() {
             state.preferences.lock().map(|p| p.tiling.enabled).unwrap_or(true)
@@ -128,7 +128,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         }
     };
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     let tiling_submenu = if tiling_on {
         SubmenuBuilder::new(app, "Tiling")
             .item(&MenuItemBuilder::with_id("tiling_disable", "Disable Tiling").build(app)?)
@@ -174,8 +174,8 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         .separator()
         .item(&profiles_submenu);
 
-    // Tiling submenu on macOS + Windows (not yet supported on Linux)
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    // Tiling submenu on macOS + Windows + Linux (X11)
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     {
         menu = menu.separator().item(&tiling_submenu);
     }
@@ -668,7 +668,7 @@ fn execute_command(app: &AppHandle, command: &str) {
             }
         }
         ["command", "tile", layout] => {
-            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             {
                 if *layout == "expose" {
                     let app_clone = app.clone();
@@ -688,7 +688,7 @@ fn execute_command(app: &AppHandle, command: &str) {
                     });
                 }
             }
-            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             log::warn!("Tiling is not yet supported on this platform: {}", layout);
         }
         _ => {
