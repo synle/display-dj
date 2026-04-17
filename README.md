@@ -152,7 +152,7 @@ Two Exposé modes are available:
 - **Exposé** (Ctrl+Up or Ctrl+Shift+E) -- spreads all on-screen windows into a deterministic alphabetical grid. Fills the first display, then overflows to the next.
 - **App Exposé** (Ctrl+Down or Ctrl+Shift+A) -- grids only the frontmost app's windows across displays.
 
-Both modes normalize windows first (unminimize and exit fullscreen), then lay out a grid. Press the same shortcut again to restore all windows to their original positions. The grid size is configurable in Settings (Tiling tab) from 2x2 to 5x5 per screen.
+Both modes normalize windows first (unminimize and exit fullscreen), then lay out a grid. Each invocation always re-lays out all windows (no toggle/restore). The grid size is configurable in Settings (Tiling tab) from 2x2 to 5x5 per screen.
 
 ### Enabling Tiling
 

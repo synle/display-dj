@@ -99,7 +99,7 @@ Corner detection takes priority over edge detection (top-left corner should not 
 
 ##### Phase 3: Exposé-Style Window Spread
 
-A `tile_expose` command that lays out all open windows in a grid for overview — like macOS Exposé / Mission Control but using tiling positions. Groups windows by app, computes best-fit grid, lays them out top-left to bottom-right. Toggle behavior: pressing again restores all windows to original positions. See detailed spec below.
+A `tile_expose` command that lays out all open windows in a grid for overview — like macOS Exposé / Mission Control but using tiling positions. Groups windows by app, computes best-fit grid, lays them out top-left to bottom-right. Each invocation always re-lays out windows (no toggle/restore). See detailed spec below.
 
 #### Platform Priority Order
 
@@ -231,7 +231,7 @@ A command that lays out all open windows in a grid so you can see everything at 
 2. **Count total windows** across all groups.
 3. **Compute grid size** — find the best-fit grid (rows × columns) for the total window count on the current display. Aim for roughly square cells. E.g., 6 windows → 3×2 grid, 9 windows → 3×3, 5 windows → 3×2 with one empty cell.
 4. **Lay out top-left to bottom-right** — place windows one by one into the grid, filling left-to-right, top-to-bottom. Windows within the same app group are placed adjacent to each other.
-5. **Save all original positions** — so `tile_restore` (or pressing `tile_expose` again) can put everything back.
+5. **Lay out immediately** — each invocation always re-lays out all windows (no toggle/restore behavior).
 
 **Example** — 8 windows (3 VS Code, 3 Chrome, 2 Terminal) on a 1920×1080 display:
 
@@ -252,7 +252,7 @@ A command that lays out all open windows in a grid so you can see everything at 
 - Cell size = `(screen_width / cols)` × `(screen_height / rows)`
 - Respects `tilingGap` between cells
 
-**Toggle behavior:** Pressing `tile_expose` when already in exposé mode restores all windows to their original positions (same as `tile_restore` but for all windows at once).
+**Invocation behavior:** Each press always re-lays out all windows in the grid. There is no toggle/restore — windows stay where they are placed until manually moved or tiled again.
 
 #### Reference Projects
 
