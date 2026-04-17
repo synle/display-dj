@@ -358,7 +358,17 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     marginTop: '4px',
                     paddingLeft: '22px',
                   }}>
-                  ⚠ Accessibility permission required.{' '}
+                  ⚠ Accessibility permission required for tiling.{' '}
+                  <a
+                    href='#'
+                    onClick={(e) => {
+                      e.preventDefault();
+                      invoke('open_accessibility_settings');
+                    }}
+                    style={{ color: '#e67700' }}>
+                    Open Accessibility Settings
+                  </a>{' '}
+                  |{' '}
                   <a
                     href='https://github.com/synle/display-dj#window-tiling-macos'
                     target='_blank'

@@ -497,6 +497,10 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
 /// Restore the focused window to its pre-tiled position and size.
 fn execute_restore(app: &AppHandle) {
     if unsafe { !AXIsProcessTrusted() } {
+        log::warn!(
+            "tiling restore: Accessibility permission not granted. \
+             Go to System Settings > Privacy & Security > Accessibility and add this app."
+        );
         return;
     }
 
