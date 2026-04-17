@@ -567,7 +567,13 @@ pub fn register_shortcuts(app: &AppHandle, key_bindings: &[KeyBinding]) {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
     let _ = app.global_shortcut().unregister_all();
+    log::info!(
+        "register_shortcuts: registering {} keybindings",
+        key_bindings.len()
+    );
 
+    let mut registered = 0;
+    let mut failed = 0;
     for binding in key_bindings {
         let commands: Vec<String> = match &binding.command {
             CommandValue::Single(cmd) => vec![cmd.clone()],
@@ -576,25 +582,56 @@ pub fn register_shortcuts(app: &AppHandle, key_bindings: &[KeyBinding]) {
 
         let handle = app.clone();
         let key = binding.key.clone();
+        let key_for_log = binding.key.clone();
+        let cmds_for_log: Vec<String> = commands.clone();
 
         if let Ok(shortcut) = key.parse::<tauri_plugin_global_shortcut::Shortcut>() {
-            let _ = app.global_shortcut().on_shortcut(
+            match app.global_shortcut().on_shortcut(
                 shortcut,
                 move |_app, _shortcut, _event| {
+                    log::info!("shortcut triggered: '{}' → {:?}", key_for_log, cmds_for_log);
                     for cmd in &commands {
                         execute_command(&handle, cmd);
                     }
                 },
-            );
+            ) {
+                Ok(_) => {
+                    log::info!(
+                        "register_shortcuts: registered '{}' → {:?}",
+                        binding.key,
+                        match &binding.command {
+                            CommandValue::Single(c) => vec![c.clone()],
+                            CommandValue::Multiple(c) => c.clone(),
+                        }
+                    );
+                    registered += 1;
+                }
+                Err(e) => {
+                    log::warn!(
+                        "register_shortcuts: failed to register '{}': {}",
+                        binding.key,
+                        e
+                    );
+                    failed += 1;
+                }
+            }
         } else {
-            log::warn!("Failed to parse shortcut: {}", key);
+            log::warn!("register_shortcuts: failed to parse shortcut: '{}'", key);
+            failed += 1;
         }
     }
+
+    log::info!(
+        "register_shortcuts: done — {} registered, {} failed",
+        registered,
+        failed
+    );
 }
 
 /// Dispatches a command string (e.g. "command/changeBrightness/50") to the appropriate
 /// sidecar HTTP endpoint. Used by keyboard shortcuts, profiles, and tray menu actions.
 fn execute_command(app: &AppHandle, command: &str) {
+    log::info!("execute_command: '{}'", command);
     let parts: Vec<&str> = command.split('/').collect();
     let base = base_url();
     match parts.as_slice() {
