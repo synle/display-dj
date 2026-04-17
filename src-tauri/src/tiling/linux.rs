@@ -1113,7 +1113,7 @@ mod tests {
 
     #[test]
     fn test_apply_struts_dual_monitor_panel_on_first() {
-        // Panel on monitor 1 only (top, x=0..1920). Monitor 2 unaffected.
+        // Panel on monitor 1 only (top, x=0..1919 inclusive). Monitor 2 unaffected.
         let mon1 = Rect {
             x: 0.0,
             y: 0.0,
@@ -1136,7 +1136,7 @@ mod tests {
             right_start_y: 0,
             right_end_y: 0,
             top_start_x: 0,
-            top_end_x: 1920,
+            top_end_x: 1919, // inclusive end — real panels use last pixel of their monitor
             bottom_start_x: 0,
             bottom_end_x: 0,
         }];
