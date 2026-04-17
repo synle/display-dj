@@ -1,105 +1,106 @@
-/// Generates tray icons with colored indicator dots reflecting app state.
+/// Generates tray icons programmatically.
 ///
-/// Three dots are drawn at the bottom-center of the base icon:
-///   - Blue dot: dark mode is active
-///   - Orange dot: keep-awake is active
-///   - Red dot: volume is muted (0)
+/// All layout is defined as percentages of a 100x100 grid, then scaled
+/// to ICON_SIZE (128x128). This makes it easy to tweak proportions
+/// without worrying about pixel math.
 ///
-/// Dots are only drawn when the corresponding state is active.
-/// The base icon is the 32x32.png from the icons directory (512x512 RGBA).
+/// The icon is a monitor shape:
+///   - Outer rectangle with border (white on dark, black on light)
+///   - Light blue fill inside
+///   - When keep-awake is active, a smaller accent rectangle inside
+///
+/// No PNG assets are used — everything is drawn from code.
 
 use tauri::image::Image;
 use tauri::Manager;
 
-/// RGBA colors for each indicator dot.
-const COLOR_DARK_MODE: [u8; 4] = [60, 130, 240, 255]; // blue
-const COLOR_KEEP_AWAKE: [u8; 4] = [240, 160, 30, 255]; // orange
-const COLOR_MUTED: [u8; 4] = [230, 60, 60, 255]; // red
+/// Output icon dimensions in pixels.
+const ICON_SIZE: u32 = 128;
 
-/// Dot radius in pixels (relative to 256x256 base icon).
-/// At tray size (~44px), this renders as ~8px diameter — clearly visible.
-const DOT_RADIUS: i32 = 24;
+// --- Layout as percentages (0–100) of icon size ---
 
-/// Vertical offset from the bottom of the icon to the dot center.
-const DOT_BOTTOM_OFFSET: i32 = 30;
+/// Outer padding from edge of icon to the monitor rectangle.
+const MARGIN_PCT: f32 = 6.0;
 
-/// Horizontal gap between dot centers.
-const DOT_SPACING: i32 = 60;
+/// Border thickness of the monitor rectangle.
+const BORDER_PCT: f32 = 5.0;
 
-/// Base icon for dark menu bar (white/light outline monitor).
-fn base_icon_dark_bytes() -> &'static [u8] {
-    include_bytes!("../../src/assets/icon-dark@5x.png")
+/// Inset of the keep-awake indicator from the icon edge.
+const KEEP_AWAKE_INSET_PCT: f32 = 25.0;
+
+/// Converts a percentage (0–100) to pixels at ICON_SIZE.
+fn pct(p: f32) -> i32 {
+    (p / 100.0 * ICON_SIZE as f32).round() as i32
 }
 
-/// Base icon for light menu bar (dark outline monitor).
-fn base_icon_light_bytes() -> &'static [u8] {
-    include_bytes!("../../src/assets/icon-light@5x.png")
-}
-
-/// Generates a tray icon with indicator dots based on current state.
-/// Uses the light-outline icon for dark menu bars and dark-outline icon for light.
-/// Only active states get a visible dot; inactive states show nothing.
+/// Generates a tray icon based on current state.
+/// Border: white on dark menu bar, black on light. Fill: light blue.
+/// Keep-awake: smaller orange rectangle inside.
 pub fn generate_tray_icon(
     is_dark_mode: bool,
     is_keep_awake: bool,
-    is_muted: bool,
+    _is_muted: bool,
 ) -> Image<'static> {
-    let base_bytes = if is_dark_mode {
-        base_icon_dark_bytes()
+    let mut pixels = vec![0u8; (ICON_SIZE * ICON_SIZE * 4) as usize];
+
+    let border_color: [u8; 4] = if is_dark_mode {
+        [255, 255, 255, 255] // white border — visible on dark menu bar
     } else {
-        base_icon_light_bytes()
+        [0, 0, 0, 255] // black border — visible on light menu bar
     };
-    let img = image::load_from_memory(base_bytes)
-        .expect("failed to decode base tray icon")
-        .to_rgba8();
 
-    let (width, height) = img.dimensions();
-    let mut pixels = img.into_raw();
+    // Light blue fill — same for both modes
+    let fill_color: [u8; 4] = [135, 206, 235, 255]; // sky blue
 
-    // Dot positions: centered horizontally, near bottom
-    let center_x = width as i32 / 2;
-    let center_y = height as i32 - DOT_BOTTOM_OFFSET;
+    let margin = pct(MARGIN_PCT);
+    let border = pct(BORDER_PCT);
 
-    // Dark mode indicator is omitted — the icon itself swaps light/dark outline.
-    // Only keep-awake and muted get dots (centered with half spacing).
-    let dots: &[(bool, [u8; 4], i32)] = &[
-        (is_keep_awake, COLOR_KEEP_AWAKE, center_x - DOT_SPACING / 2), // left
-        (is_muted, COLOR_MUTED, center_x + DOT_SPACING / 2),           // right
-    ];
+    let x1 = margin;
+    let y1 = margin;
+    let x2 = ICON_SIZE as i32 - margin;
+    let y2 = ICON_SIZE as i32 - margin;
 
-    for &(active, color, dot_cx) in dots {
-        if active {
-            draw_filled_circle(&mut pixels, width, height, dot_cx, center_y, DOT_RADIUS, color);
-        }
+    // Draw border by filling outer rect, then filling inner rect with blue
+    draw_filled_rect(&mut pixels, ICON_SIZE, x1, y1, x2, y2, border_color);
+    draw_filled_rect(&mut pixels, ICON_SIZE, x1 + border, y1 + border, x2 - border, y2 - border, fill_color);
+
+    // Keep-awake indicator: smaller inner rectangle with accent color
+    if is_keep_awake {
+        let accent: [u8; 4] = if is_dark_mode {
+            [240, 160, 30, 255] // orange on dark
+        } else {
+            [220, 140, 20, 255] // darker orange on light
+        };
+
+        let inset = pct(KEEP_AWAKE_INSET_PCT);
+        draw_filled_rect(&mut pixels, ICON_SIZE, inset, inset, ICON_SIZE as i32 - inset, ICON_SIZE as i32 - inset, accent);
     }
 
-    Image::new_owned(pixels, width, height)
+    Image::new_owned(pixels, ICON_SIZE, ICON_SIZE)
 }
 
-/// Draws a filled circle onto an RGBA pixel buffer.
-fn draw_filled_circle(
+/// Draws a filled rectangle onto an RGBA pixel buffer.
+fn draw_filled_rect(
     pixels: &mut [u8],
     width: u32,
-    height: u32,
-    cx: i32,
-    cy: i32,
-    radius: i32,
+    x1: i32,
+    y1: i32,
+    x2: i32,
+    y2: i32,
     color: [u8; 4],
 ) {
-    let r2 = radius * radius;
-    for dy in -radius..=radius {
-        for dx in -radius..=radius {
-            if dx * dx + dy * dy <= r2 {
-                let px = cx + dx;
-                let py = cy + dy;
-                if px >= 0 && px < width as i32 && py >= 0 && py < height as i32 {
-                    let idx = ((py as u32 * width + px as u32) * 4) as usize;
-                    pixels[idx] = color[0];
-                    pixels[idx + 1] = color[1];
-                    pixels[idx + 2] = color[2];
-                    pixels[idx + 3] = color[3];
-                }
-            }
+    let x_start = x1.max(0) as u32;
+    let x_end = (x2 as u32).min(width);
+    let y_start = y1.max(0) as u32;
+    let y_end = (y2 as u32).min(width);
+
+    for y in y_start..y_end {
+        for x in x_start..x_end {
+            let idx = ((y * width + x) * 4) as usize;
+            pixels[idx] = color[0];
+            pixels[idx + 1] = color[1];
+            pixels[idx + 2] = color[2];
+            pixels[idx + 3] = color[3];
         }
     }
 }
@@ -126,7 +127,7 @@ pub fn set_muted_state(app: &tauri::AppHandle, is_muted: bool) {
 
 /// Updates the tray icon to reflect current app state.
 /// Reads is_dark_mode, is_muted, and keep_awake from AppState,
-/// generates a new icon with indicator dots, and applies it.
+/// generates a new icon with indicators, and applies it.
 pub fn update_tray_icon(app: &tauri::AppHandle) {
     let state = match app.try_state::<crate::AppState>() {
         Some(s) => s,
@@ -153,48 +154,46 @@ pub fn update_tray_icon(app: &tauri::AppHandle) {
 mod tests {
     use super::*;
 
-    /// Verifies both base icon variants can be loaded and decoded.
+    /// Verifies pct conversion at 128px icon size.
     #[test]
-    fn test_base_icons_load() {
-        let dark = image::load_from_memory(base_icon_dark_bytes()).expect("should decode dark icon");
-        let light = image::load_from_memory(base_icon_light_bytes()).expect("should decode light icon");
-        assert_eq!(dark.to_rgba8().dimensions(), (256, 256));
-        assert_eq!(light.to_rgba8().dimensions(), (256, 256));
+    fn test_pct_conversion() {
+        assert_eq!(pct(0.0), 0);
+        assert_eq!(pct(50.0), 64);
+        assert_eq!(pct(100.0), 128);
     }
 
-    /// Verifies icon generation with all indicators off uses the light base icon.
+    /// Verifies icon generation produces a 128x128 RGBA image.
     #[test]
-    fn test_generate_icon_all_off() {
+    fn test_generate_icon_size() {
         let icon = generate_tray_icon(false, false, false);
-        // Should produce a 256x256 RGBA image (256*256*4 bytes)
-        assert_eq!(icon.rgba().len(), 256 * 256 * 4);
+        assert_eq!(icon.rgba().len(), 128 * 128 * 4);
     }
 
-    /// Verifies icon generation with all indicators on uses the dark base icon.
+    /// Verifies dark and light mode produce different icons.
     #[test]
-    fn test_generate_icon_all_on() {
-        let icon = generate_tray_icon(true, true, true);
-        assert_eq!(icon.rgba().len(), 256 * 256 * 4);
+    fn test_dark_vs_light_differ() {
+        let dark = generate_tray_icon(true, false, false);
+        let light = generate_tray_icon(false, false, false);
+        assert_ne!(dark.rgba(), light.rgba());
     }
 
-    /// Verifies that indicator dots actually modify pixels compared to the base.
+    /// Verifies keep-awake indicator modifies the icon.
     #[test]
-    fn test_dots_modify_pixels() {
-        let icon_off = generate_tray_icon(false, false, false);
-        let icon_on = generate_tray_icon(true, true, true);
-        // The pixel buffers should differ when dots are drawn
-        assert_ne!(icon_off.rgba(), icon_on.rgba());
+    fn test_keep_awake_modifies_icon() {
+        let off = generate_tray_icon(false, false, false);
+        let on = generate_tray_icon(false, true, false);
+        assert_ne!(off.rgba(), on.rgba());
     }
 
-    /// Verifies draw_filled_circle writes the correct color at the center pixel.
+    /// Verifies draw_filled_rect writes correct pixels.
     #[test]
-    fn test_draw_circle_center_pixel() {
-        let mut pixels = vec![0u8; 100 * 100 * 4];
-        draw_filled_circle(&mut pixels, 100, 100, 50, 50, 5, [255, 128, 64, 255]);
-        let idx = (50 * 100 + 50) * 4;
+    fn test_draw_rect() {
+        let mut pixels = vec![0u8; 64 * 64 * 4];
+        draw_filled_rect(&mut pixels, 64, 10, 10, 20, 20, [255, 0, 0, 255]);
+        let idx = (15 * 64 + 15) * 4;
         assert_eq!(pixels[idx], 255);
-        assert_eq!(pixels[idx + 1], 128);
-        assert_eq!(pixels[idx + 2], 64);
         assert_eq!(pixels[idx + 3], 255);
+        // Outside is untouched
+        assert_eq!(pixels[0], 0);
     }
 }
