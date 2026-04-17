@@ -98,6 +98,9 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let force_refresh =
         MenuItemBuilder::with_id("force_refresh", "Force Refresh").build(app)?;
 
+    let reset_defaults =
+        MenuItemBuilder::with_id("reset_defaults", "Reset to Default").build(app)?;
+
     let debug_submenu = if debug_on {
         SubmenuBuilder::new(app, "Debug")
             .item(&debug_disable)
@@ -108,6 +111,8 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .item(&bridge)
             .separator()
             .item(&force_refresh)
+            .separator()
+            .item(&reset_defaults)
             .build()?
     } else {
         SubmenuBuilder::new(app, "Debug")
@@ -118,6 +123,8 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .item(&bridge)
             .separator()
             .item(&force_refresh)
+            .separator()
+            .item(&reset_defaults)
             .build()?
     };
 
@@ -202,8 +209,6 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .build()?
     };
 
-    let reset_defaults =
-        MenuItemBuilder::with_id("reset_defaults", "Reset to Default").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
     let mut menu = MenuBuilder::new(app)
@@ -222,8 +227,6 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let menu = menu
         .separator()
         .item(&debug_submenu)
-        .separator()
-        .item(&reset_defaults)
         .separator()
         .item(&quit)
         .build()?;
@@ -315,22 +318,31 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 dump_debug_info(app);
             }
             "reset_defaults" => {
-                crate::config::reset_to_defaults();
-                // Reload in-memory state
-                if let Some(state) = app.try_state::<crate::AppState>() {
-                    if let Ok(mut prefs) = state.preferences.lock() {
-                        *prefs = crate::config::load_preferences();
+                use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+                let app_clone = app.clone();
+                let confirmed = app.dialog()
+                    .message("This will reset all preferences, keybindings, and profiles to their defaults. This cannot be undone.")
+                    .title("Reset to Default")
+                    .buttons(MessageDialogButtons::OkCancelCustom("Reset".into(), "Cancel".into()))
+                    .blocking_show();
+                if confirmed {
+                    crate::config::reset_to_defaults();
+                    // Reload in-memory state
+                    if let Some(state) = app_clone.try_state::<crate::AppState>() {
+                        if let Ok(mut prefs) = state.preferences.lock() {
+                            *prefs = crate::config::load_preferences();
+                        }
                     }
+                    // Re-register shortcuts with default keybindings
+                    let prefs = crate::config::Preferences::default();
+                    register_shortcuts(&app_clone, &prefs.key_bindings);
+                    // Rebuild tray menu to reflect reset state
+                    rebuild_tray_menu(&app_clone);
+                    // Notify frontend to refresh
+                    let _ = app_clone.emit("monitors-changed", ());
+                    let _ = app_clone.emit("dark-mode-changed", ());
+                    let _ = app_clone.emit("volume-changed", ());
                 }
-                // Re-register shortcuts with default keybindings
-                let prefs = crate::config::Preferences::default();
-                register_shortcuts(app, &prefs.key_bindings);
-                // Rebuild tray menu to reflect reset state
-                rebuild_tray_menu(app);
-                // Notify frontend to refresh
-                let _ = app.emit("monitors-changed", ());
-                let _ = app.emit("dark-mode-changed", ());
-                let _ = app.emit("volume-changed", ());
             }
             "force_refresh" => {
                 // Reload preferences from disk into in-memory state
