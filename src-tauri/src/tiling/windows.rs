@@ -14,8 +14,9 @@ use windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
-    IsIconic, IsWindowVisible, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOZORDER, SW_RESTORE,
+    BringWindowToTop, EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowTextW,
+    GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetWindowPos, ShowWindow, HWND_TOP,
+    SWP_NOZORDER, SW_RESTORE,
 };
 
 // ---------------------------------------------------------------------------
@@ -452,6 +453,7 @@ pub fn execute_expose(app: &AppHandle) {
         layout_grid_on_display(slice, display, g, &|win_info, rect| {
             let hwnd = HWND(win_info.window_id as isize as *mut _);
             set_hwnd_rect(hwnd, rect);
+            unsafe { let _ = BringWindowToTop(hwnd); }
         });
         log::info!("expose: placed {} windows on display {}", count, i);
         offset += count;
@@ -529,6 +531,7 @@ pub fn execute_expose_app(app: &AppHandle) {
         layout_grid_on_display(slice, display, g, &|win_info, rect| {
             let hwnd = HWND(win_info.window_id as isize as *mut _);
             set_hwnd_rect(hwnd, rect);
+            unsafe { let _ = BringWindowToTop(hwnd); }
         });
         log::info!("app_expose: placed {} windows on display {}", count, i);
         offset += count;
