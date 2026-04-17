@@ -185,6 +185,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DISPLAY_DJ_CLI_VERSION: ${{ github.event.inputs.display_dj_cli_version }}
+          TAURI_RELEASE: 'true'
         with:
           tagName: ${{ needs.resolve-tag.outputs.tag }}
           releaseName: 'Display DJ ${{ needs.resolve-tag.outputs.tag }}'
