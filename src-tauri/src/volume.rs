@@ -25,13 +25,15 @@ pub async fn get_volume() -> Result<u32, String> {
 }
 
 /// Sets the system volume (clamped to 0-100) via the sidecar.
+/// Updates the cached is_muted state and refreshes the tray icon.
 #[tauri::command]
-pub async fn set_volume(value: u32) -> Result<(), String> {
+pub async fn set_volume(value: u32, app: tauri::AppHandle) -> Result<(), String> {
     let clamped = value.min(100);
     let url = format!("{}/set_volume/{}", base_url(), clamped);
     log::info!("set_volume: value={} GET {}", clamped, url);
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set volume: {}", e))?;
     log::info!("set_volume: done");
+    crate::tray_icon::set_muted_state(&app, clamped == 0);
     Ok(())
 }

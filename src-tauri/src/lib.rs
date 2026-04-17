@@ -5,6 +5,7 @@ mod keep_awake;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod tiling;
 mod tray;
+mod tray_icon;
 mod volume;
 
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -49,6 +50,10 @@ pub struct AppState {
     /// Holds the active keep-awake guard. When `Some`, the system is prevented
     /// from sleeping. Dropping the guard (setting to `None`) releases the assertion.
     pub keep_awake: std::sync::Mutex<Option<keepawake::KeepAwake>>,
+    /// Cached tray icon state: true when dark mode is active.
+    pub is_dark_mode: std::sync::Mutex<bool>,
+    /// Cached tray icon state: true when volume is 0 (muted).
+    pub is_muted: std::sync::Mutex<bool>,
     /// Per-window tiling state (original positions, current layout, display index).
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     pub tiling_state: std::sync::Mutex<tiling::TilingState>,
@@ -137,6 +142,30 @@ fn wait_for_server(port: u16) {
     log::warn!("display-dj server did not become ready on port {} within 5s", port);
 }
 
+/// Fetch initial dark mode and volume state from the sidecar and update the tray icon.
+fn fetch_initial_tray_state(app: &tauri::AppHandle, port: u16) {
+    let base = format!("http://127.0.0.1:{}", port);
+
+    // Check dark mode
+    if let Ok(resp) = reqwest::blocking::get(format!("{}/theme", base)) {
+        if let Ok(text) = resp.text() {
+            let is_dark = text.contains("dark");
+            tray_icon::set_dark_mode_state(app, is_dark);
+            log::info!("initial tray state: dark_mode={}", is_dark);
+        }
+    }
+
+    // Check volume (muted = 0)
+    if let Ok(resp) = reqwest::blocking::get(format!("{}/get_volume", base)) {
+        if let Ok(text) = resp.text() {
+            // Response is JSON like {"volume": 50}
+            let is_muted = text.contains("\"volume\":0") || text.contains("\"volume\": 0");
+            tray_icon::set_muted_state(app, is_muted);
+            log::info!("initial tray state: muted={}", is_muted);
+        }
+    }
+}
+
 /// Parse "HH:MM" into minutes since midnight.
 fn parse_time_minutes(time_str: &str) -> Option<u32> {
     let parts: Vec<&str> = time_str.split(':').collect();
@@ -210,6 +239,8 @@ fn check_night_mode_schedule(app: &tauri::AppHandle) {
 
     let _ = reqwest::blocking::get(format!("{}/set_all/{}", base, brightness));
     let _ = reqwest::blocking::get(format!("{}/{}", base, dark_mode_route));
+
+    tray_icon::set_dark_mode_state(app, is_night);
 
     use tauri::Emitter;
     let _ = app.emit("monitors-changed", ());
@@ -317,6 +348,8 @@ pub fn run() {
             sidecar_child: std::sync::Mutex::new(None),
             expect_focus_gain: std::sync::Mutex::new(false),
             keep_awake: std::sync::Mutex::new(None),
+            is_dark_mode: std::sync::Mutex::new(false),
+            is_muted: std::sync::Mutex::new(false),
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling_state: std::sync::Mutex::new(tiling::TilingState::new()),
         })
@@ -371,13 +404,16 @@ pub fn run() {
             let state = app.state::<AppState>();
             *state.sidecar_child.lock().unwrap() = Some(child);
 
-            // Wait for the server to be ready, then optionally dump debug info
+            // Wait for the server to be ready, then fetch initial state and optionally dump debug info
             let debug_enabled = state.preferences.lock().map(|p| p.debug_logging).unwrap_or(false);
+            let startup_handle = app.handle().clone();
             std::thread::spawn(move || {
                 wait_for_server(port);
                 if debug_enabled {
                     fetch_debug_on_startup(port);
                 }
+                // Fetch initial dark mode and volume state for tray icon indicators
+                fetch_initial_tray_state(&startup_handle, port);
             });
 
             // Hide dock icon on macOS
