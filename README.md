@@ -2,7 +2,33 @@
 
 # Display DJ
 
-A cross-platform desktop system tray app for controlling monitor brightness, contrast, dark mode, volume, and more -- all from one popup. Works with both built-in laptop displays and external monitors via DDC/CI. Supports **macOS**, **Windows**, and **Linux**.
+A cross-platform desktop system tray app for controlling monitor brightness, contrast, dark mode, volume, and more -- all from one place. Works with both built-in laptop displays and external monitors via DDC/CI. Supports **macOS**, **Windows**, and **Linux**.
+
+## Why I Built This
+
+- **No built-in external display control** -- macOS, Windows, and Linux have no native way to adjust brightness or contrast on external monitors connected via HDMI, USB-C, or DisplayPort. You're stuck reaching for physical buttons on the back of your monitor.
+- **Fragmented experience** -- every OS handles brightness, dark mode, and volume differently with different UIs, scattered across different system panels. There's no single place to control it all.
+- **Unified keyboard shortcuts** -- I wanted one set of global hotkeys that works the same way everywhere, regardless of which app is focused or which OS I'm on.
+- **Too many single-purpose apps** -- instead of installing separate apps for brightness control, volume control, keep awake, window tiling, and exposé, Display DJ bundles all of that into one lightweight tray app.
+- **Small and fast** -- built with Rust and Tauri instead of Electron/Node.js. The entire app is a fraction of the size and memory footprint of an Electron app, while still using a modern React frontend.
+
+## Screenshots
+
+|                 Main View (All Monitors)                  |                         Main View (Individual)                          |
+| :-------------------------------------------------------: | :---------------------------------------------------------------------: |
+| ![Main - All Monitors](screenshots/main-all-monitors.png) | ![Main - Individual Monitors](screenshots/main-individual-monitors.png) |
+
+|                  Settings - General                   |                  Settings - Tiling                  |
+| :---------------------------------------------------: | :-------------------------------------------------: |
+| ![Settings General](screenshots/settings-general.png) | ![Settings Tiling](screenshots/settings-tiling.png) |
+
+|                  Tray Menu - Tiling                   |                   Tray Menu - Profiles                    |
+| :---------------------------------------------------: | :-------------------------------------------------------: |
+| ![Tray Menu Tiling](screenshots/tray-menu-tiling.png) | ![Tray Menu Profiles](screenshots/tray-menu-profiles.png) |
+
+| Exposé Grid (all windows across 3 monitors) |
+| :-----------------------------------------: |
+| ![Exposé Grid](screenshots/expose-grid.png) |
 
 ## Features
 
@@ -15,8 +41,9 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
 - **Global keyboard shortcuts** -- work even when the app isn't focused; fully configurable
 - **Monitor renaming** -- click any display name to give it a custom label
-- **Window tiling** (macOS) -- tile windows to halves, thirds, two-thirds, quarters, or maximize via keyboard shortcuts or tray menu. See [Window Tiling](#window-tiling-macos) below
-- **Settings panel** -- configure min brightness, contrast visibility, monitor ordering, night mode schedule, tiling, and launch at login
+- **Window tiling** (macOS) -- tile windows to halves, thirds, two-thirds, quarters, or maximize via keyboard shortcuts or tray menu
+- **Exposé** (macOS) -- spread all windows into a grid overview, or just the current app's windows. Deterministic alphabetical layout with multi-display overflow
+- **Settings panel** -- tabbed UI (General + Tiling) with auto-save. Configure brightness, contrast, monitors, night mode, snap zones, exposé grid size, and launch at login
 - **System tray app** -- lives in your menu bar / system tray with no dock or taskbar clutter
 
 ## Download & Install
@@ -27,8 +54,8 @@ Grab the latest release from the **[Releases](../../releases)** page.
 
 | Chip          | File                           |
 | ------------- | ------------------------------ |
-| Apple Silicon | `Display DJ_2.2.0_aarch64.dmg` |
-| Intel         | `Display DJ_2.2.0_x64.dmg`     |
+| Apple Silicon | `Display DJ_x.x.x_aarch64.dmg` |
+| Intel         | `Display DJ_x.x.x_x64.dmg`     |
 
 1. Download the `.dmg` for your chip
 2. Open the `.dmg` and drag **Display DJ** into your **Applications** folder
@@ -40,8 +67,8 @@ Grab the latest release from the **[Releases](../../releases)** page.
 
 | Architecture | File                             |
 | ------------ | -------------------------------- |
-| x64          | `Display DJ_2.2.0_x64-setup.exe` |
-| x64          | `Display DJ_2.2.0_x64_en-US.msi` |
+| x64          | `Display DJ_x.x.x_x64-setup.exe` |
+| x64          | `Display DJ_x.x.x_x64_en-US.msi` |
 
 1. Download either the `.exe` installer or the `.msi`
 2. Run the installer and follow the prompts
@@ -51,22 +78,22 @@ Grab the latest release from the **[Releases](../../releases)** page.
 
 | Format   | File                              |
 | -------- | --------------------------------- |
-| Debian   | `Display DJ_2.2.0_amd64.deb`      |
-| AppImage | `Display DJ_2.2.0_amd64.AppImage` |
-| RPM      | `Display.DJ-2.2.0-1.x86_64.rpm`   |
+| Debian   | `Display DJ_x.x.x_amd64.deb`      |
+| AppImage | `Display DJ_x.x.x_amd64.AppImage` |
+| RPM      | `Display.DJ-x.x.x-1.x86_64.rpm`   |
 
 1. Install via your preferred format:
 
    ```bash
    # Debian / Ubuntu
-   sudo dpkg -i "Display DJ_2.2.0_amd64.deb"
+   sudo dpkg -i "Display DJ_x.x.x_amd64.deb"
 
    # RPM-based (Fedora, etc.)
-   sudo rpm -i Display.DJ-2.2.0-1.x86_64.rpm
+   sudo rpm -i Display.DJ-x.x.x-1.x86_64.rpm
 
    # AppImage (no install needed)
-   chmod +x "Display DJ_2.2.0_amd64.AppImage"
-   ./"Display DJ_2.2.0_amd64.AppImage"
+   chmod +x "Display DJ_x.x.x_amd64.AppImage"
+   ./"Display DJ_x.x.x_amd64.AppImage"
    ```
 
 2. Install the required display-control dependencies:
@@ -109,14 +136,27 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 | Ctrl + Shift + I/O    | Top-Left/Top-Right Quarter       |
 | Ctrl + Shift + K/L    | Bottom-Left/Bottom-Right Quarter |
 | Ctrl + Shift + M or / | Maximize                         |
+| Ctrl + Shift + E      | Exposé (all windows)             |
+| Ctrl + Up             | Exposé (all windows)             |
+| Ctrl + Shift + A      | App Exposé (current app only)    |
+| Ctrl + Down           | App Exposé (current app only)    |
 
 ## Window Tiling (macOS)
 
 Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or maximize using keyboard shortcuts or the **Tiling** submenu in the tray icon's right-click menu.
 
+### Exposé
+
+Two Exposé modes are available:
+
+- **Exposé** (Ctrl+Up or Ctrl+Shift+E) -- spreads all on-screen windows into a deterministic alphabetical grid. Fills the first display, then overflows to the next.
+- **App Exposé** (Ctrl+Down or Ctrl+Shift+A) -- grids only the frontmost app's windows across displays.
+
+Both modes normalize windows first (unminimize and exit fullscreen), then lay out a grid. Press the same shortcut again to restore all windows to their original positions. The grid size is configurable in Settings (Tiling tab) from 2x2 to 5x5 per screen.
+
 ### Enabling Tiling
 
-1. Open the tray menu and go to **Tiling > Enable Tiling**, or toggle **Enable Window Tiling** in the Settings panel
+1. Open the tray menu and go to **Tiling > Enable Tiling**, or toggle **Enable Window Tiling** in the Settings panel (Tiling tab)
 2. Grant **Accessibility permission** (required for tiling to move/resize other apps' windows):
    - Open **System Settings > Privacy & Security > Accessibility**
    - Click the **+** button
@@ -128,17 +168,18 @@ Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or 
 
 ### Tiling Preferences
 
-Tiling settings are stored in `preferences.json` under the `tiling` key:
+Tiling settings are stored in `preferences.json` under the `tiling` key. They can also be configured via the Settings panel (Tiling tab).
 
-| Setting           | Default | Description                                              |
-| ----------------- | ------- | -------------------------------------------------------- |
-| `enabled`         | `true`  | Master toggle for all tiling features                    |
-| `halfRatio`       | `50`    | Percentage for half splits (affects halves and quarters) |
-| `thirdRatio`      | `33`    | Percentage for third splits (center = 100 - 2 x third)   |
-| `gap`             | `0`     | Padding in points around the tiling area                 |
-| `sideEdgeTrigger` | `10`    | Tile Snap: pixel width of left/right/bottom edge zone    |
-| `topEdgeTrigger`  | `10`    | Tile Snap: pixel height of top edge zone (maximize)      |
-| `cornerTrigger`   | `50`    | Tile Snap: pixel size of corner zone (quarter tiles)     |
+| Setting            | Default | Range     | Description                                              |
+| ------------------ | ------- | --------- | -------------------------------------------------------- |
+| `enabled`          | `true`  | --        | Master toggle for all tiling features                    |
+| `halfRatio`        | `50`    | --        | Percentage for half splits (affects halves and quarters) |
+| `thirdRatio`       | `33`    | --        | Percentage for third splits (center = 100 - 2 x third)   |
+| `gap`              | `0`     | --        | Padding in points around the tiling area                 |
+| `sideEdgeTrigger`  | `10`    | 5-50 px   | Tile Snap: width of left/right/bottom edge zone          |
+| `topEdgeTrigger`   | `10`    | 10-50 px  | Tile Snap: height of top edge zone (maximize)            |
+| `cornerTrigger`    | `50`    | 25-150 px | Tile Snap: size of corner zone (quarter tiles)           |
+| `exposeMaxWindows` | `16`    | 4-25      | Max windows per screen in Exposé (grid size squared)     |
 
 ## Known Issues
 
