@@ -354,8 +354,6 @@ body,
 
 /* Volume section */
 .volume-section {
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
 }
 
 /* Dark mode toggle */
@@ -364,7 +362,6 @@ body,
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--border);
-  margin-top: 4px;
 }
 
 .dark-mode-btn {
@@ -373,10 +370,10 @@ body,
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 10px 0;
+  padding: 8px 0;
   border: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   transition: all 0.2s;
   background: var(--toggle-inactive-bg);
