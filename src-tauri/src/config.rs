@@ -22,6 +22,8 @@ pub struct TilingPreferences {
     pub top_edge_trigger: u32,
     /// Tile Snap: pixel size of the corner hot zone (quarter tile trigger).
     pub corner_trigger: u32,
+    /// Master toggle to enable/disable Exposé features.
+    pub expose_enabled: bool,
     /// Exposé: maximum number of windows to show in the grid.
     pub expose_max_windows: u32,
 }
@@ -36,6 +38,7 @@ impl Default for TilingPreferences {
             side_edge_trigger: 10,
             top_edge_trigger: 10,
             corner_trigger: 50,
+            expose_enabled: true,
             expose_max_windows: 16,
         }
     }
@@ -570,6 +573,14 @@ pub fn set_debug_logging(state: &crate::AppState, enabled: bool) {
 pub fn set_tiling_enabled(state: &crate::AppState, enabled: bool) {
     if let Ok(mut prefs) = state.preferences.lock() {
         prefs.tiling.enabled = enabled;
+        save_preferences_to_disk(&prefs);
+    }
+}
+
+/// Set tiling.expose_enabled in preferences and persist to disk. Used by tray Exposé submenu.
+pub fn set_expose_enabled(state: &crate::AppState, enabled: bool) {
+    if let Ok(mut prefs) = state.preferences.lock() {
+        prefs.tiling.expose_enabled = enabled;
         save_preferences_to_disk(&prefs);
     }
 }
