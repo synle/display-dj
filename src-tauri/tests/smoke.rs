@@ -18,7 +18,7 @@ fn app_state_struct_is_public() {
         sidecar_child: std::sync::Mutex::new(None),
         expect_focus_gain: std::sync::Mutex::new(false),
         keep_awake: std::sync::Mutex::new(None),
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         tiling_state: std::sync::Mutex::new(Default::default()),
     };
 }
