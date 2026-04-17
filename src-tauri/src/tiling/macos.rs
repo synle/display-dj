@@ -98,6 +98,7 @@ extern "C" {
     ) -> AXError;
     fn AXValueCreate(value_type: u32, value: *const c_void) -> CFTypeRef;
     fn AXValueGetValue(value: CFTypeRef, value_type: u32, value_out: *mut c_void) -> bool;
+    fn AXUIElementPerformAction(element: CFTypeRef, action: CFStringRef) -> AXError;
     /// Private API: bridges AXUIElement to CGWindowID.
     /// Used by AeroSpace, Rectangle, and other tiling WMs.
     /// Available since macOS 10.6, confirmed working through macOS 26.
@@ -673,10 +674,19 @@ pub fn execute_expose(app: &AppHandle) {
 
 /// Closure that sets a window rect via AXUIElement, used as the callback
 /// for `layout_grid_on_display`.
+/// Raise (bring to front) a window via the AXRaise action.
+unsafe fn raise_window(window: &CfRef) {
+    if let Some(action) = cfstr("AXRaise") {
+        AXUIElementPerformAction(window.as_ptr(), action.as_ptr());
+    }
+}
+
+/// Callback for layout_grid_on_display: set window rect and raise to front.
 fn set_window_rect_via_ax(win_info: &WindowInfo, rect: &Rect) {
     unsafe {
         if let Some(ax_win) = get_ax_window_by_id(win_info.owner_pid, win_info.window_id as u32) {
             set_window_rect(&ax_win, rect);
+            raise_window(&ax_win);
         }
     }
 }
