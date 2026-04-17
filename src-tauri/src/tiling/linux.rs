@@ -1196,4 +1196,219 @@ mod tests {
         assert_eq!(get_process_name_from_pid(0), "");
         assert_eq!(get_process_name_from_pid(999_999_999), "");
     }
+
+    #[test]
+    fn test_apply_struts_right_dock() {
+        let monitor = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let struts = vec![StrutPartial {
+            left: 0,
+            right: 64,
+            top: 0,
+            bottom: 0,
+            left_start_y: 0,
+            left_end_y: 0,
+            right_start_y: 0,
+            right_end_y: 1079,
+            top_start_x: 0,
+            top_end_x: 0,
+            bottom_start_x: 0,
+            bottom_end_x: 0,
+        }];
+        let result = apply_struts_to_monitor(&monitor, &struts, 1920, 1080);
+        assert!((result.x).abs() < 0.01);
+        assert!((result.width - 1856.0).abs() < 0.01); // 1920 - 64
+    }
+
+    #[test]
+    fn test_apply_struts_covers_full_monitor_height() {
+        // Strut reserves entire monitor height — work area should clamp to min 1.0
+        let monitor = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let struts = vec![StrutPartial {
+            left: 0,
+            right: 0,
+            top: 1080,
+            bottom: 0,
+            left_start_y: 0,
+            left_end_y: 0,
+            right_start_y: 0,
+            right_end_y: 0,
+            top_start_x: 0,
+            top_end_x: 1919,
+            bottom_start_x: 0,
+            bottom_end_x: 0,
+        }];
+        let result = apply_struts_to_monitor(&monitor, &struts, 1920, 1080);
+        assert!((result.y - 1080.0).abs() < 0.01);
+        assert!((result.height - 1.0).abs() < 0.01); // clamped to min 1.0
+    }
+
+    #[test]
+    fn test_apply_struts_overlapping_same_edge() {
+        // Two top panels — only the larger one should win (struts applied sequentially)
+        let monitor = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let struts = vec![
+            StrutPartial {
+                left: 0,
+                right: 0,
+                top: 28,
+                bottom: 0,
+                left_start_y: 0,
+                left_end_y: 0,
+                right_start_y: 0,
+                right_end_y: 0,
+                top_start_x: 0,
+                top_end_x: 1919,
+                bottom_start_x: 0,
+                bottom_end_x: 0,
+            },
+            StrutPartial {
+                left: 0,
+                right: 0,
+                top: 50,
+                bottom: 0,
+                left_start_y: 0,
+                left_end_y: 0,
+                right_start_y: 0,
+                right_end_y: 0,
+                top_start_x: 0,
+                top_end_x: 1919,
+                bottom_start_x: 0,
+                bottom_end_x: 0,
+            },
+        ];
+        let result = apply_struts_to_monitor(&monitor, &struts, 1920, 1080);
+        // Second strut (50) is larger, applied after first (28)
+        assert!((result.y - 50.0).abs() < 0.01);
+        assert!((result.height - 1030.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_apply_struts_all_four_edges() {
+        let monitor = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let struts = vec![StrutPartial {
+            left: 64,
+            right: 64,
+            top: 28,
+            bottom: 48,
+            left_start_y: 0,
+            left_end_y: 1079,
+            right_start_y: 0,
+            right_end_y: 1079,
+            top_start_x: 0,
+            top_end_x: 1919,
+            bottom_start_x: 0,
+            bottom_end_x: 1919,
+        }];
+        let result = apply_struts_to_monitor(&monitor, &struts, 1920, 1080);
+        assert!((result.x - 64.0).abs() < 0.01);
+        assert!((result.y - 28.0).abs() < 0.01);
+        assert!((result.width - 1792.0).abs() < 0.01); // 1920 - 64 - 64
+        assert!((result.height - 1004.0).abs() < 0.01); // 1080 - 28 - 48
+    }
+
+    #[test]
+    fn test_apply_struts_monitor_with_offset() {
+        // Monitor 2 at x=1920, with a right strut on the root's right edge
+        let monitor = Rect {
+            x: 1920.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let struts = vec![StrutPartial {
+            left: 0,
+            right: 48,
+            top: 0,
+            bottom: 0,
+            left_start_y: 0,
+            left_end_y: 0,
+            right_start_y: 0,
+            right_end_y: 1079,
+            top_start_x: 0,
+            top_end_x: 0,
+            bottom_start_x: 0,
+            bottom_end_x: 0,
+        }];
+        // root is 3840 wide, right strut = 48, so reserved x = [3792, 3840)
+        let result = apply_struts_to_monitor(&monitor, &struts, 3840, 1080);
+        assert!((result.width - 1872.0).abs() < 0.01); // 1920 - 48
+    }
+
+    #[test]
+    fn test_apply_struts_zero_strut_values_unchanged() {
+        // All zero struts should leave monitor unchanged
+        let monitor = Rect {
+            x: 100.0,
+            y: 50.0,
+            width: 1280.0,
+            height: 720.0,
+        };
+        let struts = vec![StrutPartial {
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            left_start_y: 0,
+            left_end_y: 0,
+            right_start_y: 0,
+            right_end_y: 0,
+            top_start_x: 0,
+            top_end_x: 0,
+            bottom_start_x: 0,
+            bottom_end_x: 0,
+        }];
+        let result = apply_struts_to_monitor(&monitor, &struts, 1920, 1080);
+        assert!((result.x - 100.0).abs() < 0.01);
+        assert!((result.y - 50.0).abs() < 0.01);
+        assert!((result.width - 1280.0).abs() < 0.01);
+        assert!((result.height - 720.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_apply_struts_non_overlapping_range_ignored() {
+        // Top strut at x=[0, 500] should NOT affect monitor at x=1920
+        let monitor = Rect {
+            x: 1920.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let struts = vec![StrutPartial {
+            left: 0,
+            right: 0,
+            top: 28,
+            bottom: 0,
+            left_start_y: 0,
+            left_end_y: 0,
+            right_start_y: 0,
+            right_end_y: 0,
+            top_start_x: 0,
+            top_end_x: 500,
+            bottom_start_x: 0,
+            bottom_end_x: 0,
+        }];
+        let result = apply_struts_to_monitor(&monitor, &struts, 3840, 1080);
+        assert!((result.y).abs() < 0.01); // unaffected
+        assert!((result.height - 1080.0).abs() < 0.01);
+    }
 }

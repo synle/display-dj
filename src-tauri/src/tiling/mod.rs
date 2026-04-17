@@ -994,4 +994,221 @@ mod tests {
         let result = detect_snap_zone(-3.0, 540.0, &displays, 10.0, 10.0, 50.0);
         assert_eq!(result, None);
     }
+
+    // -- build_sorted_window_list --
+
+    fn win(id: i64, name: &str) -> WindowInfo {
+        WindowInfo {
+            window_id: id,
+            owner_pid: 1,
+            owner_name: name.to_string(),
+            bounds: Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+            },
+            min_size: None,
+        }
+    }
+
+    #[test]
+    fn test_build_sorted_window_list_empty() {
+        let windows: Vec<WindowInfo> = vec![];
+        let result = build_sorted_window_list(&windows, 10);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_build_sorted_window_list_alphabetical() {
+        let windows = vec![win(1, "Zoom"), win(2, "Firefox"), win(3, "Alacritty")];
+        let result = build_sorted_window_list(&windows, 10);
+        assert_eq!(result[0].owner_name, "Alacritty");
+        assert_eq!(result[1].owner_name, "Firefox");
+        assert_eq!(result[2].owner_name, "Zoom");
+    }
+
+    #[test]
+    fn test_build_sorted_window_list_case_insensitive() {
+        let windows = vec![win(1, "zoom"), win(2, "Firefox"), win(3, "ALACRITTY")];
+        let result = build_sorted_window_list(&windows, 10);
+        assert_eq!(result[0].owner_name, "ALACRITTY");
+        assert_eq!(result[1].owner_name, "Firefox");
+        assert_eq!(result[2].owner_name, "zoom");
+    }
+
+    #[test]
+    fn test_build_sorted_window_list_max_truncates() {
+        let windows = vec![
+            win(1, "App1"),
+            win(2, "App2"),
+            win(3, "App3"),
+            win(4, "App4"),
+        ];
+        let result = build_sorted_window_list(&windows, 2);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn test_build_sorted_window_list_same_app_sorted_by_id() {
+        let windows = vec![win(5, "Firefox"), win(2, "Firefox"), win(9, "Firefox")];
+        let result = build_sorted_window_list(&windows, 10);
+        assert_eq!(result[0].window_id, 2);
+        assert_eq!(result[1].window_id, 5);
+        assert_eq!(result[2].window_id, 9);
+    }
+
+    #[test]
+    fn test_build_sorted_window_list_groups_then_sorts() {
+        let windows = vec![
+            win(3, "Firefox"),
+            win(1, "Alacritty"),
+            win(4, "Firefox"),
+            win(2, "Alacritty"),
+        ];
+        let result = build_sorted_window_list(&windows, 10);
+        // Alacritty group first (alphabetically), sorted by id
+        assert_eq!(result[0].window_id, 1);
+        assert_eq!(result[1].window_id, 2);
+        // Firefox group second
+        assert_eq!(result[2].window_id, 3);
+        assert_eq!(result[3].window_id, 4);
+    }
+
+    // -- layout_grid_on_display --
+
+    #[test]
+    fn test_layout_grid_empty() {
+        let d = display(0.0, 0.0, 1920.0, 1080.0);
+        let ordered: Vec<&WindowInfo> = vec![];
+        let count = layout_grid_on_display(&ordered, &d, 10.0, &|_, _| {});
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_layout_grid_single_window() {
+        let w = win(1, "App");
+        let ordered: Vec<&WindowInfo> = vec![&w];
+        let d = display(0.0, 0.0, 1000.0, 800.0);
+        let rects = std::cell::RefCell::new(Vec::new());
+        layout_grid_on_display(&ordered, &d, 10.0, &|_, rect| {
+            rects.borrow_mut().push(rect.clone());
+        });
+        let rects = rects.into_inner();
+        assert_eq!(rects.len(), 1);
+        // Single window should fill the display minus gaps
+        assert!(rects[0].width > 900.0);
+        assert!(rects[0].height > 700.0);
+    }
+
+    #[test]
+    fn test_layout_grid_four_windows() {
+        let ws = vec![win(1, "A"), win(2, "B"), win(3, "C"), win(4, "D")];
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let d = display(0.0, 0.0, 1000.0, 800.0);
+        let rects = std::cell::RefCell::new(Vec::new());
+        let count = layout_grid_on_display(&ordered, &d, 0.0, &|_, rect| {
+            rects.borrow_mut().push(rect.clone());
+        });
+        let rects = rects.into_inner();
+        assert_eq!(count, 4);
+        assert_eq!(rects.len(), 4);
+        // 2x2 grid, each cell ~500x400 with gap=0
+        for r in &rects {
+            assert!((r.width - 500.0).abs() < 1.0);
+            assert!((r.height - 400.0).abs() < 1.0);
+        }
+    }
+
+    #[test]
+    fn test_layout_grid_with_gap() {
+        let ws = vec![win(1, "A")];
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let d = display(0.0, 0.0, 1000.0, 800.0);
+        let rects = std::cell::RefCell::new(Vec::new());
+        layout_grid_on_display(&ordered, &d, 20.0, &|_, rect| {
+            rects.borrow_mut().push(rect.clone());
+        });
+        let rects = rects.into_inner();
+        assert_eq!(rects.len(), 1);
+        // gap=20 on all sides: x=20, y=20, w=960, h=760
+        assert!((rects[0].x - 20.0).abs() < 1.0);
+        assert!((rects[0].y - 20.0).abs() < 1.0);
+        assert!((rects[0].width - 960.0).abs() < 1.0);
+        assert!((rects[0].height - 760.0).abs() < 1.0);
+    }
+
+    // -- find_display_for_window edge cases --
+
+    #[test]
+    fn test_find_display_window_outside_all_displays() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let win = Rect {
+            x: 5000.0,
+            y: 5000.0,
+            width: 100.0,
+            height: 100.0,
+        };
+        // Should fall back to closest display (index 0)
+        assert_eq!(find_display_for_window(&win, &displays), 0);
+    }
+
+    #[test]
+    fn test_find_display_three_monitors() {
+        let displays = vec![
+            display(0.0, 0.0, 1920.0, 1080.0),
+            display(1920.0, 0.0, 1920.0, 1080.0),
+            display(3840.0, 0.0, 1920.0, 1080.0),
+        ];
+        let win = Rect {
+            x: 4000.0,
+            y: 100.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        assert_eq!(find_display_for_window(&win, &displays), 2);
+    }
+
+    // -- calculate_target_rect edge cases --
+
+    #[test]
+    fn test_layout_zero_gap() {
+        let d = display(0.0, 0.0, 1920.0, 1080.0);
+        let r = calculate_target_rect(TilingLayout::LeftHalf, &d, 50, 33, 0);
+        assert!(rect_approx(&r, 0.0, 0.0, 960.0, 1080.0));
+    }
+
+    #[test]
+    fn test_layout_large_gap() {
+        let d = display(0.0, 0.0, 1000.0, 800.0);
+        // gap=100 means 200px lost on each axis
+        let r = calculate_target_rect(TilingLayout::Maximize, &d, 50, 33, 100);
+        assert!(rect_approx(&r, 100.0, 100.0, 800.0, 600.0));
+    }
+
+    #[test]
+    fn test_layout_half_ratio_extremes() {
+        let d = display(0.0, 0.0, 1000.0, 800.0);
+        // 0% ratio — left half has 0 width
+        let r0 = calculate_target_rect(TilingLayout::LeftHalf, &d, 0, 33, 0);
+        assert!(rect_approx(&r0, 0.0, 0.0, 0.0, 800.0));
+        // 100% ratio — left half takes full width
+        let r100 = calculate_target_rect(TilingLayout::LeftHalf, &d, 100, 33, 0);
+        assert!(rect_approx(&r100, 0.0, 0.0, 1000.0, 800.0));
+    }
+
+    #[test]
+    fn test_layout_small_display() {
+        let d = display(0.0, 0.0, 100.0, 80.0);
+        let r = calculate_target_rect(TilingLayout::TopLeftQuarter, &d, 50, 33, 0);
+        assert!(rect_approx(&r, 0.0, 0.0, 50.0, 40.0));
+    }
+
+    #[test]
+    fn test_layout_fractional_display_offset() {
+        let d = display(0.5, 0.5, 1920.0, 1080.0);
+        let r = calculate_target_rect(TilingLayout::Maximize, &d, 50, 33, 0);
+        assert!(approx(r.x, 0.5));
+        assert!(approx(r.y, 0.5));
+    }
 }
