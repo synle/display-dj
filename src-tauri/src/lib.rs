@@ -2,7 +2,7 @@ mod config;
 mod dark_mode;
 mod display;
 mod keep_awake;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod tiling;
 mod tray;
 mod volume;
@@ -16,8 +16,8 @@ use tauri_plugin_shell::process::CommandChild;
 
 static SERVER_PORT: AtomicU16 = AtomicU16::new(51337);
 
-/// Stub tiling commands for non-macOS platforms.
-#[cfg(not(target_os = "macos"))]
+/// Stub tiling commands for platforms without tiling support (Linux).
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod tiling_stubs {
     /// Tiling is not supported on this platform.
     #[tauri::command]
@@ -25,7 +25,7 @@ mod tiling_stubs {
         false
     }
 
-    /// Accessibility check is macOS-only; always returns false elsewhere.
+    /// Accessibility check is not applicable on this platform.
     #[tauri::command]
     pub fn get_accessibility_trusted() -> bool {
         false
@@ -50,7 +50,7 @@ pub struct AppState {
     /// from sleeping. Dropping the guard (setting to `None`) releases the assertion.
     pub keep_awake: std::sync::Mutex<Option<keepawake::KeepAwake>>,
     /// Per-window tiling state (original positions, current layout, display index).
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub tiling_state: std::sync::Mutex<tiling::TilingState>,
 }
 
@@ -282,7 +282,7 @@ pub fn run() {
             sidecar_child: std::sync::Mutex::new(None),
             expect_focus_gain: std::sync::Mutex::new(false),
             keep_awake: std::sync::Mutex::new(None),
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             tiling_state: std::sync::Mutex::new(tiling::TilingState::new()),
         })
         .invoke_handler(tauri::generate_handler![
@@ -306,13 +306,13 @@ pub fn run() {
             tray::apply_profile,
             keep_awake::get_keep_awake,
             keep_awake::set_keep_awake,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             tiling::get_tiling_supported,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             tiling::get_accessibility_trusted,
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             tiling_stubs::get_tiling_supported,
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             tiling_stubs::get_accessibility_trusted,
         ])
         .setup(move |app| {

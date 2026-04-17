@@ -1,15 +1,20 @@
 //! macOS window tiling via the Accessibility API.
 //!
-//! Provides window tiling commands (halves, thirds, quarters, maximize, restore, exposé)
-//! for macOS. Uses AXUIElement to get the focused window and move/resize it,
+//! Provides the macOS-specific implementation for window tiling commands
+//! (halves, thirds, quarters, maximize, restore, expose).
+//! Uses AXUIElement to get the focused window and move/resize it,
 //! and NSScreen to get display visible frames (accounting for menu bar and dock).
 //!
 //! Requires the user to grant Accessibility permission in
 //! System Settings > Privacy & Security > Accessibility.
 
-use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CString};
 use tauri::{AppHandle, Manager};
+
+use super::{
+    build_sorted_window_list, calculate_target_rect, find_display_for_window,
+    layout_grid_on_display, Rect, TilingLayout, WindowInfo, WindowState,
+};
 
 // ---------------------------------------------------------------------------
 // CoreFoundation FFI
@@ -62,7 +67,8 @@ impl Drop for CfRef {
 /// Create a CFString from a Rust &str. Returns a CfRef that auto-releases.
 unsafe fn cfstr(s: &str) -> Option<CfRef> {
     let c = CString::new(s).ok()?;
-    let ptr = CFStringCreateWithCString(K_CF_ALLOCATOR_DEFAULT, c.as_ptr(), K_CF_STRING_ENCODING_UTF8);
+    let ptr =
+        CFStringCreateWithCString(K_CF_ALLOCATOR_DEFAULT, c.as_ptr(), K_CF_STRING_ENCODING_UTF8);
     CfRef::new(ptr)
 }
 
@@ -143,113 +149,6 @@ unsafe impl objc::Encode for CGRect {
 }
 
 // ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
-
-/// A rectangle in screen coordinates (top-left origin, points — matches AX API).
-#[derive(Clone, Debug)]
-pub struct Rect {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-}
-
-impl Rect {
-    /// Center X coordinate.
-    fn cx(&self) -> f64 {
-        self.x + self.width / 2.0
-    }
-    /// Center Y coordinate.
-    fn cy(&self) -> f64 {
-        self.y + self.height / 2.0
-    }
-}
-
-/// One of the 19 supported tiling layouts.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum TilingLayout {
-    LeftHalf,
-    RightHalf,
-    TopHalf,
-    BottomHalf,
-    LeftThird,
-    CenterThird,
-    RightThird,
-    TopThird,
-    MiddleThird,
-    BottomThird,
-    LeftTwoThirds,
-    RightTwoThirds,
-    TopTwoThirds,
-    BottomTwoThirds,
-    TopLeftQuarter,
-    TopRightQuarter,
-    BottomLeftQuarter,
-    BottomRightQuarter,
-    Maximize,
-}
-
-impl TilingLayout {
-    /// Parse a camelCase layout name into a TilingLayout.
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "leftHalf" => Some(Self::LeftHalf),
-            "rightHalf" => Some(Self::RightHalf),
-            "topHalf" => Some(Self::TopHalf),
-            "bottomHalf" => Some(Self::BottomHalf),
-            "leftThird" => Some(Self::LeftThird),
-            "centerThird" => Some(Self::CenterThird),
-            "rightThird" => Some(Self::RightThird),
-            "topThird" => Some(Self::TopThird),
-            "middleThird" => Some(Self::MiddleThird),
-            "bottomThird" => Some(Self::BottomThird),
-            "leftTwoThirds" => Some(Self::LeftTwoThirds),
-            "rightTwoThirds" => Some(Self::RightTwoThirds),
-            "topTwoThirds" => Some(Self::TopTwoThirds),
-            "bottomTwoThirds" => Some(Self::BottomTwoThirds),
-            "topLeftQuarter" => Some(Self::TopLeftQuarter),
-            "topRightQuarter" => Some(Self::TopRightQuarter),
-            "bottomLeftQuarter" => Some(Self::BottomLeftQuarter),
-            "bottomRightQuarter" => Some(Self::BottomRightQuarter),
-            "maximize" => Some(Self::Maximize),
-            _ => None,
-        }
-    }
-}
-
-/// Per-window tiling state tracked at runtime.
-#[derive(Clone, Debug)]
-struct WindowState {
-    /// Original position/size before first tile (for restore).
-    original: Rect,
-    /// Current tiling layout applied to this window.
-    layout: TilingLayout,
-    /// Display index the window is currently tiled on.
-    display_index: usize,
-}
-
-/// Runtime tiling state, keyed by CGWindowID.
-pub struct TilingState {
-    windows: HashMap<u32, WindowState>,
-}
-
-impl TilingState {
-    /// Create empty tiling state.
-    pub fn new() -> Self {
-        Self {
-            windows: HashMap::new(),
-        }
-    }
-}
-
-impl Default for TilingState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Display enumeration (NSScreen visible frames)
 // ---------------------------------------------------------------------------
 
@@ -259,8 +158,8 @@ impl Default for TilingState {
 #[allow(unexpected_cfgs)]
 fn get_display_visible_frames() -> Vec<Rect> {
     unsafe {
-        use objc::{msg_send, sel, sel_impl};
         use objc::runtime::Object;
+        use objc::{msg_send, sel, sel_impl};
 
         let cls = match objc::runtime::Class::get("NSScreen") {
             Some(c) => c,
@@ -276,10 +175,10 @@ fn get_display_visible_frames() -> Vec<Rect> {
             return Vec::new();
         }
 
-        // Primary screen height for Cocoa → CG coordinate conversion.
+        // Primary screen height for Cocoa -> CG coordinate conversion.
         // MUST use screens[0] (the primary display with the menu bar), NOT
         // mainScreen which returns whichever screen has keyboard focus.
-        // The Cocoa coordinate system origin is anchored to the primary display —
+        // The Cocoa coordinate system origin is anchored to the primary display --
         // using the wrong screen's height shifts all Y coordinates by the
         // height difference between the focused and primary screens.
         let primary_screen: *mut Object = msg_send![screens, objectAtIndex: 0usize];
@@ -443,201 +342,12 @@ unsafe fn set_window_rect(window: &CfRef, rect: &Rect) {
 }
 
 // ---------------------------------------------------------------------------
-// Layout calculation
-// ---------------------------------------------------------------------------
-
-/// Calculate the target rectangle for a layout on a given display.
-/// `half_ratio` and `third_ratio` are percentages (e.g. 50, 33).
-/// `gap` is the outer padding in points around the usable area.
-pub fn calculate_target_rect(
-    layout: TilingLayout,
-    display: &Rect,
-    half_ratio: u32,
-    third_ratio: u32,
-    gap: u32,
-) -> Rect {
-    let g = gap as f64;
-    let dx = display.x + g;
-    let dy = display.y + g;
-    let dw = display.width - 2.0 * g;
-    let dh = display.height - 2.0 * g;
-    let h = half_ratio as f64 / 100.0;
-    let t = third_ratio as f64 / 100.0;
-
-    match layout {
-        // Halves
-        TilingLayout::LeftHalf => Rect {
-            x: dx,
-            y: dy,
-            width: dw * h,
-            height: dh,
-        },
-        TilingLayout::RightHalf => Rect {
-            x: dx + dw * h,
-            y: dy,
-            width: dw * (1.0 - h),
-            height: dh,
-        },
-        TilingLayout::TopHalf => Rect {
-            x: dx,
-            y: dy,
-            width: dw,
-            height: dh * h,
-        },
-        TilingLayout::BottomHalf => Rect {
-            x: dx,
-            y: dy + dh * h,
-            width: dw,
-            height: dh * (1.0 - h),
-        },
-
-        // Thirds (horizontal)
-        TilingLayout::LeftThird => Rect {
-            x: dx,
-            y: dy,
-            width: dw * t,
-            height: dh,
-        },
-        TilingLayout::CenterThird => Rect {
-            x: dx + dw * t,
-            y: dy,
-            width: dw * (1.0 - 2.0 * t),
-            height: dh,
-        },
-        TilingLayout::RightThird => Rect {
-            x: dx + dw * (1.0 - t),
-            y: dy,
-            width: dw * t,
-            height: dh,
-        },
-
-        // Thirds (vertical)
-        TilingLayout::TopThird => Rect {
-            x: dx,
-            y: dy,
-            width: dw,
-            height: dh * t,
-        },
-        TilingLayout::MiddleThird => Rect {
-            x: dx,
-            y: dy + dh * t,
-            width: dw,
-            height: dh * (1.0 - 2.0 * t),
-        },
-        TilingLayout::BottomThird => Rect {
-            x: dx,
-            y: dy + dh * (1.0 - t),
-            width: dw,
-            height: dh * t,
-        },
-
-        // Two-thirds
-        TilingLayout::LeftTwoThirds => Rect {
-            x: dx,
-            y: dy,
-            width: dw * (1.0 - t),
-            height: dh,
-        },
-        TilingLayout::RightTwoThirds => Rect {
-            x: dx + dw * t,
-            y: dy,
-            width: dw * (1.0 - t),
-            height: dh,
-        },
-        TilingLayout::TopTwoThirds => Rect {
-            x: dx,
-            y: dy,
-            width: dw,
-            height: dh * (1.0 - t),
-        },
-        TilingLayout::BottomTwoThirds => Rect {
-            x: dx,
-            y: dy + dh * t,
-            width: dw,
-            height: dh * (1.0 - t),
-        },
-
-        // Quarters
-        TilingLayout::TopLeftQuarter => Rect {
-            x: dx,
-            y: dy,
-            width: dw * h,
-            height: dh * h,
-        },
-        TilingLayout::TopRightQuarter => Rect {
-            x: dx + dw * h,
-            y: dy,
-            width: dw * (1.0 - h),
-            height: dh * h,
-        },
-        TilingLayout::BottomLeftQuarter => Rect {
-            x: dx,
-            y: dy + dh * h,
-            width: dw * h,
-            height: dh * (1.0 - h),
-        },
-        TilingLayout::BottomRightQuarter => Rect {
-            x: dx + dw * h,
-            y: dy + dh * h,
-            width: dw * (1.0 - h),
-            height: dh * (1.0 - h),
-        },
-
-        // Maximize
-        TilingLayout::Maximize => Rect {
-            x: dx,
-            y: dy,
-            width: dw,
-            height: dh,
-        },
-    }
-}
-
-/// Determine which display a window center point falls on.
-fn find_display_for_window(rect: &Rect, displays: &[Rect]) -> usize {
-    let cx = rect.cx();
-    let cy = rect.cy();
-
-    // Check which display contains the center point
-    for (i, d) in displays.iter().enumerate() {
-        if cx >= d.x && cx < d.x + d.width && cy >= d.y && cy < d.y + d.height {
-            return i;
-        }
-    }
-
-    // Fallback: closest display by center distance
-    displays
-        .iter()
-        .enumerate()
-        .min_by(|(_, a), (_, b)| {
-            let da = (cx - a.cx()).powi(2) + (cy - a.cy()).powi(2);
-            let db = (cx - b.cx()).powi(2) + (cy - b.cy()).powi(2);
-            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .map(|(i, _)| i)
-        .unwrap_or(0)
-}
-
-// ---------------------------------------------------------------------------
 // Accessibility permission check
 // ---------------------------------------------------------------------------
 
 /// Returns true if the app has macOS Accessibility permission.
 pub fn is_accessibility_trusted() -> bool {
     unsafe { AXIsProcessTrusted() }
-}
-
-/// Tauri command: check if tiling is supported on this platform.
-/// Returns true only on macOS (tiling not yet implemented on other platforms).
-#[tauri::command]
-pub fn get_tiling_supported() -> bool {
-    true // This module is only compiled on macOS
-}
-
-/// Tauri command: check if macOS Accessibility permission is granted.
-#[tauri::command]
-pub fn get_accessibility_trusted() -> bool {
-    is_accessibility_trusted()
 }
 
 // ---------------------------------------------------------------------------
@@ -727,11 +437,13 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     // Always tile on the display the window is currently on
     let target_display = find_display_for_window(&win_rect, &displays);
 
-    // Save original position (only on first tile) and update state
+    // Save original position (only on first tile) and update state.
+    // Cast u32 CGWindowID to i64 for the HashMap key.
+    let wid_key = window_id as i64;
     {
         let state = app.state::<crate::AppState>();
         let mut ts = state.tiling_state.lock().unwrap();
-        let entry = ts.windows.entry(window_id).or_insert(WindowState {
+        let entry = ts.windows.entry(wid_key).or_insert(WindowState {
             original: win_rect,
             layout,
             display_index: target_display,
@@ -741,7 +453,8 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     }
 
     // Calculate and apply target rect
-    let target = calculate_target_rect(layout, &displays[target_display], half_ratio, third_ratio, gap);
+    let target =
+        calculate_target_rect(layout, &displays[target_display], half_ratio, third_ratio, gap);
     log::info!(
         "tiling: {} on display {} -> ({}, {}, {}x{})",
         layout_str,
@@ -776,11 +489,12 @@ fn execute_restore(app: &AppHandle) {
         }
     };
 
-    // Remove state and get original rect
+    // Remove state and get original rect. Cast u32 -> i64 for HashMap key.
+    let wid_key = window_id as i64;
     let original = {
         let state = app.state::<crate::AppState>();
         let mut ts = state.tiling_state.lock().unwrap();
-        ts.windows.remove(&window_id).map(|ws| ws.original)
+        ts.windows.remove(&wid_key).map(|ws| ws.original)
     };
 
     if let Some(rect) = original {
@@ -800,7 +514,7 @@ fn execute_restore(app: &AppHandle) {
 }
 
 // ===========================================================================
-// Exposé — lay out all windows in a grid for overview
+// Expose -- lay out all windows in a grid for overview
 // ===========================================================================
 
 // --- CGWindowList FFI ---
@@ -833,17 +547,6 @@ extern "C" {
 }
 
 const K_CF_NUMBER_SINT32_TYPE: i64 = 3;
-const K_CF_NUMBER_SINT64_TYPE: i64 = 4;
-
-/// Info about an on-screen window from CGWindowList.
-#[derive(Debug)]
-struct WindowInfo {
-    window_id: u32,
-    owner_pid: i32,
-    owner_name: String,
-    layer: i32,
-    bounds: Rect,
-}
 
 /// Read a CFString value from a CFDictionary.
 unsafe fn dict_get_string(dict: CFDictionaryRef, key_str: &str) -> Option<String> {
@@ -885,21 +588,6 @@ unsafe fn dict_get_i32(dict: CFDictionaryRef, key_str: &str) -> Option<i32> {
     }
 }
 
-/// Read an i64 from a CFNumber in a CFDictionary.
-unsafe fn dict_get_i64(dict: CFDictionaryRef, key_str: &str) -> Option<i64> {
-    let key = cfstr(key_str)?;
-    let val = CFDictionaryGetValue(dict, key.as_ptr());
-    if val.is_null() {
-        return None;
-    }
-    let mut out: i64 = 0;
-    if CFNumberGetValue(val, K_CF_NUMBER_SINT64_TYPE, &mut out as *mut i64 as *mut c_void) {
-        Some(out)
-    } else {
-        None
-    }
-}
-
 /// Read the bounds dict (X, Y, Width, Height) from a CGWindowList entry.
 unsafe fn dict_get_bounds(dict: CFDictionaryRef) -> Option<Rect> {
     let key = cfstr("kCGWindowBounds")?;
@@ -922,6 +610,7 @@ unsafe fn dict_get_bounds(dict: CFDictionaryRef) -> Option<Rect> {
 /// Get all on-screen normal windows via CGWindowList.
 /// Filters out desktop elements, tiny windows (< 50x50), and non-normal layers.
 /// "On-screen" includes windows visible on any display, not just the focused one.
+/// Returns `super::WindowInfo` structs with `window_id` as `i64`.
 fn get_all_windows() -> Vec<WindowInfo> {
     let mut windows = Vec::new();
     unsafe {
@@ -959,10 +648,9 @@ fn get_all_windows() -> Vec<WindowInfo> {
             }
 
             windows.push(WindowInfo {
-                window_id: wid,
+                window_id: wid as i64,
                 owner_pid: pid,
                 owner_name: owner,
-                layer,
                 bounds,
             });
         }
@@ -971,9 +659,9 @@ fn get_all_windows() -> Vec<WindowInfo> {
     windows
 }
 
-// --- Exposé state ---
+// --- Expose state ---
 
-/// Execute the exposé command. Lays out all on-screen windows in a grid.
+/// Execute the expose command. Lays out all on-screen windows in a grid.
 pub fn execute_expose(app: &AppHandle) {
     if !unsafe { AXIsProcessTrusted() } {
         log::warn!("expose: Accessibility permission not granted");
@@ -983,63 +671,14 @@ pub fn execute_expose(app: &AppHandle) {
     spread_expose(app);
 }
 
-/// Build a deterministic, alphabetically-sorted window list from all windows.
-/// Groups by app name (case-insensitive), sorts groups alphabetically,
-/// sorts windows within each group by window_id for stability.
-fn build_sorted_window_list(windows: &[WindowInfo], max: usize) -> Vec<&WindowInfo> {
-    let mut app_groups: Vec<(String, Vec<&WindowInfo>)> = Vec::new();
-    for w in windows {
-        if let Some(group) = app_groups.iter_mut().find(|(name, _)| *name == w.owner_name) {
-            group.1.push(w);
-        } else {
-            app_groups.push((w.owner_name.clone(), vec![w]));
+/// Closure that sets a window rect via AXUIElement, used as the callback
+/// for `layout_grid_on_display`.
+fn set_window_rect_via_ax(win_info: &WindowInfo, rect: &Rect) {
+    unsafe {
+        if let Some(ax_win) = get_ax_window_by_id(win_info.owner_pid, win_info.window_id as u32) {
+            set_window_rect(&ax_win, rect);
         }
     }
-    // Sort groups alphabetically by app name (case-insensitive)
-    app_groups.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
-    // Sort windows within each group by window_id for deterministic order
-    for (_, wins) in &mut app_groups {
-        wins.sort_by_key(|w| w.window_id);
-    }
-    app_groups
-        .iter()
-        .flat_map(|(_, wins)| wins.iter().copied())
-        .take(max)
-        .collect()
-}
-
-/// Lay out windows in a grid on a single display. Returns the number of windows placed.
-fn layout_grid_on_display(ordered: &[&WindowInfo], display: &Rect, gap: f64) -> usize {
-    let n = ordered.len();
-    if n == 0 {
-        return 0;
-    }
-    let cols = (n as f64).sqrt().ceil() as usize;
-    let rows = (n + cols - 1) / cols;
-    let cell_w = (display.width - gap * (cols as f64 + 1.0)) / cols as f64;
-    let cell_h = (display.height - gap * (rows as f64 + 1.0)) / rows as f64;
-
-    for (idx, win_info) in ordered.iter().enumerate() {
-        let col = idx % cols;
-        let row = idx / cols;
-        let x = display.x + gap + col as f64 * (cell_w + gap);
-        let y = display.y + gap + row as f64 * (cell_h + gap);
-
-        unsafe {
-            if let Some(ax_win) = get_ax_window_by_id(win_info.owner_pid, win_info.window_id) {
-                set_window_rect(
-                    &ax_win,
-                    &Rect {
-                        x,
-                        y,
-                        width: cell_w,
-                        height: cell_h,
-                    },
-                );
-            }
-        }
-    }
-    n
 }
 
 /// Spread all windows into grids, filling display 1 first then overflowing to display 2, etc.
@@ -1094,7 +733,7 @@ fn spread_expose(app: &AppHandle) {
         }
         let count = (n - offset).min(max_per_display);
         let slice = &ordered[offset..offset + count];
-        layout_grid_on_display(slice, display, g);
+        layout_grid_on_display(slice, display, g, &set_window_rect_via_ax);
         log::info!("expose: placed {} windows on display {}", count, i);
         offset += count;
     }
@@ -1110,7 +749,7 @@ fn spread_expose(app: &AppHandle) {
 /// Enumerates the app's windows and matches by _AXUIElementGetWindow.
 unsafe fn get_ax_window_by_id(pid: i32, target_wid: u32) -> Option<CfRef> {
     let app_key = cfstr("AXApplication")?;
-    let _ = app_key; // not needed — we create element from PID
+    let _ = app_key; // not needed -- we create element from PID
 
     // Create AXUIElement for the app
     extern "C" {
@@ -1150,7 +789,7 @@ unsafe fn get_ax_window_by_id(pid: i32, target_wid: u32) -> Option<CfRef> {
 }
 
 // ===========================================================================
-// Window normalization — unminimize and un-fullscreen before exposé
+// Window normalization -- unminimize and un-fullscreen before expose
 // ===========================================================================
 
 /// Set the AXMinimized attribute on a window.
@@ -1319,10 +958,10 @@ fn normalize_all_windows() -> (usize, usize) {
 }
 
 // ===========================================================================
-// App Exposé — show only the active app's windows in a grid
+// App Expose -- show only the active app's windows in a grid
 // ===========================================================================
 
-/// Execute the app exposé command. Lays out the frontmost app's windows in a grid.
+/// Execute the app expose command. Lays out the frontmost app's windows in a grid.
 pub fn execute_expose_app(app: &AppHandle) {
     if !unsafe { AXIsProcessTrusted() } {
         log::warn!("app_expose: Accessibility permission not granted");
@@ -1398,7 +1037,7 @@ fn spread_expose_app(app: &AppHandle) {
         }
         let count = (n - offset).min(max_per_display);
         let slice = &app_windows[offset..offset + count];
-        layout_grid_on_display(slice, display, g);
+        layout_grid_on_display(slice, display, g, &set_window_rect_via_ax);
         log::info!("app_expose: placed {} windows on display {}", count, i);
         offset += count;
     }
@@ -1412,7 +1051,7 @@ fn spread_expose_app(app: &AppHandle) {
 }
 
 // ===========================================================================
-// Tile Snap — mouse edge snapping with preview overlay
+// Tile Snap -- mouse edge snapping with preview overlay
 // ===========================================================================
 
 // --- CGEvent FFI ---
@@ -1502,14 +1141,17 @@ fn init_overlay_on_main_thread() {
 /// Create a borderless, transparent, click-through NSWindow for the snap preview.
 #[allow(unexpected_cfgs)]
 unsafe fn create_overlay_window() -> *mut c_void {
-    use objc::{msg_send, sel, sel_impl};
     use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl};
 
     let cls = objc::runtime::Class::get("NSWindow").unwrap();
     let window: *mut Object = msg_send![cls, alloc];
     let rect = CGRect {
         origin: CGPoint { x: 0.0, y: 0.0 },
-        size: CGSize { width: 1.0, height: 1.0 },
+        size: CGSize {
+            width: 1.0,
+            height: 1.0,
+        },
     };
     let window: *mut Object = msg_send![window,
         initWithContentRect:rect
@@ -1529,7 +1171,7 @@ unsafe fn create_overlay_window() -> *mut c_void {
     let _: () = msg_send![window, setBackgroundColor: color];
     let _: () = msg_send![window, setOpaque: false];
     let _: () = msg_send![window, setHasShadow: false];
-    // NSStatusWindowLevel = 25 — above dragged windows
+    // NSStatusWindowLevel = 25 -- above dragged windows
     let _: () = msg_send![window, setLevel: 25i64];
     // Click-through: mouse events pass through to windows below
     let _: () = msg_send![window, setIgnoresMouseEvents: true];
@@ -1559,8 +1201,8 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
     }
 
     unsafe {
-        use objc::{msg_send, sel, sel_impl};
         use objc::runtime::Object;
+        use objc::{msg_send, sel, sel_impl};
 
         let window = ptr as *mut Object;
 
@@ -1593,14 +1235,18 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
     }
 }
 
-// --- Snap zone detection ---
+// --- Snap zone detection (macOS two-pass version) ---
 
-/// Detect which snap zone the cursor is in, if any.
+/// Detect which snap zone the cursor is in, if any (macOS two-pass version).
+/// Uses a two-pass approach: first checks displays whose bounds contain the cursor
+/// (exact match), then checks displays where the cursor is just outside (overflow
+/// into menu bar/dock). This prevents the margin expansion from stealing a cursor
+/// that belongs to an adjacent display.
 /// Returns the target layout and display index.
 /// `side_edge`: pixel trigger for left/right/bottom edges.
 /// `top_edge`: pixel trigger for top edge (maximize).
 /// `corner`: pixel trigger for corner zones (quarters).
-fn detect_snap_zone(
+fn detect_snap_zone_macos(
     cx: f64,
     cy: f64,
     displays: &[Rect],
@@ -1623,7 +1269,7 @@ fn detect_snap_zone(
                 continue; // already checked in first pass
             }
             if allow_overflow {
-                // Only allow vertical overflow (top/bottom — menu bar and dock).
+                // Only allow vertical overflow (top/bottom -- menu bar and dock).
                 // Horizontal overflow would bleed into adjacent side-by-side displays.
                 let v_margin = corner.max(top_edge);
                 if cx < d.x
@@ -1635,7 +1281,7 @@ fn detect_snap_zone(
                 }
             }
 
-            // Clamp cursor vertically to display bounds — treats "above/below
+            // Clamp cursor vertically to display bounds -- treats "above/below
             // the edge" the same as "at the edge" so snap zones extend through
             // the menu bar / dock. No horizontal clamping to avoid bleeding
             // into adjacent displays.
@@ -1646,41 +1292,41 @@ fn detect_snap_zone(
             let top = clamped_y - d.y;
             let bottom = d.y + d.height - clamped_y;
 
-        let at_left = left < side_edge;
-        let at_right = right < side_edge;
-        let at_top = top < top_edge;
-        let at_bottom = bottom < side_edge;
-        let in_corner_top = top < corner;
-        let in_corner_bottom = bottom < corner;
-        let in_corner_left = left < corner;
-        let in_corner_right = right < corner;
+            let at_left = left < side_edge;
+            let at_right = right < side_edge;
+            let at_top = top < top_edge;
+            let at_bottom = bottom < side_edge;
+            let in_corner_top = top < corner;
+            let in_corner_bottom = bottom < corner;
+            let in_corner_left = left < corner;
+            let in_corner_right = right < corner;
 
-        // Corners take priority (check first)
-        if at_left && in_corner_top || at_top && in_corner_left {
-            return Some((TilingLayout::TopLeftQuarter, i));
-        }
-        if at_right && in_corner_top || at_top && in_corner_right {
-            return Some((TilingLayout::TopRightQuarter, i));
-        }
-        if at_left && in_corner_bottom || at_bottom && in_corner_left {
-            return Some((TilingLayout::BottomLeftQuarter, i));
-        }
-        if at_right && in_corner_bottom || at_bottom && in_corner_right {
-            return Some((TilingLayout::BottomRightQuarter, i));
-        }
+            // Corners take priority (check first)
+            if at_left && in_corner_top || at_top && in_corner_left {
+                return Some((TilingLayout::TopLeftQuarter, i));
+            }
+            if at_right && in_corner_top || at_top && in_corner_right {
+                return Some((TilingLayout::TopRightQuarter, i));
+            }
+            if at_left && in_corner_bottom || at_bottom && in_corner_left {
+                return Some((TilingLayout::BottomLeftQuarter, i));
+            }
+            if at_right && in_corner_bottom || at_bottom && in_corner_right {
+                return Some((TilingLayout::BottomRightQuarter, i));
+            }
 
-        // Edges
-        if at_left {
-            return Some((TilingLayout::LeftHalf, i));
-        }
-        if at_right {
-            return Some((TilingLayout::RightHalf, i));
-        }
-        if at_top {
-            return Some((TilingLayout::Maximize, i));
-        }
+            // Edges
+            if at_left {
+                return Some((TilingLayout::LeftHalf, i));
+            }
+            if at_right {
+                return Some((TilingLayout::RightHalf, i));
+            }
+            if at_top {
+                return Some((TilingLayout::Maximize, i));
+            }
 
-        // Cursor is on/near this display but not in a snap zone
+            // Cursor is on/near this display but not in a snap zone
         }
     }
     None
@@ -1700,6 +1346,7 @@ struct SnapContext {
 unsafe impl Send for SnapContext {}
 unsafe impl Sync for SnapContext {}
 
+/// Mutable state tracked during a drag for snap zone detection.
 struct SnapState {
     dragging: bool,
     drag_confirmed: bool,
@@ -1715,7 +1362,7 @@ struct SnapState {
     corner_trigger: f64,
 }
 
-/// CGEventTap callback — runs on the event tap background thread.
+/// CGEventTap callback -- runs on the event tap background thread.
 extern "C" fn snap_event_callback(
     _proxy: CGEventTapProxy,
     event_type: u32,
@@ -1759,8 +1406,7 @@ extern "C" fn snap_event_callback(
             state.current_layout = None;
             // Get focused window position for later verification
             state.drag_start_window_pos = unsafe {
-                get_focused_window()
-                    .and_then(|w| get_window_rect(&w).map(|r| (r.x, r.y)))
+                get_focused_window().and_then(|w| get_window_rect(&w).map(|r| (r.x, r.y)))
             };
             // Refresh display frames and preferences
             state.displays = get_display_visible_frames();
@@ -1783,7 +1429,7 @@ extern "C" fn snap_event_callback(
                 return event;
             }
 
-            let zone = detect_snap_zone(
+            let zone = detect_snap_zone_macos(
                 cursor.x,
                 cursor.y,
                 &state.displays,
@@ -1931,8 +1577,7 @@ pub fn start_tile_snap(app: AppHandle) {
                 *t = tap;
             }
 
-            let source =
-                CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
+            let source = CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
             if source.is_null() {
                 log::warn!("tile_snap: Failed to create run loop source");
                 return;
@@ -1946,351 +1591,4 @@ pub fn start_tile_snap(app: AppHandle) {
             CFRunLoopRun(); // blocks forever
         }
     });
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn display(x: f64, y: f64, w: f64, h: f64) -> Rect {
-        Rect {
-            x,
-            y,
-            width: w,
-            height: h,
-        }
-    }
-
-    fn approx(a: f64, b: f64) -> bool {
-        (a - b).abs() < 0.01
-    }
-
-    fn rect_approx(r: &Rect, x: f64, y: f64, w: f64, h: f64) -> bool {
-        approx(r.x, x) && approx(r.y, y) && approx(r.width, w) && approx(r.height, h)
-    }
-
-    // -- TilingLayout::parse --
-
-    #[test]
-    fn test_vertical_two_thirds() {
-        let d = display(0.0, 0.0, 1920.0, 900.0);
-        let top = calculate_target_rect(TilingLayout::TopTwoThirds, &d, 50, 33, 0);
-        let bot = calculate_target_rect(TilingLayout::BottomTwoThirds, &d, 50, 33, 0);
-        // top two-thirds = 1.0 - 0.33 = 0.67 => 603
-        assert!(rect_approx(&top, 0.0, 0.0, 1920.0, 603.0));
-        // bottom two-thirds starts at third = 0.33 => 297
-        assert!(rect_approx(&bot, 0.0, 297.0, 1920.0, 603.0));
-    }
-
-    #[test]
-    fn test_parse_all_layouts() {
-        assert_eq!(TilingLayout::parse("leftHalf"), Some(TilingLayout::LeftHalf));
-        assert_eq!(TilingLayout::parse("rightHalf"), Some(TilingLayout::RightHalf));
-        assert_eq!(TilingLayout::parse("topHalf"), Some(TilingLayout::TopHalf));
-        assert_eq!(TilingLayout::parse("bottomHalf"), Some(TilingLayout::BottomHalf));
-        assert_eq!(TilingLayout::parse("leftThird"), Some(TilingLayout::LeftThird));
-        assert_eq!(TilingLayout::parse("centerThird"), Some(TilingLayout::CenterThird));
-        assert_eq!(TilingLayout::parse("rightThird"), Some(TilingLayout::RightThird));
-        assert_eq!(TilingLayout::parse("topThird"), Some(TilingLayout::TopThird));
-        assert_eq!(TilingLayout::parse("middleThird"), Some(TilingLayout::MiddleThird));
-        assert_eq!(TilingLayout::parse("bottomThird"), Some(TilingLayout::BottomThird));
-        assert_eq!(TilingLayout::parse("leftTwoThirds"), Some(TilingLayout::LeftTwoThirds));
-        assert_eq!(TilingLayout::parse("rightTwoThirds"), Some(TilingLayout::RightTwoThirds));
-        assert_eq!(TilingLayout::parse("topTwoThirds"), Some(TilingLayout::TopTwoThirds));
-        assert_eq!(TilingLayout::parse("bottomTwoThirds"), Some(TilingLayout::BottomTwoThirds));
-        assert_eq!(
-            TilingLayout::parse("topLeftQuarter"),
-            Some(TilingLayout::TopLeftQuarter)
-        );
-        assert_eq!(
-            TilingLayout::parse("topRightQuarter"),
-            Some(TilingLayout::TopRightQuarter)
-        );
-        assert_eq!(
-            TilingLayout::parse("bottomLeftQuarter"),
-            Some(TilingLayout::BottomLeftQuarter)
-        );
-        assert_eq!(
-            TilingLayout::parse("bottomRightQuarter"),
-            Some(TilingLayout::BottomRightQuarter)
-        );
-        assert_eq!(TilingLayout::parse("maximize"), Some(TilingLayout::Maximize));
-    }
-
-    #[test]
-    fn test_parse_invalid() {
-        assert_eq!(TilingLayout::parse(""), None);
-        assert_eq!(TilingLayout::parse("unknown"), None);
-        assert_eq!(TilingLayout::parse("LeftHalf"), None); // wrong case
-        assert_eq!(TilingLayout::parse("left_half"), None); // snake_case
-    }
-
-    // -- Layout calculation: halves --
-
-    #[test]
-    fn test_left_half_default() {
-        let d = display(0.0, 0.0, 1920.0, 1080.0);
-        let r = calculate_target_rect(TilingLayout::LeftHalf, &d, 50, 33, 0);
-        assert!(rect_approx(&r, 0.0, 0.0, 960.0, 1080.0));
-    }
-
-    #[test]
-    fn test_right_half_default() {
-        let d = display(0.0, 0.0, 1920.0, 1080.0);
-        let r = calculate_target_rect(TilingLayout::RightHalf, &d, 50, 33, 0);
-        assert!(rect_approx(&r, 960.0, 0.0, 960.0, 1080.0));
-    }
-
-    #[test]
-    fn test_top_half_default() {
-        let d = display(0.0, 0.0, 1920.0, 1080.0);
-        let r = calculate_target_rect(TilingLayout::TopHalf, &d, 50, 33, 0);
-        assert!(rect_approx(&r, 0.0, 0.0, 1920.0, 540.0));
-    }
-
-    #[test]
-    fn test_bottom_half_default() {
-        let d = display(0.0, 0.0, 1920.0, 1080.0);
-        let r = calculate_target_rect(TilingLayout::BottomHalf, &d, 50, 33, 0);
-        assert!(rect_approx(&r, 0.0, 540.0, 1920.0, 540.0));
-    }
-
-    #[test]
-    fn test_halves_custom_ratio_60() {
-        let d = display(0.0, 0.0, 1000.0, 800.0);
-        let left = calculate_target_rect(TilingLayout::LeftHalf, &d, 60, 33, 0);
-        let right = calculate_target_rect(TilingLayout::RightHalf, &d, 60, 33, 0);
-        assert!(rect_approx(&left, 0.0, 0.0, 600.0, 800.0));
-        assert!(rect_approx(&right, 600.0, 0.0, 400.0, 800.0));
-    }
-
-    // -- Layout calculation: thirds --
-
-    #[test]
-    fn test_thirds_default() {
-        let d = display(0.0, 0.0, 900.0, 600.0);
-        let left = calculate_target_rect(TilingLayout::LeftThird, &d, 50, 33, 0);
-        let center = calculate_target_rect(TilingLayout::CenterThird, &d, 50, 33, 0);
-        let right = calculate_target_rect(TilingLayout::RightThird, &d, 50, 33, 0);
-        assert!(rect_approx(&left, 0.0, 0.0, 297.0, 600.0));
-        assert!(rect_approx(&center, 297.0, 0.0, 306.0, 600.0));
-        assert!(rect_approx(&right, 603.0, 0.0, 297.0, 600.0));
-    }
-
-    #[test]
-    fn test_vertical_thirds() {
-        let d = display(0.0, 0.0, 1920.0, 900.0);
-        let top = calculate_target_rect(TilingLayout::TopThird, &d, 50, 33, 0);
-        let mid = calculate_target_rect(TilingLayout::MiddleThird, &d, 50, 33, 0);
-        let bot = calculate_target_rect(TilingLayout::BottomThird, &d, 50, 33, 0);
-        assert!(rect_approx(&top, 0.0, 0.0, 1920.0, 297.0));
-        assert!(rect_approx(&mid, 0.0, 297.0, 1920.0, 306.0));
-        assert!(rect_approx(&bot, 0.0, 603.0, 1920.0, 297.0));
-    }
-
-    // -- Layout calculation: two-thirds --
-
-    #[test]
-    fn test_two_thirds() {
-        let d = display(0.0, 0.0, 900.0, 600.0);
-        let left = calculate_target_rect(TilingLayout::LeftTwoThirds, &d, 50, 33, 0);
-        let right = calculate_target_rect(TilingLayout::RightTwoThirds, &d, 50, 33, 0);
-        // left two-thirds = 1.0 - 0.33 = 0.67 => 603
-        assert!(rect_approx(&left, 0.0, 0.0, 603.0, 600.0));
-        // right two-thirds starts at third = 0.33 => 297
-        assert!(rect_approx(&right, 297.0, 0.0, 603.0, 600.0));
-    }
-
-    // -- Layout calculation: quarters --
-
-    #[test]
-    fn test_quarters_default() {
-        let d = display(0.0, 0.0, 1000.0, 800.0);
-        let tl = calculate_target_rect(TilingLayout::TopLeftQuarter, &d, 50, 33, 0);
-        let tr = calculate_target_rect(TilingLayout::TopRightQuarter, &d, 50, 33, 0);
-        let bl = calculate_target_rect(TilingLayout::BottomLeftQuarter, &d, 50, 33, 0);
-        let br = calculate_target_rect(TilingLayout::BottomRightQuarter, &d, 50, 33, 0);
-        assert!(rect_approx(&tl, 0.0, 0.0, 500.0, 400.0));
-        assert!(rect_approx(&tr, 500.0, 0.0, 500.0, 400.0));
-        assert!(rect_approx(&bl, 0.0, 400.0, 500.0, 400.0));
-        assert!(rect_approx(&br, 500.0, 400.0, 500.0, 400.0));
-    }
-
-    // -- Layout calculation: maximize --
-
-    #[test]
-    fn test_maximize() {
-        let d = display(100.0, 50.0, 1920.0, 1080.0);
-        let r = calculate_target_rect(TilingLayout::Maximize, &d, 50, 33, 0);
-        assert!(rect_approx(&r, 100.0, 50.0, 1920.0, 1080.0));
-    }
-
-    // -- Gap --
-
-    #[test]
-    fn test_gap() {
-        let d = display(0.0, 0.0, 1000.0, 800.0);
-        let r = calculate_target_rect(TilingLayout::Maximize, &d, 50, 33, 10);
-        // gap=10 shrinks by 10 on each side
-        assert!(rect_approx(&r, 10.0, 10.0, 980.0, 780.0));
-    }
-
-    #[test]
-    fn test_gap_left_half() {
-        let d = display(0.0, 0.0, 1000.0, 800.0);
-        let r = calculate_target_rect(TilingLayout::LeftHalf, &d, 50, 33, 10);
-        // usable area: x=10, w=980, h=780
-        // left half: 50% of 980 = 490
-        assert!(rect_approx(&r, 10.0, 10.0, 490.0, 780.0));
-    }
-
-    // -- Multi-monitor offset --
-
-    #[test]
-    fn test_layout_with_display_offset() {
-        let d = display(1920.0, 0.0, 1920.0, 1080.0);
-        let r = calculate_target_rect(TilingLayout::LeftHalf, &d, 50, 33, 0);
-        assert!(rect_approx(&r, 1920.0, 0.0, 960.0, 1080.0));
-    }
-
-    // -- find_display_for_window --
-
-    #[test]
-    fn test_find_display_single() {
-        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let win = Rect {
-            x: 100.0,
-            y: 200.0,
-            width: 800.0,
-            height: 600.0,
-        };
-        assert_eq!(find_display_for_window(&win, &displays), 0);
-    }
-
-    #[test]
-    fn test_find_display_dual_monitor() {
-        let displays = vec![
-            display(0.0, 0.0, 1920.0, 1080.0),
-            display(1920.0, 0.0, 2560.0, 1440.0),
-        ];
-        // Window on first display
-        let win1 = Rect {
-            x: 100.0,
-            y: 100.0,
-            width: 800.0,
-            height: 600.0,
-        };
-        assert_eq!(find_display_for_window(&win1, &displays), 0);
-
-        // Window on second display
-        let win2 = Rect {
-            x: 2000.0,
-            y: 100.0,
-            width: 800.0,
-            height: 600.0,
-        };
-        assert_eq!(find_display_for_window(&win2, &displays), 1);
-    }
-
-    // -- TilingState --
-
-    #[test]
-    fn test_tiling_state_new() {
-        let state = TilingState::new();
-        assert!(state.windows.is_empty());
-    }
-
-    // -- Snap zone detection --
-
-    #[test]
-    fn test_snap_left_edge() {
-        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        // Cursor at left edge, middle height
-        let result = detect_snap_zone(2.0, 540.0, &displays, 10.0, 10.0, 50.0);
-        assert_eq!(result, Some((TilingLayout::LeftHalf, 0)));
-    }
-
-    #[test]
-    fn test_snap_right_edge() {
-        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let result = detect_snap_zone(1918.0, 540.0, &displays, 10.0, 10.0, 50.0);
-        assert_eq!(result, Some((TilingLayout::RightHalf, 0)));
-    }
-
-    #[test]
-    fn test_snap_top_edge() {
-        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let result = detect_snap_zone(960.0, 2.0, &displays, 10.0, 10.0, 50.0);
-        assert_eq!(result, Some((TilingLayout::Maximize, 0)));
-    }
-
-    #[test]
-    fn test_snap_top_left_corner() {
-        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        // Cursor at top-left corner (within both edge and corner triggers)
-        let result = detect_snap_zone(2.0, 20.0, &displays, 10.0, 10.0, 50.0);
-        assert_eq!(result, Some((TilingLayout::TopLeftQuarter, 0)));
-    }
-
-    #[test]
-    fn test_snap_top_right_corner() {
-        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let result = detect_snap_zone(1918.0, 20.0, &displays, 10.0, 10.0, 50.0);
-        assert_eq!(result, Some((TilingLayout::TopRightQuarter, 0)));
-    }
-
-    #[test]
-    fn test_snap_bottom_left_corner() {
-        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let result = detect_snap_zone(2.0, 1060.0, &displays, 10.0, 10.0, 50.0);
-        assert_eq!(result, Some((TilingLayout::BottomLeftQuarter, 0)));
-    }
-
-    #[test]
-    fn test_snap_bottom_right_corner() {
-        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let result = detect_snap_zone(1918.0, 1060.0, &displays, 10.0, 10.0, 50.0);
-        assert_eq!(result, Some((TilingLayout::BottomRightQuarter, 0)));
-    }
-
-    #[test]
-    fn test_snap_no_zone_center() {
-        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        // Cursor in the middle — no snap zone
-        let result = detect_snap_zone(960.0, 540.0, &displays, 10.0, 10.0, 50.0);
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_snap_second_monitor() {
-        let displays = vec![
-            display(0.0, 0.0, 1920.0, 1080.0),
-            display(1920.0, 0.0, 2560.0, 1440.0),
-        ];
-        // Left edge of second monitor
-        let result = detect_snap_zone(1922.0, 540.0, &displays, 10.0, 10.0, 50.0);
-        assert_eq!(result, Some((TilingLayout::LeftHalf, 1)));
-    }
-
-    #[test]
-    fn test_snap_cursor_above_display_into_menu_bar() {
-        // Cursor above the display (in menu bar) should still trigger maximize
-        let displays = vec![display(0.0, 25.0, 1920.0, 1055.0)];
-        // y = 20 is above the display (top at y=25) — should clamp and trigger top edge
-        let result = detect_snap_zone(960.0, 20.0, &displays, 10.0, 10.0, 50.0);
-        assert_eq!(result, Some((TilingLayout::Maximize, 0)));
-    }
-
-    #[test]
-    fn test_snap_no_horizontal_overflow() {
-        // Cursor past the left edge should NOT trigger — horizontal overflow
-        // is disabled to prevent bleeding into adjacent side-by-side displays.
-        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let result = detect_snap_zone(-3.0, 540.0, &displays, 10.0, 10.0, 50.0);
-        assert_eq!(result, None);
-    }
 }

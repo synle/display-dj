@@ -1,6 +1,6 @@
 # Developer Guide
 
-Full architecture reference for Display DJ v3. Read this before making changes.
+Full architecture reference for Display DJ v4. Read this before making changes.
 
 ---
 
@@ -58,8 +58,8 @@ Display DJ is a system tray app built with [Tauri v2](https://v2.tauri.app/). A 
 │  display.rs ── brightness/contrast (HTTP) ───┼───┼──┐ │
 │  dark_mode.rs ── theme toggle (HTTP) ────────┼───┼──┤ │
 │  volume.rs ── system volume (platform) ──────┘   │  │ │
-│  tiling.rs ── window tiling (macOS only,         │  │ │
-│               Accessibility API, no sidecar)     │  │ │
+│  tiling/   ── window tiling (macOS + Windows,    │  │ │
+│               native OS APIs, no sidecar)        │  │ │
 │  config.rs ── preferences persistence            │  │ │
 │  tray.rs ── tray menu, window positioning,       │  │ │
 │             keyboard shortcut dispatch ──────────┘  │ │
@@ -127,7 +127,10 @@ display-dj2/
 │       ├── volume.rs             # System volume (platform-specific: osascript/PowerShell/pactl)
 │       ├── config.rs             # Preferences + monitor metadata persistence
 │       ├── tray.rs               # System tray menu, window positioning, shortcuts
-│       └── tiling.rs             # Window tiling via macOS Accessibility API (macOS only)
+│       └── tiling/               # Window tiling module (macOS + Windows)
+│           ├── mod.rs            # Shared types, layout math, TilingLayout enum
+│           ├── macos.rs          # macOS: Accessibility API (AXUIElement), Tile Snap
+│           └── windows.rs        # Windows: Win32 API (SetWindowPos, EnumWindows)
 │
 ├── .github/workflows/
 │   ├── build.yml                 # CI: tests + build on PRs (macOS/Windows/Linux)
@@ -253,7 +256,7 @@ All registered commands:
 | `volume`    | `get_volume`, `set_volume`                                                                                                                                   |
 | `config`    | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `get_app_version`                                                          |
 | `tray`      | `apply_profile`                                                                                                                                              |
-| `tiling`    | `get_tiling_supported`, `get_accessibility_trusted` (macOS; stubs return `false` on other platforms)                                                         |
+| `tiling`    | `get_tiling_supported`, `get_accessibility_trusted` (macOS + Windows; stubs return `false` on Linux)                                                         |
 
 Events emitted by backend:
 
@@ -267,15 +270,15 @@ Events emitted by backend:
 
 Each `#[tauri::command]` function lives in its domain module. They validate input, read/write shared state (`AppState`), and delegate to the sidecar or platform APIs.
 
-| File           | Responsibility                                                                                     |
-| -------------- | -------------------------------------------------------------------------------------------------- |
-| `lib.rs`       | App bootstrap: sidecar launch, port discovery, plugins, state, tray init, night mode scheduler     |
-| `display.rs`   | Monitor CRUD via HTTP to sidecar. Converts `DjDisplay` -> `Monitor`. Merges with config metadata.  |
-| `dark_mode.rs` | Dark mode get/set via HTTP to sidecar (`/theme`, `/dark`, `/light`)                                |
-| `volume.rs`    | System volume get/set (platform-specific, no sidecar)                                              |
-| `config.rs`    | Preferences JSON persistence, defaults, migration, min brightness                                  |
-| `tray.rs`      | Tray menu, window positioning, keyboard shortcut registration/dispatch                             |
-| `tiling.rs`    | macOS window tiling via Accessibility API (AXUIElement). 19 layouts, multi-monitor, platform-gated |
+| File           | Responsibility                                                                                                                                                                                           |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib.rs`       | App bootstrap: sidecar launch, port discovery, plugins, state, tray init, night mode scheduler                                                                                                           |
+| `display.rs`   | Monitor CRUD via HTTP to sidecar. Converts `DjDisplay` -> `Monitor`. Merges with config metadata.                                                                                                        |
+| `dark_mode.rs` | Dark mode get/set via HTTP to sidecar (`/theme`, `/dark`, `/light`)                                                                                                                                      |
+| `volume.rs`    | System volume get/set (platform-specific, no sidecar)                                                                                                                                                    |
+| `config.rs`    | Preferences JSON persistence, defaults, migration, min brightness                                                                                                                                        |
+| `tray.rs`      | Tray menu, window positioning, keyboard shortcut registration/dispatch                                                                                                                                   |
+| `tiling/`      | Window tiling module. `mod.rs`: shared types + layout math. `macos.rs`: AXUIElement + Tile Snap. `windows.rs`: Win32 SetWindowPos + EnumWindows. 19 layouts, multi-monitor, platform-gated (Linux stubs) |
 
 Shared state (`AppState` in `lib.rs`):
 
@@ -313,7 +316,7 @@ Sidecar lifecycle:
 3. Polls `/health` until ready (up to 5 seconds)
 4. On app exit, `child.kill()` terminates the sidecar
 
-### 5. Platform-Specific Code (`volume.rs`, `tiling.rs`)
+### 5. Platform-Specific Code (`volume.rs`, `tiling/`)
 
 Two modules have `#[cfg(target_os)]` conditional compilation:
 
@@ -323,13 +326,13 @@ Two modules have `#[cfg(target_os)]` conditional compilation:
 | Windows  | PowerShell + inline C# `Add-Type` for WASAPI COM (`IAudioEndpointVolume`)   |
 | Linux    | `pactl get-sink-volume` / `pactl set-sink-volume`                           |
 
-**Window Tiling** (`tiling.rs`) -- macOS only, no sidecar involved:
+**Window Tiling** (`tiling/` module) -- macOS + Windows, no sidecar involved:
 
-| Platform | Method                                                                                  |
-| -------- | --------------------------------------------------------------------------------------- |
-| macOS    | Accessibility API (`AXUIElement`) to move/resize windows, `NSScreen` for display bounds |
-| Windows  | Not yet implemented (planned: Win32 `SetWindowPos`)                                     |
-| Linux    | Not yet implemented (planned: X11/EWMH, Wayland per-compositor IPC)                     |
+| Platform | Method                                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------- |
+| macOS    | Accessibility API (`AXUIElement`) to move/resize windows, `NSScreen` for display bounds. Tile Snap via `CGEventTap` |
+| Windows  | Win32 API (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`) via `windows` crate v0.58   |
+| Linux    | Not yet implemented (planned: X11/EWMH, Wayland per-compositor IPC). Stub commands return `false`                   |
 
 ---
 
@@ -414,7 +417,7 @@ lib.rs background thread (every 60s)
 
 ## Key Architectural Rules
 
-1. **No platform-specific display code in Rust.** All display and dark mode operations go through the HTTP sidecar. Only `volume.rs` and `tiling.rs` have `#[cfg(target_os)]` blocks. Tiling uses native OS APIs directly (no sidecar).
+1. **No platform-specific display code in Rust.** All display and dark mode operations go through the HTTP sidecar. Only `volume.rs` and `tiling/` have `#[cfg(target_os)]` blocks. Tiling uses native OS APIs directly (no sidecar).
 
 2. **snake_case commands, camelCase parameters.** Tauri commands are `snake_case` in Rust and called with `snake_case` strings from the frontend. Parameter objects use `camelCase` keys -- serde converts automatically via `#[serde(rename_all = "camelCase")]`.
 
@@ -440,21 +443,21 @@ lib.rs background thread (every 60s)
 
 Quick reference for common tasks:
 
-| Task                            | Files to change                                                                                            |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| New brightness/contrast feature | `display.rs` (Rust), `MonitorControl.tsx` or `AllMonitorsControl.tsx` (UI)                                 |
-| New dark mode behavior          | `dark_mode.rs` (Rust), `DarkModeToggle.tsx` (UI)                                                           |
-| New volume behavior             | `volume.rs` (Rust, platform-specific), `VolumeControl.tsx` (UI)                                            |
-| New preference field            | `config.rs` (add to `Preferences` struct + default), `types.ts` (TS interface), `SettingsPanel.tsx` (UI)   |
-| New Tauri command               | Domain module (Rust), `lib.rs` (register in `invoke_handler`), frontend component                          |
-| New keyboard shortcut command   | `tray.rs` (`execute_command` match arm), `config.rs` (default keybinding)                                  |
-| New UI component                | `src/components/NewComponent.tsx` + `NewComponent.test.tsx`, wire into `App.tsx`                           |
-| Tray menu change                | `tray.rs` (`build_tray_menu`)                                                                              |
-| Window tiling (macOS)           | `tiling.rs` (layouts, AX API), `tray.rs` (Tiling submenu), `config.rs` (`TilingPreferences`)               |
-| Window positioning              | `tray.rs` (`position_window_near_tray`) -- read the doc comment first!                                     |
-| Night mode schedule logic       | `lib.rs` (`check_night_mode_schedule`, `is_night_time`)                                                    |
-| Sidecar version bump            | `package.json` (`displayDjCliVersion`), review [upstream changes](https://github.com/synle/display-dj-cli) |
-| CI changes                      | `.github/workflows/build.yml` or `release.yml`                                                             |
+| Task                            | Files to change                                                                                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| New brightness/contrast feature | `display.rs` (Rust), `MonitorControl.tsx` or `AllMonitorsControl.tsx` (UI)                                                                                   |
+| New dark mode behavior          | `dark_mode.rs` (Rust), `DarkModeToggle.tsx` (UI)                                                                                                             |
+| New volume behavior             | `volume.rs` (Rust, platform-specific), `VolumeControl.tsx` (UI)                                                                                              |
+| New preference field            | `config.rs` (add to `Preferences` struct + default), `types.ts` (TS interface), `SettingsPanel.tsx` (UI)                                                     |
+| New Tauri command               | Domain module (Rust), `lib.rs` (register in `invoke_handler`), frontend component                                                                            |
+| New keyboard shortcut command   | `tray.rs` (`execute_command` match arm), `config.rs` (default keybinding)                                                                                    |
+| New UI component                | `src/components/NewComponent.tsx` + `NewComponent.test.tsx`, wire into `App.tsx`                                                                             |
+| Tray menu change                | `tray.rs` (`build_tray_menu`)                                                                                                                                |
+| Window tiling (macOS + Windows) | `tiling/mod.rs` (shared layout math), `tiling/macos.rs` (AX API), `tiling/windows.rs` (Win32), `tray.rs` (Tiling submenu), `config.rs` (`TilingPreferences`) |
+| Window positioning              | `tray.rs` (`position_window_near_tray`) -- read the doc comment first!                                                                                       |
+| Night mode schedule logic       | `lib.rs` (`check_night_mode_schedule`, `is_night_time`)                                                                                                      |
+| Sidecar version bump            | `package.json` (`displayDjCliVersion`), review [upstream changes](https://github.com/synle/display-dj-cli)                                                   |
+| CI changes                      | `.github/workflows/build.yml` or `release.yml`                                                                                                               |
 
 ---
 
@@ -577,14 +580,14 @@ Config directory: `~/Library/Application Support/display-dj/` (macOS), `%APPDATA
 
 Format: `command/<action>/<value>`
 
-| Action             | Values                                               | Effect                            |
-| ------------------ | ---------------------------------------------------- | --------------------------------- |
-| `changeBrightness` | 0-100                                                | Sets all monitors' brightness     |
-| `changeContrast`   | 0-100                                                | Sets all monitors' contrast       |
-| `changeDarkMode`   | `toggle`, `dark`, `light`                            | Toggles or sets dark mode         |
-| `changeVolume`     | 0-100                                                | Sets system volume                |
-| `changeProfile`    | Profile index (0, 1, 2, ...)                         | Applies a saved profile           |
-| `tile`             | Layout name (e.g. `leftHalf`, `maximize`, `restore`) | Tiles focused window (macOS only) |
+| Action             | Values                                               | Effect                                 |
+| ------------------ | ---------------------------------------------------- | -------------------------------------- |
+| `changeBrightness` | 0-100                                                | Sets all monitors' brightness          |
+| `changeContrast`   | 0-100                                                | Sets all monitors' contrast            |
+| `changeDarkMode`   | `toggle`, `dark`, `light`                            | Toggles or sets dark mode              |
+| `changeVolume`     | 0-100                                                | Sets system volume                     |
+| `changeProfile`    | Profile index (0, 1, 2, ...)                         | Applies a saved profile                |
+| `tile`             | Layout name (e.g. `leftHalf`, `maximize`, `restore`) | Tiles focused window (macOS + Windows) |
 
 ### Monitor metadata (monitorConfigs)
 
@@ -669,16 +672,17 @@ kill %1
 
 ## Known Limitations
 
-| Limitation                    | Details                                                                                                       |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| DDC/CI not universal          | Budget monitors and some HDMI connections may not support it                                                  |
-| Built-in HDMI on base M1/M2   | No DDC/CI support. Use USB-C/DisplayPort                                                                      |
-| Global shortcuts on Wayland   | Wayland restricts global hotkey capture. X11 works fine                                                       |
-| Tray clicks dead on macOS     | Sync Tauri commands or `write_debug_log()` in hot sync commands starve the run-loop. See rules 9-10 above     |
-| Tiling requires Accessibility | macOS tiling needs Accessibility permission. Without it, tile commands silently do nothing                    |
-| Tiling macOS-only             | Window tiling is only implemented for macOS. On Windows/Linux the tray submenu and Settings toggle are hidden |
-| Tray left-click on Linux      | AppIndicator doesn't always fire left-click                                                                   |
-| Dark mode on non-GNOME        | `gsettings` is GNOME-specific. KDE, XFCE not supported                                                        |
+| Limitation                    | Details                                                                                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| DDC/CI not universal          | Budget monitors and some HDMI connections may not support it                                                                          |
+| Built-in HDMI on base M1/M2   | No DDC/CI support. Use USB-C/DisplayPort                                                                                              |
+| Global shortcuts on Wayland   | Wayland restricts global hotkey capture. X11 works fine                                                                               |
+| Tray clicks dead on macOS     | Sync Tauri commands or `write_debug_log()` in hot sync commands starve the run-loop. See rules 9-10 above                             |
+| Tiling requires Accessibility | macOS tiling needs Accessibility permission. Without it, tile commands silently do nothing. Windows needs no special permissions      |
+| Tile Snap macOS-only          | Mouse edge snapping (Tile Snap) is only implemented for macOS. Keyboard shortcuts and tray menu tiling work on both macOS and Windows |
+| Tiling not on Linux           | Window tiling is not yet implemented on Linux. On Linux the tray submenu and Settings toggle are hidden                               |
+| Tray left-click on Linux      | AppIndicator doesn't always fire left-click                                                                                           |
+| Dark mode on non-GNOME        | `gsettings` is GNOME-specific. KDE, XFCE not supported                                                                                |
 
 ---
 
