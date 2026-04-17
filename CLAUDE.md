@@ -69,10 +69,10 @@ After making changes to frontend code (`src/`), config files, or docs, always ru
 
 ## Required Steps for Every Feature Change
 
-1. **Tests**: Always add tests to cover new code. Frontend components get `*.test.tsx` files; Rust modules get `#[cfg(test)]` unit tests. Run `npm test` and `cd src-tauri && cargo test` to verify all tests pass before finishing.
+1. **Tests**: Always add tests to cover new code. Frontend components get `*.test.tsx` files; Rust modules get `#[cfg(test)]` unit tests. If a function is hard to test directly (e.g., depends on platform APIs, hardware, or external services), mock the API boundary and test the logic. Run `npm test` and `cd src-tauri && cargo test` to verify all tests pass before finishing.
 2. **Formatting**: Always run `npx prettier --write` on all changed frontend files (`src/`, `*.ts`, `*.tsx`, `*.json`, `*.md`, `*.yml`).
 3. **Documentation**: Always update `CLAUDE.md`, `README.md` (if it exists), and `CONTRIBUTING.md` to reflect any features added or removed — including new commands, preferences, HTTP routes, UI components, and architecture changes.
-4. **Method comments**: Always add doc comments to all new functions and methods. Rust uses `///` doc comments; TypeScript/React uses `/** */` JSDoc comments. Every public function, Tauri command, React component, and non-trivial helper must have a comment describing what it does.
+4. **Method comments**: Always document every new function, method, and test. Rust uses `///` doc comments; TypeScript/React uses `/** */` JSDoc comments. Every public function, Tauri command, React component, non-trivial helper, and test case must have a comment describing what it does or what it verifies.
 5. **CLI sidecar version bumps**: When updating `displayDjCliVersion` in `package.json`, always check the [display-dj-cli changelog and commits](https://github.com/synle/display-dj-cli) for upstream changes (new endpoints, changed response formats, removed features). Update our code to use any new APIs and remove usage of deprecated ones. Document the changes in CLAUDE.md and CONTRIBUTING.md.
 
 ## macOS Tray Icon Pitfall (Critical)
