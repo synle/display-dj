@@ -295,6 +295,30 @@ unsafe fn get_window_rect(window: &CfRef) -> Option<Rect> {
     })
 }
 
+/// Query the minimum size a window allows via AXMinimumSize.
+unsafe fn get_window_min_size(window: &CfRef) -> Option<(f64, f64)> {
+    let attr = cfstr("AXMinimumSize")?;
+    let mut val: CFTypeRef = std::ptr::null();
+    if AXUIElementCopyAttributeValue(window.as_ptr(), attr.as_ptr(), &mut val)
+        != K_AX_ERROR_SUCCESS
+    {
+        return None;
+    }
+    let val_ref = CfRef::new(val)?;
+    let mut size = CGSize {
+        width: 0.0,
+        height: 0.0,
+    };
+    if !AXValueGetValue(
+        val_ref.as_ptr(),
+        K_AX_VALUE_TYPE_CG_SIZE,
+        &mut size as *mut CGSize as *mut c_void,
+    ) {
+        return None;
+    }
+    Some((size.width, size.height))
+}
+
 /// Move a window to the given position (in points).
 unsafe fn set_window_position(window: &CfRef, x: f64, y: f64) -> bool {
     let mut point = CGPoint { x, y };
@@ -653,6 +677,7 @@ fn get_all_windows() -> Vec<WindowInfo> {
                 owner_pid: pid,
                 owner_name: owner,
                 bounds,
+                min_size: None,
             });
         }
         CFRelease(list);
@@ -716,10 +741,19 @@ fn spread_expose(app: &AppHandle) {
     }
 
     // Re-fetch windows after normalization
-    let all_windows = get_all_windows();
+    let mut all_windows = get_all_windows();
     if all_windows.is_empty() {
         log::info!("expose: no windows found");
         return;
+    }
+
+    // Populate min sizes via AX API for adaptive grid layout
+    for w in &mut all_windows {
+        unsafe {
+            if let Some(ax_win) = get_ax_window_by_id(w.owner_pid, w.window_id as u32) {
+                w.min_size = get_window_min_size(&ax_win);
+            }
+        }
     }
 
     let displays = get_display_visible_frames();
@@ -1013,9 +1047,18 @@ fn spread_expose_app(app: &AppHandle) {
     }
 
     // Re-fetch windows after normalization
-    let all_windows = get_all_windows();
+    let mut all_windows = get_all_windows();
     if all_windows.is_empty() {
         return;
+    }
+
+    // Populate min sizes via AX API for adaptive grid layout
+    for w in &mut all_windows {
+        unsafe {
+            if let Some(ax_win) = get_ax_window_by_id(w.owner_pid, w.window_id as u32) {
+                w.min_size = get_window_min_size(&ax_win);
+            }
+        }
     }
 
     let displays = get_display_visible_frames();

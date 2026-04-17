@@ -301,6 +301,8 @@ pub(crate) struct WindowInfo {
     pub owner_pid: i32,
     pub owner_name: String,
     pub bounds: Rect,
+    /// Minimum size the window allows (if known). Used by expose to avoid undersized cells.
+    pub min_size: Option<(f64, f64)>,
 }
 
 /// Build a deterministic, alphabetically-sorted window list from all windows.
@@ -329,6 +331,12 @@ pub(crate) fn build_sorted_window_list(windows: &[WindowInfo], max: usize) -> Ve
 }
 
 /// Lay out windows in a grid on a single display. Returns the number of windows placed.
+///
+/// Uses an adaptive layout when some windows have a minimum size that exceeds
+/// the default grid cell dimensions: normal-sized windows are placed first in a
+/// standard grid, then oversized windows get rows with fewer columns so their
+/// cells meet the minimum width requirement. The last window in an incomplete
+/// oversized row is right-aligned to the grid's right edge.
 pub(crate) fn layout_grid_on_display(
     ordered: &[&WindowInfo],
     display: &Rect,
@@ -339,28 +347,145 @@ pub(crate) fn layout_grid_on_display(
     if n == 0 {
         return 0;
     }
+
+    // Calculate the default grid dimensions
     let cols = (n as f64).sqrt().ceil() as usize;
     let rows = (n + cols - 1) / cols;
     let cell_w = (display.width - gap * (cols as f64 + 1.0)) / cols as f64;
     let cell_h = (display.height - gap * (rows as f64 + 1.0)) / rows as f64;
 
-    for (idx, win_info) in ordered.iter().enumerate() {
-        let col = idx % cols;
-        let row = idx / cols;
-        let x = display.x + gap + col as f64 * (cell_w + gap);
-        let y = display.y + gap + row as f64 * (cell_h + gap);
+    // Partition: windows that fit in a normal cell vs those that don't
+    let mut fits: Vec<&WindowInfo> = Vec::new();
+    let mut oversized: Vec<&WindowInfo> = Vec::new();
+    for &w in ordered {
+        if let Some((min_w, min_h)) = w.min_size {
+            if min_w > cell_w || min_h > cell_h {
+                oversized.push(w);
+                continue;
+            }
+        }
+        fits.push(w);
+    }
 
+    // If nothing is oversized, use the simple grid for all
+    if oversized.is_empty() {
+        for (idx, win_info) in ordered.iter().enumerate() {
+            let col = idx % cols;
+            let row = idx / cols;
+            let x = display.x + gap + col as f64 * (cell_w + gap);
+            let y = display.y + gap + row as f64 * (cell_h + gap);
+            set_rect(
+                win_info,
+                &Rect {
+                    x,
+                    y,
+                    width: cell_w,
+                    height: cell_h,
+                },
+            );
+        }
+        return n;
+    }
+
+    // Adaptive layout: normal windows first, then oversized in wider rows
+    let total = fits.len() + oversized.len();
+    // Recalculate: how many rows do normal windows need?
+    let normal_cols = if fits.is_empty() {
+        1
+    } else {
+        (fits.len() as f64).sqrt().ceil() as usize
+    };
+    let normal_rows = if fits.is_empty() {
+        0
+    } else {
+        (fits.len() + normal_cols - 1) / normal_cols
+    };
+
+    // For oversized windows, figure out how many columns each row needs
+    // by finding the max min_width among oversized windows
+    let max_min_w = oversized
+        .iter()
+        .filter_map(|w| w.min_size.map(|(mw, _)| mw))
+        .fold(0.0f64, f64::max);
+    let oversized_cols = if max_min_w > 0.0 {
+        ((display.width - gap) / (max_min_w + gap)).floor() as usize
+    } else {
+        normal_cols
+    }
+    .max(1);
+    let oversized_rows = if oversized.is_empty() {
+        0
+    } else {
+        (oversized.len() + oversized_cols - 1) / oversized_cols
+    };
+
+    let total_rows = normal_rows + oversized_rows;
+    let row_h = (display.height - gap * (total_rows as f64 + 1.0)) / total_rows as f64;
+
+    // Layout normal windows
+    let normal_cell_w = if normal_cols > 0 {
+        (display.width - gap * (normal_cols as f64 + 1.0)) / normal_cols as f64
+    } else {
+        0.0
+    };
+
+    for (idx, win_info) in fits.iter().enumerate() {
+        let col = idx % normal_cols;
+        let row = idx / normal_cols;
+        let x = display.x + gap + col as f64 * (normal_cell_w + gap);
+        let y = display.y + gap + row as f64 * (row_h + gap);
         set_rect(
             win_info,
             &Rect {
                 x,
                 y,
-                width: cell_w,
-                height: cell_h,
+                width: normal_cell_w,
+                height: row_h,
             },
         );
     }
-    n
+
+    // Layout oversized windows
+    let oversized_cell_w = if oversized_cols > 0 {
+        (display.width - gap * (oversized_cols as f64 + 1.0)) / oversized_cols as f64
+    } else {
+        0.0
+    };
+
+    for (idx, win_info) in oversized.iter().enumerate() {
+        let col = idx % oversized_cols;
+        let row = normal_rows + idx / oversized_cols;
+        let is_last_row = row == total_rows - 1;
+        let items_in_this_row = if is_last_row {
+            let remaining = oversized.len() - (row - normal_rows) * oversized_cols;
+            remaining.min(oversized_cols)
+        } else {
+            oversized_cols
+        };
+
+        // Right-align the last window in an incomplete row
+        let x = if is_last_row
+            && col == items_in_this_row - 1
+            && items_in_this_row < oversized_cols
+        {
+            // Right-align: position so right edge aligns with grid right edge
+            display.x + display.width - gap - oversized_cell_w
+        } else {
+            display.x + gap + col as f64 * (oversized_cell_w + gap)
+        };
+        let y = display.y + gap + row as f64 * (row_h + gap);
+        set_rect(
+            win_info,
+            &Rect {
+                x,
+                y,
+                width: oversized_cell_w,
+                height: row_h,
+            },
+        );
+    }
+
+    total
 }
 
 // ---------------------------------------------------------------------------
