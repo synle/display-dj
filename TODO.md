@@ -75,7 +75,7 @@
 
 #### Implementation Phases
 
-##### Phase 1: Keyboard & Menu Tiling (macOS — DONE)
+##### Phase 1: Keyboard & Menu Tiling (macOS — DONE, Windows — DONE)
 
 - [x] 19 tiling layouts (halves, thirds, two-thirds, quarters, maximize, restore)
 - [x] Tiling commands via `command/tile/{layout}` bound to keyboard shortcuts
@@ -85,6 +85,9 @@
 - [x] Multi-monitor support — tiles on the display the window is currently on
 - [x] Original position saved per-window for restore
 - [x] macOS Accessibility API (AXUIElement) with NSScreen visible frames
+- [x] Windows Win32 API (GetForegroundWindow, SetWindowPos, EnumDisplayMonitors, EnumWindows) via `windows` crate v0.58 — no special permissions needed
+- [x] All 19 layouts + restore + Exposé + App Exposé work on Windows
+- [x] Tiling code refactored from single `tiling.rs` into module directory: `tiling/mod.rs` (shared types + layout math), `tiling/macos.rs`, `tiling/windows.rs`
 
 ##### Phase 2: Tile Snap (Mouse Edge Snapping) — DONE
 
@@ -103,11 +106,12 @@ A `tile_expose` command that lays out all open windows in a grid for overview �
 
 #### Platform Priority Order
 
-1. **macOS** — Phase 1 done, Phase 2/3 planned
-2. **Windows + Linux X11** — same Phase 1 features, proven approaches
-3. **KDE Wayland** — moderate effort, users actually want tiling help
-4. **GNOME Wayland** — largest user base but highest maintenance cost
-5. **Skip or deprioritize:** Sway + Hyprland — those users already have tiling built into their compositor
+1. **macOS** — Phase 1 done, Phase 2 (Tile Snap) done, Phase 3 (Exposé) done
+2. **Windows** — Phase 1 done (v4.0.0: keyboard shortcuts + tray menu, all 19 layouts + restore + Exposé + App Exposé). Uses Win32 API (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`) via `windows` crate v0.58. No special permissions needed. Tile Snap (mouse edge snapping) not yet implemented.
+3. **Linux X11** — same Phase 1 features, proven approaches (not yet started)
+4. **KDE Wayland** — moderate effort, users actually want tiling help
+5. **GNOME Wayland** — largest user base but highest maintenance cost
+6. **Skip or deprioritize:** Sway + Hyprland — those users already have tiling built into their compositor
 
 #### Tiling Layouts & Requirements
 

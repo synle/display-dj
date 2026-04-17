@@ -41,8 +41,8 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
 - **Global keyboard shortcuts** -- work even when the app isn't focused; fully configurable
 - **Monitor renaming** -- click any display name to give it a custom label
-- **Window tiling** (macOS) -- tile windows to halves, thirds, two-thirds, quarters, or maximize via keyboard shortcuts or tray menu
-- **Exposé** (macOS) -- spread all windows into a grid overview, or just the current app's windows. Deterministic alphabetical layout with multi-display overflow
+- **Window tiling** (macOS + Windows) -- tile windows to halves, thirds, two-thirds, quarters, or maximize via keyboard shortcuts or tray menu
+- **Exposé** (macOS + Windows) -- spread all windows into a grid overview, or just the current app's windows. Deterministic alphabetical layout with multi-display overflow
 - **Settings panel** -- tabbed UI (General + Tiling) with auto-save. Configure brightness, contrast, monitors, night mode, snap zones, exposé grid size, and launch at login
 - **System tray app** -- lives in your menu bar / system tray with no dock or taskbar clutter
 
@@ -124,7 +124,7 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 | Shift + F3-F5   | Brightness 0% / 50% / 100%   |
 | Shift + F10-F12 | Volume 0% / 10% / 100%       |
 
-**Window Tiling** (macOS only):
+**Window Tiling** (macOS + Windows):
 
 | Keys                  | Action                           |
 | --------------------- | -------------------------------- |
@@ -141,9 +141,9 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 | Ctrl + Shift + A      | App Exposé (current app only)    |
 | Ctrl + Down           | App Exposé (current app only)    |
 
-## Window Tiling (macOS)
+## Window Tiling (macOS + Windows)
 
-Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or maximize using keyboard shortcuts or the **Tiling** submenu in the tray icon's right-click menu.
+Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or maximize using keyboard shortcuts or the **Tiling** submenu in the tray icon's right-click menu. All 19 layouts, restore, Exposé, and App Exposé work on both macOS and Windows. Tile Snap (mouse edge snapping) is currently macOS-only.
 
 ### Exposé
 
@@ -157,14 +157,22 @@ Both modes normalize windows first (unminimize and exit fullscreen), then lay ou
 ### Enabling Tiling
 
 1. Open the tray menu and go to **Tiling > Enable Tiling**, or toggle **Enable Window Tiling** in the Settings panel (Tiling tab)
-2. Grant **Accessibility permission** (required for tiling to move/resize other apps' windows):
-   - Open **System Settings > Privacy & Security > Accessibility**
-   - Click the **+** button
-   - Add **Display DJ** (from `/Applications/Display DJ.app`)
-   - Make sure the toggle next to it is **on**
-   - If running in development mode (`npx tauri dev`), add your **terminal app** (e.g., iTerm, Terminal.app) instead
 
-> **Note:** Tiling will not work without Accessibility permission. The Settings panel shows a warning with a link to these instructions if permission is missing.
+#### macOS: Accessibility Permission
+
+macOS requires Accessibility permission for tiling to move/resize other apps' windows:
+
+1. Open **System Settings > Privacy & Security > Accessibility**
+2. Click the **+** button
+3. Add **Display DJ** (from `/Applications/Display DJ.app`)
+4. Make sure the toggle next to it is **on**
+5. If running in development mode (`npx tauri dev`), add your **terminal app** (e.g., iTerm, Terminal.app) instead
+
+> **Note:** Tiling will not work without Accessibility permission on macOS. The Settings panel shows a warning with a link to these instructions if permission is missing.
+
+#### Windows
+
+No special permissions are needed. Tiling works out of the box using Win32 APIs.
 
 ### Tiling Preferences
 
