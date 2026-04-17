@@ -250,7 +250,7 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
     let menu = build_tray_menu(handle)?;
 
     TrayIconBuilder::with_id("main-tray")
-        .icon(app.default_window_icon().unwrap().clone())
+        .icon(crate::tray_icon::generate_tray_icon(false, false, false))
         .tooltip("Display DJ")
         .menu(&menu)
         .show_menu_on_left_click(false)
