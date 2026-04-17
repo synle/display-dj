@@ -490,6 +490,85 @@ pub(crate) fn layout_grid_on_display(
     total
 }
 
+/// Distribute windows across multiple displays with overflow for oversized windows.
+///
+/// For each display (except the last), computes the grid cell size based on
+/// `max_per_display` and only places windows whose `min_size` fits within
+/// those cells. Oversized windows are deferred to subsequent displays where
+/// fewer windows mean larger cells. The last display uses the adaptive layout
+/// (wider rows for oversized windows) as a catch-all fallback.
+///
+/// Returns the total number of windows placed across all displays.
+pub(crate) fn layout_across_displays(
+    ordered: &[&WindowInfo],
+    displays: &[Rect],
+    max_per_display: usize,
+    gap: f64,
+    set_rect: &dyn Fn(&WindowInfo, &Rect),
+) -> usize {
+    if ordered.is_empty() || displays.is_empty() {
+        return 0;
+    }
+
+    let mut remaining: Vec<&WindowInfo> = ordered.to_vec();
+    let mut total_placed = 0;
+    let num_displays = displays.len();
+
+    for (i, display) in displays.iter().enumerate() {
+        if remaining.is_empty() {
+            break;
+        }
+
+        let is_last_display = i == num_displays - 1;
+        let batch_size = remaining.len().min(max_per_display);
+
+        if is_last_display {
+            // Last display: use adaptive layout for whatever remains (up to max)
+            let batch: Vec<&WindowInfo> = remaining.drain(..batch_size).collect();
+            let placed = layout_grid_on_display(&batch, display, gap, set_rect);
+            total_placed += placed;
+        } else {
+            // Not last display: compute grid cell size, separate fits from oversized
+            let cols = (batch_size as f64).sqrt().ceil() as usize;
+            let rows = (batch_size + cols - 1) / cols;
+            let cell_w = (display.width - gap * (cols as f64 + 1.0)) / cols as f64;
+            let cell_h = (display.height - gap * (rows as f64 + 1.0)) / rows as f64;
+
+            let mut fits: Vec<&WindowInfo> = Vec::new();
+            let mut oversized: Vec<&WindowInfo> = Vec::new();
+
+            for &w in remaining.iter().take(batch_size) {
+                if let Some((min_w, min_h)) = w.min_size {
+                    if min_w > cell_w || min_h > cell_h {
+                        oversized.push(w);
+                        continue;
+                    }
+                }
+                fits.push(w);
+            }
+
+            if oversized.is_empty() {
+                // All fit: standard layout
+                layout_grid_on_display(&fits, display, gap, set_rect);
+                total_placed += fits.len();
+                remaining = remaining.split_off(batch_size);
+            } else {
+                // Place only fits; oversized go to next display
+                if !fits.is_empty() {
+                    layout_grid_on_display(&fits, display, gap, set_rect);
+                    total_placed += fits.len();
+                }
+                // Rebuild remaining: oversized from this batch + everything after the batch
+                let after_batch: Vec<&WindowInfo> = remaining[batch_size..].to_vec();
+                remaining = oversized;
+                remaining.extend(after_batch);
+            }
+        }
+    }
+
+    total_placed
+}
+
 // ---------------------------------------------------------------------------
 // Snap zone detection (shared geometry, used by macOS tile snap)
 // ---------------------------------------------------------------------------
@@ -1136,6 +1215,182 @@ mod tests {
         assert!((rects[0].y - 20.0).abs() < 1.0);
         assert!((rects[0].width - 960.0).abs() < 1.0);
         assert!((rects[0].height - 760.0).abs() < 1.0);
+    }
+
+    // -- layout_across_displays --
+
+    /// Helper: create a WindowInfo with a minimum size constraint.
+    fn win_with_min(id: i64, name: &str, min_w: f64, min_h: f64) -> WindowInfo {
+        WindowInfo {
+            window_id: id,
+            owner_pid: 1,
+            owner_name: name.to_string(),
+            bounds: Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+            },
+            min_size: Some((min_w, min_h)),
+        }
+    }
+
+    #[test]
+    fn test_across_displays_empty() {
+        let ordered: Vec<&WindowInfo> = vec![];
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|_, _| {});
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_across_displays_no_displays() {
+        let ws = vec![win(1, "A")];
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let displays: Vec<Rect> = vec![];
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|_, _| {});
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_across_displays_all_fit_single_display() {
+        let ws = vec![win(1, "A"), win(2, "B"), win(3, "C"), win(4, "D")];
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let ids = std::cell::RefCell::new(Vec::new());
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|w, _| {
+            ids.borrow_mut().push(w.window_id);
+        });
+        assert_eq!(count, 4);
+        assert_eq!(ids.into_inner().len(), 4);
+    }
+
+    #[test]
+    fn test_across_displays_normal_overflow() {
+        // 10 normal windows, max 9 per display, 2 displays
+        // Display 1 gets 9, display 2 gets 1
+        let ws: Vec<WindowInfo> = (1..=10).map(|i| win(i, "App")).collect();
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let displays = vec![
+            display(0.0, 0.0, 1920.0, 1080.0),
+            display(1920.0, 0.0, 1920.0, 1080.0),
+        ];
+        let placed_on = std::cell::RefCell::new(Vec::new());
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|w, rect| {
+            // Track which display each window landed on by checking x coordinate
+            let disp_idx = if rect.x < 1920.0 { 0 } else { 1 };
+            placed_on.borrow_mut().push((w.window_id, disp_idx));
+        });
+        assert_eq!(count, 10);
+        let placed = placed_on.into_inner();
+        let on_d0 = placed.iter().filter(|p| p.1 == 0).count();
+        let on_d1 = placed.iter().filter(|p| p.1 == 1).count();
+        assert_eq!(on_d0, 9);
+        assert_eq!(on_d1, 1);
+    }
+
+    #[test]
+    fn test_across_displays_oversized_overflow_to_next() {
+        // 9 windows on a 1000x800 display, max_per_display=9 → 3x3 grid
+        // Cell size ~333x266. Windows 8 and 9 have min_size 500x100 (too wide).
+        // Display 1 should get 7 normal windows.
+        // Display 2 should get the 2 oversized windows.
+        let mut ws: Vec<WindowInfo> = (1..=7).map(|i| win(i, "Normal")).collect();
+        ws.push(win_with_min(8, "Steam", 500.0, 100.0));
+        ws.push(win_with_min(9, "Chrome", 500.0, 100.0));
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let displays = vec![
+            display(0.0, 0.0, 1000.0, 800.0),
+            display(1000.0, 0.0, 1000.0, 800.0),
+        ];
+        let placed_on = std::cell::RefCell::new(Vec::new());
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|w, rect| {
+            let disp_idx = if rect.x < 1000.0 { 0 } else { 1 };
+            placed_on.borrow_mut().push((w.window_id, disp_idx));
+        });
+        assert_eq!(count, 9);
+        let placed = placed_on.into_inner();
+        // Normal windows on display 0
+        for id in 1..=7 {
+            assert!(
+                placed.iter().any(|p| p.0 == id && p.1 == 0),
+                "window {} should be on display 0",
+                id
+            );
+        }
+        // Oversized windows on display 1
+        for id in 8..=9 {
+            assert!(
+                placed.iter().any(|p| p.0 == id && p.1 == 1),
+                "window {} should be on display 1",
+                id
+            );
+        }
+    }
+
+    #[test]
+    fn test_across_displays_oversized_fallback_on_last_display() {
+        // Only 1 display: oversized windows must still be placed (adaptive fallback)
+        let mut ws: Vec<WindowInfo> = (1..=3).map(|i| win(i, "Normal")).collect();
+        ws.push(win_with_min(4, "Steam", 800.0, 100.0));
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let displays = vec![display(0.0, 0.0, 1000.0, 800.0)];
+        let ids = std::cell::RefCell::new(Vec::new());
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|w, _| {
+            ids.borrow_mut().push(w.window_id);
+        });
+        // All 4 should be placed (last/only display uses adaptive layout)
+        assert_eq!(count, 4);
+        assert_eq!(ids.into_inner().len(), 4);
+    }
+
+    #[test]
+    fn test_across_displays_all_oversized_three_displays() {
+        // 3 oversized windows, 3 displays, max 9 per display
+        // Display 1 and 2 skip them, display 3 (last) catches all
+        let ws: Vec<WindowInfo> = (1..=3)
+            .map(|i| win_with_min(i, "Steam", 800.0, 100.0))
+            .collect();
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let displays = vec![
+            display(0.0, 0.0, 1000.0, 800.0),
+            display(1000.0, 0.0, 1000.0, 800.0),
+            display(2000.0, 0.0, 1000.0, 800.0),
+        ];
+        let ids = std::cell::RefCell::new(Vec::new());
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|w, _| {
+            ids.borrow_mut().push(w.window_id);
+        });
+        assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn test_across_displays_oversized_fits_on_second_display() {
+        // 5 normal + 2 oversized, max 9 per display, 2 displays
+        // Display 1 (1000x800): 9 windows → 3x3, cell ~333x266
+        //   Oversized min_width=400 > 333 → overflow
+        //   Display 1 places 5 normal
+        // Display 2 (1000x800): 2 oversized → 2x1, cell ~500x800
+        //   min_width=400 < 500 → they fit normally
+        let mut ws: Vec<WindowInfo> = (1..=5).map(|i| win(i, "Normal")).collect();
+        ws.push(win_with_min(6, "Steam", 400.0, 100.0));
+        ws.push(win_with_min(7, "Chrome", 400.0, 100.0));
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let displays = vec![
+            display(0.0, 0.0, 1000.0, 800.0),
+            display(1000.0, 0.0, 1000.0, 800.0),
+        ];
+        let placed_on = std::cell::RefCell::new(Vec::new());
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|w, rect| {
+            let disp_idx = if rect.x < 1000.0 { 0 } else { 1 };
+            placed_on.borrow_mut().push((w.window_id, disp_idx));
+        });
+        assert_eq!(count, 7);
+        let placed = placed_on.into_inner();
+        let on_d0 = placed.iter().filter(|p| p.1 == 0).count();
+        let on_d1 = placed.iter().filter(|p| p.1 == 1).count();
+        assert_eq!(on_d0, 5);
+        assert_eq!(on_d1, 2);
     }
 
     // -- find_display_for_window edge cases --
