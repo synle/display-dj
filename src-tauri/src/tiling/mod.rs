@@ -705,6 +705,16 @@ pub fn get_accessibility_trusted() -> bool {
     }
 }
 
+/// Tauri command: open the macOS Accessibility settings pane.
+/// On non-macOS platforms this is a no-op.
+#[tauri::command]
+pub fn open_accessibility_settings() {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = open::that("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+    }
+}
+
 /// Execute a tiling command on the focused window.
 /// `layout_str` is a camelCase layout name (e.g. "leftHalf") or "restore".
 pub fn execute_tile(app: &AppHandle, layout_str: &str) {

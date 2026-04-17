@@ -31,6 +31,10 @@ mod tiling_stubs {
     pub fn get_accessibility_trusted() -> bool {
         false
     }
+
+    /// No-op on unsupported platforms.
+    #[tauri::command]
+    pub fn open_accessibility_settings() {}
 }
 
 /// Returns the current display-dj sidecar HTTP server port.
@@ -379,10 +383,14 @@ pub fn run() {
             tiling::get_tiling_supported,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling::get_accessibility_trusted,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            tiling::open_accessibility_settings,
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             tiling_stubs::get_tiling_supported,
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             tiling_stubs::get_accessibility_trusted,
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            tiling_stubs::open_accessibility_settings,
         ])
         .setup(move |app| {
             // Kill any stale sidecar processes from a previous run
