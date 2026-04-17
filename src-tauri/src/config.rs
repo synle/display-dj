@@ -574,10 +574,16 @@ pub fn set_tiling_enabled(state: &crate::AppState, enabled: bool) {
     }
 }
 
-/// Returns the app version string (set at compile time from package.json).
+/// Returns the app version string with architecture suffix (e.g. "5.0.0 (arm64)").
+/// Version is set at compile time; architecture is detected via `std::env::consts::ARCH`.
 #[tauri::command]
 pub fn get_app_version() -> String {
-    env!("APP_VERSION").to_string()
+    let arch = match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        "x86_64" => "x64",
+        other => other,
+    };
+    format!("{} ({})", env!("APP_VERSION"), arch)
 }
 
 #[cfg(test)]
@@ -838,8 +844,14 @@ mod tests {
     fn test_get_app_version() {
         let version = get_app_version();
         assert!(!version.is_empty());
-        // Should be a valid semver-like string
+        // Should be a valid semver-like string with arch suffix
         assert!(version.contains('.'));
+        assert!(version.contains('('));
+        assert!(
+            version.contains("arm64") || version.contains("x64"),
+            "version should contain arch: {}",
+            version
+        );
     }
 
     #[test]
