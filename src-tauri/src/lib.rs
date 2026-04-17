@@ -54,6 +54,41 @@ pub struct AppState {
     pub tiling_state: std::sync::Mutex<tiling::TilingState>,
 }
 
+/// Kill any stale display-dj-server sidecar processes left over from a previous run.
+/// This prevents port conflicts and zombie processes when the app crashed or was force-quit.
+fn kill_stale_sidecars() {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let output = std::process::Command::new("pkill")
+            .args(["-f", "display-dj-server.*serve"])
+            .output();
+        match output {
+            Ok(o) if o.status.success() => {
+                log::info!("killed stale display-dj-server process(es)");
+            }
+            _ => {
+                log::info!("no stale display-dj-server processes found");
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows the sidecar binary name includes .exe
+        let output = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "display-dj-server*.exe"])
+            .output();
+        match output {
+            Ok(o) if o.status.success() => {
+                log::info!("killed stale display-dj-server process(es)");
+            }
+            _ => {
+                log::info!("no stale display-dj-server processes found");
+            }
+        }
+    }
+}
+
 /// Find an available port starting from the default.
 fn find_available_port(start: u16) -> u16 {
     for port in start..start + 100 {
@@ -316,6 +351,9 @@ pub fn run() {
             tiling_stubs::get_accessibility_trusted,
         ])
         .setup(move |app| {
+            // Kill any stale sidecar processes from a previous run
+            kill_stale_sidecars();
+
             // Find an available port and store it
             let port = find_available_port(51337);
             SERVER_PORT.store(port, Ordering::Relaxed);
