@@ -262,10 +262,12 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
             "dark_mode" => {
                 let url = format!("{}/dark", base_url());
                 http_get(url);
+                crate::tray_icon::set_dark_mode_state(app, true);
             }
             "light_mode" => {
                 let url = format!("{}/light", base_url());
                 http_get(url);
+                crate::tray_icon::set_dark_mode_state(app, false);
             }
             "open_prefs" => {
                 let _ = crate::config::open_preferences_file();
@@ -816,16 +818,24 @@ fn execute_command(app: &AppHandle, command: &str) {
                     std::thread::spawn(move || {
                         if let Ok(resp) = reqwest::blocking::get(format!("{}/theme", base_clone)) {
                             if let Ok(text) = resp.text() {
-                                let route = if text.contains("dark") { "light" } else { "dark" };
+                                let is_dark = text.contains("dark");
+                                let route = if is_dark { "light" } else { "dark" };
                                 let _ = reqwest::blocking::get(format!("{}/{}", base_clone, route));
+                                crate::tray_icon::set_dark_mode_state(&app_clone, !is_dark);
                             }
                         }
                         let _ = app_clone.emit("dark-mode-changed", ());
                     });
                     return;
                 }
-                "dark" => format!("{}/dark", base),
-                "light" => format!("{}/light", base),
+                "dark" => {
+                    crate::tray_icon::set_dark_mode_state(app, true);
+                    format!("{}/dark", base)
+                }
+                "light" => {
+                    crate::tray_icon::set_dark_mode_state(app, false);
+                    format!("{}/light", base)
+                }
                 _ => return,
             };
             http_get_then_emit(url, app.clone(), "dark-mode-changed");
@@ -838,7 +848,9 @@ fn execute_command(app: &AppHandle, command: &str) {
         }
         ["command", "changeVolume", value] => {
             if let Ok(val) = value.parse::<u32>() {
-                let url = format!("{}/set_volume/{}", base, val.min(100));
+                let clamped = val.min(100);
+                let url = format!("{}/set_volume/{}", base, clamped);
+                crate::tray_icon::set_muted_state(app, clamped == 0);
                 http_get_then_emit(url, app.clone(), "volume-changed");
             }
         }

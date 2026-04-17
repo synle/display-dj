@@ -7,13 +7,14 @@ pub fn get_keep_awake(state: tauri::State<'_, crate::AppState>) -> Result<bool, 
 
 /// Enables or disables keep-awake. When enabled, prevents the system from
 /// idle-sleeping and the display from turning off. When disabled, drops the
-/// guard and restores normal sleep behavior.
+/// guard and restores normal sleep behavior. Refreshes the tray icon indicator.
 ///
 /// This MUST remain `async` — sync Tauri commands that access `AppState`
 /// starve the macOS main-thread run-loop and break tray icon clicks.
 #[tauri::command]
 pub async fn set_keep_awake(
     enabled: bool,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     let mut guard = state.keep_awake.lock().map_err(|e| e.to_string())?;
@@ -36,6 +37,9 @@ pub async fn set_keep_awake(
             log::info!("keep_awake: disabled");
         }
     }
+    // Must drop guard before updating tray icon (which also locks keep_awake)
+    drop(guard);
+    crate::tray_icon::update_tray_icon(&app);
     Ok(())
 }
 
