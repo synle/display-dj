@@ -382,6 +382,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       value={tiling?.sideEdgeTrigger ?? 10}
                       min={0}
                       max={100}
+                      unit='px'
                       onChange={(v) => updateTiling('sideEdgeTrigger', v)}
                     />
                   </div>
@@ -391,6 +392,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       value={tiling?.topEdgeTrigger ?? 10}
                       min={0}
                       max={100}
+                      unit='px'
                       onChange={(v) => updateTiling('topEdgeTrigger', v)}
                     />
                   </div>
@@ -400,6 +402,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       value={tiling?.cornerTrigger ?? 50}
                       min={0}
                       max={200}
+                      unit='px'
                       onChange={(v) => updateTiling('cornerTrigger', v)}
                     />
                   </div>
