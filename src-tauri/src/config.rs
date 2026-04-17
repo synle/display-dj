@@ -153,17 +153,11 @@ impl Default for Preferences {
                 },
                 KeyBinding {
                     key: "Shift+F1".into(),
-                    command: CommandValue::Multiple(vec![
-                        "command/changeDarkMode/dark".into(),
-                        "command/changeBrightness/50".into(),
-                    ]),
+                    command: CommandValue::Single("command/changeProfile/1".into()),
                 },
                 KeyBinding {
                     key: "Shift+F2".into(),
-                    command: CommandValue::Multiple(vec![
-                        "command/changeDarkMode/light".into(),
-                        "command/changeBrightness/100".into(),
-                    ]),
+                    command: CommandValue::Single("command/changeProfile/2".into()),
                 },
                 KeyBinding {
                     key: "Shift+F3".into(),
@@ -277,7 +271,7 @@ impl Default for Preferences {
                 Profile {
                     name: "Focus".into(),
                     command: CommandValue::Multiple(vec![
-                        "command/changeBrightness/80".into(),
+                        "command/changeBrightness/75".into(),
                         "command/changeDarkMode/dark".into(),
                         "command/changeVolume/30".into(),
                     ]),
