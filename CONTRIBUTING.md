@@ -134,7 +134,8 @@ display-dj2/
 │       ├── dark_mode.rs          # Dark mode read/write via HTTP to display-dj server
 │       ├── volume.rs             # System volume get/set (platform-specific: osascript, PowerShell, pactl)
 │       ├── config.rs             # Preferences + monitor metadata persistence, NightModeSchedule, min brightness, reset to defaults (+ unit tests)
-│       └── tray.rs               # System tray menu, window positioning, keyboard shortcut dispatch
+│       ├── tray.rs               # System tray menu, window positioning, keyboard shortcut dispatch
+│       └── tray_icon.rs          # Programmatic tray icon generation (128x128, percentage-based layout, state indicators)
 │
 ├── index.html                    # HTML shell that loads src/main.tsx
 ├── package.json                  # Node deps (react, tauri API, vite, typescript)
@@ -239,7 +240,7 @@ Loads preferences via `invoke("get_preferences")`, saves via `invoke("save_prefe
 
 **Backend** (`tray.rs`):
 
-- `setup_tray()` -- creates the tray icon + context menu (Dark Mode, Light Mode, Profiles, Open App Preferences, Debug submenu, Reset to Default, Quit)
+- `setup_tray()` -- creates the tray icon + context menu (Dark Mode, Light Mode, Profiles, Tiling, Exposé, Debug submenu with Reset to Default, Quit)
 - Left-click toggles main window visibility; `position_window_near_tray()` places it near the tray icon
 - Right-click opens the context menu
 - `register_shortcuts()` -- reads key bindings from `Preferences`, registers via `tauri-plugin-global-shortcut`
@@ -295,13 +296,14 @@ Events are used when keyboard shortcuts change brightness/volume/dark mode from 
 
 **All registered commands** (defined in `lib.rs` `invoke_handler`):
 
-| Module      | Commands                                                                                                                                                     |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `display`   | `get_monitors`, `set_brightness`, `set_all_brightness`, `set_contrast`, `set_all_contrast`, `rename_monitor`, `save_monitor_order`, `set_monitor_visibility` |
-| `dark_mode` | `get_dark_mode`, `set_dark_mode`                                                                                                                             |
-| `volume`    | `get_volume`, `set_volume`                                                                                                                                   |
-| `config`    | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `get_app_version`                                                          |
-| `tray`      | `apply_profile`                                                                                                                                              |
+| Module       | Commands                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `display`    | `get_monitors`, `set_brightness`, `set_all_brightness`, `set_contrast`, `set_all_contrast`, `rename_monitor`, `save_monitor_order`, `set_monitor_visibility` |
+| `dark_mode`  | `get_dark_mode`, `set_dark_mode`                                                                                                                             |
+| `volume`     | `get_volume`, `set_volume`                                                                                                                                   |
+| `config`     | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `get_app_version`                                                          |
+| `keep_awake` | `get_keep_awake`, `set_keep_awake`                                                                                                                           |
+| `tray`       | `apply_profile`                                                                                                                                              |
 
 **Events emitted by backend**:
 
@@ -326,7 +328,7 @@ Events are used when keyboard shortcuts change brightness/volume/dark mode from 
 - `showContrast: boolean` -- whether contrast sliders are visible (from preferences)
 - `profiles: Profile[]` -- saved profiles from preferences
 - `expanded: boolean` -- collapsed (all-monitors) vs expanded (individual) view
-- `version: string` -- app version from `tauri.conf.json` (via `build.rs` compile-time env var `APP_VERSION`)
+- `version: string` -- app version from `tauri.conf.json` (via `build.rs` compile-time env var `APP_VERSION`). Dev builds append `[beta - <short_sha>]`; release builds show clean version only
 
 **Data flow**:
 
@@ -462,6 +464,8 @@ Inline `#[cfg(test)]` modules plus an integration smoke test.
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `config.rs`      | `Preferences` defaults, `MonitorMetadata` serde, `CommandValue` Single/Multiple serde, camelCase JSON fields, file roundtrips, malformed JSON fallback, `get_app_version`, effective min brightness, backward-compatible deserialization of old configs, preferences with monitor configs roundtrip |
 | `display.rs`     | `DjDisplay` to `Monitor` conversion (builtin, external DDC, null brightness, uid computation), `Monitor` serde (camelCase, roundtrip), `merge_with_configs` (rename, sort, empty label), `reconcile_migrated_configs`, `ensure_metadata_for_monitors`                                               |
+| `keep_awake.rs`  | KeepAwake guard creation, Mutex<Option<KeepAwake>> pattern (enable/disable/re-enable)                                                                                                                                                                                                               |
+| `tray_icon.rs`   | Percentage-to-pixel conversion, icon generation for all state combinations (dark/light, keep-awake, muted), filled rect and thick line drawing                                                                                                                                                      |
 | `tests/smoke.rs` | **Smoke test**: crate compiles and links, `AppState` is constructable, `run` function is exported                                                                                                                                                                                                   |
 
 Rust tests don't require external tools, hardware, or the display-dj server -- they test pure logic that works on all platforms.
@@ -486,11 +490,11 @@ Steps: checkout -> Node 20 -> Rust stable -> Linux deps (Ubuntu only) -> `npm in
 
 ### release.yml (production releases)
 
-Triggers on `v*` tags. Uses `tauri-apps/tauri-action` to build and upload platform installers to a GitHub draft release.
+Triggers on `v*` tags or manual `workflow_dispatch`. Deletes any existing release/tag first, then builds platform installers (`.dmg`, `.exe`, `.deb`, `.AppImage` — no `.tar.gz`/`.msi`/`.rpm`). Release notes are auto-generated from commit history (top 10 commits since last tag with full diff link). Sets `TAURI_RELEASE=true` so the version header shows clean version without `[beta]` suffix.
 
 ```bash
-git tag v3.0.0
-git push origin v3.0.0
+git tag v5.6.0
+git push origin v5.6.0
 ```
 
 ---
@@ -549,9 +553,9 @@ npx tauri build
 
 | Platform | Output                                                                                                                                         |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS    | `src-tauri/target/release/bundle/dmg/Display DJ_3.0.0_aarch64.dmg`                                                                             |
-| Windows  | `src-tauri\target\release\bundle\nsis\Display DJ_3.0.0_x64-setup.exe`                                                                          |
-| Linux    | `src-tauri/target/release/bundle/deb/display-dj_3.0.0_amd64.deb`<br>`src-tauri/target/release/bundle/appimage/display-dj_3.0.0_amd64.AppImage` |
+| macOS    | `src-tauri/target/release/bundle/dmg/Display DJ_5.6.0_aarch64.dmg`                                                                             |
+| Windows  | `src-tauri\target\release\bundle\nsis\Display DJ_5.6.0_x64-setup.exe`                                                                          |
+| Linux    | `src-tauri/target/release/bundle/deb/display-dj_5.6.0_amd64.deb`<br>`src-tauri/target/release/bundle/appimage/display-dj_5.6.0_amd64.AppImage` |
 
 ---
 

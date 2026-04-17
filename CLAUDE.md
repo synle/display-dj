@@ -15,7 +15,7 @@ npm install          # Install frontend dependencies
 npm run dev          # Start Vite dev server (frontend only)
 npm run build        # Build frontend (tsc + vite build)
 npx tauri dev        # Run full app in development mode
-npx tauri build      # Production build (binary + .app/.dmg/.msi/.deb)
+npx tauri build      # Production build (binary + .dmg/.exe/.deb/.AppImage)
 cargo check          # Check Rust compilation (from src-tauri/)
 ```
 
@@ -23,8 +23,8 @@ cargo check          # Check Rust compilation (from src-tauri/)
 
 The **single source of truth** for the app version is `src-tauri/tauri.conf.json` → `"version"`. This controls:
 
-1. **UI header**: `build.rs` reads `tauri.conf.json` and sets the compile-time env var `APP_VERSION`. The Tauri command `get_app_version()` (`config.rs`) returns it. The frontend `Header.tsx` displays it as "Display DJ v{version}".
-2. **Installer/bundle metadata**: Tauri uses this version for `.app`, `.dmg`, `.msi`, `.deb` bundles (shown in macOS "Get Info", Windows "Properties", etc.).
+1. **UI header**: `build.rs` reads `tauri.conf.json` and sets the compile-time env var `APP_VERSION`. For dev/local builds, the version includes `[beta - <short_sha>]` (e.g. `5.6.0 [beta - abc1234]`). Release builds (CI with `TAURI_RELEASE=true`) show the clean version only. The Tauri command `get_app_version()` (`config.rs`) returns it. The frontend `Header.tsx` displays it as "Display DJ v{version}".
+2. **Installer/bundle metadata**: Tauri uses this version for `.dmg`, `.exe`, `.deb`, `.AppImage` bundles (shown in macOS "Get Info", Windows "Properties", etc.).
 
 Other version fields:
 
@@ -106,7 +106,11 @@ These are documented inline in `config.rs` with WARNING comments.
 
 ## Dependencies
 
-The display-dj CLI sidecar handles all platform-specific display and volume dependencies internally. No external tools need to be installed for display or volume control. The `keepawake` crate handles sleep prevention natively on all platforms (macOS IOKit, Windows SetThreadExecutionState, Linux D-Bus). The `windows` crate (v0.58) is a Windows-only dependency used for Win32 window tiling APIs (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`). The `x11rb` crate (v0.13) is a Linux-only dependency (pure Rust X11 client) used for X11/EWMH window tiling (`_NET_ACTIVE_WINDOW`, `_NET_MOVERESIZE_WINDOW`, `_NET_CLIENT_LIST`, XRandr).
+The display-dj CLI sidecar handles all platform-specific display and volume dependencies internally. No external tools need to be installed for display or volume control. The `keepawake` crate handles sleep prevention natively on all platforms (macOS IOKit, Windows SetThreadExecutionState, Linux D-Bus). The `tauri-plugin-dialog` crate provides native OS confirmation dialogs (used by Reset to Default). The `windows` crate (v0.58) is a Windows-only dependency used for Win32 window tiling APIs (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`). The `x11rb` crate (v0.13) is a Linux-only dependency (pure Rust X11 client) used for X11/EWMH window tiling (`_NET_ACTIVE_WINDOW`, `_NET_MOVERESIZE_WINDOW`, `_NET_CLIENT_LIST`, XRandr).
+
+### Stale Sidecar Cleanup
+
+On startup, `kill_stale_sidecars()` kills any leftover `display-dj-server` processes from a previous run that didn't exit cleanly (crash, force-quit, installer update). Uses `pkill` on macOS/Linux and `taskkill` on Windows.
 
 ### Sidecar binaries
 
@@ -131,7 +135,7 @@ chmod 755 display-dj-server-*
 ### CI
 
 - **`build.yml`**: Runs tests and builds on all platforms for every push and PR. On PRs, posts a comment with artifact download links.
-- **`release.yml`**: Triggered by `v*` tags. Builds all platforms and uploads artifacts to a GitHub release (created as draft, publish manually).
+- **`release.yml`**: Triggered by `v*` tags or manual `workflow_dispatch`. Deletes any existing release/tag first (`--cleanup-tag`), then builds all platforms (dmg, nsis, deb, appimage only — no tar.gz/msi/rpm). Release notes are auto-generated from commit history (top 10 commits since last tag, with full diff link). Custom notes can be prepended via the `release_notes` workflow input. Sets `TAURI_RELEASE=true` so builds show clean version without `[beta]` suffix.
 
 ## GitHub Raw File URLs
 
