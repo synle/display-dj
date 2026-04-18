@@ -1071,6 +1071,21 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                 crate::wallpaper::stop_slideshow(&state);
             });
         }
+        // Remote slideshow: command/wallpaper/slideshow_remote/{url_to_zip}
+        ["command", "wallpaper", "slideshow_remote", ..] => {
+            let prefix = "command/wallpaper/slideshow_remote/";
+            if command.len() > prefix.len() {
+                let url = &command[prefix.len()..];
+                let app_clone = app.clone();
+                let url_owned = url.to_string();
+                std::thread::spawn(move || {
+                    let state = app_clone.state::<crate::AppState>();
+                    crate::wallpaper::download_and_start_remote_slideshow(&state, &url_owned);
+                });
+            } else {
+                log::warn!("wallpaper slideshow_remote command missing URL: {}", command);
+            }
+        }
         _ => {
             log::warn!("Unknown command: {}", command);
         }

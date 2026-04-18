@@ -506,6 +506,184 @@ pub(crate) fn resume_slideshow_if_enabled(state: &crate::AppState) {
     }
 }
 
+/// Maximum download size for remote wallpaper packs (500 MB).
+const MAX_REMOTE_PACK_SIZE: u64 = 500 * 1024 * 1024;
+
+/// Downloads a .zip file from a URL, extracts valid images to a subfolder
+/// in the wallpapers directory, then starts a slideshow on the extracted folder.
+pub(crate) fn download_and_start_remote_slideshow(
+    state: &crate::AppState,
+    url: &str,
+) {
+    crate::config::write_debug_log(state, &format!("wallpaper: remote slideshow — url={}", url));
+
+    // Validate URL ends in .zip
+    if !url.to_lowercase().ends_with(".zip") {
+        let msg = format!("wallpaper: invalid format — only .zip supported: {}", url);
+        crate::config::write_debug_log(state, &msg);
+        log::warn!("{}", msg);
+        return;
+    }
+
+    // Compute destination folder
+    let url_hash = format!("{:x}", md5::compute(url.as_bytes()));
+    let dest_dir = wallpapers_dir().join(format!("remote-{}", url_hash));
+
+    // Check if already extracted (idempotent)
+    if dest_dir.exists() && has_valid_images(&dest_dir) {
+        crate::config::write_debug_log(
+            state,
+            &format!("wallpaper: remote pack cached, skipping download: {}", dest_dir.display()),
+        );
+        start_slideshow(state, &dest_dir.to_string_lossy(), None, None);
+        return;
+    }
+
+    // Download
+    crate::config::write_debug_log(state, &format!("wallpaper: downloading remote pack from: {}", url));
+    let resp = match reqwest::blocking::get(url) {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = format!("wallpaper: download failed: {}", e);
+            crate::config::write_debug_log(state, &msg);
+            log::warn!("{}", msg);
+            return;
+        }
+    };
+
+    if !resp.status().is_success() {
+        let msg = format!("wallpaper: download returned HTTP {}: {}", resp.status(), url);
+        crate::config::write_debug_log(state, &msg);
+        log::warn!("{}", msg);
+        return;
+    }
+
+    // Check content length if available
+    if let Some(len) = resp.content_length() {
+        if len > MAX_REMOTE_PACK_SIZE {
+            let msg = format!(
+                "wallpaper: download too large ({} bytes, max {} bytes): {}",
+                len, MAX_REMOTE_PACK_SIZE, url
+            );
+            crate::config::write_debug_log(state, &msg);
+            log::warn!("{}", msg);
+            return;
+        }
+    }
+
+    let bytes = match resp.bytes() {
+        Ok(b) => b,
+        Err(e) => {
+            let msg = format!("wallpaper: failed to read download body: {}", e);
+            crate::config::write_debug_log(state, &msg);
+            log::warn!("{}", msg);
+            return;
+        }
+    };
+
+    crate::config::write_debug_log(
+        state,
+        &format!("wallpaper: download complete ({} bytes), extracting to: {}", bytes.len(), dest_dir.display()),
+    );
+
+    // Extract valid images from zip
+    std::fs::create_dir_all(&dest_dir).ok();
+
+    let cursor = std::io::Cursor::new(&bytes);
+    let mut archive = match zip::ZipArchive::new(cursor) {
+        Ok(a) => a,
+        Err(e) => {
+            let msg = format!("wallpaper: invalid zip file: {}", e);
+            crate::config::write_debug_log(state, &msg);
+            log::warn!("{}", msg);
+            std::fs::remove_dir_all(&dest_dir).ok();
+            return;
+        }
+    };
+
+    let mut extracted_count = 0u32;
+    for i in 0..archive.len() {
+        let mut file = match archive.by_index(i) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+
+        // Skip directories and non-image files
+        if file.is_dir() {
+            continue;
+        }
+
+        let name = file.name().to_string();
+        let ext = std::path::Path::new(&name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .unwrap_or_default();
+
+        if !VALID_EXTENSIONS.contains(&ext.as_str()) {
+            continue;
+        }
+
+        // Extract to flat directory (use just the filename, not nested paths)
+        let filename = std::path::Path::new(&name)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&name);
+
+        let dest_path = dest_dir.join(filename);
+
+        if let Ok(mut out_file) = std::fs::File::create(&dest_path) {
+            if std::io::copy(&mut file, &mut out_file).is_ok() {
+                // Verify extracted file is large enough
+                if let Ok(meta) = std::fs::metadata(&dest_path) {
+                    if meta.len() >= MIN_IMAGE_SIZE {
+                        extracted_count += 1;
+                    } else {
+                        std::fs::remove_file(&dest_path).ok();
+                    }
+                }
+            }
+        }
+    }
+
+    crate::config::write_debug_log(
+        state,
+        &format!("wallpaper: extracted {} images from remote pack", extracted_count),
+    );
+
+    if extracted_count == 0 {
+        let msg = "wallpaper: remote pack empty — no valid images found in zip";
+        crate::config::write_debug_log(state, msg);
+        log::warn!("{}", msg);
+        std::fs::remove_dir_all(&dest_dir).ok();
+        return;
+    }
+
+    // Start slideshow on the extracted folder
+    crate::config::write_debug_log(
+        state,
+        &format!("wallpaper: starting slideshow on remote pack: {}", dest_dir.display()),
+    );
+    start_slideshow(state, &dest_dir.to_string_lossy(), None, None);
+}
+
+/// Returns true if the directory contains at least one valid image file.
+fn has_valid_images(dir: &std::path::Path) -> bool {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let ext = entry.path()
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_lowercase())
+                .unwrap_or_default();
+            if VALID_EXTENSIONS.contains(&ext.as_str()) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Generates a default gradient wallpaper as a BMP file.
 /// Creates a vertical gradient from `color_top` to `color_bottom`.
 /// Returns the path to the generated file.
@@ -797,5 +975,43 @@ mod tests {
         assert_eq!(interval, None);
         assert_eq!(order, None);
         assert_eq!(path, "Pictures/nature");
+    }
+
+    /// Verifies URL validation rejects non-.zip URLs.
+    #[test]
+    fn test_remote_url_must_be_zip() {
+        assert!("https://example.com/pack.zip".to_lowercase().ends_with(".zip"));
+        assert!("https://example.com/pack.ZIP".to_lowercase().ends_with(".zip"));
+        assert!(!"https://example.com/pack.tar.gz".to_lowercase().ends_with(".zip"));
+        assert!(!"https://example.com/pack.rar".to_lowercase().ends_with(".zip"));
+    }
+
+    /// Verifies MD5 URL hashing produces a deterministic folder name.
+    #[test]
+    fn test_remote_pack_folder_name() {
+        let url = "https://example.com/nature-pack.zip";
+        let hash = format!("{:x}", md5::compute(url.as_bytes()));
+        let folder = format!("remote-{}", hash);
+        assert!(folder.starts_with("remote-"));
+        // Same URL always produces the same folder
+        let hash2 = format!("{:x}", md5::compute(url.as_bytes()));
+        assert_eq!(hash, hash2);
+    }
+
+    /// Verifies has_valid_images detects images in a directory.
+    #[test]
+    fn test_has_valid_images() {
+        let dir = std::env::temp_dir().join("test_has_valid_images");
+        std::fs::create_dir_all(&dir).unwrap();
+        // Empty dir
+        assert!(!has_valid_images(&dir));
+        // Add a valid image
+        std::fs::write(dir.join("test.jpg"), vec![0u8; 2048]).unwrap();
+        assert!(has_valid_images(&dir));
+        // Add only non-image
+        std::fs::remove_file(dir.join("test.jpg")).ok();
+        std::fs::write(dir.join("readme.txt"), b"hello").unwrap();
+        assert!(!has_valid_images(&dir));
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
