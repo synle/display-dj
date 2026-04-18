@@ -1099,6 +1099,7 @@ extern "C" {
         user_info: *mut c_void,
     ) -> CFMachPortRef;
     fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
+    fn CGEventTapIsEnabled(tap: CFMachPortRef) -> bool;
     fn CGEventGetLocation(event: CGEventRef) -> CGPoint;
     fn CFMachPortCreateRunLoopSource(
         allocator: CFAllocatorRef,
@@ -1384,6 +1385,18 @@ extern "C" fn snap_event_callback(
     event: CGEventRef,
     user_info: *mut c_void,
 ) -> CGEventRef {
+    // Bare-minimum log to confirm the callback fires at all.
+    // Only log mouse_down (type 1) to avoid flooding on drag events.
+    if event_type == K_CG_EVENT_LEFT_MOUSE_DOWN || event_type == K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT {
+        let ctx = unsafe { &*(user_info as *const SnapContext) };
+        if let Some(state) = ctx.app.try_state::<crate::AppState>() {
+            crate::config::write_debug_log(
+                &state,
+                &format!("tile_snap: callback fired — event_type={}", event_type),
+            );
+        }
+    }
+
     // Re-enable tap if it was disabled by timeout
     if event_type == K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT {
         let ctx = unsafe { &*(user_info as *const SnapContext) };
@@ -1789,6 +1802,16 @@ pub fn start_tile_snap(app: AppHandle) {
                 crate::config::write_debug_log(
                     &state,
                     "tile_snap: CGEventTap created successfully, listening for drags",
+                );
+            }
+
+            // Verify the tap is actually enabled before entering the run loop
+            let tap_enabled = CGEventTapIsEnabled(tap);
+            let ctx_ref2 = &*(raw as *const SnapContext);
+            if let Some(state) = ctx_ref2.app.try_state::<crate::AppState>() {
+                crate::config::write_debug_log(
+                    &state,
+                    &format!("tile_snap: entering CFRunLoopRun — tap_enabled={}", tap_enabled),
                 );
             }
             CFRunLoopRun(); // blocks forever
