@@ -301,7 +301,7 @@ Events are used when keyboard shortcuts change brightness/volume/dark mode from 
 | `display`    | `get_monitors`, `set_brightness`, `set_all_brightness`, `set_contrast`, `set_all_contrast`, `rename_monitor`, `save_monitor_order`, `set_monitor_visibility` |
 | `dark_mode`  | `get_dark_mode`, `set_dark_mode`                                                                                                                             |
 | `volume`     | `get_volume`, `set_volume`                                                                                                                                   |
-| `config`     | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `get_app_version`                                                          |
+| `config`     | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `open_app_folder`, `get_app_version`                                       |
 | `keep_awake` | `get_keep_awake`, `set_keep_awake`                                                                                                                           |
 | `tray`       | `apply_profile`                                                                                                                                              |
 

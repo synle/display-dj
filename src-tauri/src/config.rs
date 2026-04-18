@@ -648,6 +648,15 @@ pub fn open_debug_log() -> Result<(), String> {
     open::that(path).map_err(|e| e.to_string())
 }
 
+/// Opens the app's config directory in the OS file browser.
+/// This lets users browse the folder where preferences.json, debug.log, and other
+/// app files are stored (e.g. ~/Library/Application Support/display-dj/ on macOS).
+#[tauri::command]
+pub fn open_app_folder() -> Result<(), String> {
+    let dir = config_dir();
+    open::that(dir).map_err(|e| e.to_string())
+}
+
 /// Set debug_logging in preferences and persist to disk. Used by tray Debug submenu.
 pub fn set_debug_logging(state: &crate::AppState, enabled: bool) {
     if let Ok(mut prefs) = state.preferences.lock() {
@@ -1174,5 +1183,14 @@ mod tests {
         assert!(prefs.night_mode_schedule.enabled);
         assert!(prefs.night_mode_schedule.night_commands.is_empty());
         assert!(prefs.night_mode_schedule.day_commands.is_empty());
+    }
+
+    /// Verifies config_dir() returns a path ending with "display-dj" and that
+    /// the directory is created on disk (used by open_app_folder).
+    #[test]
+    fn test_config_dir_exists_and_named_correctly() {
+        let dir = super::config_dir();
+        assert!(dir.ends_with("display-dj"));
+        assert!(dir.exists(), "config_dir() should create the directory");
     }
 }
