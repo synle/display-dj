@@ -1065,51 +1065,12 @@ fn spread_expose_app(app: &AppHandle) {
 
 // --- CGEvent FFI ---
 
-type CGEventRef = *mut c_void;
-type CGEventTapProxy = *mut c_void;
-type CFMachPortRef = *mut c_void;
-type CFRunLoopSourceRef = *mut c_void;
-type CFRunLoopRef = *mut c_void;
 type DispatchQueue = *mut c_void;
 
-const K_CG_SESSION_EVENT_TAP: u32 = 1;
-const K_CG_HEAD_INSERT_EVENT_TAP: u32 = 0;
-const K_CG_EVENT_TAP_OPTION_LISTEN_ONLY: u32 = 1;
-const K_CG_EVENT_LEFT_MOUSE_DOWN: u32 = 1;
-const K_CG_EVENT_LEFT_MOUSE_UP: u32 = 2;
-const K_CG_EVENT_LEFT_MOUSE_DRAGGED: u32 = 6;
-const K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFFFFFE;
-
-/// CGEventTap callback signature.
-type CGEventTapCallBack = extern "C" fn(
-    proxy: CGEventTapProxy,
-    event_type: u32,
-    event: CGEventRef,
-    user_info: *mut c_void,
-) -> CGEventRef;
-
-#[link(name = "CoreGraphics", kind = "framework")]
-extern "C" {
-    fn CGEventTapCreate(
-        tap: u32,
-        place: u32,
-        options: u32,
-        events_of_interest: u64,
-        callback: CGEventTapCallBack,
-        user_info: *mut c_void,
-    ) -> CFMachPortRef;
-    fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
-    fn CGEventTapIsEnabled(tap: CFMachPortRef) -> bool;
-    fn CGEventGetLocation(event: CGEventRef) -> CGPoint;
-    fn CFMachPortCreateRunLoopSource(
-        allocator: CFAllocatorRef,
-        port: CFMachPortRef,
-        order: i64,
-    ) -> CFRunLoopSourceRef;
-    fn CFRunLoopGetCurrent() -> CFRunLoopRef;
-    fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
-    fn CFRunLoopRun();
-}
+/// NSEventType constants matching AppKit headers.
+const NS_EVENT_TYPE_LEFT_MOUSE_DOWN: u64 = 1;
+const NS_EVENT_TYPE_LEFT_MOUSE_UP: u64 = 2;
+const NS_EVENT_TYPE_LEFT_MOUSE_DRAGGED: u64 = 6;
 
 extern "C" {
     fn dispatch_async_f(
@@ -1120,12 +1081,42 @@ extern "C" {
     /// `_dispatch_main_q` is the actual symbol for the main dispatch queue.
     /// `dispatch_get_main_queue()` is a macro/inline that returns `&_dispatch_main_q`.
     static _dispatch_main_q: std::ffi::c_char;
-    static kCFRunLoopCommonModes: CFStringRef;
 }
 
 /// Returns a pointer to the main dispatch queue.
 fn dispatch_get_main_queue() -> DispatchQueue {
     unsafe { &_dispatch_main_q as *const _ as DispatchQueue }
+}
+
+/// Get the current mouse location in CG coordinates (top-left origin, Y down).
+/// Converts from Cocoa coords (bottom-left origin, Y up) using the primary screen height.
+#[allow(unexpected_cfgs)]
+fn get_mouse_location_cg() -> CGPoint {
+    unsafe {
+        use objc::runtime::Object;
+        use objc::{msg_send, sel, sel_impl};
+
+        // [NSEvent mouseLocation] — Cocoa coords (Y up from bottom-left)
+        let cls = objc::runtime::Class::get("NSEvent").unwrap();
+        let cocoa_loc: CGPoint = msg_send![cls, mouseLocation];
+
+        // Get primary screen height for coordinate conversion
+        let screen_cls = objc::runtime::Class::get("NSScreen").unwrap();
+        let screens: *mut Object = msg_send![screen_cls, screens];
+        let count: usize = msg_send![screens, count];
+        let primary_h = if count > 0 {
+            let screen: *mut Object = msg_send![screens, objectAtIndex: 0usize];
+            let frame: CGRect = msg_send![screen, frame];
+            frame.size.height
+        } else {
+            1080.0
+        };
+
+        CGPoint {
+            x: cocoa_loc.x,
+            y: primary_h - cocoa_loc.y,
+        }
+    }
 }
 
 // --- Overlay window (NSWindow, main thread only) ---
@@ -1531,15 +1522,13 @@ fn detect_snap_zone_macos(
 
 // --- Aero snap state and event tap ---
 
-/// Shared state between the CGEventTap callback and the main app.
+/// Shared state between the NSEvent global monitor handler and the main app.
 struct SnapContext {
     app: AppHandle,
-    tap: std::sync::Mutex<CFMachPortRef>,
     state: std::sync::Mutex<SnapState>,
 }
 
-// Safety: the raw pointers in SnapContext (CFMachPortRef) are only accessed
-// from the event tap thread after initialization, protected by Mutex.
+// Safety: AppHandle is Send+Sync. SnapState is behind a Mutex.
 unsafe impl Send for SnapContext {}
 unsafe impl Sync for SnapContext {}
 
@@ -1565,23 +1554,15 @@ struct SnapState {
     corner_trigger: f64,
 }
 
-/// CGEventTap callback -- runs on the event tap background thread.
-extern "C" fn snap_event_callback(
-    _proxy: CGEventTapProxy,
-    event_type: u32,
-    event: CGEventRef,
-    user_info: *mut c_void,
-) -> CGEventRef {
-    // Log every event type to diagnose which events are delivered.
-    // mouse_down=1, mouse_up=2, mouse_dragged=6, tap_disabled=0xFFFFFFFE
+/// Handle a mouse event from the NSEvent global monitor.
+/// Called on the main thread by AppKit. Must stay fast — spawn threads
+/// for any AX API calls.
+fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
+    // Log down/up and first drag per gesture for diagnostics
     {
-        let ctx = unsafe { &*(user_info as *const SnapContext) };
-        // Only log down/up/timeout individually. Log first drag per gesture
-        // to avoid flooding (dragged fires 60+ times/sec).
-        let should_log = event_type == K_CG_EVENT_LEFT_MOUSE_DOWN
-            || event_type == K_CG_EVENT_LEFT_MOUSE_UP
-            || event_type == K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT;
-        let is_first_drag = event_type == K_CG_EVENT_LEFT_MOUSE_DRAGGED && {
+        let should_log = event_type == NS_EVENT_TYPE_LEFT_MOUSE_DOWN
+            || event_type == NS_EVENT_TYPE_LEFT_MOUSE_UP;
+        let is_first_drag = event_type == NS_EVENT_TYPE_LEFT_MOUSE_DRAGGED && {
             ctx.state.try_lock().map(|s| s.dragging && !s.drag_confirmed).unwrap_or(false)
         };
         if should_log || is_first_drag {
@@ -1590,37 +1571,17 @@ extern "C" fn snap_event_callback(
                     1 => "mouse_down",
                     2 => "mouse_up",
                     6 => "mouse_dragged(first)",
-                    0xFFFFFFFE => "tap_disabled_by_timeout",
                     _ => "unknown",
                 };
                 crate::config::write_debug_log(
                     &state,
-                    &format!("tile_snap: callback — event_type={} ({})", event_type, label),
+                    &format!("tile_snap: event — type={} ({}), cursor=({:.0},{:.0})", event_type, label, cursor.x, cursor.y),
                 );
             }
         }
     }
 
-    // Re-enable tap if it was disabled by timeout
-    if event_type == K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT {
-        let ctx = unsafe { &*(user_info as *const SnapContext) };
-        log::info!("tile_snap: event tap was disabled by timeout, re-enabling");
-        if let Some(state) = ctx.app.try_state::<crate::AppState>() {
-            crate::config::write_debug_log(&state, "tile_snap: event tap disabled by timeout, re-enabling");
-        }
-        if let Ok(tap) = ctx.tap.lock() {
-            if !tap.is_null() {
-                unsafe { CGEventTapEnable(*tap, true) };
-            }
-        }
-        return event;
-    }
-
-    let ctx = unsafe { &*(user_info as *const SnapContext) };
-
     // Check if tiling and tile snap are both enabled.
-    // Use try_lock to avoid blocking the event tap thread (which would cause
-    // macOS to disable the tap via timeout).
     let snap_enabled = ctx
         .app
         .try_state::<crate::AppState>()
@@ -1632,22 +1593,16 @@ extern "C" fn snap_event_callback(
         })
         .unwrap_or(true); // default to enabled if lock is contended
     if !snap_enabled {
-        return event;
+        return;
     }
-
-    let cursor = unsafe { CGEventGetLocation(event) };
 
     let mut state = match ctx.state.try_lock() {
         Ok(s) => s,
-        Err(_) => return event, // skip if contended
+        Err(_) => return, // skip if contended
     };
 
     match event_type {
-        K_CG_EVENT_LEFT_MOUSE_DOWN => {
-            // CRITICAL: Keep mouse_down minimal. No AX API calls, no NSScreen
-            // queries, no file I/O. Heavy work is deferred to the first
-            // confirmed drag event (MOUSE_DRAGGED after 10px threshold).
-            // If mouse_down takes too long, macOS kills the event tap.
+        NS_EVENT_TYPE_LEFT_MOUSE_DOWN => {
             state.dragging = true;
             state.drag_confirmed = false;
             state.drag_start_cursor = Some((cursor.x, cursor.y));
@@ -1655,8 +1610,6 @@ extern "C" fn snap_event_callback(
             state.current_layout = None;
 
             // Show drop zone indicators immediately for visual feedback.
-            // Uses cached display frames and edge triggers from the previous drag
-            // (or defaults from initialization) to avoid slow calls here.
             if !state.displays.is_empty() {
                 dispatch_overlay(OverlayCmd::ShowZones {
                     displays: state.displays.clone(),
@@ -1667,35 +1620,30 @@ extern "C" fn snap_event_callback(
             }
         }
 
-        K_CG_EVENT_LEFT_MOUSE_DRAGGED => {
+        NS_EVENT_TYPE_LEFT_MOUSE_DRAGGED => {
             if !state.dragging {
-                return event;
+                return;
             }
 
             // 10px movement threshold before confirming this is a real drag.
-            // Skips accidental clicks and provides a natural lazy-load point.
             if !state.drag_confirmed {
                 if let Some((sx, sy)) = state.drag_start_cursor {
                     let dx = (cursor.x - sx).abs();
                     let dy = (cursor.y - sy).abs();
                     if dx < 10.0 && dy < 10.0 {
-                        return event; // not a real drag yet
+                        return; // not a real drag yet
                     }
                 } else {
-                    return event;
+                    return;
                 }
 
                 // Drag confirmed — lazy-load display frames, preferences, and
-                // window position. This work was previously in mouse_down where
-                // it could stall the callback and cause macOS to kill the tap.
+                // window position.
                 state.drag_confirmed = true;
                 state.drag_start_window_pos = unsafe {
                     get_focused_window().and_then(|w| get_window_rect(&w).map(|r| (r.x, r.y)))
                 };
                 state.displays = get_display_visible_frames();
-                // CRITICAL: use try_lock, not lock. A blocking lock here stalls
-                // the CGEventTap callback, causing macOS to disable the tap.
-                // If the lock is contended, we keep the previous preference values.
                 let prefs = ctx
                     .app
                     .try_state::<crate::AppState>()
@@ -1708,7 +1656,6 @@ extern "C" fn snap_event_callback(
                     state.top_edge_trigger = tp.top_edge_trigger as f64;
                     state.corner_trigger = tp.corner_trigger as f64;
                 }
-                // Verbose logging — only fires once per drag, not on every frame
                 if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
                     let display_info: Vec<String> = state.displays.iter().enumerate().map(|(i, d)| {
                         format!("D{}({:.0},{:.0} {:.0}x{:.0})", i, d.x, d.y, d.width, d.height)
@@ -1730,7 +1677,7 @@ extern "C" fn snap_event_callback(
             }
 
             if state.displays.is_empty() {
-                return event;
+                return;
             }
 
             let zone = detect_snap_zone_macos(
@@ -1744,7 +1691,6 @@ extern "C" fn snap_event_callback(
 
             match zone {
                 Some((layout, display_idx)) => {
-                    // Only show overlay if layout changed
                     if state.current_layout != Some(layout) || state.current_display != display_idx
                     {
                         if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
@@ -1775,11 +1721,7 @@ extern "C" fn snap_event_callback(
                 }
                 None => {
                     // Latch: keep the last detected zone active even when
-                    // the cursor drifts out. macOS often shifts the cursor
-                    // slightly during window drags, causing it to leave the
-                    // thin edge zone momentarily. The zone stays latched
-                    // until mouse_up (which uses it) or a new zone is detected.
-                    // Only hide the snap preview overlay — zone indicators stay.
+                    // the cursor drifts out. Only hide the snap preview overlay.
                     if state.current_layout.is_some() {
                         dispatch_overlay(OverlayCmd::Hide);
                     }
@@ -1787,7 +1729,7 @@ extern "C" fn snap_event_callback(
             }
         }
 
-        K_CG_EVENT_LEFT_MOUSE_UP => {
+        NS_EVENT_TYPE_LEFT_MOUSE_UP => {
             let was_in_zone = state.current_layout;
             let start_pos = state.drag_start_window_pos;
             state.dragging = false;
@@ -1798,7 +1740,6 @@ extern "C" fn snap_event_callback(
             dispatch_overlay(OverlayCmd::Hide);
             dispatch_overlay(OverlayCmd::HideZones);
 
-            // If cursor was in a snap zone, verify the window actually moved
             if let Some(layout) = was_in_zone {
                 let (window_moved, move_detail) = unsafe {
                     get_focused_window().map_or((true, "no focused window — assuming moved".to_string()), |w| {
@@ -1810,9 +1751,6 @@ extern "C" fn snap_event_callback(
                                 let moved = dx > 10.0 || dy > 10.0;
                                 (moved, format!("start=({:.0},{:.0}) end=({:.0},{:.0}) dx={:.0} dy={:.0}", sx, sy, cx, cy, dx, dy))
                             }
-                            // If we couldn't capture start position or current position,
-                            // assume the window moved. The user dragged to an edge zone
-                            // which is strong enough intent to tile.
                             (None, _) => (true, "no start pos — assuming moved".to_string()),
                             (_, None) => (true, "no current pos — assuming moved".to_string()),
                         }
@@ -1838,7 +1776,7 @@ extern "C" fn snap_event_callback(
                         TilingLayout::TopRightQuarter => "topRightQuarter",
                         TilingLayout::BottomLeftQuarter => "bottomLeftQuarter",
                         TilingLayout::BottomRightQuarter => "bottomRightQuarter",
-                        _ => return event,
+                        _ => return,
                     };
                     if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
                         crate::config::write_debug_log(
@@ -1853,7 +1791,6 @@ extern "C" fn snap_event_callback(
                     });
                 }
             } else {
-                // Log when mouse_up was not in any zone (helps confirm callback fires)
                 if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
                     crate::config::write_debug_log(
                         &dbg_state,
@@ -1865,8 +1802,6 @@ extern "C" fn snap_event_callback(
 
         _ => {}
     }
-
-    event
 }
 
 /// Execute a layout preset by name or index. Enumerates windows, matches by
@@ -1913,8 +1848,11 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
     }
 }
 
-/// Start the tile snap event tap on a background thread.
-/// Call once during app setup. Requires Accessibility permission.
+/// Start the tile snap NSEvent global monitor.
+/// Call once during app setup. Requires Accessibility permission for tiling
+/// actions (AX API), but the event monitor itself works without it.
+/// Must be dispatched to the main thread (Cocoa requirement).
+#[allow(unexpected_cfgs)]
 pub fn start_tile_snap(app: AppHandle) {
     let trusted = unsafe { AXIsProcessTrusted() };
     let displays = get_display_visible_frames();
@@ -1933,7 +1871,7 @@ pub fn start_tile_snap(app: AppHandle) {
         crate::config::write_debug_log(
             &state,
             &format!(
-                "tile_snap: starting — AXIsProcessTrusted={}, build={}, displays=[{}], {}",
+                "tile_snap: starting (NSEvent) — AXIsProcessTrusted={}, build={}, displays=[{}], {}",
                 trusted, env!("IS_DEV_BUILD"), display_info.join(", "), prefs_info,
             ),
         );
@@ -1948,7 +1886,6 @@ pub fn start_tile_snap(app: AppHandle) {
 
     let ctx = std::sync::Arc::new(SnapContext {
         app,
-        tap: std::sync::Mutex::new(std::ptr::null_mut()),
         state: std::sync::Mutex::new(SnapState {
             dragging: false,
             drag_confirmed: false,
@@ -1966,129 +1903,90 @@ pub fn start_tile_snap(app: AppHandle) {
         }),
     });
 
-    // Leak the Arc so it lives for the app's lifetime.
-    let raw_addr = std::sync::Arc::into_raw(ctx) as usize;
+    // Register the NSEvent global monitor on the main thread.
+    // The handler closure runs on the main thread automatically by AppKit.
+    // We use dispatch_async_f to ensure registration happens on the main thread.
+    let ctx_for_registration = ctx.clone();
+    let raw = std::sync::Arc::into_raw(ctx_for_registration) as usize;
 
-    std::thread::spawn(move || {
-        let raw = raw_addr as *mut c_void;
-        unsafe {
-            let mask: u64 = (1 << K_CG_EVENT_LEFT_MOUSE_DOWN)
-                | (1 << K_CG_EVENT_LEFT_MOUSE_UP)
-                | (1 << K_CG_EVENT_LEFT_MOUSE_DRAGGED);
+    extern "C" fn register_monitor(raw_ptr: *mut c_void) {
+        let raw = raw_ptr as usize;
+        let ctx = unsafe { std::sync::Arc::from_raw(raw as *const SnapContext) };
 
-            let tap = CGEventTapCreate(
-                K_CG_SESSION_EVENT_TAP,
-                K_CG_HEAD_INSERT_EVENT_TAP,
-                K_CG_EVENT_TAP_OPTION_LISTEN_ONLY,
-                mask,
-                snap_event_callback,
-                raw,
+        // Log that we're registering
+        if let Some(state) = ctx.app.try_state::<crate::AppState>() {
+            crate::config::write_debug_log(
+                &state,
+                "tile_snap: registering NSEvent global monitor on main thread",
             );
+        }
 
-            if tap.is_null() {
-                log::warn!(
-                    "tile_snap: Failed to create CGEventTap. \
-                     Accessibility permission may not be granted."
-                );
-                // Also write to debug log so bundled app failures are visible
-                let ctx_ref = &*(raw as *const SnapContext);
-                if let Some(state) = ctx_ref.app.try_state::<crate::AppState>() {
+        unsafe {
+            use objc::runtime::Object;
+            use objc::{msg_send, sel, sel_impl};
+
+            let mask: u64 = (1 << NS_EVENT_TYPE_LEFT_MOUSE_DOWN)
+                | (1 << NS_EVENT_TYPE_LEFT_MOUSE_UP)
+                | (1 << NS_EVENT_TYPE_LEFT_MOUSE_DRAGGED);
+
+            // Create an Objective-C block that calls our Rust handler.
+            let ctx_for_block = ctx.clone();
+            let handler = block::ConcreteBlock::new(move |event: *mut Object| {
+                // Get event type: [event type] returns NSEventType (u64)
+                let event_type: u64 = msg_send![event, r#type];
+                // Get cursor in CG coordinates (top-left origin)
+                let cursor = get_mouse_location_cg();
+                handle_snap_event(&ctx_for_block, event_type, cursor);
+            });
+            let handler = handler.copy(); // heap-allocate so it outlives this scope
+
+            let cls = objc::runtime::Class::get("NSEvent").unwrap();
+            let monitor: *mut Object = msg_send![
+                cls,
+                addGlobalMonitorForEventsMatchingMask: mask
+                handler: &*handler
+            ];
+
+            if monitor.is_null() {
+                log::warn!("tile_snap: NSEvent addGlobalMonitorForEventsMatchingMask returned nil");
+                if let Some(state) = ctx.app.try_state::<crate::AppState>() {
                     crate::config::write_debug_log(
                         &state,
-                        "tile_snap: CGEventTapCreate returned NULL — Accessibility permission issue",
+                        "tile_snap: NSEvent monitor registration failed — returned nil",
                     );
                 }
-                return;
-            }
-
-            // Store tap ref for re-enabling on timeout
-            let ctx = &*(raw as *const SnapContext);
-            if let Ok(mut t) = ctx.tap.lock() {
-                *t = tap;
-            }
-
-            let source = CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
-            if source.is_null() {
-                log::warn!("tile_snap: Failed to create run loop source");
-                return;
-            }
-
-            let run_loop = CFRunLoopGetCurrent();
-            CFRunLoopAddSource(run_loop, source, kCFRunLoopCommonModes);
-            CGEventTapEnable(tap, true);
-
-            // Log tap creation details
-            let ctx_ref = &*(raw as *const SnapContext);
-            if let Some(state) = ctx_ref.app.try_state::<crate::AppState>() {
-                crate::config::write_debug_log(
-                    &state,
-                    "tile_snap: CGEventTap created successfully, listening for drags",
-                );
-            }
-
-            // Check if tap is enabled; if not, retry up to 10 times with 500ms delay.
-            // On production builds macOS may reject the initial enable if Accessibility
-            // was granted moments before the tap was created.
-            let mut tap_enabled = CGEventTapIsEnabled(tap);
-            if !tap_enabled {
-                let ctx_ref = &*(raw as *const SnapContext);
-                for retry in 1..=10 {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                    CGEventTapEnable(tap, true);
-                    tap_enabled = CGEventTapIsEnabled(tap);
-                    if let Some(state) = ctx_ref.app.try_state::<crate::AppState>() {
-                        crate::config::write_debug_log(
-                            &state,
-                            &format!(
-                                "tile_snap: enable retry {}/10 — tap_enabled={}",
-                                retry, tap_enabled,
-                            ),
-                        );
-                    }
-                    if tap_enabled {
-                        break;
-                    }
+            } else {
+                log::info!("tile_snap: NSEvent global monitor registered successfully");
+                if let Some(state) = ctx.app.try_state::<crate::AppState>() {
+                    let exe_path = std::env::current_exe()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|_| "unknown".into());
+                    let is_app_bundle = exe_path.contains(".app/Contents/MacOS");
+                    crate::config::write_debug_log(
+                        &state,
+                        &format!(
+                            "tile_snap: NSEvent monitor active — exe={}, bundle={}, mask=0x{:X}",
+                            exe_path, is_app_bundle, mask,
+                        ),
+                    );
                 }
             }
 
-            // Comprehensive startup diagnostic dump
-            let ctx_ref = &*(raw as *const SnapContext);
-            if let Some(state) = ctx_ref.app.try_state::<crate::AppState>() {
-                // Get binary signing info
-                let exe_path = std::env::current_exe()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|_| "unknown".into());
-                let is_app_bundle = exe_path.contains(".app/Contents/MacOS");
-                let is_dev = env!("IS_DEV_BUILD") == "true";
-
-                // Check AX status again (may have changed since start_tile_snap)
-                let ax_trusted_now = AXIsProcessTrusted();
-
-                crate::config::write_debug_log(
-                    &state,
-                    &format!(
-                        "tile_snap: === STARTUP DIAG ===\n\
-                         \x20 exe_path={}\n\
-                         \x20 is_app_bundle={}\n\
-                         \x20 is_dev_build={}\n\
-                         \x20 AXIsProcessTrusted={}\n\
-                         \x20 tap_enabled={}\n\
-                         \x20 event_mask=0x{:X} (down={}, up={}, drag={})\n\
-                         \x20 tap_type=session, placement=head_insert, option=listen_only",
-                        exe_path,
-                        is_app_bundle,
-                        is_dev,
-                        ax_trusted_now,
-                        tap_enabled,
-                        mask,
-                        mask & (1 << K_CG_EVENT_LEFT_MOUSE_DOWN) != 0,
-                        mask & (1 << K_CG_EVENT_LEFT_MOUSE_UP) != 0,
-                        mask & (1 << K_CG_EVENT_LEFT_MOUSE_DRAGGED) != 0,
-                    ),
-                );
-            }
-
-            CFRunLoopRun(); // blocks forever
+            // Leak the handler and monitor — they live for the app's lifetime.
+            // The handler RcBlock must stay alive as long as the monitor is active.
+            std::mem::forget(handler);
+            std::mem::forget(monitor);
         }
-    });
+
+        // Leak the Arc so the SnapContext lives for the app's lifetime.
+        std::mem::forget(ctx);
+    }
+
+    unsafe {
+        dispatch_async_f(
+            dispatch_get_main_queue(),
+            raw as *mut c_void,
+            register_monitor,
+        );
+    }
 }
