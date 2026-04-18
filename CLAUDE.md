@@ -19,6 +19,32 @@ npx tauri build      # Production build (binary + .dmg/.exe/.deb/.AppImage)
 cargo check          # Check Rust compilation (from src-tauri/)
 ```
 
+## Local Install from Release
+
+Use the `/install-app` slash command to download and install the latest release for the current platform. It handles all platform-specific steps automatically.
+
+### macOS post-install steps (required)
+
+After downloading and copying the `.app` to `/Applications`, these steps are mandatory:
+
+```bash
+# Strip Apple quarantine (required for unsigned builds)
+xattr -cr "/Applications/Display DJ.app"
+
+# Reset Accessibility permission (required after each new build for tiling to work)
+tccutil reset Accessibility com.synle.display-dj
+
+# Open Accessibility settings so user can re-grant permission
+open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+
+# Launch the app
+open "/Applications/Display DJ.app"
+```
+
+### Windows post-install steps
+
+Run the `*_x64-setup.exe` installer — it handles everything.
+
 ## Versioning
 
 The **single source of truth** for the app version is `src-tauri/tauri.conf.json` → `"version"`. This controls:
@@ -105,17 +131,17 @@ These are documented inline in `config.rs` with WARNING comments.
 
 Commands are strings dispatched by `execute_command()` in `tray.rs`. They can be bound to keyboard shortcuts in `keyBindings`, used in profiles, or triggered from the tray menu. The `build_command_url()` helper maps commands to sidecar HTTP URLs and is covered by unit tests.
 
-| Command | Sidecar Endpoint | Description |
-|---------|-----------------|-------------|
-| `command/changeBrightness/{value}` | `/set_all/{value}` | Set brightness on all monitors |
-| `command/changeBrightness/{monitor_id}/{value}` | `/set_one/{id}/{value}` | Set brightness on a single monitor |
-| `command/changeContrast/{value}` | `/set_contrast_all/{value}` | Set contrast on all monitors |
-| `command/changeContrast/{monitor_id}/{value}` | `/set_contrast_one/{id}/{value}` | Set contrast on a single monitor |
-| `command/changeVolume/{value}` | `/set_volume/{value}` | Set volume (0-100) |
-| `command/changeDarkMode/{dark\|light\|toggle}` | `/dark`, `/light`, `/theme` | Toggle or set dark/light mode |
-| `command/changeProfile/{index}` | (executes profile commands) | Run all commands in a saved profile |
-| `command/tile/{layoutName}` | (calls tiling module) | Tile the focused window |
-| `command/layout/{name_or_index}` | (calls tiling module) | Apply a layout preset by name or 0-based index |
+| Command                                         | Sidecar Endpoint                 | Description                                    |
+| ----------------------------------------------- | -------------------------------- | ---------------------------------------------- |
+| `command/changeBrightness/{value}`              | `/set_all/{value}`               | Set brightness on all monitors                 |
+| `command/changeBrightness/{monitor_id}/{value}` | `/set_one/{id}/{value}`          | Set brightness on a single monitor             |
+| `command/changeContrast/{value}`                | `/set_contrast_all/{value}`      | Set contrast on all monitors                   |
+| `command/changeContrast/{monitor_id}/{value}`   | `/set_contrast_one/{id}/{value}` | Set contrast on a single monitor               |
+| `command/changeVolume/{value}`                  | `/set_volume/{value}`            | Set volume (0-100)                             |
+| `command/changeDarkMode/{dark\|light\|toggle}`  | `/dark`, `/light`, `/theme`      | Toggle or set dark/light mode                  |
+| `command/changeProfile/{index}`                 | (executes profile commands)      | Run all commands in a saved profile            |
+| `command/tile/{layoutName}`                     | (calls tiling module)            | Tile the focused window                        |
+| `command/layout/{name_or_index}`                | (calls tiling module)            | Apply a layout preset by name or 0-based index |
 
 Monitor IDs are the sidecar API IDs (e.g. `"1"`, `"2"`, `"builtin"`). Brightness is clamped to `[effective_min_brightness, 100]`; contrast is clamped to `[0, 100]`.
 
@@ -179,7 +205,6 @@ sudo apt install ddcutil brightnessctl i2c-tools
 sudo modprobe i2c-dev
 sudo usermod -aG i2c $USER
 ```
-
 
 ## Git / PR Merge Policy
 
