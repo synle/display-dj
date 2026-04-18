@@ -24,32 +24,47 @@ use windows::Win32::UI::WindowsAndMessaging::{
 // Display enumeration
 // ---------------------------------------------------------------------------
 
+/// Per-monitor info collected during enumeration (work area + full bounds).
+struct MonitorDebugInfo {
+    work: Rect,
+    full: Rect,
+}
+
 /// Get work areas (visible frames) for all monitors, sorted left-to-right.
 /// Uses `EnumDisplayMonitors` + `GetMonitorInfoW` to get the work area
 /// (excludes taskbar and other app bars).
 fn get_display_work_areas() -> Vec<Rect> {
-    let mut areas: Vec<Rect> = Vec::new();
+    let mut infos: Vec<MonitorDebugInfo> = Vec::new();
 
     unsafe {
-        // Callback collects MONITORINFO.rcWork for each monitor
+        // Callback collects MONITORINFO for each monitor (work area + full bounds)
         unsafe extern "system" fn monitor_callback(
             hmonitor: HMONITOR,
             _hdc: HDC,
             _rect: *mut RECT,
             lparam: LPARAM,
         ) -> BOOL {
-            let areas = &mut *(lparam.0 as *mut Vec<Rect>);
+            let infos = &mut *(lparam.0 as *mut Vec<MonitorDebugInfo>);
             let mut info = MONITORINFO {
                 cbSize: std::mem::size_of::<MONITORINFO>() as u32,
                 ..Default::default()
             };
             if GetMonitorInfoW(hmonitor, &mut info).as_bool() {
                 let rc = info.rcWork;
-                areas.push(Rect {
-                    x: rc.left as f64,
-                    y: rc.top as f64,
-                    width: (rc.right - rc.left) as f64,
-                    height: (rc.bottom - rc.top) as f64,
+                let fm = info.rcMonitor;
+                infos.push(MonitorDebugInfo {
+                    work: Rect {
+                        x: rc.left as f64,
+                        y: rc.top as f64,
+                        width: (rc.right - rc.left) as f64,
+                        height: (rc.bottom - rc.top) as f64,
+                    },
+                    full: Rect {
+                        x: fm.left as f64,
+                        y: fm.top as f64,
+                        width: (fm.right - fm.left) as f64,
+                        height: (fm.bottom - fm.top) as f64,
+                    },
                 });
             }
             TRUE
@@ -59,18 +74,33 @@ fn get_display_work_areas() -> Vec<Rect> {
             None,
             None,
             Some(monitor_callback),
-            LPARAM(&mut areas as *mut Vec<Rect> as isize),
+            LPARAM(&mut infos as *mut Vec<MonitorDebugInfo> as isize),
         );
     }
 
     // Sort left-to-right, then top-to-bottom
-    areas.sort_by(|a, b| {
-        a.x.partial_cmp(&b.x)
+    infos.sort_by(|a, b| {
+        a.work.x.partial_cmp(&b.work.x)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then(a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal))
+            .then(a.work.y.partial_cmp(&b.work.y).unwrap_or(std::cmp::Ordering::Equal))
     });
 
-    areas
+    // Log full vs work area for each display (helps debug taskbar/gap issues)
+    for (i, info) in infos.iter().enumerate() {
+        log::info!(
+            "tiling_win: display[{}] — full=({},{} {}x{}), work_area=({},{} {}x{}), \
+             taskbar_insets=(left={}, top={}, right={}, bottom={})",
+            i,
+            info.full.x as i32, info.full.y as i32, info.full.width as i32, info.full.height as i32,
+            info.work.x as i32, info.work.y as i32, info.work.width as i32, info.work.height as i32,
+            (info.work.x - info.full.x) as i32,
+            (info.work.y - info.full.y) as i32,
+            ((info.full.x + info.full.width) - (info.work.x + info.work.width)) as i32,
+            ((info.full.y + info.full.height) - (info.work.y + info.work.height)) as i32,
+        );
+    }
+
+    infos.into_iter().map(|i| i.work).collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -165,15 +195,38 @@ fn get_dwm_border(hwnd: HWND) -> (i32, i32, i32, i32) {
 /// offsets so the visible frame lands exactly where requested.
 fn set_hwnd_rect(hwnd: HWND, rect: &Rect) {
     let (bl, bt, br, bb) = get_dwm_border(hwnd);
+    let swp_x = rect.x as i32 - bl;
+    let swp_y = rect.y as i32 - bt;
+    let swp_w = rect.width as i32 + bl + br;
+    let swp_h = rect.height as i32 + bt + bb;
+    log::info!(
+        "tiling_win: set_hwnd_rect — target=({},{} {}x{}), dwm_border=({},{},{},{}), \
+         swp_args=({},{} {}x{})",
+        rect.x as i32, rect.y as i32, rect.width as i32, rect.height as i32,
+        bl, bt, br, bb,
+        swp_x, swp_y, swp_w, swp_h,
+    );
     unsafe {
         let _ = SetWindowPos(
             hwnd,
             HWND_TOP,
-            rect.x as i32 - bl,
-            rect.y as i32 - bt,
-            rect.width as i32 + bl + br,
-            rect.height as i32 + bt + bb,
+            swp_x,
+            swp_y,
+            swp_w,
+            swp_h,
             SWP_NOZORDER,
+        );
+    }
+    // Log the actual result after SetWindowPos
+    if let Some(actual) = get_hwnd_rect(hwnd) {
+        log::info!(
+            "tiling_win: after SetWindowPos — actual_visible=({},{} {}x{}), \
+             delta=(dx={}, dy={}, dw={}, dh={})",
+            actual.x as i32, actual.y as i32, actual.width as i32, actual.height as i32,
+            actual.x as i32 - rect.x as i32,
+            actual.y as i32 - rect.y as i32,
+            actual.width as i32 - rect.width as i32,
+            actual.height as i32 - rect.height as i32,
         );
     }
 }
@@ -432,6 +485,25 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
         return;
     }
 
+    // Log display info and window details for debugging (e.g. gap issues)
+    let title = get_window_title(hwnd);
+    let process = get_process_name(hwnd);
+    let (bl, bt, br, bb) = get_dwm_border(hwnd);
+    let display_info: Vec<String> = displays.iter().enumerate().map(|(i, d)| {
+        format!("D{}({},{} {}x{})", i, d.x as i32, d.y as i32, d.width as i32, d.height as i32)
+    }).collect();
+    log::info!(
+        "tiling_win: tile '{}' — layout={}, displays=[{}], window='{}' ({}), \
+         visible_rect=({},{} {}x{}), dwm_border=({},{},{},{}), prefs=(half={}, third={}, gap={})",
+        layout_str,
+        layout_str,
+        display_info.join(", "),
+        title, process,
+        win_rect.x as i32, win_rect.y as i32, win_rect.width as i32, win_rect.height as i32,
+        bl, bt, br, bb,
+        half_ratio, third_ratio, gap,
+    );
+
     // Tile on the display the window is currently on
     let target_display = find_display_for_window(&win_rect, &displays);
     let window_key = hwnd.0 as isize as i64;
@@ -452,13 +524,10 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     // Calculate and apply target rect
     let target = calculate_target_rect(layout, &displays[target_display], half_ratio, third_ratio, gap);
     log::info!(
-        "tiling: {} on display {} -> ({}, {}, {}x{})",
-        layout_str,
+        "tiling_win: target_rect — display={}, layout={}, rect=({},{} {}x{})",
         target_display,
-        target.x,
-        target.y,
-        target.width,
-        target.height,
+        layout_str,
+        target.x as i32, target.y as i32, target.width as i32, target.height as i32,
     );
     set_hwnd_rect(hwnd, &target);
 }
@@ -522,9 +591,23 @@ pub fn execute_expose(app: &AppHandle) {
         return;
     }
 
+    // Log display work areas for debugging gap issues
+    let display_info: Vec<String> = displays.iter().enumerate().map(|(i, d)| {
+        format!("D{}({},{} {}x{})", i, d.x as i32, d.y as i32, d.width as i32, d.height as i32)
+    }).collect();
+    log::info!(
+        "tiling_win: expose — {} windows, {} displays=[{}], max_per_display={}, gap={}, spread={}",
+        all_windows.len(), displays.len(), display_info.join(", "), max_per_display, gap, spread,
+    );
+
     let placements = plan_expose(&all_windows, &displays, max_per_display, gap as f64, spread);
-    for p in &placements {
+    for (i, p) in placements.iter().enumerate() {
         let hwnd = HWND(p.window_id as isize as *mut _);
+        log::info!(
+            "tiling_win: expose[{}] — wid={}, target=({},{} {}x{})",
+            i, p.window_id,
+            p.target.x as i32, p.target.y as i32, p.target.width as i32, p.target.height as i32,
+        );
         set_hwnd_rect(hwnd, &p.target);
         unsafe { let _ = BringWindowToTop(hwnd); }
     }
@@ -574,9 +657,23 @@ pub fn execute_expose_app(app: &AppHandle) {
         return;
     }
 
+    // Log display work areas for debugging gap issues
+    let display_info: Vec<String> = displays.iter().enumerate().map(|(i, d)| {
+        format!("D{}({},{} {}x{})", i, d.x as i32, d.y as i32, d.width as i32, d.height as i32)
+    }).collect();
+    log::info!(
+        "tiling_win: app_expose — app='{}', {} windows, {} displays=[{}], max_per_display={}, gap={}, spread={}",
+        target_app, all_windows.len(), displays.len(), display_info.join(", "), max_per_display, gap, spread,
+    );
+
     let placements = plan_expose_app(&all_windows, target_pid as i32, &displays, max_per_display, gap as f64, spread);
-    for p in &placements {
+    for (i, p) in placements.iter().enumerate() {
         let hwnd = HWND(p.window_id as isize as *mut _);
+        log::info!(
+            "tiling_win: app_expose[{}] — wid={}, target=({},{} {}x{})",
+            i, p.window_id,
+            p.target.x as i32, p.target.y as i32, p.target.width as i32, p.target.height as i32,
+        );
         set_hwnd_rect(hwnd, &p.target);
         unsafe { let _ = BringWindowToTop(hwnd); }
     }

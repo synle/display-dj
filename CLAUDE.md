@@ -123,7 +123,8 @@ On macOS, any code running inside a `CGEventTap` callback (e.g., Tile Snap's `sn
 1. **Always use `try_lock()`, never `lock()`** — on `state.preferences`, `AppState`, or any shared mutex. If contended, skip the operation or use a cached/default value.
 2. **`write_debug_log()` is safe** — it now uses `try_lock()` internally (since v5.11.6). If the preferences lock is contended, the log message is silently dropped instead of blocking.
 3. **No network calls or file I/O that might block** — keep callbacks fast. Spawn a thread for anything slow.
-4. **If `start_pos` or `get_focused_window()` returns None**, assume intent and proceed — don't use missing data as a reason to skip the action.
+4. **No AX API calls (`get_focused_window`, `get_window_rect`) or NSScreen queries (`get_display_visible_frames`) in `mouse_down`** — these are slow enough to exceed macOS's event tap timeout, especially in production builds with background contention. Defer them to the first confirmed drag event (after a 10px movement threshold) where the cost is amortized over a real drag gesture.
+5. **If `start_pos` or `get_focused_window()` returns None**, assume intent and proceed — don't use missing data as a reason to skip the action.
 
 This bug manifests as "works in dev, broken in production" because production builds have more background mutex contention (save_preferences, night mode schedule checks, etc.).
 
