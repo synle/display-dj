@@ -6,7 +6,8 @@
 
 use super::{
     build_sorted_window_list, calculate_target_rect, find_display_for_window,
-    layout_across_displays, layout_grid_on_display, Rect, TilingLayout, WindowInfo, WindowState,
+    layout_across_displays, layout_grid_on_display, plan_expose, plan_expose_app,
+    plan_layout_preset, Rect, TilingLayout, WindowInfo, WindowState,
 };
 use tauri::{AppHandle, Manager};
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT, TRUE};
@@ -492,6 +493,7 @@ fn execute_restore(app: &AppHandle) {
 }
 
 /// Execute the exposé command. Lays out all on-screen windows in a grid.
+/// Exposé: spread all windows across displays using shared plan_expose logic.
 pub fn execute_expose(app: &AppHandle) {
     let (max_per_display, gap, spread) = {
         let state = app.state::<crate::AppState>();
@@ -502,7 +504,6 @@ pub fn execute_expose(app: &AppHandle) {
         ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
     };
 
-    // Restore minimized windows first
     restore_minimized_windows();
 
     let mut all_windows = get_all_windows();
@@ -511,7 +512,6 @@ pub fn execute_expose(app: &AppHandle) {
         return;
     }
 
-    // Populate min sizes via WM_GETMINMAXINFO for adaptive grid layout
     for w in &mut all_windows {
         let hwnd = HWND(w.window_id as isize as *mut _);
         w.min_size = get_window_min_size(hwnd);
@@ -522,27 +522,17 @@ pub fn execute_expose(app: &AppHandle) {
         return;
     }
 
-    let total_cap = max_per_display * displays.len();
-    let ordered = build_sorted_window_list(&all_windows, total_cap);
-    if ordered.is_empty() {
-        return;
-    }
-
-    let g = gap as f64;
-    let placed = layout_across_displays(&ordered, &displays, max_per_display, g, spread, &|win_info, rect| {
-        let hwnd = HWND(win_info.window_id as isize as *mut _);
-        set_hwnd_rect(hwnd, rect);
+    let placements = plan_expose(&all_windows, &displays, max_per_display, gap as f64, spread);
+    for p in &placements {
+        let hwnd = HWND(p.window_id as isize as *mut _);
+        set_hwnd_rect(hwnd, &p.target);
         unsafe { let _ = BringWindowToTop(hwnd); }
-    });
-
-    log::info!(
-        "expose: spread {} windows across {} displays",
-        placed,
-        displays.len()
-    );
+    }
+    log::info!("expose: placed {} windows across {} displays", placements.len(), displays.len());
 }
 
-/// Execute the app exposé command. Lays out the frontmost app's windows in a grid.
+/// App Exposé: target app's windows on first displays, others on remaining.
+/// Uses shared plan_expose_app logic.
 pub fn execute_expose_app(app: &AppHandle) {
     let (max_per_display, gap, spread) = {
         let state = app.state::<crate::AppState>();
@@ -553,7 +543,6 @@ pub fn execute_expose_app(app: &AppHandle) {
         ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
     };
 
-    // Identify the target app (foreground window's process)
     let hwnd = match get_foreground_hwnd() {
         Some(h) => h,
         None => {
@@ -568,7 +557,6 @@ pub fn execute_expose_app(app: &AppHandle) {
     }
     let target_app = get_process_name(hwnd);
 
-    // Restore minimized windows
     restore_minimized_windows();
 
     let mut all_windows = get_all_windows();
@@ -576,7 +564,6 @@ pub fn execute_expose_app(app: &AppHandle) {
         return;
     }
 
-    // Populate min sizes via WM_GETMINMAXINFO for adaptive grid layout
     for w in &mut all_windows {
         let hwnd = HWND(w.window_id as isize as *mut _);
         w.min_size = get_window_min_size(hwnd);
@@ -587,66 +574,13 @@ pub fn execute_expose_app(app: &AppHandle) {
         return;
     }
 
-    let total_cap = max_per_display * displays.len();
-
-    // Filter to target app's windows
-    let mut app_windows: Vec<&WindowInfo> = all_windows
-        .iter()
-        .filter(|w| w.owner_pid == target_pid as i32)
-        .take(total_cap)
-        .collect();
-    app_windows.sort_by_key(|w| w.window_id);
-
-    if app_windows.is_empty() {
-        return;
-    }
-
-    let g = gap as f64;
-    let set_rect_fn = |win_info: &WindowInfo, rect: &Rect| {
-        let hwnd = HWND(win_info.window_id as isize as *mut _);
-        set_hwnd_rect(hwnd, rect);
+    let placements = plan_expose_app(&all_windows, target_pid as i32, &displays, max_per_display, gap as f64, spread);
+    for p in &placements {
+        let hwnd = HWND(p.window_id as isize as *mut _);
+        set_hwnd_rect(hwnd, &p.target);
         unsafe { let _ = BringWindowToTop(hwnd); }
-    };
-    let placed = layout_across_displays(&app_windows, &displays, max_per_display, g, spread, &set_rect_fn);
-
-    log::info!(
-        "app_expose: spread {} windows of '{}' across {} displays",
-        placed,
-        target_app,
-        displays.len()
-    );
-
-    // Calculate how many displays the app's windows fully occupied.
-    let displays_consumed = if max_per_display > 0 {
-        (placed + max_per_display - 1) / max_per_display
-    } else {
-        0
-    };
-    let displays_consumed = displays_consumed.min(displays.len());
-
-    // Only use displays NOT consumed by the target app for other windows.
-    let remaining_displays = &displays[displays_consumed..];
-    let remaining_cap = max_per_display * remaining_displays.len();
-
-    if remaining_cap > 0 && !remaining_displays.is_empty() {
-        let other_windows: Vec<&WindowInfo> = build_sorted_window_list(
-            &all_windows,
-            remaining_cap,
-        )
-        .into_iter()
-        .filter(|w| w.owner_pid != target_pid as i32)
-        .collect();
-
-        if !other_windows.is_empty() {
-            let placed_others = layout_across_displays(
-                &other_windows, remaining_displays, max_per_display, g, spread, &set_rect_fn,
-            );
-            log::info!(
-                "app_expose: filled remaining {} displays with {} other windows (skipped first {} used by '{}')",
-                remaining_displays.len(), placed_others, displays_consumed, target_app,
-            );
-        }
     }
+    log::info!("app_expose: placed {} windows (app '{}') across {} displays", placements.len(), target_app, displays.len());
 }
 
 /// Restore all minimized (iconic) windows before exposé layout.
@@ -667,6 +601,7 @@ fn restore_minimized_windows() {
 
 /// Execute a layout preset by name or index. Enumerates windows, matches by
 /// app name, and tiles each matched window according to the preset's rules.
+/// Apply a layout preset using shared plan_layout_preset logic.
 pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
     let (preset, half_ratio, third_ratio, gap) = {
         let state = app.state::<crate::AppState>();
@@ -696,17 +631,11 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
         return;
     }
 
-    let matches = super::match_windows_to_rules(&windows, &preset.rules);
-    log::info!("layout_preset: '{}' matched {} windows", preset.name, matches.len());
-
-    for (win_idx, layout, disp_idx) in matches {
-        let w = &windows[win_idx];
-        let display_index = disp_idx
-            .unwrap_or_else(|| super::find_display_for_window(&w.bounds, &displays))
-            .min(displays.len() - 1);
-        let target = super::calculate_target_rect(layout, &displays[display_index], half_ratio, third_ratio, gap);
+    let placements = plan_layout_preset(&windows, &preset, &displays, half_ratio, third_ratio, gap);
+    log::info!("layout_preset: '{}' placing {} windows", preset.name, placements.len());
+    for p in &placements {
         unsafe {
-            set_hwnd_rect(HWND(w.window_id as isize as *mut _), &target);
+            set_hwnd_rect(HWND(p.window_id as isize as *mut _), &p.target);
         }
     }
 }
