@@ -60,6 +60,14 @@ export interface LayoutPreset {
   rules: LayoutRule[];
 }
 
+/** Wallpaper preferences: fit mode and current wallpaper state. */
+export interface WallpaperPreferences {
+  /** How the wallpaper image fits the screen: fill, fit, stretch, center, tile. */
+  fit: string;
+  /** Path to the currently active wallpaper in our wallpapers directory. */
+  currentWallpaperPath: string | null;
+}
+
 export interface Preferences {
   showIndividualDisplays: boolean;
   minBrightness: number;
@@ -72,6 +80,8 @@ export interface Preferences {
   monitorConfigs: MonitorMetadata[];
   tiling: TilingPreferences;
   layoutPresets: LayoutPreset[];
+  /** Wallpaper preferences: fit mode and current wallpaper path. */
+  wallpaper: WallpaperPreferences;
 }
 
 export interface KeyBinding {

@@ -137,6 +137,25 @@ impl Default for LayoutRule {
     }
 }
 
+/// Wallpaper preferences: fit mode and current wallpaper state.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WallpaperPreferences {
+    /// How the wallpaper image fits the screen: fill, fit, stretch, center, tile.
+    pub fit: String,
+    /// Path to the currently active wallpaper in our wallpapers directory.
+    pub current_wallpaper_path: Option<String>,
+}
+
+impl Default for WallpaperPreferences {
+    fn default() -> Self {
+        Self {
+            fit: "fill".into(),
+            current_wallpaper_path: None,
+        }
+    }
+}
+
 /// A named window layout preset containing one or more layout rules.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
@@ -172,6 +191,8 @@ pub struct Preferences {
     /// Named window layout presets. Each preset contains rules that match windows
     /// by app name and apply tiling layouts. Triggered via `command/layout/{name_or_index}`.
     pub layout_presets: Vec<LayoutPreset>,
+    /// Wallpaper preferences: fit mode and current wallpaper path.
+    pub wallpaper: WallpaperPreferences,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -362,6 +383,7 @@ impl Default for Preferences {
             monitor_configs: Vec::new(),
             tiling: TilingPreferences::default(),
             layout_presets: Vec::new(),
+            wallpaper: WallpaperPreferences::default(),
         }
     }
 }
@@ -414,7 +436,7 @@ pub fn write_debug_log(state: &crate::AppState, message: &str) {
 }
 
 /// Returns the app's config directory (creates it if it doesn't exist).
-fn config_dir() -> PathBuf {
+pub(crate) fn config_dir() -> PathBuf {
     let dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("display-dj");
@@ -1192,5 +1214,39 @@ mod tests {
         let dir = super::config_dir();
         assert!(dir.ends_with("display-dj"));
         assert!(dir.exists(), "config_dir() should create the directory");
+    }
+
+    /// Verifies WallpaperPreferences defaults to fit="fill" and no current path.
+    #[test]
+    fn test_wallpaper_preferences_default() {
+        let wp = WallpaperPreferences::default();
+        assert_eq!(wp.fit, "fill");
+        assert!(wp.current_wallpaper_path.is_none());
+    }
+
+    /// Verifies WallpaperPreferences serializes/deserializes with camelCase.
+    #[test]
+    fn test_wallpaper_preferences_roundtrip() {
+        let wp = WallpaperPreferences {
+            fit: "center".into(),
+            current_wallpaper_path: Some("/tmp/wallpaper.jpg".into()),
+        };
+        let json = serde_json::to_string(&wp).unwrap();
+        assert!(json.contains("currentWallpaperPath"));
+        let restored: WallpaperPreferences = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.fit, "center");
+        assert_eq!(restored.current_wallpaper_path.as_deref(), Some("/tmp/wallpaper.jpg"));
+    }
+
+    /// Verifies old configs missing the wallpaper field get defaults.
+    #[test]
+    fn test_preferences_missing_wallpaper_defaults() {
+        let json = r#"{
+            "showIndividualDisplays": false,
+            "keyBindings": []
+        }"#;
+        let prefs: Preferences = serde_json::from_str(json).unwrap();
+        assert_eq!(prefs.wallpaper.fit, "fill");
+        assert!(prefs.wallpaper.current_wallpaper_path.is_none());
     }
 }
