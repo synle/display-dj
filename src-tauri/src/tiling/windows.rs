@@ -616,25 +616,35 @@ pub fn execute_expose_app(app: &AppHandle) {
         displays.len()
     );
 
-    // Fill remaining display capacity with other apps' windows
-    let remaining_cap = total_cap.saturating_sub(placed);
-    if remaining_cap > 0 {
-        let remaining_per_display = (remaining_cap + displays.len() - 1) / displays.len();
-        if remaining_per_display > 0 {
-            let other_windows: Vec<&WindowInfo> = build_sorted_window_list(
-                &all_windows,
-                remaining_cap,
-            )
-            .into_iter()
-            .filter(|w| w.owner_pid != target_pid as i32)
-            .collect();
+    // Calculate how many displays the app's windows fully occupied.
+    let displays_consumed = if max_per_display > 0 {
+        (placed + max_per_display - 1) / max_per_display
+    } else {
+        0
+    };
+    let displays_consumed = displays_consumed.min(displays.len());
 
-            if !other_windows.is_empty() {
-                let placed_others = layout_across_displays(
-                    &other_windows, &displays, remaining_per_display, g, spread, &set_rect_fn,
-                );
-                log::info!("app_expose: filled remaining space with {} other windows", placed_others);
-            }
+    // Only use displays NOT consumed by the target app for other windows.
+    let remaining_displays = &displays[displays_consumed..];
+    let remaining_cap = max_per_display * remaining_displays.len();
+
+    if remaining_cap > 0 && !remaining_displays.is_empty() {
+        let other_windows: Vec<&WindowInfo> = build_sorted_window_list(
+            &all_windows,
+            remaining_cap,
+        )
+        .into_iter()
+        .filter(|w| w.owner_pid != target_pid as i32)
+        .collect();
+
+        if !other_windows.is_empty() {
+            let placed_others = layout_across_displays(
+                &other_windows, remaining_displays, max_per_display, g, spread, &set_rect_fn,
+            );
+            log::info!(
+                "app_expose: filled remaining {} displays with {} other windows (skipped first {} used by '{}')",
+                remaining_displays.len(), placed_others, displays_consumed, target_app,
+            );
         }
     }
 }
