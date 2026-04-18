@@ -2,7 +2,7 @@
 
 # Display DJ
 
-A cross-platform desktop system tray app for controlling monitor brightness, contrast, dark mode, volume, and more -- all from one place. Works with both built-in laptop displays and external monitors via DDC/CI. Supports **macOS**, **Windows**, and **Linux**.
+A cross-platform desktop system tray app for controlling monitor brightness, contrast, dark mode, volume, keep-awake, window tiling, exposé, and layout presets -- all from one place. Works with both built-in laptop displays and external monitors via DDC/CI. Supports **macOS**, **Windows**, and **Linux**.
 
 ## Why I Built This
 
@@ -37,13 +37,17 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Dark mode toggle** -- system-wide dark/light mode switch
 - **Volume control** -- system volume slider with mute indicator
 - **Keep Awake** -- prevent your system from sleeping with a single toggle (macOS, Windows, Linux)
-- **Night mode schedule** -- automatically set brightness and dark/light mode on a time-based schedule (e.g., dim at 9 PM, bright at 7 AM)
+- **Night mode schedule** -- automatically set brightness and dark/light mode on a time-based schedule (e.g., dim at 9 PM, bright at 7 AM). Supports custom commands (`nightCommands`/`dayCommands`) to run arbitrary actions on schedule (volume changes, profile activation, per-monitor brightness)
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
 - **Global keyboard shortcuts** -- work even when the app isn't focused; fully configurable
 - **Monitor renaming** -- click any display name to give it a custom label
 - **Window tiling** (macOS + Windows + Linux/X11) -- tile windows to halves, thirds, two-thirds, quarters, or maximize via keyboard shortcuts or tray menu
-- **Exposé** (macOS + Windows + Linux/X11) -- spread all windows into a grid overview, or just the current app's windows. Deterministic alphabetical layout with multi-display overflow. Has its own tray submenu with enable/disable toggle and grid size options
-- **Settings panel** -- tabbed UI (General + Tiling) with auto-save. Configure brightness, contrast, monitors, night mode, snap zones, exposé grid size, and launch at login
+- **Tile Snap** (macOS only) -- drag a window to a screen edge to preview and snap it into a tiled layout. Enable/disable via the Tile Snap toggle in Settings
+- **Exposé** (macOS + Windows + Linux/X11) -- spread all windows into a grid overview, or just the current app's windows. Deterministic alphabetical layout with configurable multi-display strategy (spread evenly or fill each display). Has its own tray submenu with enable/disable toggle and grid size presets (2x2 through 5x5)
+- **App Exposé** -- grids the frontmost app's windows and fills remaining grid cells with other apps' windows
+- **Layout Presets** -- named presets that automatically tile specific apps to specific layouts. Triggered via keyboard shortcuts, profiles, or the tray menu
+- **Dynamic tray icon** -- the system tray icon updates to reflect app state: dark/light mode (border color), keep-awake active (blue fill), and muted (red X overlay)
+- **Settings panel** -- tabbed UI (General + Tiling) with auto-save. Configure brightness, contrast, monitors, night mode, snap zones, exposé grid size, layout strategy, and launch at login
 - **System tray app** -- lives in your menu bar / system tray with no dock or taskbar clutter
 
 ## Download & Install
@@ -68,9 +72,8 @@ Grab the latest release from the **[Releases](../../releases)** page.
 | Architecture | File                             |
 | ------------ | -------------------------------- |
 | x64          | `Display DJ_x.x.x_x64-setup.exe` |
-| x64          | `Display DJ_x.x.x_x64_en-US.msi` |
 
-1. Download either the `.exe` installer or the `.msi`
+1. Download the `.exe` installer
 2. Run the installer and follow the prompts
 3. Launch **Display DJ** -- it will appear in your **system tray** (bottom-right; click `^` if hidden)
 
@@ -80,16 +83,12 @@ Grab the latest release from the **[Releases](../../releases)** page.
 | -------- | --------------------------------- |
 | Debian   | `Display DJ_x.x.x_amd64.deb`      |
 | AppImage | `Display DJ_x.x.x_amd64.AppImage` |
-| RPM      | `Display.DJ-x.x.x-1.x86_64.rpm`   |
 
 1. Install via your preferred format:
 
    ```bash
    # Debian / Ubuntu
    sudo dpkg -i "Display DJ_x.x.x_amd64.deb"
-
-   # RPM-based (Fedora, etc.)
-   sudo rpm -i Display.DJ-x.x.x-1.x86_64.rpm
 
    # AppImage (no install needed)
    chmod +x "Display DJ_x.x.x_amd64.AppImage"
@@ -150,9 +149,21 @@ Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or 
 Two Exposé modes are available:
 
 - **Exposé** (Ctrl+Up or Ctrl+Shift+E) -- spreads all on-screen windows into a deterministic alphabetical grid. Fills the first display, then overflows to the next. Windows with minimum size constraints (e.g., Steam, Chrome) that don't fit in the grid automatically overflow to subsequent displays where cells are larger.
-- **App Exposé** (Ctrl+Down or Ctrl+Shift+A) -- grids only the frontmost app's windows across displays.
+- **App Exposé** (Ctrl+Down or Ctrl+Shift+A) -- grids the frontmost app's windows, then fills remaining grid cells with other apps' windows.
 
-Both modes normalize windows first (unminimize and exit fullscreen), then lay out a grid. Each invocation always re-lays out all windows (no toggle/restore). The grid size is configurable in Settings (Tiling tab) from 2x2 to 5x5 per screen.
+Both modes normalize windows first (unminimize and exit fullscreen), then lay out a grid. Each invocation always re-lays out all windows (no toggle/restore). The grid size is configurable in Settings (Tiling tab) with separate Columns and Rows sliders (1-5 each, default 3x3). The layout strategy can be set to "spread" (distribute windows evenly across all displays) or "fill" (pack each display to capacity before using the next).
+
+The Exposé tray submenu (separate from Tiling) provides an Enable/Disable toggle, Exposé and App Exposé actions, and grid size presets (2x2, 2x3, 3x3, 3x4, 4x4, 5x5).
+
+### Layout Presets
+
+Layout presets let you define named configurations that automatically tile specific apps to specific layouts. Each preset has a `name` and a list of `rules`. Each rule specifies:
+
+- `appMatch` -- case-insensitive substring to match against window/app names
+- `layout` -- the tiling layout to apply (e.g., `"leftHalf"`, `"rightThird"`, `"maximize"`)
+- `displayIndex` (optional) -- 0-based display index to place the window on
+
+Presets are triggered via `command/layout/{name_or_index}` and can be bound to keyboard shortcuts, included in profiles, or triggered from the "Layout Presets" tray submenu. Configure presets by editing `preferences.json` (accessible via "Open App Preferences" in the tray menu).
 
 ### Enabling Tiling
 
@@ -174,21 +185,28 @@ macOS requires Accessibility permission for tiling to move/resize other apps' wi
 
 No special permissions are needed. Tiling works out of the box using Win32 APIs.
 
+#### Linux (X11)
+
+No special permissions are needed on X11. Tiling uses EWMH window manager hints and works out of the box. Wayland is not supported — `get_tiling_supported` returns false on Wayland-only sessions (the `$DISPLAY` env var must be set).
+
 ### Tiling Preferences
 
 Tiling settings are stored in `preferences.json` under the `tiling` key. They can also be configured via the Settings panel (Tiling tab).
 
-| Setting            | Default | Range     | Description                                              |
-| ------------------ | ------- | --------- | -------------------------------------------------------- |
-| `enabled`          | `true`  | --        | Master toggle for all tiling features                    |
-| `halfRatio`        | `50`    | --        | Percentage for half splits (affects halves and quarters) |
-| `thirdRatio`       | `33`    | --        | Percentage for third splits (center = 100 - 2 x third)   |
-| `gap`              | `0`     | --        | Padding in points around the tiling area                 |
-| `sideEdgeTrigger`  | `10`    | 5-50 px   | Tile Snap: width of left/right/bottom edge zone          |
-| `topEdgeTrigger`   | `10`    | 10-50 px  | Tile Snap: height of top edge zone (maximize)            |
-| `cornerTrigger`    | `50`    | 25-150 px | Tile Snap: size of corner zone (quarter tiles)           |
-| `exposeEnabled`    | `true`  | --        | Master toggle for Exposé features                        |
-| `exposeMaxWindows` | `16`    | 4-25      | Max windows per screen in Exposé (grid size squared)     |
+| Setting                | Default    | Range     | Description                                                                                                          |
+| ---------------------- | ---------- | --------- | -------------------------------------------------------------------------------------------------------------------- |
+| `enabled`              | `true`     | --        | Master toggle for all tiling features                                                                                |
+| `halfRatio`            | `50`       | --        | Percentage for half splits (affects halves and quarters)                                                             |
+| `thirdRatio`           | `33`       | --        | Percentage for third splits (center = 100 - 2 x third)                                                               |
+| `gap`                  | `0`        | --        | Padding in points around the tiling area                                                                             |
+| `tileSnapEnabled`      | `true`     | --        | Enable/disable Tile Snap mouse edge snapping (macOS only)                                                            |
+| `sideEdgeTrigger`      | `10`       | 5-50 px   | Tile Snap: width of left/right/bottom edge zone                                                                      |
+| `topEdgeTrigger`       | `10`       | 10-50 px  | Tile Snap: height of top edge zone (maximize)                                                                        |
+| `cornerTrigger`        | `50`       | 25-150 px | Tile Snap: size of corner zone (quarter tiles)                                                                       |
+| `exposeEnabled`        | `true`     | --        | Master toggle for Exposé features                                                                                    |
+| `exposeColumns`        | `3`        | 1-5       | Number of columns in the Exposé grid per display                                                                     |
+| `exposeRows`           | `3`        | 1-5       | Number of rows in the Exposé grid per display                                                                        |
+| `exposeLayoutStrategy` | `"spread"` | --        | `"spread"` distributes windows evenly across displays; `"fill"` packs each display to capacity before using the next |
 
 ## Known Issues
 
