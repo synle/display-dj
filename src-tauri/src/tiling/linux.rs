@@ -849,7 +849,7 @@ pub fn execute_expose(app: &AppHandle) {
             Ok(p) => p,
             Err(_) => return,
         };
-        (prefs.tiling.expose_max_windows as usize, prefs.tiling.gap)
+        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap)
     };
 
     let (conn, screen_num) = match connect() {
@@ -909,7 +909,7 @@ pub fn execute_expose_app(app: &AppHandle) {
             Ok(p) => p,
             Err(_) => return,
         };
-        (prefs.tiling.expose_max_windows as usize, prefs.tiling.gap)
+        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap)
     };
 
     let (conn, screen_num) = match connect() {

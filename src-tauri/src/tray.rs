@@ -184,21 +184,20 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .item(&MenuItemBuilder::with_id("tile_expose", "Exposé").build(app)?)
             .item(&MenuItemBuilder::with_id("tile_exposeApp", "App Exposé").build(app)?)
             .separator();
-        // Grid size options
-        let expose_max = if let Some(state) = app.try_state::<crate::AppState>() {
+        // Grid size options (columns × rows presets)
+        let (cur_cols, cur_rows) = if let Some(state) = app.try_state::<crate::AppState>() {
             state
                 .preferences
                 .lock()
-                .map(|p| p.tiling.expose_max_windows)
-                .unwrap_or(16)
+                .map(|p| (p.tiling.expose_columns, p.tiling.expose_rows))
+                .unwrap_or((3, 3))
         } else {
-            16
+            (3, 3)
         };
-        for &size in &[2u32, 3, 4, 5] {
-            let val = size * size;
-            let check = if val == expose_max { "● " } else { "   " };
-            let label = format!("{}{} \u{00d7} {} = {} windows", check, size, size, val);
-            let id = format!("expose_grid_{}", size);
+        for &(c, r) in &[(2u32, 2), (2, 3), (3, 3), (3, 4), (4, 4), (5, 5)] {
+            let check = if c == cur_cols && r == cur_rows { "● " } else { "   " };
+            let label = format!("{}{} \u{00d7} {} = {} windows", check, c, r, c * r);
+            let id = format!("expose_grid_{}x{}", c, r);
             builder =
                 builder.item(&MenuItemBuilder::with_id(&id, &label).build(app)?);
         }
@@ -372,16 +371,19 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                         let cmd = format!("command/changeProfile/{}", idx);
                         execute_command(app, &cmd);
                     }
-                } else if let Some(size_str) = other.strip_prefix("expose_grid_") {
-                    if let Ok(size) = size_str.parse::<u32>() {
-                        let val = size * size;
-                        if let Some(state) = app.try_state::<crate::AppState>() {
-                            if let Ok(mut prefs) = state.preferences.lock() {
-                                prefs.tiling.expose_max_windows = val;
-                                crate::config::save_preferences_to_disk(&prefs);
+                } else if let Some(grid_str) = other.strip_prefix("expose_grid_") {
+                    // Parse "CxR" format (e.g. "3x4")
+                    if let Some((c_str, r_str)) = grid_str.split_once('x') {
+                        if let (Ok(c), Ok(r)) = (c_str.parse::<u32>(), r_str.parse::<u32>()) {
+                            if let Some(state) = app.try_state::<crate::AppState>() {
+                                if let Ok(mut prefs) = state.preferences.lock() {
+                                    prefs.tiling.expose_columns = c;
+                                    prefs.tiling.expose_rows = r;
+                                    crate::config::save_preferences_to_disk(&prefs);
+                                }
                             }
+                            rebuild_tray_menu(app);
                         }
-                        rebuild_tray_menu(app);
                     }
                 }
             }
@@ -741,10 +743,10 @@ fn dump_debug_info(app: &AppHandle) {
             lines.push("--- exposé ---".into());
             lines.push(format!("tiling.expose_enabled: {}", prefs.tiling.expose_enabled));
             lines.push(format!(
-                "tiling.expose_max_windows: {} ({}x{} grid)",
-                prefs.tiling.expose_max_windows,
-                (prefs.tiling.expose_max_windows as f64).sqrt().ceil() as u32,
-                (prefs.tiling.expose_max_windows as f64).sqrt().ceil() as u32,
+                "tiling.expose_grid: {}x{} = {} windows",
+                prefs.tiling.expose_columns,
+                prefs.tiling.expose_rows,
+                prefs.tiling.expose_columns * prefs.tiling.expose_rows,
             ));
 
             // Night mode

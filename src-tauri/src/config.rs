@@ -24,7 +24,14 @@ pub struct TilingPreferences {
     pub corner_trigger: u32,
     /// Master toggle to enable/disable Exposé features.
     pub expose_enabled: bool,
-    /// Exposé: maximum number of windows to show in the grid.
+    /// Exposé: number of columns in the grid.
+    pub expose_columns: u32,
+    /// Exposé: number of rows in the grid.
+    pub expose_rows: u32,
+    /// Legacy field for backward-compatible deserialization of old configs.
+    /// Not serialized; on load, if columns/rows are at defaults and this is
+    /// non-zero, we migrate sqrt(value) into columns and rows.
+    #[serde(default, skip_serializing)]
     pub expose_max_windows: u32,
 }
 
@@ -39,7 +46,9 @@ impl Default for TilingPreferences {
             top_edge_trigger: 10,
             corner_trigger: 50,
             expose_enabled: true,
-            expose_max_windows: 16,
+            expose_columns: 3,
+            expose_rows: 3,
+            expose_max_windows: 0,
         }
     }
 }
@@ -369,6 +378,7 @@ pub fn load_preferences() -> Preferences {
         }
     };
     migrate_monitor_configs_if_needed(&mut prefs);
+    migrate_expose_grid_if_needed(&mut prefs);
     prefs
 }
 
@@ -429,6 +439,27 @@ fn migrate_monitor_configs_if_needed(prefs: &mut Preferences) {
     // Rename old file so migration doesn't re-run
     let migrated_path = config_dir().join("monitor-configs.migrated.json");
     std::fs::rename(&old_path, &migrated_path).ok();
+}
+
+/// Migrates the legacy `expose_max_windows` (squared total) into the new
+/// `expose_columns` / `expose_rows` fields. Runs once: when the old field is
+/// present and non-zero, and the new fields are still at their defaults.
+fn migrate_expose_grid_if_needed(prefs: &mut Preferences) {
+    let old = prefs.tiling.expose_max_windows;
+    let defaults = TilingPreferences::default();
+    if old == 0 {
+        return; // old field not present in the config
+    }
+    if prefs.tiling.expose_columns != defaults.expose_columns
+        || prefs.tiling.expose_rows != defaults.expose_rows
+    {
+        return; // new fields already set by the user
+    }
+    let dim = (old as f64).sqrt().round() as u32;
+    prefs.tiling.expose_columns = dim;
+    prefs.tiling.expose_rows = dim;
+    prefs.tiling.expose_max_windows = 0; // clear legacy field
+    save_preferences_to_disk(prefs);
 }
 
 /// Backs up the current preferences file and resets to defaults.
@@ -922,5 +953,80 @@ mod tests {
         let prefs: Preferences = serde_json::from_str(json).unwrap();
         assert_eq!(prefs.profiles.len(), 3);
         assert_eq!(prefs.profiles[0].name, "Presentation");
+    }
+
+    #[test]
+    fn test_default_expose_grid_is_3x3() {
+        let prefs = Preferences::default();
+        assert_eq!(prefs.tiling.expose_columns, 3);
+        assert_eq!(prefs.tiling.expose_rows, 3);
+        assert_eq!(prefs.tiling.expose_max_windows, 0);
+    }
+
+    #[test]
+    fn test_expose_grid_new_fields_roundtrip() {
+        let mut prefs = Preferences::default();
+        prefs.tiling.expose_columns = 2;
+        prefs.tiling.expose_rows = 4;
+        let json = serde_json::to_string_pretty(&prefs).unwrap();
+        // expose_max_windows should NOT appear in serialized output
+        assert!(!json.contains("exposeMaxWindows"));
+        assert!(json.contains("exposeColumns"));
+        assert!(json.contains("exposeRows"));
+        let restored: Preferences = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.tiling.expose_columns, 2);
+        assert_eq!(restored.tiling.expose_rows, 4);
+    }
+
+    #[test]
+    fn test_expose_grid_backward_compat_old_config() {
+        // Simulates an old preferences.json that has exposeMaxWindows but not
+        // exposeColumns/exposeRows. Serde fills the new fields with defaults.
+        let json = r#"{
+            "tiling": {
+                "enabled": true,
+                "exposeEnabled": true,
+                "exposeMaxWindows": 25
+            }
+        }"#;
+        let prefs: Preferences = serde_json::from_str(json).unwrap();
+        // Old field is deserialized for migration
+        assert_eq!(prefs.tiling.expose_max_windows, 25);
+        // New fields get defaults since they're missing from the JSON
+        assert_eq!(prefs.tiling.expose_columns, 3);
+        assert_eq!(prefs.tiling.expose_rows, 3);
+    }
+
+    #[test]
+    fn test_migrate_expose_grid_from_old_config() {
+        let mut prefs = Preferences::default();
+        prefs.tiling.expose_max_windows = 25; // old 5x5
+        prefs.tiling.expose_columns = 3; // still at default
+        prefs.tiling.expose_rows = 3; // still at default
+        migrate_expose_grid_if_needed(&mut prefs);
+        assert_eq!(prefs.tiling.expose_columns, 5);
+        assert_eq!(prefs.tiling.expose_rows, 5);
+        assert_eq!(prefs.tiling.expose_max_windows, 0);
+    }
+
+    #[test]
+    fn test_migrate_expose_grid_skips_when_new_fields_set() {
+        let mut prefs = Preferences::default();
+        prefs.tiling.expose_max_windows = 25;
+        prefs.tiling.expose_columns = 2; // user already set new fields
+        prefs.tiling.expose_rows = 4;
+        migrate_expose_grid_if_needed(&mut prefs);
+        // Should NOT overwrite user's new settings
+        assert_eq!(prefs.tiling.expose_columns, 2);
+        assert_eq!(prefs.tiling.expose_rows, 4);
+    }
+
+    #[test]
+    fn test_migrate_expose_grid_skips_when_no_old_field() {
+        let mut prefs = Preferences::default();
+        // expose_max_windows defaults to 0 (not present in new configs)
+        migrate_expose_grid_if_needed(&mut prefs);
+        assert_eq!(prefs.tiling.expose_columns, 3);
+        assert_eq!(prefs.tiling.expose_rows, 3);
     }
 }

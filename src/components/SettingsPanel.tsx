@@ -160,7 +160,8 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   };
 
   const tiling = prefs.tiling;
-  const gridSize = Math.round(Math.sqrt(tiling?.exposeMaxWindows ?? 16));
+  const exposeCols = tiling?.exposeColumns ?? 3;
+  const exposeRows = tiling?.exposeRows ?? 3;
 
   return (
     <div className='settings-panel'>
@@ -434,13 +435,24 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 {(tiling?.exposeEnabled ?? true) && (
                   <div className='settings-section'>
                     <label className='settings-label'>Exposé Grid Size</label>
-                    <Slider
-                      value={gridSize}
-                      min={2}
-                      max={5}
-                      onChange={(v) => updateTiling('exposeMaxWindows', v * v)}
-                      showValue={false}
-                    />
+                    <div style={{ marginTop: '4px' }}>
+                      <label className='settings-label'>Columns</label>
+                      <Slider
+                        value={exposeCols}
+                        min={1}
+                        max={5}
+                        onChange={(v) => updateTiling('exposeColumns', v)}
+                      />
+                    </div>
+                    <div style={{ marginTop: '4px' }}>
+                      <label className='settings-label'>Rows</label>
+                      <Slider
+                        value={exposeRows}
+                        min={1}
+                        max={5}
+                        onChange={(v) => updateTiling('exposeRows', v)}
+                      />
+                    </div>
                     <span
                       style={{
                         fontSize: '11px',
@@ -448,7 +460,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         marginTop: '2px',
                         display: 'block',
                       }}>
-                      {gridSize} &times; {gridSize} = {tiling?.exposeMaxWindows ?? 16} windows per
+                      {exposeCols} &times; {exposeRows} = {exposeCols * exposeRows} windows per
                       screen
                     </span>
                   </div>
