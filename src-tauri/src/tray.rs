@@ -218,9 +218,34 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         .item(&profiles_submenu);
 
     // Tiling + Exposé submenus on macOS + Windows + Linux (X11)
+    // Layout Presets submenu — only shown when presets exist and tiling is supported
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    let layout_presets = {
+        if let Some(state) = app.try_state::<crate::AppState>() {
+            state.preferences.lock().map(|p| p.layout_presets.clone()).unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    };
+
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     {
         menu = menu.separator().item(&tiling_submenu).item(&expose_submenu);
+        if !layout_presets.is_empty() {
+            let mut presets_submenu = SubmenuBuilder::new(app, "Layout Presets");
+            for (i, preset) in layout_presets.iter().enumerate() {
+                let label = if preset.name.is_empty() {
+                    format!("Preset #{}", i + 1)
+                } else {
+                    preset.name.clone()
+                };
+                let id = format!("layout_preset_{}", i);
+                presets_submenu = presets_submenu
+                    .item(&MenuItemBuilder::with_id(&id, &label).build(app)?);
+            }
+            let presets_submenu = presets_submenu.build()?;
+            menu = menu.item(&presets_submenu);
+        }
     }
 
     let menu = menu
@@ -384,6 +409,11 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                             }
                             rebuild_tray_menu(app);
                         }
+                    }
+                } else if let Some(idx_str) = other.strip_prefix("layout_preset_") {
+                    if let Ok(idx) = idx_str.parse::<usize>() {
+                        let cmd = format!("command/layout/{}", idx);
+                        execute_command(app, &cmd);
                     }
                 }
             }
@@ -935,6 +965,19 @@ fn execute_command(app: &AppHandle, command: &str) {
             }
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             log::warn!("Tiling is not yet supported on this platform: {}", layout);
+        }
+        // Apply a layout preset: command/layout/{name_or_index}
+        ["command", "layout", name_or_index] => {
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            {
+                let app_clone = app.clone();
+                let preset_id = name_or_index.to_string();
+                std::thread::spawn(move || {
+                    crate::tiling::execute_layout_preset(&app_clone, &preset_id);
+                });
+            }
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            log::warn!("Layout presets are not supported on this platform: {}", name_or_index);
         }
         _ => {
             log::warn!("Unknown command: {}", command);

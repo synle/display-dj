@@ -662,6 +662,60 @@ pub(crate) fn detect_snap_zone(
 }
 
 // ---------------------------------------------------------------------------
+// Layout preset helpers (platform-independent)
+// ---------------------------------------------------------------------------
+
+/// Resolve a layout preset by name (case-insensitive) or 0-based index string.
+/// Returns None if not found.
+pub(crate) fn resolve_layout_preset(
+    presets: &[crate::config::LayoutPreset],
+    name_or_index: &str,
+) -> Option<crate::config::LayoutPreset> {
+    // Try as 0-based index first
+    if let Ok(idx) = name_or_index.parse::<usize>() {
+        return presets.get(idx).cloned();
+    }
+    // Try case-insensitive name match
+    presets
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(name_or_index))
+        .cloned()
+}
+
+/// Match windows against preset rules using case-insensitive substring matching.
+/// Returns a list of (window_index, layout, optional_display_index) tuples.
+/// Each window is matched at most once (first matching rule wins).
+pub(crate) fn match_windows_to_rules(
+    windows: &[WindowInfo],
+    rules: &[crate::config::LayoutRule],
+) -> Vec<(usize, TilingLayout, Option<usize>)> {
+    let mut matched = Vec::new();
+    let mut used_windows: Vec<bool> = vec![false; windows.len()];
+
+    for rule in rules {
+        let layout = match TilingLayout::parse(&rule.layout) {
+            Some(l) => l,
+            None => {
+                log::warn!("layout_preset: unknown layout '{}'", rule.layout);
+                continue;
+            }
+        };
+        let needle = rule.app_match.to_lowercase();
+        for (i, w) in windows.iter().enumerate() {
+            if used_windows[i] {
+                continue;
+            }
+            if w.owner_name.to_lowercase().contains(&needle) {
+                matched.push((i, layout, rule.display_index));
+                used_windows[i] = true;
+                break; // one window per rule
+            }
+        }
+    }
+    matched
+}
+
+// ---------------------------------------------------------------------------
 // Platform-delegating public API
 // ---------------------------------------------------------------------------
 
@@ -758,6 +812,22 @@ pub fn execute_expose_app(app: &AppHandle) {
     {
         let _ = app;
         log::warn!("app_expose: not supported on this platform");
+    }
+}
+
+/// Execute a layout preset by name or 0-based index. Enumerates all windows,
+/// matches by app name, and tiles each matched window according to the preset's rules.
+pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
+    #[cfg(target_os = "macos")]
+    macos::execute_layout_preset(app, name_or_index);
+    #[cfg(target_os = "windows")]
+    windows::execute_layout_preset(app, name_or_index);
+    #[cfg(target_os = "linux")]
+    linux::execute_layout_preset(app, name_or_index);
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        let _ = (app, name_or_index);
+        log::warn!("layout_preset: not supported on this platform");
     }
 }
 
@@ -1475,5 +1545,104 @@ mod tests {
         let r = calculate_target_rect(TilingLayout::Maximize, &d, 50, 33, 0);
         assert!(approx(r.x, 0.5));
         assert!(approx(r.y, 0.5));
+    }
+
+    // -- Layout preset helpers --
+
+    /// Helper to create a LayoutPreset for tests.
+    fn preset(name: &str, rules: Vec<(&str, &str, Option<usize>)>) -> crate::config::LayoutPreset {
+        crate::config::LayoutPreset {
+            name: name.into(),
+            rules: rules
+                .into_iter()
+                .map(|(app, layout, disp)| crate::config::LayoutRule {
+                    app_match: app.into(),
+                    layout: layout.into(),
+                    display_index: disp,
+                })
+                .collect(),
+        }
+    }
+
+    /// Verifies resolve_layout_preset finds preset by 0-based index.
+    #[test]
+    fn test_resolve_preset_by_index() {
+        let presets = vec![preset("Coding", vec![]), preset("Meeting", vec![])];
+        let found = resolve_layout_preset(&presets, "1");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().name, "Meeting");
+    }
+
+    /// Verifies resolve_layout_preset finds preset by name (case-insensitive).
+    #[test]
+    fn test_resolve_preset_by_name() {
+        let presets = vec![preset("Coding", vec![]), preset("Meeting", vec![])];
+        let found = resolve_layout_preset(&presets, "coding");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().name, "Coding");
+    }
+
+    /// Verifies resolve_layout_preset returns None for missing preset.
+    #[test]
+    fn test_resolve_preset_not_found() {
+        let presets = vec![preset("Coding", vec![])];
+        assert!(resolve_layout_preset(&presets, "Unknown").is_none());
+        assert!(resolve_layout_preset(&presets, "5").is_none());
+    }
+
+    /// Verifies match_windows_to_rules matches by substring (case-insensitive).
+    #[test]
+    fn test_match_windows_basic() {
+        let windows = vec![win(1, "Google Chrome"), win(2, "VS Code"), win(3, "Terminal")];
+        let rules = vec![
+            crate::config::LayoutRule { app_match: "chrome".into(), layout: "leftHalf".into(), display_index: None },
+            crate::config::LayoutRule { app_match: "code".into(), layout: "rightHalf".into(), display_index: Some(0) },
+        ];
+        let matches = match_windows_to_rules(&windows, &rules);
+        assert_eq!(matches.len(), 2);
+        assert_eq!(matches[0].0, 0); // Chrome window index
+        assert_eq!(matches[0].1, TilingLayout::LeftHalf);
+        assert_eq!(matches[1].0, 1); // VS Code window index
+        assert_eq!(matches[1].1, TilingLayout::RightHalf);
+        assert_eq!(matches[1].2, Some(0));
+    }
+
+    /// Verifies each window matches at most once (first rule wins).
+    #[test]
+    fn test_match_windows_first_match_wins() {
+        let windows = vec![win(1, "Chrome"), win(2, "Chrome")];
+        let rules = vec![
+            crate::config::LayoutRule { app_match: "Chrome".into(), layout: "leftHalf".into(), display_index: None },
+            crate::config::LayoutRule { app_match: "Chrome".into(), layout: "rightHalf".into(), display_index: None },
+        ];
+        let matches = match_windows_to_rules(&windows, &rules);
+        assert_eq!(matches.len(), 2);
+        // First rule grabs first Chrome, second rule grabs second Chrome
+        assert_eq!(matches[0].0, 0);
+        assert_eq!(matches[0].1, TilingLayout::LeftHalf);
+        assert_eq!(matches[1].0, 1);
+        assert_eq!(matches[1].1, TilingLayout::RightHalf);
+    }
+
+    /// Verifies unknown layout names in rules are skipped gracefully.
+    #[test]
+    fn test_match_windows_unknown_layout_skipped() {
+        let windows = vec![win(1, "Chrome")];
+        let rules = vec![
+            crate::config::LayoutRule { app_match: "Chrome".into(), layout: "invalidLayout".into(), display_index: None },
+        ];
+        let matches = match_windows_to_rules(&windows, &rules);
+        assert_eq!(matches.len(), 0); // invalid layout → no match
+    }
+
+    /// Verifies no matches when no rules match.
+    #[test]
+    fn test_match_windows_no_matches() {
+        let windows = vec![win(1, "Firefox")];
+        let rules = vec![
+            crate::config::LayoutRule { app_match: "Chrome".into(), layout: "leftHalf".into(), display_index: None },
+        ];
+        let matches = match_windows_to_rules(&windows, &rules);
+        assert!(matches.is_empty());
     }
 }

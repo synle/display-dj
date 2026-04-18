@@ -98,6 +98,47 @@ impl Default for NightModeSchedule {
     }
 }
 
+/// A single rule within a layout preset: match windows by app name and apply a tiling layout.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LayoutRule {
+    /// Substring to match against the window's owner/app name (case-insensitive).
+    pub app_match: String,
+    /// TilingLayout name as a camelCase string (e.g. "leftHalf", "maximize").
+    pub layout: String,
+    /// Optional 0-based display index. If None, tiles on the window's current display.
+    pub display_index: Option<usize>,
+}
+
+impl Default for LayoutRule {
+    fn default() -> Self {
+        Self {
+            app_match: String::new(),
+            layout: String::new(),
+            display_index: None,
+        }
+    }
+}
+
+/// A named window layout preset containing one or more layout rules.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LayoutPreset {
+    /// User-visible name for this preset.
+    pub name: String,
+    /// Ordered list of rules. Each matched window is tiled once (first matching rule wins).
+    pub rules: Vec<LayoutRule>,
+}
+
+impl Default for LayoutPreset {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            rules: Vec::new(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Preferences {
@@ -111,6 +152,9 @@ pub struct Preferences {
     pub launch_at_login: bool,
     pub monitor_configs: Vec<MonitorMetadata>,
     pub tiling: TilingPreferences,
+    /// Named window layout presets. Each preset contains rules that match windows
+    /// by app name and apply tiling layouts. Triggered via `command/layout/{name_or_index}`.
+    pub layout_presets: Vec<LayoutPreset>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -300,6 +344,7 @@ impl Default for Preferences {
             launch_at_login: false,
             monitor_configs: Vec::new(),
             tiling: TilingPreferences::default(),
+            layout_presets: Vec::new(),
         }
     }
 }
@@ -1028,5 +1073,43 @@ mod tests {
         migrate_expose_grid_if_needed(&mut prefs);
         assert_eq!(prefs.tiling.expose_columns, 3);
         assert_eq!(prefs.tiling.expose_rows, 3);
+    }
+
+    #[test]
+    fn test_default_preferences_has_empty_layout_presets() {
+        let prefs = Preferences::default();
+        assert!(prefs.layout_presets.is_empty());
+    }
+
+    #[test]
+    fn test_layout_preset_roundtrip_serialization() {
+        let mut prefs = Preferences::default();
+        prefs.layout_presets.push(LayoutPreset {
+            name: "Coding".into(),
+            rules: vec![
+                LayoutRule { app_match: "Chrome".into(), layout: "leftHalf".into(), display_index: None },
+                LayoutRule { app_match: "VS Code".into(), layout: "rightHalf".into(), display_index: Some(0) },
+            ],
+        });
+        let json = serde_json::to_string_pretty(&prefs).unwrap();
+        assert!(json.contains("layoutPresets"));
+        assert!(json.contains("appMatch"));
+        assert!(json.contains("displayIndex"));
+        let restored: Preferences = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.layout_presets.len(), 1);
+        assert_eq!(restored.layout_presets[0].name, "Coding");
+        assert_eq!(restored.layout_presets[0].rules.len(), 2);
+        assert_eq!(restored.layout_presets[0].rules[0].app_match, "Chrome");
+        assert_eq!(restored.layout_presets[0].rules[1].display_index, Some(0));
+    }
+
+    #[test]
+    fn test_preferences_missing_layout_presets_defaults_to_empty() {
+        let json = r#"{
+            "showIndividualDisplays": false,
+            "keyBindings": []
+        }"#;
+        let prefs: Preferences = serde_json::from_str(json).unwrap();
+        assert!(prefs.layout_presets.is_empty());
     }
 }

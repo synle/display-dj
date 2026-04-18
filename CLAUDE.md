@@ -55,7 +55,7 @@ cd src-tauri && cargo test  # Run all Rust backend tests
   - `keep_awake.rs`: KeepAwake guard creation, Mutex<Option<KeepAwake>> pattern (enable/disable/re-enable)
   - `tray_icon.rs`: Percentage-to-pixel conversion, icon generation for all state combinations (dark/light, keep-awake, muted), filled rect and thick line drawing
   - `tray.rs`: Command URL building for all command types (brightness, contrast, volume — both all-monitors and per-monitor), min brightness clamping, contrast capping, invalid value handling
-  - `tiling/mod.rs` (shared types + layout math): TilingLayout parsing, layout calculation for all 17 layouts (halves, thirds, two-thirds, quarters, maximize), gap/padding math, custom ratio support, TilingState creation, `layout_across_displays` multi-display overflow with oversized window handling
+  - `tiling/mod.rs` (shared types + layout math): TilingLayout parsing, layout calculation for all 17 layouts (halves, thirds, two-thirds, quarters, maximize), gap/padding math, custom ratio support, TilingState creation, `layout_across_displays` multi-display overflow with oversized window handling, layout preset resolution (by index and name), window-to-rule matching (substring, case-insensitive, first-match-wins, unknown layout skip)
   - `tiling/macos.rs` (macOS only): macOS-specific AXUIElement window manipulation, NSScreen display detection, Tile Snap via CGEventTap
   - `tiling/windows.rs` (Windows only): Win32 window manipulation via GetForegroundWindow/SetWindowPos, EnumDisplayMonitors for display detection, EnumWindows for Expose
   - `tiling/linux.rs` (Linux only): X11 availability check, strut-to-work-area math (top/bottom/left/right panels, dual-monitor panel isolation, combined struts), process name resolution
@@ -115,8 +115,11 @@ Commands are strings dispatched by `execute_command()` in `tray.rs`. They can be
 | `command/changeDarkMode/{dark\|light\|toggle}` | `/dark`, `/light`, `/theme` | Toggle or set dark/light mode |
 | `command/changeProfile/{index}` | (executes profile commands) | Run all commands in a saved profile |
 | `command/tile/{layoutName}` | (calls tiling module) | Tile the focused window |
+| `command/layout/{name_or_index}` | (calls tiling module) | Apply a layout preset by name or 0-based index |
 
 Monitor IDs are the sidecar API IDs (e.g. `"1"`, `"2"`, `"builtin"`). Brightness is clamped to `[effective_min_brightness, 100]`; contrast is clamped to `[0, 100]`.
+
+- **Window Layout Presets**: Named presets that specify which apps go to which tiling layouts. Stored in `preferences.layoutPresets` as an array of `LayoutPreset` objects, each with a `name` and `rules` array. Each `LayoutRule` has `appMatch` (case-insensitive substring), `layout` (camelCase TilingLayout name), and optional `displayIndex` (0-based). Triggered via `command/layout/{name_or_index}` — works from keyboard shortcuts, profiles, and tray menu. The tray menu shows a "Layout Presets" submenu when presets are configured. Rules match one window per rule (first match wins); create duplicate rules to tile multiple windows of the same app. Users configure presets by editing `preferences.json` (Open App Preferences in tray menu).
 
 ## Related Projects
 

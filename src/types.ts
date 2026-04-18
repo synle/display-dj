@@ -40,6 +40,19 @@ export interface TilingPreferences {
   exposeRows: number;
 }
 
+/** A single rule within a layout preset: match windows by app name and apply a tiling layout. */
+export interface LayoutRule {
+  appMatch: string;
+  layout: string;
+  displayIndex: number | null;
+}
+
+/** A named window layout preset containing one or more layout rules. */
+export interface LayoutPreset {
+  name: string;
+  rules: LayoutRule[];
+}
+
 export interface Preferences {
   showIndividualDisplays: boolean;
   minBrightness: number;
@@ -51,6 +64,7 @@ export interface Preferences {
   launchAtLogin: boolean;
   monitorConfigs: MonitorMetadata[];
   tiling: TilingPreferences;
+  layoutPresets: LayoutPreset[];
 }
 
 export interface KeyBinding {
