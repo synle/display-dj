@@ -1358,7 +1358,13 @@ unsafe impl Sync for SnapContext {}
 /// Mutable state tracked during a drag for snap zone detection.
 struct SnapState {
     dragging: bool,
+    /// Whether the drag has moved more than the confirmation threshold (10px).
+    /// Until confirmed, snap zone detection is skipped.
     drag_confirmed: bool,
+    /// Cursor position at mouse_down — used for the drag confirmation threshold.
+    drag_start_cursor: Option<(f64, f64)>,
+    /// Window position at mouse_down — captured lazily on first confirmed drag
+    /// to keep the mouse_down handler fast (avoids AX API calls in the callback).
     drag_start_window_pos: Option<(f64, f64)>,
     current_layout: Option<TilingLayout>,
     current_display: usize,
@@ -1421,54 +1427,80 @@ extern "C" fn snap_event_callback(
 
     match event_type {
         K_CG_EVENT_LEFT_MOUSE_DOWN => {
+            // CRITICAL: Keep mouse_down minimal. No AX API calls, no NSScreen
+            // queries, no file I/O. Heavy work is deferred to the first
+            // confirmed drag event (MOUSE_DRAGGED after 10px threshold).
+            // If mouse_down takes too long, macOS kills the event tap.
             state.dragging = true;
             state.drag_confirmed = false;
+            state.drag_start_cursor = Some((cursor.x, cursor.y));
+            state.drag_start_window_pos = None;
             state.current_layout = None;
-            // Get focused window position for later verification
-            state.drag_start_window_pos = unsafe {
-                get_focused_window().and_then(|w| get_window_rect(&w).map(|r| (r.x, r.y)))
-            };
-            // Refresh display frames and preferences
-            state.displays = get_display_visible_frames();
-            // CRITICAL: use try_lock, not lock. A blocking lock here stalls the
-            // CGEventTap callback, causing macOS to disable the tap via timeout.
-            // If the lock is contended, we keep the previous preference values.
-            let prefs = ctx
-                .app
-                .try_state::<crate::AppState>()
-                .and_then(|s| s.preferences.try_lock().ok().map(|p| p.tiling.clone()));
-            if let Some(tp) = prefs {
-                state.half_ratio = tp.half_ratio;
-                state.third_ratio = tp.third_ratio;
-                state.gap = tp.gap;
-                state.side_edge_trigger = tp.side_edge_trigger as f64;
-                state.top_edge_trigger = tp.top_edge_trigger as f64;
-                state.corner_trigger = tp.corner_trigger as f64;
-            }
-            // Verbose logging for debugging (especially DMG vs dev differences)
-            if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
-                let display_info: Vec<String> = state.displays.iter().enumerate().map(|(i, d)| {
-                    format!("D{}({:.0},{:.0} {:.0}x{:.0})", i, d.x, d.y, d.width, d.height)
-                }).collect();
-                crate::config::write_debug_log(
-                    &dbg_state,
-                    &format!(
-                        "tile_snap: mouse_down — cursor=({:.0},{:.0}), start_pos={:?}, displays=[{}], \
-                         edge_triggers=(side={:.0}, top={:.0}, corner={:.0}), \
-                         tiling=(enabled={}, snap={}, half={}, third={}, gap={})",
-                        cursor.x, cursor.y,
-                        state.drag_start_window_pos,
-                        display_info.join(", "),
-                        state.side_edge_trigger, state.top_edge_trigger, state.corner_trigger,
-                        true, true, // already checked above
-                        state.half_ratio, state.third_ratio, state.gap,
-                    ),
-                );
-            }
         }
 
         K_CG_EVENT_LEFT_MOUSE_DRAGGED => {
-            if !state.dragging || state.displays.is_empty() {
+            if !state.dragging {
+                return event;
+            }
+
+            // 10px movement threshold before confirming this is a real drag.
+            // Skips accidental clicks and provides a natural lazy-load point.
+            if !state.drag_confirmed {
+                if let Some((sx, sy)) = state.drag_start_cursor {
+                    let dx = (cursor.x - sx).abs();
+                    let dy = (cursor.y - sy).abs();
+                    if dx < 10.0 && dy < 10.0 {
+                        return event; // not a real drag yet
+                    }
+                } else {
+                    return event;
+                }
+
+                // Drag confirmed — lazy-load display frames, preferences, and
+                // window position. This work was previously in mouse_down where
+                // it could stall the callback and cause macOS to kill the tap.
+                state.drag_confirmed = true;
+                state.drag_start_window_pos = unsafe {
+                    get_focused_window().and_then(|w| get_window_rect(&w).map(|r| (r.x, r.y)))
+                };
+                state.displays = get_display_visible_frames();
+                // CRITICAL: use try_lock, not lock. A blocking lock here stalls
+                // the CGEventTap callback, causing macOS to disable the tap.
+                // If the lock is contended, we keep the previous preference values.
+                let prefs = ctx
+                    .app
+                    .try_state::<crate::AppState>()
+                    .and_then(|s| s.preferences.try_lock().ok().map(|p| p.tiling.clone()));
+                if let Some(tp) = prefs {
+                    state.half_ratio = tp.half_ratio;
+                    state.third_ratio = tp.third_ratio;
+                    state.gap = tp.gap;
+                    state.side_edge_trigger = tp.side_edge_trigger as f64;
+                    state.top_edge_trigger = tp.top_edge_trigger as f64;
+                    state.corner_trigger = tp.corner_trigger as f64;
+                }
+                // Verbose logging — only fires once per drag, not on every frame
+                if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
+                    let display_info: Vec<String> = state.displays.iter().enumerate().map(|(i, d)| {
+                        format!("D{}({:.0},{:.0} {:.0}x{:.0})", i, d.x, d.y, d.width, d.height)
+                    }).collect();
+                    crate::config::write_debug_log(
+                        &dbg_state,
+                        &format!(
+                            "tile_snap: drag_confirmed — cursor=({:.0},{:.0}), start_pos={:?}, displays=[{}], \
+                             edge_triggers=(side={:.0}, top={:.0}, corner={:.0}), \
+                             tiling=(half={}, third={}, gap={})",
+                            cursor.x, cursor.y,
+                            state.drag_start_window_pos,
+                            display_info.join(", "),
+                            state.side_edge_trigger, state.top_edge_trigger, state.corner_trigger,
+                            state.half_ratio, state.third_ratio, state.gap,
+                        ),
+                    );
+                }
+            }
+
+            if state.displays.is_empty() {
                 return event;
             }
 
@@ -1685,6 +1717,7 @@ pub fn start_tile_snap(app: AppHandle) {
         state: std::sync::Mutex::new(SnapState {
             dragging: false,
             drag_confirmed: false,
+            drag_start_cursor: None,
             drag_start_window_pos: None,
             current_layout: None,
             current_display: 0,
