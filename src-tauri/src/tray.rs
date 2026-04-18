@@ -835,8 +835,9 @@ fn dump_debug_info(app: &AppHandle) {
 }
 
 /// Dispatches a command string (e.g. "command/changeBrightness/50") to the appropriate
-/// sidecar HTTP endpoint. Used by keyboard shortcuts, profiles, and tray menu actions.
-fn execute_command(app: &AppHandle, command: &str) {
+/// sidecar HTTP endpoint. Used by keyboard shortcuts, profiles, tray menu actions,
+/// and the night mode schedule.
+pub(crate) fn execute_command(app: &AppHandle, command: &str) {
     log::info!("execute_command: '{}'", command);
     let parts: Vec<&str> = command.split('/').collect();
     let base = base_url();

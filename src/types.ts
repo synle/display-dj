@@ -25,6 +25,10 @@ export interface NightModeSchedule {
   nightBrightness: number;
   dayStart: string;
   dayBrightness: number;
+  /** Optional commands to run when night mode activates (replaces default brightness+dark). */
+  nightCommands: string[];
+  /** Optional commands to run when day mode activates (replaces default brightness+light). */
+  dayCommands: string[];
 }
 
 export interface TilingPreferences {

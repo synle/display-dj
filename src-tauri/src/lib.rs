@@ -194,7 +194,8 @@ fn is_night_time(night_start: u32, day_start: u32, now: u32) -> bool {
 }
 
 /// Check if the current time falls within the night mode schedule and apply
-/// the corresponding brightness and dark/light mode via the sidecar.
+/// the corresponding actions. When custom commands are configured, executes
+/// those; otherwise falls back to the default brightness + dark/light mode.
 fn check_night_mode_schedule(app: &tauri::AppHandle) {
     let schedule = {
         let state = app.state::<AppState>();
@@ -221,30 +222,45 @@ fn check_night_mode_schedule(app: &tauri::AppHandle) {
     let now_local = chrono::Local::now();
     let now_minutes = now_local.hour() * 60 + now_local.minute();
 
-    let base = format!("http://127.0.0.1:{}", server_port());
     let is_night = is_night_time(night_start, day_start, now_minutes);
 
-    let (brightness, dark_mode_route) = if is_night {
-        (schedule.night_brightness, "dark")
+    // Use custom commands if configured, otherwise fall back to default behavior
+    let commands = if is_night {
+        &schedule.night_commands
     } else {
-        (schedule.day_brightness, "light")
+        &schedule.day_commands
     };
 
-    let min_brightness = {
-        let state = app.state::<AppState>();
-        state
-            .preferences
-            .lock()
-            .map(|p| p.effective_min_brightness())
-            .unwrap_or(config::ABSOLUTE_MIN_BRIGHTNESS)
-    };
+    if !commands.is_empty() {
+        // Custom commands mode: execute each command in order
+        for cmd in commands {
+            tray::execute_command(app, cmd);
+        }
+    } else {
+        // Default behavior: brightness + dark/light mode via sidecar
+        let base = format!("http://127.0.0.1:{}", server_port());
+        let (brightness, dark_mode_route) = if is_night {
+            (schedule.night_brightness, "dark")
+        } else {
+            (schedule.day_brightness, "light")
+        };
 
-    let brightness = brightness.clamp(min_brightness, 100);
+        let min_brightness = {
+            let state = app.state::<AppState>();
+            state
+                .preferences
+                .lock()
+                .map(|p| p.effective_min_brightness())
+                .unwrap_or(config::ABSOLUTE_MIN_BRIGHTNESS)
+        };
 
-    let _ = reqwest::blocking::get(format!("{}/set_all/{}", base, brightness));
-    let _ = reqwest::blocking::get(format!("{}/{}", base, dark_mode_route));
+        let brightness = brightness.clamp(min_brightness, 100);
 
-    tray_icon::set_dark_mode_state(app, is_night);
+        let _ = reqwest::blocking::get(format!("{}/set_all/{}", base, brightness));
+        let _ = reqwest::blocking::get(format!("{}/{}", base, dark_mode_route));
+
+        tray_icon::set_dark_mode_state(app, is_night);
+    }
 
     use tauri::Emitter;
     let _ = app.emit("monitors-changed", ());

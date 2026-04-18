@@ -7,7 +7,7 @@
 
 ## Quick Wins
 
-- [ ] **Auto dark mode schedule** — Toggle dark/light mode on the same night mode schedule that already controls brightness. The 60-second timer loop in `lib.rs` already evaluates time — extend it to also call the `/dark` or `/light` sidecar endpoint alongside the brightness change. Add a `darkModeAtNight` boolean to `NightModeSchedule` preferences.
+- [x] **Auto dark mode schedule** — Toggle dark/light mode on the same night mode schedule that already controls brightness. The 60-second timer loop in `lib.rs` already evaluates time — extend it to also call the `/dark` or `/light` sidecar endpoint alongside the brightness change. Add a `darkModeAtNight` boolean to `NightModeSchedule` preferences.
 - [ ] **Scroll-to-adjust brightness on tray icon** — Mouse wheel on the tray icon nudges all-monitor brightness up/down by a step (e.g., 5%). Tauri's `TrayIconEvent` already exposes scroll events (`TrayIconEvent::Scroll`). Fire the sidecar `set_all/{value}` endpoint on each tick. Gives quick adjustment without opening the popup.
 
 ## Medium Effort

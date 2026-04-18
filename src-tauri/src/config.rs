@@ -84,6 +84,13 @@ pub struct NightModeSchedule {
     /// "HH:MM" 24-hour format
     pub day_start: String,
     pub day_brightness: u32,
+    /// Optional commands to execute when night mode activates.
+    /// When non-empty, these replace the default brightness + dark mode behavior.
+    /// Each string is a command (e.g. "command/changeBrightness/20", "command/changeDarkMode/dark").
+    pub night_commands: Vec<String>,
+    /// Optional commands to execute when day mode activates.
+    /// When non-empty, these replace the default brightness + light mode behavior.
+    pub day_commands: Vec<String>,
 }
 
 impl Default for NightModeSchedule {
@@ -94,6 +101,8 @@ impl Default for NightModeSchedule {
             night_brightness: 20,
             day_start: "07:00".into(),
             day_brightness: 100,
+            night_commands: Vec::new(),
+            day_commands: Vec::new(),
         }
     }
 }
@@ -1111,5 +1120,51 @@ mod tests {
         }"#;
         let prefs: Preferences = serde_json::from_str(json).unwrap();
         assert!(prefs.layout_presets.is_empty());
+    }
+
+    #[test]
+    fn test_night_mode_schedule_default_has_empty_commands() {
+        let schedule = NightModeSchedule::default();
+        assert!(schedule.night_commands.is_empty());
+        assert!(schedule.day_commands.is_empty());
+    }
+
+    #[test]
+    fn test_night_mode_schedule_with_commands_roundtrip() {
+        let mut prefs = Preferences::default();
+        prefs.night_mode_schedule.night_commands = vec![
+            "command/changeBrightness/20".into(),
+            "command/changeDarkMode/dark".into(),
+        ];
+        prefs.night_mode_schedule.day_commands = vec![
+            "command/changeBrightness/100".into(),
+            "command/changeDarkMode/light".into(),
+            "command/changeVolume/50".into(),
+        ];
+        let json = serde_json::to_string_pretty(&prefs).unwrap();
+        assert!(json.contains("nightCommands"));
+        assert!(json.contains("dayCommands"));
+        let restored: Preferences = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.night_mode_schedule.night_commands.len(), 2);
+        assert_eq!(restored.night_mode_schedule.day_commands.len(), 3);
+        assert_eq!(restored.night_mode_schedule.day_commands[2], "command/changeVolume/50");
+    }
+
+    #[test]
+    fn test_night_mode_schedule_backward_compat_missing_commands() {
+        // Old config without nightCommands/dayCommands should default to empty
+        let json = r#"{
+            "nightModeSchedule": {
+                "enabled": true,
+                "nightStart": "21:00",
+                "nightBrightness": 20,
+                "dayStart": "07:00",
+                "dayBrightness": 100
+            }
+        }"#;
+        let prefs: Preferences = serde_json::from_str(json).unwrap();
+        assert!(prefs.night_mode_schedule.enabled);
+        assert!(prefs.night_mode_schedule.night_commands.is_empty());
+        assert!(prefs.night_mode_schedule.day_commands.is_empty());
     }
 }
