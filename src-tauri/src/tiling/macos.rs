@@ -723,13 +723,13 @@ fn set_window_rect_via_ax(win_info: &WindowInfo, rect: &Rect) {
 /// Spread all windows into grids, filling display 1 first then overflowing to display 2, etc.
 /// Each display holds up to `max_windows` before overflowing to the next.
 fn spread_expose(app: &AppHandle) {
-    let (max_per_display, gap) = {
+    let (max_per_display, gap, spread) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
             Err(_) => return,
         };
-        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap)
+        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
     };
 
     // Normalize: unminimize and un-fullscreen all windows first
@@ -773,7 +773,7 @@ fn spread_expose(app: &AppHandle) {
     }
 
     let g = gap as f64;
-    let placed = layout_across_displays(&ordered, &displays, max_per_display, g, &set_window_rect_via_ax);
+    let placed = layout_across_displays(&ordered, &displays, max_per_display, g, spread, &set_window_rect_via_ax);
 
     log::info!(
         "expose: spread {} windows across {} displays",
@@ -1010,13 +1010,13 @@ pub fn execute_expose_app(app: &AppHandle) {
 
 /// Spread only the frontmost app's windows into a grid, filling display 1 first then overflowing.
 fn spread_expose_app(app: &AppHandle) {
-    let (max_per_display, gap) = {
+    let (max_per_display, gap, spread) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
             Err(_) => return,
         };
-        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap)
+        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
     };
 
     // Identify the target app before normalization (frontmost window)
@@ -1075,7 +1075,7 @@ fn spread_expose_app(app: &AppHandle) {
     }
 
     let g = gap as f64;
-    let placed = layout_across_displays(&app_windows, &displays, max_per_display, g, &set_window_rect_via_ax);
+    let placed = layout_across_displays(&app_windows, &displays, max_per_display, g, spread, &set_window_rect_via_ax);
 
     log::info!(
         "app_expose: spread {} windows of '{}' across {} displays",

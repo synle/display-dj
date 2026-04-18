@@ -476,6 +476,16 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       {exposeCols} &times; {exposeRows} = {exposeCols * exposeRows} windows per
                       screen
                     </span>
+                    <div style={{ marginTop: '8px' }}>
+                      <label className='settings-label'>Layout Strategy</label>
+                      <select
+                        value={tiling?.exposeLayoutStrategy ?? 'spread'}
+                        onChange={(e) => updateTiling('exposeLayoutStrategy', e.target.value)}
+                        style={{ marginTop: '4px', width: '100%' }}>
+                        <option value='spread'>Spread (distribute evenly across displays)</option>
+                        <option value='fill'>Fill (pack each display before using next)</option>
+                      </select>
+                    </div>
                   </div>
                 )}
               </>

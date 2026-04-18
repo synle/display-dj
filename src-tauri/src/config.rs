@@ -31,6 +31,9 @@ pub struct TilingPreferences {
     pub expose_columns: u32,
     /// Exposé: number of rows in the grid.
     pub expose_rows: u32,
+    /// Exposé layout strategy: "spread" distributes windows evenly across all
+    /// displays; "fill" packs each display to capacity before using the next.
+    pub expose_layout_strategy: String,
     /// Legacy field for backward-compatible deserialization of old configs.
     /// Not serialized; on load, if columns/rows are at defaults and this is
     /// non-zero, we migrate sqrt(value) into columns and rows.
@@ -52,6 +55,7 @@ impl Default for TilingPreferences {
             expose_enabled: true,
             expose_columns: 3,
             expose_rows: 3,
+            expose_layout_strategy: "spread".into(),
             expose_max_windows: 0,
         }
     }
