@@ -131,6 +131,30 @@ On macOS, any code running inside a `CGEventTap` callback (e.g., Tile Snap's `sn
 
 This bug manifests as "works in dev, broken in production" because production builds have more background mutex contention (save_preferences, night mode schedule checks, etc.).
 
+## CGEventTap Code Signing Issue (Unsolved)
+
+`CGEventTapCreate` succeeds and `AXIsProcessTrusted()` returns `true` in production `.app` bundles, but `CGEventTapEnable(tap, true)` silently fails — `CGEventTapIsEnabled` returns `false` immediately after. The tap partially works (mouse_down/mouse_up events are delivered) but **mouse_dragged events are never delivered**, making Tile Snap non-functional.
+
+**Findings from investigation (2026-04-18):**
+
+- **Dev builds** (`npx tauri dev`, bare binary): `tap_enabled=true`, all events delivered, tile snap works perfectly
+- **Production `.app` bundles** (from `tauri build` or CI DMG): `tap_enabled=false`, drag events missing
+- Both binaries are `adhoc,linker-signed` with `Signature=adhoc`, `TeamIdentifier=not set`
+- `codesign --force --deep --sign -` (explicit ad-hoc, removes `linker-signed` flag) does NOT fix it — retried across multiple sessions
+- Retrying `CGEventTapEnable` up to 10 times over 5 seconds does not help
+- The event mask is correct: `0x46` (down=1, up=2, dragged=6 all registered)
+- Accessibility permission is confirmed granted in TCC database (`auth_value=2`)
+- The difference: dev builds run as a bare Mach-O binary, production builds run inside a `.app` bundle (`Contents/MacOS/display-dj`)
+
+**Current workaround:** Tile Snap only works in dev mode. Keyboard shortcut tiling and Exposé work fine in production (they don't use CGEventTap).
+
+**Potential solutions to investigate:**
+1. Apple Developer certificate ($99/year) for proper code signing
+2. Destroy and recreate the entire tap (not just re-enable) in the retry loop
+3. Use a different event monitoring API (e.g., `NSEvent.addGlobalMonitorForEvents` instead of `CGEventTap`)
+4. Add specific entitlements to the app bundle (e.g., `com.apple.security.automation.apple-events`)
+5. Use `CGEventTapCreateForPid` (process-specific tap) instead of session-wide tap
+
 ## Key Conventions
 
 - All Rust structs sent to frontend use `#[serde(rename_all = "camelCase")]`
