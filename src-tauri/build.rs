@@ -61,6 +61,11 @@ fn expose_app_version() {
     };
 
     println!("cargo:rustc-env=APP_VERSION={app_version}");
+    // Expose build mode so debug log can use separate files
+    println!(
+        "cargo:rustc-env=IS_DEV_BUILD={}",
+        if is_release { "false" } else { "true" }
+    );
     // Re-run build script if tauri.conf.json changes or git HEAD moves
     println!("cargo:rerun-if-changed=tauri.conf.json");
     println!("cargo:rerun-if-changed=../.git/HEAD");

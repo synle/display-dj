@@ -416,8 +416,15 @@ impl Default for Preferences {
 const MAX_DEBUG_LOG_SIZE: u64 = 1024 * 1024; // 1 MB
 
 /// Returns the path to the debug log file in the app's config directory.
+/// Dev builds use `debug-dev.log`, production builds use `debug.log`
+/// so local testing and installed app logs don't intermix.
 pub fn debug_log_path() -> PathBuf {
-    config_dir().join("debug.log")
+    let filename = if env!("IS_DEV_BUILD") == "true" {
+        "debug-dev.log"
+    } else {
+        "debug.log"
+    };
+    config_dir().join(filename)
 }
 
 /// Appends a timestamped message to the debug log (no-op if debug logging is disabled).
