@@ -60,12 +60,22 @@ export interface LayoutPreset {
   rules: LayoutRule[];
 }
 
+/** Tracks the wallpaper path set on a specific monitor. */
+export interface MonitorWallpaper {
+  /** UID of the monitor (e.g. "1::Dell U2723QE"). */
+  monitorUid: string;
+  /** Path to the wallpaper file in the wallpapers directory. */
+  wallpaperPath: string;
+}
+
 /** Wallpaper preferences: fit mode and current wallpaper state. */
 export interface WallpaperPreferences {
   /** How the wallpaper image fits the screen: fill, fit, stretch, center, tile. */
   fit: string;
-  /** Path to the currently active wallpaper in our wallpapers directory. */
+  /** Path to the currently active wallpaper in our wallpapers directory (all-monitors). */
   currentWallpaperPath: string | null;
+  /** Per-monitor wallpaper state. */
+  perMonitorWallpapers: MonitorWallpaper[];
 }
 
 export interface Preferences {

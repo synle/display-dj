@@ -137,14 +137,26 @@ impl Default for LayoutRule {
     }
 }
 
+/// Tracks the wallpaper path set on a specific monitor.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct MonitorWallpaper {
+    /// UID of the monitor (e.g. "1::Dell U2723QE").
+    pub monitor_uid: String,
+    /// Path to the wallpaper file in the wallpapers directory.
+    pub wallpaper_path: String,
+}
+
 /// Wallpaper preferences: fit mode and current wallpaper state.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
 pub struct WallpaperPreferences {
     /// How the wallpaper image fits the screen: fill, fit, stretch, center, tile.
     pub fit: String,
-    /// Path to the currently active wallpaper in our wallpapers directory.
+    /// Path to the currently active wallpaper in our wallpapers directory (all-monitors).
     pub current_wallpaper_path: Option<String>,
+    /// Per-monitor wallpaper state.
+    pub per_monitor_wallpapers: Vec<MonitorWallpaper>,
 }
 
 impl Default for WallpaperPreferences {
@@ -152,6 +164,7 @@ impl Default for WallpaperPreferences {
         Self {
             fit: "fill".into(),
             current_wallpaper_path: None,
+            per_monitor_wallpapers: Vec::new(),
         }
     }
 }
@@ -1230,6 +1243,7 @@ mod tests {
         let wp = WallpaperPreferences {
             fit: "center".into(),
             current_wallpaper_path: Some("/tmp/wallpaper.jpg".into()),
+            per_monitor_wallpapers: Vec::new(),
         };
         let json = serde_json::to_string(&wp).unwrap();
         assert!(json.contains("currentWallpaperPath"));
