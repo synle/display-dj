@@ -3,6 +3,10 @@ name: Release Beta
 on:
   workflow_dispatch:
     inputs:
+      sha:
+        description: 'Commit SHA to build from. Leave empty to use HEAD.'
+        required: false
+        default: ''
       display_dj_cli_version:
         description: 'display-dj-cli version to use (e.g. v0.4.1). Leave empty for default from package.json.'
         required: false
@@ -13,40 +17,44 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
+      sha: ${{ steps.resolve.outputs.sha }}
       body: ${{ steps.body.outputs.body }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Resolve beta release tag
+      - name: Resolve commit and beta tag
         id: resolve
         run: |
-          BRANCH="${GITHUB_REF_NAME}"
+          INPUT_SHA="${{ github.event.inputs.sha }}"
+          if [ -n "$INPUT_SHA" ]; then
+            # Checkout the requested SHA
+            git checkout "$INPUT_SHA"
+            FULL_SHA=$(git rev-parse HEAD)
+          else
+            FULL_SHA=$(git rev-parse HEAD)
+          fi
           SHORT_SHA=$(git rev-parse --short HEAD)
-          # Sanitize branch name for use in tag (replace / with -)
-          SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
-          TAG="release-beta-${SAFE_BRANCH}-${SHORT_SHA}"
+          TAG="release-beta-${SHORT_SHA}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "sha=${FULL_SHA}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Generate release body
         id: body
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
-          BRANCH: ${{ steps.resolve.outputs.branch }}
+          FULL_SHA: ${{ steps.resolve.outputs.sha }}
           SHORT_SHA: ${{ steps.resolve.outputs.short_sha }}
         run: |
-          CURRENT_SHA=$(git rev-parse HEAD)
-
-          # Recent commits (max 10)
-          CHANGELOG=$(git log --oneline --no-decorate -10)
+          # Recent commits (max 10) from the resolved SHA
+          CHANGELOG=$(git log --oneline --no-decorate -10 "$FULL_SHA")
 
           {
-            echo "## Display DJ Beta — \`${BRANCH}\` @ \`${SHORT_SHA}\`"
+            echo "## Display DJ Beta — \`${SHORT_SHA}\`"
             echo ""
-            echo "> **This is a beta build** from branch \`${BRANCH}\` (commit \`${CURRENT_SHA}\`). Use at your own risk."
+            echo "> **This is a beta build** from commit [\`${FULL_SHA}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${FULL_SHA}). Use at your own risk."
             echo ""
             echo "### Recent Changes"
             echo ""
@@ -105,6 +113,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-tag.outputs.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
