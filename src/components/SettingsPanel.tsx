@@ -369,6 +369,110 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
               <label className='settings-checkbox-row'>
                 <input
                   type='checkbox'
+                  checked={prefs.wallpaper?.slideshowEnabled ?? false}
+                  onChange={(e) => updateWallpaper('slideshowEnabled', e.target.checked)}
+                />
+                <span>Enable Wallpaper Slideshow</span>
+              </label>
+            </div>
+
+            {prefs.wallpaper?.slideshowEnabled && (
+              <>
+                <div className='settings-section'>
+                  <label className='settings-label'>Slideshow Folder</label>
+                  <input
+                    type='text'
+                    value={prefs.wallpaper?.slideshowFolder ?? ''}
+                    placeholder='/path/to/wallpapers'
+                    onChange={(e) => updateWallpaper('slideshowFolder', e.target.value || null)}
+                    style={{ marginTop: '4px', width: '100%', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div className='settings-section'>
+                  <label className='settings-label'>Interval</label>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label className='settings-label'>Hours</label>
+                      <select
+                        value={Math.floor((prefs.wallpaper?.slideshowIntervalMinutes ?? 30) / 60)}
+                        onChange={(e) => {
+                          const hours = parseInt(e.target.value);
+                          const currentMinutes =
+                            (prefs.wallpaper?.slideshowIntervalMinutes ?? 30) % 60;
+                          const total = Math.max(5, hours * 60 + currentMinutes);
+                          updateWallpaper('slideshowIntervalMinutes', total);
+                        }}
+                        style={{ width: '100%' }}>
+                        {Array.from({ length: 25 }, (_, i) => (
+                          <option key={i} value={i}>
+                            {i}h
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label className='settings-label'>Minutes</label>
+                      <select
+                        value={
+                          Math.round(((prefs.wallpaper?.slideshowIntervalMinutes ?? 30) % 60) / 5) *
+                          5
+                        }
+                        onChange={(e) => {
+                          const minutes = parseInt(e.target.value);
+                          const currentHours = Math.floor(
+                            (prefs.wallpaper?.slideshowIntervalMinutes ?? 30) / 60,
+                          );
+                          const total = Math.max(5, currentHours * 60 + minutes);
+                          updateWallpaper('slideshowIntervalMinutes', total);
+                        }}
+                        style={{ width: '100%' }}>
+                        {Array.from({ length: 12 }, (_, i) => (
+                          <option key={i * 5} value={i * 5}>
+                            {i * 5}m
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      color: '#666',
+                      marginTop: '2px',
+                      display: 'block',
+                    }}>
+                    Every{' '}
+                    {Math.floor((prefs.wallpaper?.slideshowIntervalMinutes ?? 30) / 60) > 0
+                      ? `${Math.floor((prefs.wallpaper?.slideshowIntervalMinutes ?? 30) / 60)}h `
+                      : ''}
+                    {(prefs.wallpaper?.slideshowIntervalMinutes ?? 30) % 60 > 0
+                      ? `${(prefs.wallpaper?.slideshowIntervalMinutes ?? 30) % 60}m`
+                      : ''}{' '}
+                    (min 5m)
+                  </span>
+                </div>
+
+                <div className='settings-section'>
+                  <label className='settings-label'>Slideshow Order</label>
+                  <select
+                    value={prefs.wallpaper?.slideshowOrder ?? 'forward'}
+                    onChange={(e) => updateWallpaper('slideshowOrder', e.target.value)}
+                    style={{ marginTop: '4px', width: '100%' }}>
+                    <option value='forward'>Forward (A→Z, loop)</option>
+                    <option value='backward'>Backward (Z→A, loop)</option>
+                    <option value='random'>Random (shuffle)</option>
+                  </select>
+                </div>
+              </>
+            )}
+
+            <div className='settings-divider' />
+
+            <div className='settings-section'>
+              <label className='settings-checkbox-row'>
+                <input
+                  type='checkbox'
                   checked={prefs.launchAtLogin}
                   onChange={(e) => updateField('launchAtLogin', e.target.checked)}
                 />

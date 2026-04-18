@@ -1040,6 +1040,37 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                 log::warn!("wallpaper change_single command missing monitor and path: {}", command);
             }
         }
+        // Start slideshow: command/wallpaper/slideshow/{path}
+        // or command/wallpaper/slideshow/{interval}/{order}/{path}
+        ["command", "wallpaper", "slideshow", ..] => {
+            let prefix = "command/wallpaper/slideshow/";
+            if command.len() > prefix.len() {
+                let remainder = &command[prefix.len()..];
+                let (interval, order, path) = crate::wallpaper::parse_slideshow_args(remainder);
+                let app_clone = app.clone();
+                let path_owned = path.to_string();
+                let order_owned = order.map(|o| o.to_string());
+                std::thread::spawn(move || {
+                    let state = app_clone.state::<crate::AppState>();
+                    crate::wallpaper::start_slideshow(
+                        &state,
+                        &path_owned,
+                        interval,
+                        order_owned.as_deref(),
+                    );
+                });
+            } else {
+                log::warn!("wallpaper slideshow command missing folder path: {}", command);
+            }
+        }
+        // Stop slideshow: command/wallpaper/slideshow_stop
+        ["command", "wallpaper", "slideshow_stop"] => {
+            let app_clone = app.clone();
+            std::thread::spawn(move || {
+                let state = app_clone.state::<crate::AppState>();
+                crate::wallpaper::stop_slideshow(&state);
+            });
+        }
         _ => {
             log::warn!("Unknown command: {}", command);
         }

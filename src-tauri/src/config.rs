@@ -147,7 +147,7 @@ pub struct MonitorWallpaper {
     pub wallpaper_path: String,
 }
 
-/// Wallpaper preferences: fit mode and current wallpaper state.
+/// Wallpaper preferences: fit mode, current wallpaper state, and slideshow config.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
 pub struct WallpaperPreferences {
@@ -157,6 +157,14 @@ pub struct WallpaperPreferences {
     pub current_wallpaper_path: Option<String>,
     /// Per-monitor wallpaper state.
     pub per_monitor_wallpapers: Vec<MonitorWallpaper>,
+    /// Whether slideshow is enabled (persisted so it resumes on app restart).
+    pub slideshow_enabled: bool,
+    /// Folder path for slideshow images.
+    pub slideshow_folder: Option<String>,
+    /// Slideshow interval in minutes (minimum 5).
+    pub slideshow_interval_minutes: u32,
+    /// Slideshow cycling order: "forward", "backward", "random".
+    pub slideshow_order: String,
 }
 
 impl Default for WallpaperPreferences {
@@ -165,6 +173,10 @@ impl Default for WallpaperPreferences {
             fit: "fill".into(),
             current_wallpaper_path: None,
             per_monitor_wallpapers: Vec::new(),
+            slideshow_enabled: false,
+            slideshow_folder: None,
+            slideshow_interval_minutes: 30,
+            slideshow_order: "forward".into(),
         }
     }
 }
@@ -1244,6 +1256,10 @@ mod tests {
             fit: "center".into(),
             current_wallpaper_path: Some("/tmp/wallpaper.jpg".into()),
             per_monitor_wallpapers: Vec::new(),
+            slideshow_enabled: false,
+            slideshow_folder: None,
+            slideshow_interval_minutes: 30,
+            slideshow_order: "forward".into(),
         };
         let json = serde_json::to_string(&wp).unwrap();
         assert!(json.contains("currentWallpaperPath"));

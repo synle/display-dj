@@ -68,7 +68,7 @@ export interface MonitorWallpaper {
   wallpaperPath: string;
 }
 
-/** Wallpaper preferences: fit mode and current wallpaper state. */
+/** Wallpaper preferences: fit mode, current wallpaper state, and slideshow config. */
 export interface WallpaperPreferences {
   /** How the wallpaper image fits the screen: fill, fit, stretch, center, tile. */
   fit: string;
@@ -76,6 +76,14 @@ export interface WallpaperPreferences {
   currentWallpaperPath: string | null;
   /** Per-monitor wallpaper state. */
   perMonitorWallpapers: MonitorWallpaper[];
+  /** Whether slideshow is enabled (resumes on app restart). */
+  slideshowEnabled: boolean;
+  /** Folder path for slideshow images. */
+  slideshowFolder: string | null;
+  /** Slideshow interval in minutes (minimum 5). */
+  slideshowIntervalMinutes: number;
+  /** Slideshow cycling order: "forward", "backward", "random". */
+  slideshowOrder: string;
 }
 
 export interface Preferences {

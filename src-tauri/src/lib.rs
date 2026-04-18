@@ -441,6 +441,9 @@ pub fn run() {
                 }
                 // Fetch initial dark mode and volume state for tray icon indicators
                 fetch_initial_tray_state(&startup_handle, port);
+                // Resume wallpaper slideshow if it was enabled before shutdown
+                let wp_state = startup_handle.state::<AppState>();
+                wallpaper::resume_slideshow_if_enabled(&wp_state);
             });
 
             // Hide dock icon on macOS
