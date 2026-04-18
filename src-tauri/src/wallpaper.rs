@@ -144,6 +144,26 @@ fn base_url() -> String {
     format!("http://127.0.0.1:{}", port)
 }
 
+/// Sets the desktop wallpaper on a single monitor via the display-dj-cli sidecar.
+/// Calls `GET /set_wallpaper_one/{monitor_index}/{fit}/{path}`.
+fn set_wallpaper_single_on_os(monitor_index: usize, path: &str, fit: &str) -> Result<(), String> {
+    let url = format!(
+        "{}/set_wallpaper_one/{}/{}/{}",
+        base_url(),
+        monitor_index,
+        fit,
+        path
+    );
+    let resp = reqwest::blocking::get(&url)
+        .map_err(|e| format!("sidecar request failed: {}", e))?;
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        let body = resp.text().unwrap_or_default();
+        Err(format!("sidecar returned error: {}", body))
+    }
+}
+
 /// Sets the desktop wallpaper on all monitors via the display-dj-cli sidecar.
 /// Calls `GET /set_wallpaper/{fit}/{path}`.
 fn set_wallpaper_on_os(path: &str, fit: &str) -> Result<(), String> {
@@ -211,6 +231,121 @@ pub(crate) fn change_wallpaper(
         }
         Err(e) => {
             let msg = format!("wallpaper: failed to set wallpaper: {}", e);
+            crate::config::write_debug_log(state, &msg);
+            log::warn!("{}", msg);
+        }
+    }
+}
+
+/// Set wallpaper on a single monitor by matching a user-provided identifier.
+/// Called from `execute_command()` in `tray.rs` for `command/wallpaper/change_single`.
+pub(crate) fn change_wallpaper_single(
+    app: &tauri::AppHandle,
+    state: &crate::AppState,
+    monitor_query: &str,
+    source_path: &str,
+    explicit_fit: Option<&str>,
+) {
+    use tauri::Manager;
+
+    // Resolve fit mode
+    let fit = match explicit_fit {
+        Some(f) => f.to_string(),
+        None => state
+            .preferences
+            .lock()
+            .map(|p| p.wallpaper.fit.clone())
+            .unwrap_or_else(|_| "fill".into()),
+    };
+
+    crate::config::write_debug_log(
+        state,
+        &format!(
+            "wallpaper: change_wallpaper_single called — monitor={}, source={}, fit={}",
+            monitor_query, source_path, fit
+        ),
+    );
+
+    // Fetch current monitors from sidecar to resolve the query
+    let base = format!("http://127.0.0.1:{}", crate::server_port());
+    let monitors: Vec<crate::display::Monitor> = match reqwest::blocking::get(format!("{}/get_all", base))
+        .and_then(|r| r.json())
+    {
+        Ok(m) => m,
+        Err(e) => {
+            let msg = format!("wallpaper: failed to fetch monitors: {}", e);
+            crate::config::write_debug_log(state, &msg);
+            log::warn!("{}", msg);
+            return;
+        }
+    };
+
+    // Resolve monitor query to index
+    let (monitor_index, monitor) = match crate::display::resolve_monitor(&monitors, monitor_query) {
+        Some(result) => result,
+        None => {
+            let available: Vec<String> = monitors.iter().map(|m| format!("{} ({})", m.name, m.id)).collect();
+            let msg = format!(
+                "wallpaper: no monitor matched '{}' — available: {}",
+                monitor_query,
+                available.join(", ")
+            );
+            crate::config::write_debug_log(state, &msg);
+            log::warn!("{}", msg);
+            return;
+        }
+    };
+
+    crate::config::write_debug_log(
+        state,
+        &format!("wallpaper: matched monitor: {} ({}) at index {}", monitor.name, monitor.uid, monitor_index),
+    );
+
+    // Copy to wallpapers directory
+    let dest = match copy_to_wallpapers(source_path, state) {
+        Ok(d) => d,
+        Err(e) => {
+            log::warn!("{}", e);
+            return;
+        }
+    };
+
+    let dest_str = dest.to_string_lossy().to_string();
+    crate::config::write_debug_log(
+        state,
+        &format!(
+            "wallpaper: setting per-monitor wallpaper for {} (fit={}) to: {}",
+            monitor.name, fit, dest_str
+        ),
+    );
+
+    // Set wallpaper on the specific monitor via sidecar
+    match set_wallpaper_single_on_os(monitor_index, &dest_str, &fit) {
+        Ok(()) => {
+            crate::config::write_debug_log(
+                state,
+                &format!("wallpaper: successfully set wallpaper on monitor {}", monitor.name),
+            );
+
+            // Update per-monitor state in preferences
+            if let Ok(mut prefs) = state.preferences.lock() {
+                let entry = prefs.wallpaper.per_monitor_wallpapers.iter_mut()
+                    .find(|e| e.monitor_uid == monitor.uid);
+                if let Some(entry) = entry {
+                    entry.wallpaper_path = dest_str;
+                } else {
+                    prefs.wallpaper.per_monitor_wallpapers.push(
+                        crate::config::MonitorWallpaper {
+                            monitor_uid: monitor.uid.clone(),
+                            wallpaper_path: dest_str,
+                        }
+                    );
+                }
+                crate::config::save_preferences_to_disk(&prefs);
+            }
+        }
+        Err(e) => {
+            let msg = format!("wallpaper: failed to set per-monitor wallpaper: {}", e);
             crate::config::write_debug_log(state, &msg);
             log::warn!("{}", msg);
         }

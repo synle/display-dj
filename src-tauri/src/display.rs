@@ -328,6 +328,28 @@ pub fn set_monitor_visibility(
     Ok(())
 }
 
+/// Resolves a monitor identifier string to a Monitor, trying (in order):
+/// 1. Exact match on `id` ("1", "2", "builtin")
+/// 2. Exact match on `uid` ("1::Dell U2723QE")
+/// 3. Case-insensitive substring match on `name` or `original_name` ("Dell", "LG")
+/// Returns the first match found and its 0-based index, or None.
+pub(crate) fn resolve_monitor(monitors: &[Monitor], query: &str) -> Option<(usize, Monitor)> {
+    // 1. Exact id match
+    if let Some((i, m)) = monitors.iter().enumerate().find(|(_, m)| m.id == query) {
+        return Some((i, m.clone()));
+    }
+    // 2. Exact uid match
+    if let Some((i, m)) = monitors.iter().enumerate().find(|(_, m)| m.uid == query) {
+        return Some((i, m.clone()));
+    }
+    // 3. Case-insensitive substring on name or original_name
+    let needle = query.to_lowercase();
+    monitors.iter().enumerate().find(|(_, m)| {
+        m.name.to_lowercase().contains(&needle)
+            || m.original_name.to_lowercase().contains(&needle)
+    }).map(|(i, m)| (i, m.clone()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -660,5 +682,67 @@ mod tests {
         let mut configs = vec![make_meta("1::Dell", "My Dell", 0)];
         let changed = reconcile_migrated_configs(&monitors, &mut configs);
         assert!(!changed); // uid already matches, nothing to do
+    }
+
+    /// Verifies resolve_monitor matches by exact id.
+    #[test]
+    fn test_resolve_monitor_by_id() {
+        let monitors = vec![
+            make_monitor("1", "Dell U2723QE", false),
+            make_monitor("builtin", "Built-in Display", true),
+        ];
+        let result = resolve_monitor(&monitors, "builtin");
+        assert!(result.is_some());
+        let (idx, m) = result.unwrap();
+        assert_eq!(idx, 1);
+        assert_eq!(m.id, "builtin");
+    }
+
+    /// Verifies resolve_monitor matches by exact uid.
+    #[test]
+    fn test_resolve_monitor_by_uid() {
+        let monitors = vec![
+            make_monitor("1", "Dell U2723QE", false),
+            make_monitor("2", "LG 27UK850", false),
+        ];
+        let result = resolve_monitor(&monitors, "2::LG 27UK850");
+        assert!(result.is_some());
+        let (idx, m) = result.unwrap();
+        assert_eq!(idx, 1);
+        assert_eq!(m.name, "LG 27UK850");
+    }
+
+    /// Verifies resolve_monitor matches by case-insensitive name substring.
+    #[test]
+    fn test_resolve_monitor_by_name_substring() {
+        let monitors = vec![
+            make_monitor("1", "Dell U2723QE", false),
+            make_monitor("2", "LG 27UK850", false),
+        ];
+        let result = resolve_monitor(&monitors, "dell");
+        assert!(result.is_some());
+        let (idx, _) = result.unwrap();
+        assert_eq!(idx, 0);
+    }
+
+    /// Verifies resolve_monitor returns None when no match found.
+    #[test]
+    fn test_resolve_monitor_no_match() {
+        let monitors = vec![make_monitor("1", "Dell U2723QE", false)];
+        assert!(resolve_monitor(&monitors, "Samsung").is_none());
+    }
+
+    /// Verifies resolve_monitor prefers id match over substring match.
+    #[test]
+    fn test_resolve_monitor_id_takes_priority() {
+        let monitors = vec![
+            make_monitor("1", "Monitor 1", false),
+            make_monitor("2", "Monitor 2", false),
+        ];
+        // "1" should match id "1", not substring "1" in "Monitor 1"
+        let result = resolve_monitor(&monitors, "1");
+        assert!(result.is_some());
+        let (idx, _) = result.unwrap();
+        assert_eq!(idx, 0);
     }
 }

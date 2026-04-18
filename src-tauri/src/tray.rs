@@ -1008,6 +1008,38 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                 log::warn!("wallpaper change command missing path: {}", command);
             }
         }
+        // Set wallpaper on single monitor: command/wallpaper/change_single/{monitor}/{path}
+        // or command/wallpaper/change_single/{monitor}/{fit}/{path}
+        ["command", "wallpaper", "change_single", ..] => {
+            let prefix = "command/wallpaper/change_single/";
+            if command.len() > prefix.len() {
+                let remainder = &command[prefix.len()..];
+                // First segment is the monitor query, rest is [fit/]path
+                if let Some(slash_pos) = remainder.find('/') {
+                    let monitor_query = &remainder[..slash_pos];
+                    let after_monitor = &remainder[slash_pos + 1..];
+                    let (fit, path) = crate::wallpaper::parse_wallpaper_args(after_monitor);
+                    let app_clone = app.clone();
+                    let monitor_owned = monitor_query.to_string();
+                    let path_owned = path.to_string();
+                    let fit_owned = fit.map(|f| f.to_string());
+                    std::thread::spawn(move || {
+                        let state = app_clone.state::<crate::AppState>();
+                        crate::wallpaper::change_wallpaper_single(
+                            &app_clone,
+                            &state,
+                            &monitor_owned,
+                            &path_owned,
+                            fit_owned.as_deref(),
+                        );
+                    });
+                } else {
+                    log::warn!("wallpaper change_single command missing path: {}", command);
+                }
+            } else {
+                log::warn!("wallpaper change_single command missing monitor and path: {}", command);
+            }
+        }
         _ => {
             log::warn!("Unknown command: {}", command);
         }
