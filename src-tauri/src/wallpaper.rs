@@ -11,6 +11,10 @@ const VALID_FIT_MODES: &[&str] = &["fill", "fit", "stretch", "center", "tile"];
 /// Minimum file size in bytes for a valid wallpaper image (1 KB).
 const MIN_IMAGE_SIZE: u64 = 1024;
 
+/// Maximum total size of the wallpapers cache directory (200 MB).
+/// Once exceeded, new images are passed directly to the CLI without caching.
+const MAX_CACHE_SIZE: u64 = 200 * 1024 * 1024;
+
 /// Returns the wallpapers storage directory, creating it if it doesn't exist.
 /// Located at `~/.config/display-dj/wallpapers/`.
 pub(crate) fn wallpapers_dir() -> PathBuf {
@@ -94,6 +98,22 @@ fn file_content_hash(path: &Path) -> Result<String, String> {
     Ok(format!("{:x}", md5::compute(&bytes)))
 }
 
+/// Returns the total size in bytes of all files in a directory (recursive).
+fn dir_size(path: &Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                total += dir_size(&p);
+            } else if let Ok(meta) = std::fs::metadata(&p) {
+                total += meta.len();
+            }
+        }
+    }
+    total
+}
+
 /// Copies the source image to the wallpapers directory, using content-hash
 /// comparison to avoid unnecessary overwrites. Falls back to the cached copy
 /// if the source file no longer exists.
@@ -114,17 +134,37 @@ pub(crate) fn copy_to_wallpapers(
             // Source is valid — copy or update cache
             crate::config::write_debug_log(state, &format!("wallpaper: destination path: {}", dest.display()));
 
+            // Check cache size limit before writing new files
+            let cache_size = dir_size(&wallpapers_dir());
+            let over_limit = cache_size > MAX_CACHE_SIZE;
+
             if dest.exists() {
                 let source_hash = file_content_hash(source)?;
                 let dest_hash = file_content_hash(&dest)?;
 
                 if source_hash == dest_hash {
                     crate::config::write_debug_log(state, "wallpaper: content unchanged (same MD5), skipping copy");
+                } else if over_limit {
+                    // Cache full — skip overwrite, pass original path directly
+                    crate::config::write_debug_log(
+                        state,
+                        &format!("wallpaper: cache over limit ({:.1} MB > {:.1} MB), skipping cache — using source directly",
+                            cache_size as f64 / 1024.0 / 1024.0, MAX_CACHE_SIZE as f64 / 1024.0 / 1024.0),
+                    );
+                    return Ok(source.to_path_buf());
                 } else {
                     crate::config::write_debug_log(state, "wallpaper: content changed, overwriting cached copy");
                     std::fs::copy(source, &dest)
                         .map_err(|e| format!("wallpaper: failed to copy: {}", e))?;
                 }
+            } else if over_limit {
+                // Cache full — don't create new cache entry, pass original path directly
+                crate::config::write_debug_log(
+                    state,
+                    &format!("wallpaper: cache over limit ({:.1} MB > {:.1} MB), skipping cache — using source directly",
+                        cache_size as f64 / 1024.0 / 1024.0, MAX_CACHE_SIZE as f64 / 1024.0 / 1024.0),
+                );
+                return Ok(source.to_path_buf());
             } else {
                 crate::config::write_debug_log(state, "wallpaper: first time — copying to wallpapers dir");
                 std::fs::copy(source, &dest)
