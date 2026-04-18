@@ -3,7 +3,8 @@
 *storybook.log
 .DS_Store
 .cache
-.claude
+.claude/*
+!.claude/commands/
 .env
 .npmrc
 .nyc_output
