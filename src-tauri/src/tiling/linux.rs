@@ -998,23 +998,22 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
         (preset, prefs.tiling.half_ratio, prefs.tiling.third_ratio, prefs.tiling.gap)
     };
 
-    let (conn, screen_num) = match connect() {
-        Some(c) => c,
-        None => return,
-    };
-    let root = conn.setup().roots[screen_num].root;
-
-    let windows = get_all_windows(&conn, root);
+    let windows = get_all_windows();
     if windows.is_empty() {
         log::info!("layout_preset: no windows found");
         return;
     }
 
-    let displays = get_display_work_areas(&conn, root, screen_num);
+    let displays = get_display_work_areas();
     if displays.is_empty() {
         log::warn!("layout_preset: no displays found");
         return;
     }
+
+    let (conn, screen_num) = match connect() {
+        Some(c) => c,
+        None => return,
+    };
 
     let matches = super::match_windows_to_rules(&windows, &preset.rules);
     log::info!("layout_preset: '{}' matched {} windows", preset.name, matches.len());
