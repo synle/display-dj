@@ -1606,6 +1606,19 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
 /// Start the tile snap event tap on a background thread.
 /// Call once during app setup. Requires Accessibility permission.
 pub fn start_tile_snap(app: AppHandle) {
+    let trusted = unsafe { AXIsProcessTrusted() };
+    // Log to debug file so bundled app failures are visible
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        crate::config::write_debug_log(
+            &state,
+            &format!("tile_snap: starting, AXIsProcessTrusted={}", trusted),
+        );
+    }
+    if !trusted {
+        log::warn!("tile_snap: Accessibility permission not granted, skipping");
+        return;
+    }
+
     // Create overlay window on the main thread
     init_overlay_on_main_thread();
 
@@ -1652,6 +1665,14 @@ pub fn start_tile_snap(app: AppHandle) {
                     "tile_snap: Failed to create CGEventTap. \
                      Accessibility permission may not be granted."
                 );
+                // Also write to debug log so bundled app failures are visible
+                let ctx_ref = &*(raw as *const SnapContext);
+                if let Some(state) = ctx_ref.app.try_state::<crate::AppState>() {
+                    crate::config::write_debug_log(
+                        &state,
+                        "tile_snap: CGEventTapCreate returned NULL — Accessibility permission issue",
+                    );
+                }
                 return;
             }
 
@@ -1672,6 +1693,14 @@ pub fn start_tile_snap(app: AppHandle) {
             CGEventTapEnable(tap, true);
 
             log::info!("tile_snap: Event tap started, listening for window drags");
+            // Write to debug log for visibility in bundled app
+            let ctx_ref = &*(raw as *const SnapContext);
+            if let Some(state) = ctx_ref.app.try_state::<crate::AppState>() {
+                crate::config::write_debug_log(
+                    &state,
+                    "tile_snap: CGEventTap created successfully, listening for drags",
+                );
+            }
             CFRunLoopRun(); // blocks forever
         }
     });
