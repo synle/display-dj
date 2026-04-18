@@ -1572,15 +1572,32 @@ extern "C" fn snap_event_callback(
     event: CGEventRef,
     user_info: *mut c_void,
 ) -> CGEventRef {
-    // Bare-minimum log to confirm the callback fires at all.
-    // Only log mouse_down (type 1) to avoid flooding on drag events.
-    if event_type == K_CG_EVENT_LEFT_MOUSE_DOWN || event_type == K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT {
+    // Log every event type to diagnose which events are delivered.
+    // mouse_down=1, mouse_up=2, mouse_dragged=6, tap_disabled=0xFFFFFFFE
+    {
         let ctx = unsafe { &*(user_info as *const SnapContext) };
-        if let Some(state) = ctx.app.try_state::<crate::AppState>() {
-            crate::config::write_debug_log(
-                &state,
-                &format!("tile_snap: callback fired — event_type={}", event_type),
-            );
+        // Only log down/up/timeout individually. Log first drag per gesture
+        // to avoid flooding (dragged fires 60+ times/sec).
+        let should_log = event_type == K_CG_EVENT_LEFT_MOUSE_DOWN
+            || event_type == K_CG_EVENT_LEFT_MOUSE_UP
+            || event_type == K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT;
+        let is_first_drag = event_type == K_CG_EVENT_LEFT_MOUSE_DRAGGED && {
+            ctx.state.try_lock().map(|s| s.dragging && !s.drag_confirmed).unwrap_or(false)
+        };
+        if should_log || is_first_drag {
+            if let Some(state) = ctx.app.try_state::<crate::AppState>() {
+                let label = match event_type {
+                    1 => "mouse_down",
+                    2 => "mouse_up",
+                    6 => "mouse_dragged(first)",
+                    0xFFFFFFFE => "tap_disabled_by_timeout",
+                    _ => "unknown",
+                };
+                crate::config::write_debug_log(
+                    &state,
+                    &format!("tile_snap: callback — event_type={} ({})", event_type, label),
+                );
+            }
         }
     }
 
@@ -1757,8 +1774,13 @@ extern "C" fn snap_event_callback(
                     }
                 }
                 None => {
+                    // Latch: keep the last detected zone active even when
+                    // the cursor drifts out. macOS often shifts the cursor
+                    // slightly during window drags, causing it to leave the
+                    // thin edge zone momentarily. The zone stays latched
+                    // until mouse_up (which uses it) or a new zone is detected.
+                    // Only hide the snap preview overlay — zone indicators stay.
                     if state.current_layout.is_some() {
-                        state.current_layout = None;
                         dispatch_overlay(OverlayCmd::Hide);
                     }
                 }
@@ -1995,8 +2017,7 @@ pub fn start_tile_snap(app: AppHandle) {
             CFRunLoopAddSource(run_loop, source, kCFRunLoopCommonModes);
             CGEventTapEnable(tap, true);
 
-            log::info!("tile_snap: Event tap started, listening for window drags");
-            // Write to debug log for visibility in bundled app
+            // Log tap creation details
             let ctx_ref = &*(raw as *const SnapContext);
             if let Some(state) = ctx_ref.app.try_state::<crate::AppState>() {
                 crate::config::write_debug_log(
@@ -2005,15 +2026,68 @@ pub fn start_tile_snap(app: AppHandle) {
                 );
             }
 
-            // Verify the tap is actually enabled before entering the run loop
-            let tap_enabled = CGEventTapIsEnabled(tap);
-            let ctx_ref2 = &*(raw as *const SnapContext);
-            if let Some(state) = ctx_ref2.app.try_state::<crate::AppState>() {
+            // Check if tap is enabled; if not, retry up to 10 times with 500ms delay.
+            // On production builds macOS may reject the initial enable if Accessibility
+            // was granted moments before the tap was created.
+            let mut tap_enabled = CGEventTapIsEnabled(tap);
+            if !tap_enabled {
+                let ctx_ref = &*(raw as *const SnapContext);
+                for retry in 1..=10 {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    CGEventTapEnable(tap, true);
+                    tap_enabled = CGEventTapIsEnabled(tap);
+                    if let Some(state) = ctx_ref.app.try_state::<crate::AppState>() {
+                        crate::config::write_debug_log(
+                            &state,
+                            &format!(
+                                "tile_snap: enable retry {}/10 — tap_enabled={}",
+                                retry, tap_enabled,
+                            ),
+                        );
+                    }
+                    if tap_enabled {
+                        break;
+                    }
+                }
+            }
+
+            // Comprehensive startup diagnostic dump
+            let ctx_ref = &*(raw as *const SnapContext);
+            if let Some(state) = ctx_ref.app.try_state::<crate::AppState>() {
+                // Get binary signing info
+                let exe_path = std::env::current_exe()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|_| "unknown".into());
+                let is_app_bundle = exe_path.contains(".app/Contents/MacOS");
+                let is_dev = env!("IS_DEV_BUILD") == "true";
+
+                // Check AX status again (may have changed since start_tile_snap)
+                let ax_trusted_now = AXIsProcessTrusted();
+
                 crate::config::write_debug_log(
                     &state,
-                    &format!("tile_snap: entering CFRunLoopRun — tap_enabled={}", tap_enabled),
+                    &format!(
+                        "tile_snap: === STARTUP DIAG ===\n\
+                         \x20 exe_path={}\n\
+                         \x20 is_app_bundle={}\n\
+                         \x20 is_dev_build={}\n\
+                         \x20 AXIsProcessTrusted={}\n\
+                         \x20 tap_enabled={}\n\
+                         \x20 event_mask=0x{:X} (down={}, up={}, drag={})\n\
+                         \x20 tap_type=session, placement=head_insert, option=listen_only",
+                        exe_path,
+                        is_app_bundle,
+                        is_dev,
+                        ax_trusted_now,
+                        tap_enabled,
+                        mask,
+                        mask & (1 << K_CG_EVENT_LEFT_MOUSE_DOWN) != 0,
+                        mask & (1 << K_CG_EVENT_LEFT_MOUSE_UP) != 0,
+                        mask & (1 << K_CG_EVENT_LEFT_MOUSE_DRAGGED) != 0,
+                    ),
                 );
             }
+
             CFRunLoopRun(); // blocks forever
         }
     });
