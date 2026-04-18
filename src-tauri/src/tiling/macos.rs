@@ -1932,11 +1932,21 @@ pub fn start_tile_snap(app: AppHandle) {
             // Create an Objective-C block that calls our Rust handler.
             let ctx_for_block = ctx.clone();
             let handler = block::ConcreteBlock::new(move |event: *mut Object| {
-                // Get event type: [event type] returns NSEventType (u64)
-                let event_type: u64 = msg_send![event, r#type];
-                // Get cursor in CG coordinates (top-left origin)
-                let cursor = get_mouse_location_cg();
-                handle_snap_event(&ctx_for_block, event_type, cursor);
+                // Wrap in catch_unwind: panics cannot unwind through the
+                // Objective-C block boundary (abort would crash the app).
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    // Get event type: [event type] returns NSEventType (NSUInteger).
+                    // Use Sel::register("type") + raw objc_msgSend because `type`
+                    // is a Rust keyword and msg_send![event, r#type] causes issues.
+                    extern "C" {
+                        fn objc_msgSend(obj: *mut Object, sel: objc::runtime::Sel) -> usize;
+                    }
+                    let type_sel = objc::runtime::Sel::register("type");
+                    let event_type = objc_msgSend(event, type_sel) as u64;
+                    // Get cursor in CG coordinates (top-left origin)
+                    let cursor = get_mouse_location_cg();
+                    handle_snap_event(&ctx_for_block, event_type, cursor);
+                }));
             });
             let handler = handler.copy(); // heap-allocate so it outlives this scope
 
