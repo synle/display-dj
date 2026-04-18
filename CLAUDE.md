@@ -179,3 +179,9 @@ sudo apt install ddcutil brightnessctl i2c-tools
 sudo modprobe i2c-dev
 sudo usermod -aG i2c $USER
 ```
+
+
+## Git / PR Merge Policy
+
+- Always use **squash and merge** when merging PRs. Never use merge commits or rebase merges. This keeps the git history clean with one commit per PR.
+- You may `git merge origin/main` or `git merge origin/master` locally to sync branches, but PR merges must always be squash merges.
