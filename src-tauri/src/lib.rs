@@ -455,12 +455,6 @@ pub fn run() {
             // Set up system tray
             tray::setup_tray(app)?;
 
-            // Ensure default wallpapers exist in the wallpapers directory
-            {
-                let wp_state = app.state::<AppState>();
-                wallpaper::ensure_default_wallpapers(&wp_state);
-            }
-
             // Register global shortcuts from saved preferences
             let handle = app.handle().clone();
             tray::register_shortcuts(&handle, &preferences.key_bindings);
