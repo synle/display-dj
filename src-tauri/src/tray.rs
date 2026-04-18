@@ -92,6 +92,8 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let debug_dump = MenuItemBuilder::with_id("debug_dump", "Dump Debug Info").build(app)?;
     let open_prefs =
         MenuItemBuilder::with_id("open_prefs", "Open App Preferences").build(app)?;
+    let open_folder =
+        MenuItemBuilder::with_id("open_folder", "Open App Folder").build(app)?;
     let port = crate::server_port();
     let bridge_label = format!("Bridge: 127.0.0.1:{}", port);
     let bridge = MenuItemBuilder::with_id("bridge", &bridge_label).build(app)?;
@@ -108,6 +110,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .item(&debug_dump)
             .separator()
             .item(&open_prefs)
+            .item(&open_folder)
             .item(&bridge)
             .separator()
             .item(&force_refresh)
@@ -120,6 +123,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .item(&debug_dump)
             .separator()
             .item(&open_prefs)
+            .item(&open_folder)
             .item(&bridge)
             .separator()
             .item(&force_refresh)
@@ -298,6 +302,9 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
             }
             "open_prefs" => {
                 let _ = crate::config::open_preferences_file();
+            }
+            "open_folder" => {
+                let _ = crate::config::open_app_folder();
             }
             "tiling_enable" => {
                 if let Some(state) = app.try_state::<crate::AppState>() {

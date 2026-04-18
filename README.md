@@ -163,7 +163,7 @@ Layout presets let you define named configurations that automatically tile speci
 - `layout` -- the tiling layout to apply (e.g., `"leftHalf"`, `"rightThird"`, `"maximize"`)
 - `displayIndex` (optional) -- 0-based display index to place the window on
 
-Presets are triggered via `command/layout/{name_or_index}` and can be bound to keyboard shortcuts, included in profiles, or triggered from the "Layout Presets" tray submenu. Configure presets by editing `preferences.json` (accessible via "Open App Preferences" in the tray menu).
+Presets are triggered via `command/layout/{name_or_index}` and can be bound to keyboard shortcuts, included in profiles, or triggered from the "Layout Presets" tray submenu. Configure presets by editing `preferences.json` (accessible via "Open App Preferences" in the tray menu) or browse the config directory via "Open App Folder".
 
 ### Enabling Tiling
 
