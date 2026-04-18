@@ -811,6 +811,7 @@ fn execute_command(app: &AppHandle, command: &str) {
     let parts: Vec<&str> = command.split('/').collect();
     let base = base_url();
     match parts.as_slice() {
+        // Set brightness for all monitors: command/changeBrightness/{value}
         ["command", "changeBrightness", value] => {
             if let Ok(val) = value.parse::<u32>() {
                 let min = app
@@ -820,6 +821,19 @@ fn execute_command(app: &AppHandle, command: &str) {
                     .map(|p| p.effective_min_brightness())
                     .unwrap_or(crate::config::ABSOLUTE_MIN_BRIGHTNESS);
                 let url = format!("{}/set_all/{}", base, val.clamp(min, 100));
+                http_get_then_emit(url, app.clone(), "monitors-changed");
+            }
+        }
+        // Set brightness for a single monitor: command/changeBrightness/{monitor_id}/{value}
+        ["command", "changeBrightness", monitor_id, value] => {
+            if let Ok(val) = value.parse::<u32>() {
+                let min = app
+                    .state::<crate::AppState>()
+                    .preferences
+                    .lock()
+                    .map(|p| p.effective_min_brightness())
+                    .unwrap_or(crate::config::ABSOLUTE_MIN_BRIGHTNESS);
+                let url = format!("{}/set_one/{}/{}", base, monitor_id, val.clamp(min, 100));
                 http_get_then_emit(url, app.clone(), "monitors-changed");
             }
         }
@@ -854,9 +868,17 @@ fn execute_command(app: &AppHandle, command: &str) {
             };
             http_get_then_emit(url, app.clone(), "dark-mode-changed");
         }
+        // Set contrast for all monitors: command/changeContrast/{value}
         ["command", "changeContrast", value] => {
             if let Ok(val) = value.parse::<u32>() {
                 let url = format!("{}/set_contrast_all/{}", base, val.min(100));
+                http_get_then_emit(url, app.clone(), "monitors-changed");
+            }
+        }
+        // Set contrast for a single monitor: command/changeContrast/{monitor_id}/{value}
+        ["command", "changeContrast", monitor_id, value] => {
+            if let Ok(val) = value.parse::<u32>() {
+                let url = format!("{}/set_contrast_one/{}/{}", base, monitor_id, val.min(100));
                 http_get_then_emit(url, app.clone(), "monitors-changed");
             }
         }
@@ -920,9 +942,132 @@ fn execute_command(app: &AppHandle, command: &str) {
     }
 }
 
+/// Builds the sidecar HTTP URL for a given command string, or returns None
+/// for commands that don't map to a simple HTTP GET (profiles, tiling, dark mode toggle).
+/// `base` is the sidecar base URL, `min_brightness` is the effective floor.
+fn build_command_url(command: &str, base: &str, min_brightness: u32) -> Option<String> {
+    let parts: Vec<&str> = command.split('/').collect();
+    match parts.as_slice() {
+        ["command", "changeBrightness", value] => {
+            value.parse::<u32>().ok().map(|v| {
+                format!("{}/set_all/{}", base, v.clamp(min_brightness, 100))
+            })
+        }
+        ["command", "changeBrightness", monitor_id, value] => {
+            value.parse::<u32>().ok().map(|v| {
+                format!("{}/set_one/{}/{}", base, monitor_id, v.clamp(min_brightness, 100))
+            })
+        }
+        ["command", "changeContrast", value] => {
+            value.parse::<u32>().ok().map(|v| {
+                format!("{}/set_contrast_all/{}", base, v.min(100))
+            })
+        }
+        ["command", "changeContrast", monitor_id, value] => {
+            value.parse::<u32>().ok().map(|v| {
+                format!("{}/set_contrast_one/{}/{}", base, monitor_id, v.min(100))
+            })
+        }
+        ["command", "changeVolume", value] => {
+            value.parse::<u32>().ok().map(|v| {
+                format!("{}/set_volume/{}", base, v.min(100))
+            })
+        }
+        _ => None,
+    }
+}
+
 /// Applies a saved profile by index, executing all of its commands.
 #[tauri::command]
 pub fn apply_profile(app: AppHandle, index: usize) -> Result<(), String> {
     execute_command(&app, &format!("command/changeProfile/{}", index));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BASE: &str = "http://127.0.0.1:51337";
+
+    /// Verifies all-monitors brightness command produces the correct sidecar URL.
+    #[test]
+    fn test_build_url_brightness_all() {
+        let url = build_command_url("command/changeBrightness/75", BASE, 10);
+        assert_eq!(url, Some(format!("{}/set_all/75", BASE)));
+    }
+
+    /// Verifies per-monitor brightness command produces the correct sidecar URL.
+    #[test]
+    fn test_build_url_brightness_single() {
+        let url = build_command_url("command/changeBrightness/1/80", BASE, 10);
+        assert_eq!(url, Some(format!("{}/set_one/1/80", BASE)));
+    }
+
+    /// Verifies per-monitor brightness with builtin monitor ID.
+    #[test]
+    fn test_build_url_brightness_single_builtin() {
+        let url = build_command_url("command/changeBrightness/builtin/50", BASE, 10);
+        assert_eq!(url, Some(format!("{}/set_one/builtin/50", BASE)));
+    }
+
+    /// Verifies brightness is clamped to min_brightness floor.
+    #[test]
+    fn test_build_url_brightness_clamps_to_min() {
+        let url = build_command_url("command/changeBrightness/3", BASE, 10);
+        assert_eq!(url, Some(format!("{}/set_all/10", BASE)));
+    }
+
+    /// Verifies per-monitor brightness is clamped to min_brightness floor.
+    #[test]
+    fn test_build_url_brightness_single_clamps_to_min() {
+        let url = build_command_url("command/changeBrightness/1/3", BASE, 10);
+        assert_eq!(url, Some(format!("{}/set_one/1/10", BASE)));
+    }
+
+    /// Verifies all-monitors contrast command produces the correct sidecar URL.
+    #[test]
+    fn test_build_url_contrast_all() {
+        let url = build_command_url("command/changeContrast/60", BASE, 10);
+        assert_eq!(url, Some(format!("{}/set_contrast_all/60", BASE)));
+    }
+
+    /// Verifies per-monitor contrast command produces the correct sidecar URL.
+    #[test]
+    fn test_build_url_contrast_single() {
+        let url = build_command_url("command/changeContrast/2/70", BASE, 10);
+        assert_eq!(url, Some(format!("{}/set_contrast_one/2/70", BASE)));
+    }
+
+    /// Verifies contrast is capped at 100.
+    #[test]
+    fn test_build_url_contrast_clamps_to_100() {
+        let url = build_command_url("command/changeContrast/150", BASE, 10);
+        assert_eq!(url, Some(format!("{}/set_contrast_all/100", BASE)));
+    }
+
+    /// Verifies volume command produces the correct sidecar URL.
+    #[test]
+    fn test_build_url_volume() {
+        let url = build_command_url("command/changeVolume/50", BASE, 10);
+        assert_eq!(url, Some(format!("{}/set_volume/50", BASE)));
+    }
+
+    /// Verifies unknown commands return None.
+    #[test]
+    fn test_build_url_unknown_command() {
+        assert_eq!(build_command_url("command/unknown/123", BASE, 10), None);
+    }
+
+    /// Verifies non-numeric values return None.
+    #[test]
+    fn test_build_url_invalid_value() {
+        assert_eq!(build_command_url("command/changeBrightness/abc", BASE, 10), None);
+    }
+
+    /// Verifies per-monitor command with non-numeric value returns None.
+    #[test]
+    fn test_build_url_single_invalid_value() {
+        assert_eq!(build_command_url("command/changeBrightness/1/abc", BASE, 10), None);
+    }
 }
