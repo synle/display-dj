@@ -36,7 +36,8 @@ jobs:
             FULL_SHA=$(git rev-parse HEAD)
           fi
           SHORT_SHA=$(git rev-parse --short HEAD)
-          TAG="release-beta-${SHORT_SHA}"
+          DATE=$(date -u '+%Y-%m-%d-%H-%M')
+          TAG="release-beta-${DATE}-${SHORT_SHA}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "sha=${FULL_SHA}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
