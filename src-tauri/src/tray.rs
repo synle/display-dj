@@ -987,6 +987,27 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             log::warn!("Layout presets are not supported on this platform: {}", name_or_index);
         }
+        // Set wallpaper: command/wallpaper/change/{path} or command/wallpaper/change/{fit}/{path}
+        ["command", "wallpaper", "change", ..] => {
+            let prefix = "command/wallpaper/change/";
+            if command.len() > prefix.len() {
+                let remainder = &command[prefix.len()..];
+                let (fit, path) = crate::wallpaper::parse_wallpaper_args(remainder);
+                let app_clone = app.clone();
+                let path_owned = path.to_string();
+                let fit_owned = fit.map(|f| f.to_string());
+                std::thread::spawn(move || {
+                    let state = app_clone.state::<crate::AppState>();
+                    crate::wallpaper::change_wallpaper(
+                        &state,
+                        &path_owned,
+                        fit_owned.as_deref(),
+                    );
+                });
+            } else {
+                log::warn!("wallpaper change command missing path: {}", command);
+            }
+        }
         _ => {
             log::warn!("Unknown command: {}", command);
         }
@@ -1120,5 +1141,18 @@ mod tests {
     #[test]
     fn test_build_url_single_invalid_value() {
         assert_eq!(build_command_url("command/changeBrightness/1/abc", BASE, 10), None);
+    }
+
+    /// Verifies wallpaper commands are not HTTP-routed (return None from build_command_url).
+    #[test]
+    fn test_build_url_wallpaper_returns_none() {
+        assert_eq!(
+            build_command_url("command/wallpaper/change//Users/pic.jpg", BASE, 10),
+            None
+        );
+        assert_eq!(
+            build_command_url("command/wallpaper/change/center//Users/pic.jpg", BASE, 10),
+            None
+        );
     }
 }

@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Preferences, MonitorMetadata, NightModeSchedule, TilingPreferences } from '../types';
+import {
+  Preferences,
+  MonitorMetadata,
+  NightModeSchedule,
+  TilingPreferences,
+  WallpaperPreferences,
+} from '../types';
 import Slider from './Slider';
 
 interface SettingsPanelProps {
@@ -104,6 +110,22 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
       const next = {
         ...prev,
         tiling: { ...prev.tiling, [key]: value },
+      };
+      if (!initialLoadRef.current) savePreferences(next);
+      return next;
+    });
+  };
+
+  /** Updates a field within the wallpaper preferences and triggers auto-save. */
+  const updateWallpaper = <K extends keyof WallpaperPreferences>(
+    key: K,
+    value: WallpaperPreferences[K],
+  ) => {
+    setPrefs((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        wallpaper: { ...prev.wallpaper, [key]: value },
       };
       if (!initialLoadRef.current) savePreferences(next);
       return next;
@@ -324,6 +346,22 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 </div>
               </>
             )}
+
+            <div className='settings-divider' />
+
+            <div className='settings-section'>
+              <label className='settings-label'>Wallpaper Fit</label>
+              <select
+                value={prefs.wallpaper?.fit ?? 'fill'}
+                onChange={(e) => updateWallpaper('fit', e.target.value)}
+                style={{ marginTop: '4px', width: '100%' }}>
+                <option value='fill'>Fill Screen</option>
+                <option value='fit'>Fit to Screen</option>
+                <option value='stretch'>Stretch</option>
+                <option value='center'>Center</option>
+                <option value='tile'>Tile</option>
+              </select>
+            </div>
 
             <div className='settings-divider' />
 

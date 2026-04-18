@@ -7,6 +7,7 @@ mod tiling;
 mod tray;
 mod tray_icon;
 mod volume;
+mod wallpaper;
 
 use std::sync::atomic::{AtomicU16, Ordering};
 use chrono::Timelike;
@@ -450,6 +451,12 @@ pub fn run() {
 
             // Set up system tray
             tray::setup_tray(app)?;
+
+            // Ensure default wallpapers exist in the wallpapers directory
+            {
+                let wp_state = app.state::<AppState>();
+                wallpaper::ensure_default_wallpapers(&wp_state);
+            }
 
             // Register global shortcuts from saved preferences
             let handle = app.handle().clone();

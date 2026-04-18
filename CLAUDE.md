@@ -76,7 +76,7 @@ cd src-tauri && cargo test  # Run all Rust backend tests
 ### Backend Tests (Rust)
 
 - **Unit tests**: Inline `#[cfg(test)]` modules in `config.rs`, `display.rs`, `keep_awake.rs`, `tray_icon.rs`, and `tiling.rs`
-  - `config.rs`: Serialization/deserialization, defaults, camelCase conventions, file roundtrips, CommandValue enum variants, MonitorMetadata serde, effective min brightness, backward-compatible deserialization of old configs, preferences with monitorConfigs roundtrip, expose_columns/expose_rows defaults and roundtrip, legacy expose_max_windows migration, layout preset serde, night mode schedule commands roundtrip and backward compat, config_dir existence and naming
+  - `config.rs`: Serialization/deserialization, defaults, camelCase conventions, file roundtrips, CommandValue enum variants, MonitorMetadata serde, effective min brightness, backward-compatible deserialization of old configs, preferences with monitorConfigs roundtrip, expose_columns/expose_rows defaults and roundtrip, legacy expose_max_windows migration, layout preset serde, night mode schedule commands roundtrip and backward compat, config_dir existence and naming, WallpaperPreferences defaults/serde/backward-compat
   - `display.rs`: `DjDisplay` to `Monitor` conversion (including uid computation), `merge_with_configs` (rename, sort), `reconcile_migrated_configs`, `ensure_metadata_for_monitors`, Monitor serde
   - `keep_awake.rs`: KeepAwake guard creation, Mutex<Option<KeepAwake>> pattern (enable/disable/re-enable)
   - `tray_icon.rs`: Percentage-to-pixel conversion, icon generation for all state combinations (dark/light, keep-awake, muted), filled rect and thick line drawing
@@ -85,6 +85,7 @@ cd src-tauri && cargo test  # Run all Rust backend tests
   - `tiling/macos.rs` (macOS only): macOS-specific AXUIElement window manipulation, NSScreen display detection, Tile Snap via CGEventTap
   - `tiling/windows.rs` (Windows only): Win32 window manipulation via GetForegroundWindow/SetWindowPos, EnumDisplayMonitors for display detection, EnumWindows for Expose
   - `tiling/linux.rs` (Linux only): X11 availability check, strut-to-work-area math (top/bottom/left/right panels, dual-monitor panel isolation, combined struts), process name resolution
+  - `wallpaper.rs`: Image validation (extension, existence, size), MD5 path hashing for destination filenames, content hash comparison, fit mode parsing from command strings, default wallpaper BMP generation, wallpapers_dir path correctness, WallpaperPreferences serde roundtrip
 - **Smoke test**: `src-tauri/tests/smoke.rs` — Integration test verifying the crate compiles, links, and public API (AppState, run) is accessible
 
 ### CI
@@ -142,11 +143,15 @@ Commands are strings dispatched by `execute_command()` in `tray.rs`. They can be
 | `command/changeProfile/{index}`                 | (executes profile commands)      | Run all commands in a saved profile            |
 | `command/tile/{layoutName}`                     | (calls tiling module)            | Tile the focused window                        |
 | `command/layout/{name_or_index}`                | (calls tiling module)            | Apply a layout preset by name or 0-based index |
+| `command/wallpaper/change/{path}`               | (calls wallpaper module)         | Set wallpaper on all monitors (default fit)    |
+| `command/wallpaper/change/{fit}/{path}`         | (calls wallpaper module)         | Set wallpaper with explicit fit mode           |
 
 Monitor IDs are the sidecar API IDs (e.g. `"1"`, `"2"`, `"builtin"`). Brightness is clamped to `[effective_min_brightness, 100]`; contrast is clamped to `[0, 100]`.
 
 - **Night Mode Schedule** (`NightModeSchedule` in `config.rs`): Optionally accepts `nightCommands` and `dayCommands` arrays of command strings. When non-empty, these replace the default brightness + dark/light mode behavior and are executed via `tray::execute_command()`. When empty (default), falls back to the legacy `nightBrightness`/`dayBrightness` + dark/light mode behavior. This allows users to run arbitrary commands on schedule (e.g., volume changes, profile activation, per-monitor brightness). Backward-compatible — old configs missing the command arrays get empty defaults.
 - **Window Layout Presets**: Named presets that specify which apps go to which tiling layouts. Stored in `preferences.layoutPresets` as an array of `LayoutPreset` objects, each with a `name` and `rules` array. Each `LayoutRule` has `appMatch` (case-insensitive substring), `layout` (camelCase TilingLayout name), and optional `displayIndex` (0-based). Triggered via `command/layout/{name_or_index}` — works from keyboard shortcuts, profiles, and tray menu. The tray menu shows a "Layout Presets" submenu when presets are configured. Rules match one window per rule (first match wins); create duplicate rules to tile multiple windows of the same app. Users configure presets by editing `preferences.json` (Open App Preferences in tray menu) or browsing the config directory (Open App Folder in tray menu).
+
+- **Wallpaper** (`wallpaper.rs`): Changes the desktop wallpaper via `command/wallpaper/change/{path}` (uses fit from preferences) or `command/wallpaper/change/{fit}/{path}` (explicit fit). Images are validated (must exist, have a valid image extension, and be > 1 KB), then copied to `~/.config/display-dj/wallpapers/` with a stable filename `wallpaper-{md5(source_path)}.{ext}`. On subsequent calls with the same source path, content MD5 hashes are compared to avoid unnecessary overwrites. The wallpaper is set using the cached copy (not the original). Fit modes: `fill` (default), `fit`, `stretch`, `center`, `tile` — all supported on macOS, Windows, and Linux. Platform implementation: macOS uses `osascript` (AppleScript via System Events), Windows uses `SystemParametersInfoW` + registry (WallpaperStyle/TileWallpaper), Linux tries `gsettings` (GNOME), then `xfconf-query` (XFCE), then `feh`. The OS-level calls are isolated behind `set_wallpaper_on_os()` for easy porting to display-dj-cli later (see `WALLPAPER_CLI_SPEC.md`). Preferences: `wallpaper.fit` (default `"fill"`), `wallpaper.currentWallpaperPath` (tracks active wallpaper). The Settings panel has a Wallpaper Fit dropdown. Default dark and light gradient wallpapers (`default-dark.bmp`, `default-light.bmp`) are generated in the wallpapers directory on first launch. Works as a command, so it can be used in keyboard shortcuts, profiles, and night/day schedules.
 
 ## Related Projects
 
@@ -154,7 +159,7 @@ Monitor IDs are the sidecar API IDs (e.g. `"1"`, `"2"`, `"builtin"`). Brightness
 
 ## Dependencies
 
-The display-dj CLI sidecar handles all platform-specific display and volume dependencies internally. No external tools need to be installed for display or volume control. The `keepawake` crate handles sleep prevention natively on all platforms (macOS IOKit, Windows SetThreadExecutionState, Linux D-Bus). The `tauri-plugin-dialog` crate provides native OS confirmation dialogs (used by Reset to Default). The `windows` crate (v0.58) is a Windows-only dependency used for Win32 window tiling APIs (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`). The `x11rb` crate (v0.13) is a Linux-only dependency (pure Rust X11 client) used for X11/EWMH window tiling (`_NET_ACTIVE_WINDOW`, `_NET_MOVERESIZE_WINDOW`, `_NET_CLIENT_LIST`, XRandr).
+The display-dj CLI sidecar handles all platform-specific display and volume dependencies internally. No external tools need to be installed for display or volume control. The `keepawake` crate handles sleep prevention natively on all platforms (macOS IOKit, Windows SetThreadExecutionState, Linux D-Bus). The `tauri-plugin-dialog` crate provides native OS confirmation dialogs (used by Reset to Default). The `md5` crate (v0.7) provides MD5 hashing for wallpaper filename generation and content comparison. The `windows` crate (v0.58) is a Windows-only dependency used for Win32 window tiling APIs (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`). The `x11rb` crate (v0.13) is a Linux-only dependency (pure Rust X11 client) used for X11/EWMH window tiling (`_NET_ACTIVE_WINDOW`, `_NET_MOVERESIZE_WINDOW`, `_NET_CLIENT_LIST`, XRandr).
 
 ### Stale Sidecar Cleanup
 
