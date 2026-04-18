@@ -351,34 +351,6 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 />
                 <span>Enable Window Tiling</span>
               </label>
-              {tiling?.enabled && !accessibilityTrusted && (
-                <div
-                  style={{
-                    fontSize: '11px',
-                    color: '#e67700',
-                    marginTop: '4px',
-                    paddingLeft: '22px',
-                  }}>
-                  ⚠ Accessibility permission required for tiling.{' '}
-                  <a
-                    href='#'
-                    onClick={(e) => {
-                      e.preventDefault();
-                      invoke('open_accessibility_settings');
-                    }}
-                    style={{ color: '#e67700' }}>
-                    Open Accessibility Settings
-                  </a>{' '}
-                  |{' '}
-                  <a
-                    href='https://github.com/synle/display-dj#window-tiling-macos'
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    style={{ color: '#e67700' }}>
-                    Learn how to enable
-                  </a>
-                </div>
-              )}
             </div>
 
             {tiling?.enabled && (
@@ -394,6 +366,34 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     />
                     <span>Enable Tile Snap (drag to edge)</span>
                   </label>
+                  {(tiling?.tileSnapEnabled ?? true) && !accessibilityTrusted && (
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        color: '#e67700',
+                        marginTop: '4px',
+                        paddingLeft: '22px',
+                      }}>
+                      ⚠ Accessibility permission required for Tile Snap.{' '}
+                      <a
+                        href='#'
+                        onClick={(e) => {
+                          e.preventDefault();
+                          invoke('open_accessibility_settings');
+                        }}
+                        style={{ color: '#e67700' }}>
+                        Open Accessibility Settings
+                      </a>{' '}
+                      |{' '}
+                      <a
+                        href='https://github.com/synle/display-dj#window-tiling-macos'
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        style={{ color: '#e67700' }}>
+                        Learn how to enable
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 {(tiling?.tileSnapEnabled ?? true) && (
