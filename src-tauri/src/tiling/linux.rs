@@ -979,6 +979,56 @@ pub fn execute_expose_app(app: &AppHandle) {
     );
 }
 
+/// Execute a layout preset by name or index. Enumerates windows, matches by
+/// app name, and tiles each matched window according to the preset's rules.
+pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
+    let (preset, half_ratio, third_ratio, gap) = {
+        let state = app.state::<crate::AppState>();
+        let prefs = match state.preferences.lock() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let preset = match super::resolve_layout_preset(&prefs.layout_presets, name_or_index) {
+            Some(p) => p,
+            None => {
+                log::warn!("layout_preset: preset '{}' not found", name_or_index);
+                return;
+            }
+        };
+        (preset, prefs.tiling.half_ratio, prefs.tiling.third_ratio, prefs.tiling.gap)
+    };
+
+    let (conn, screen_num) = match connect() {
+        Some(c) => c,
+        None => return,
+    };
+    let root = conn.setup().roots[screen_num].root;
+
+    let windows = get_all_windows(&conn, root);
+    if windows.is_empty() {
+        log::info!("layout_preset: no windows found");
+        return;
+    }
+
+    let displays = get_display_work_areas(&conn, root, screen_num);
+    if displays.is_empty() {
+        log::warn!("layout_preset: no displays found");
+        return;
+    }
+
+    let matches = super::match_windows_to_rules(&windows, &preset.rules);
+    log::info!("layout_preset: '{}' matched {} windows", preset.name, matches.len());
+
+    for (win_idx, layout, disp_idx) in matches {
+        let w = &windows[win_idx];
+        let display_index = disp_idx
+            .unwrap_or_else(|| super::find_display_for_window(&w.bounds, &displays))
+            .min(displays.len() - 1);
+        let target = super::calculate_target_rect(layout, &displays[display_index], half_ratio, third_ratio, gap);
+        set_window_rect(&conn, screen_num, w.window_id as u32, &target);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
