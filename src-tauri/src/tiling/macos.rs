@@ -1334,51 +1334,52 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
                     kind: u8,
                 }
                 let mut zones: Vec<ZoneRect> = Vec::new();
-                let vis_edge = side_edge.max(20.0); // minimum 20px for visibility
-                let vis_top = top_edge.max(20.0);
-                let vis_corner = corner.max(40.0);
-
                 for d in &displays {
-                    // Top edge strip (green) — between corners
-                    zones.push(ZoneRect {
-                        x: d.x + vis_corner, y: d.y,
-                        w: d.width - vis_corner * 2.0, h: vis_top,
-                        kind: 0,
-                    });
-                    // Left edge strip (orange) — between corners
-                    zones.push(ZoneRect {
-                        x: d.x, y: d.y + vis_corner,
-                        w: vis_edge, h: d.height - vis_corner * 2.0,
-                        kind: 1,
-                    });
-                    // Right edge strip (orange) — between corners
-                    zones.push(ZoneRect {
-                        x: d.x + d.width - vis_edge, y: d.y + vis_corner,
-                        w: vis_edge, h: d.height - vis_corner * 2.0,
-                        kind: 1,
-                    });
-                    // Top-left corner (purple)
+                    // Draw order: edges first, corners last (corners overlay edges).
+                    // Corners are simple corner×corner rectangles that cover the
+                    // edge strips beneath them, making it clear corners win.
+
+                    // Top strip (green) — full width, top_edge tall
                     zones.push(ZoneRect {
                         x: d.x, y: d.y,
-                        w: vis_corner, h: vis_corner,
+                        w: d.width, h: top_edge,
+                        kind: 0,
+                    });
+                    // Left strip (orange) — side_edge wide, full height
+                    zones.push(ZoneRect {
+                        x: d.x, y: d.y,
+                        w: side_edge, h: d.height,
+                        kind: 1,
+                    });
+                    // Right strip (orange) — side_edge wide, full height
+                    zones.push(ZoneRect {
+                        x: d.x + d.width - side_edge, y: d.y,
+                        w: side_edge, h: d.height,
+                        kind: 1,
+                    });
+                    // Corner rectangles (purple) — drawn last, overlay edges
+                    // Top-left
+                    zones.push(ZoneRect {
+                        x: d.x, y: d.y,
+                        w: corner, h: corner,
                         kind: 2,
                     });
-                    // Top-right corner (purple)
+                    // Top-right
                     zones.push(ZoneRect {
-                        x: d.x + d.width - vis_corner, y: d.y,
-                        w: vis_corner, h: vis_corner,
+                        x: d.x + d.width - corner, y: d.y,
+                        w: corner, h: corner,
                         kind: 2,
                     });
-                    // Bottom-left corner (purple)
+                    // Bottom-left
                     zones.push(ZoneRect {
-                        x: d.x, y: d.y + d.height - vis_corner,
-                        w: vis_corner, h: vis_corner,
+                        x: d.x, y: d.y + d.height - corner,
+                        w: corner, h: corner,
                         kind: 2,
                     });
-                    // Bottom-right corner (purple)
+                    // Bottom-right
                     zones.push(ZoneRect {
-                        x: d.x + d.width - vis_corner, y: d.y + d.height - vis_corner,
-                        w: vis_corner, h: vis_corner,
+                        x: d.x + d.width - corner, y: d.y + d.height - corner,
+                        w: corner, h: corner,
                         kind: 2,
                     });
                 }
@@ -1495,21 +1496,23 @@ fn detect_snap_zone_macos(
             let in_corner_left = left < corner;
             let in_corner_right = right < corner;
 
-            // Corners take priority (check first)
-            if at_left && in_corner_top || at_top && in_corner_left {
+            // Corners take priority (check first).
+            // Triggers anywhere inside the corner×corner square at each
+            // display corner. The visual indicator matches this exactly.
+            if in_corner_left && in_corner_top {
                 return Some((TilingLayout::TopLeftQuarter, i));
             }
-            if at_right && in_corner_top || at_top && in_corner_right {
+            if in_corner_right && in_corner_top {
                 return Some((TilingLayout::TopRightQuarter, i));
             }
-            if at_left && in_corner_bottom || at_bottom && in_corner_left {
+            if in_corner_left && in_corner_bottom {
                 return Some((TilingLayout::BottomLeftQuarter, i));
             }
-            if at_right && in_corner_bottom || at_bottom && in_corner_right {
+            if in_corner_right && in_corner_bottom {
                 return Some((TilingLayout::BottomRightQuarter, i));
             }
 
-            // Edges
+            // Edges (only if not in a corner zone)
             if at_left {
                 return Some((TilingLayout::LeftHalf, i));
             }
@@ -1669,8 +1672,6 @@ extern "C" fn snap_event_callback(
                 // window position. This work was previously in mouse_down where
                 // it could stall the callback and cause macOS to kill the tap.
                 state.drag_confirmed = true;
-                // Hide drop zone indicators — snap overlay takes over from here
-                dispatch_overlay(OverlayCmd::HideZones);
                 state.drag_start_window_pos = unsafe {
                     get_focused_window().and_then(|w| get_window_rect(&w).map(|r| (r.x, r.y)))
                 };
@@ -1937,8 +1938,8 @@ pub fn start_tile_snap(app: AppHandle) {
             half_ratio: 50,
             third_ratio: 33,
             gap: 0,
-            side_edge_trigger: 10.0,
-            top_edge_trigger: 10.0,
+            side_edge_trigger: 18.0,
+            top_edge_trigger: 18.0,
             corner_trigger: 50.0,
         }),
     });
