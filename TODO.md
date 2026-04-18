@@ -5,6 +5,11 @@
 - [x] **Volume presets via keyboard shortcuts** — Add intermediate volume levels (e.g., 25%, 50%, 75%) alongside the existing mute/unmute shortcuts (Shift+F6/F7).
 - [ ] **Tray icon reflecting state** — Change the tray icon dynamically based on brightness level or dark/light mode (e.g., dim icon when brightness is low, moon/sun icon for dark/light).
 
+## Quick Wins
+
+- [ ] **Auto dark mode schedule** — Toggle dark/light mode on the same night mode schedule that already controls brightness. The 60-second timer loop in `lib.rs` already evaluates time — extend it to also call the `/dark` or `/light` sidecar endpoint alongside the brightness change. Add a `darkModeAtNight` boolean to `NightModeSchedule` preferences.
+- [ ] **Scroll-to-adjust brightness on tray icon** — Mouse wheel on the tray icon nudges all-monitor brightness up/down by a step (e.g., 5%). Tauri's `TrayIconEvent` already exposes scroll events (`TrayIconEvent::Scroll`). Fire the sidecar `set_all/{value}` endpoint on each tick. Gives quick adjustment without opening the popup.
+
 ## Medium Effort
 
 - [x] **Brightness scheduling / Night mode** — Auto-dim at sunset or on a schedule (e.g., 9 PM = dark mode + 20% brightness, 7 AM = light mode + 100%).
@@ -26,6 +31,7 @@
 ### Quick Wins
 
 - [ ] **Tray tooltip showing current state** — On hover, show brightness %, volume %, and dark/light mode in the tray tooltip text instead of a static label. Tauri's `TrayIconBuilder` supports `.tooltip()` — update it on each state change. Gives users a glance at current levels without opening the popup.
+- [x] **Per-monitor brightness/contrast commands** — `command/changeBrightness/{monitor_id}/{value}` and `command/changeContrast/{monitor_id}/{value}` for targeting individual monitors from keyboard shortcuts, profiles, and tray menu actions.
 - [ ] **Per-monitor quick presets** — Add small 0/25/50/75/100% buttons below each monitor slider in expanded view for one-tap brightness setting. Avoids the imprecision of dragging a slider when you just want a round number. Render as a row of compact pill buttons styled to match the existing UI.
 - [ ] **Export / Import settings** — Backup and restore `preferences.json` to/from a user-chosen file. Useful when migrating to a new machine, syncing a work and home setup, or sharing a multi-monitor config with a teammate. Use Tauri's `dialog` plugin for the native file picker.
 - [ ] **Confirm before Reset to Default** — Show a confirmation dialog before wiping all settings on "Reset to Default" to prevent accidental resets. Currently one mis-click in the tray menu destroys all customizations (shortcuts, profiles, monitor names). A simple "Are you sure?" dialog via Tauri's `dialog::ask` would prevent this.
@@ -33,6 +39,9 @@
 
 ### Medium Effort
 
+- [ ] **Tile Snap on Windows** — macOS has mouse-edge snapping via CGEventTap; Windows needs it too. Use `SetWinEventHook` or a low-level mouse hook to detect window drags near screen edges. Win32 has all the primitives (`GetCursorPos`, `SetWindowPos`). Note: Windows Aero Snap already handles halves/quarters but doesn't cover thirds or custom ratios — our Tile Snap would complement it for those layouts.
+- [ ] **Per-monitor brightness in profiles** — Profiles currently set one brightness for all monitors via `command/changeBrightness/{value}`. Extend to support per-monitor targets (e.g., `command/changeMonitorBrightness/{uid}/{value}`). The sidecar already has per-monitor `set/{id}/{value}` endpoints. Useful for mixed setups (dim external, bright built-in).
+- [ ] **Window layout presets** — Save and restore entire multi-window arrangements. "Dev layout" = VS Code left half + Terminal right third + Browser right two-thirds. Store as a list of `(window_match, layout, display_index)` tuples in preferences. Match windows by app name. Trigger from profiles, tray menu, or keyboard shortcuts. Builds on existing tiling infrastructure.
 - [ ] **Scheduled profiles** — Let users assign a time-of-day schedule to any profile (not just night mode). E.g., "Focus" at 9 AM, "Presentation" at 2 PM, "Daylight" at 6 PM. Generalizes night mode into a full schedule system. The existing 60-second timer loop in `lib.rs` already checks time — extend it to evaluate a list of `(time, profile_index)` entries. Profiles already bundle arbitrary commands, so this reuses all existing execution logic.
 - [ ] **Idle-based dimming** — Auto-dim brightness after a configurable period of inactivity (e.g., 5 min idle → 10% brightness). Restore on mouse/keyboard activity. Saves energy and extends external monitor life, especially for DDC/CI monitors that don't have their own idle dimming. On macOS, poll `CGEventSourceSecondsSinceLastEventType`; on Windows, `GetLastInputInfo`; on Linux, `xprintidle` or `org.freedesktop.ScreenSaver.GetSessionIdleTime`.
 - [ ] **Battery-aware brightness** — On laptops, auto-reduce brightness when unplugged or below a battery threshold. Configurable in settings with a battery % trigger and a target brightness level. The `battery` Rust crate provides cross-platform charge level and AC/battery state. Could pair with profiles — e.g., activate "Focus" profile when unplugged.
@@ -43,6 +52,8 @@
 
 ### Larger Features
 
+- [ ] **Monitor input switching** — DDC/CI supports input source switching on external monitors (`VCP code 0x60`). Would enable KVM-like workflows: one keyboard shortcut to switch a monitor between laptop and desktop inputs. The display-dj CLI sidecar would need a new endpoint for DDC input source commands. UI: dropdown per monitor showing available inputs (HDMI1, DP1, USB-C, etc.).
+- [ ] **Wayland tiling support** — Linux tiling is currently X11-only. Wayland adoption is growing (Ubuntu 22.04+ defaults to Wayland). No universal Wayland window management protocol exists — each compositor needs its own backend. Priority order: KDE (D-Bus + KWin scripts via `zbus`), GNOME (Shell extension sidecar — hardest), Sway/Hyprland (have built-in tiling, lower priority). Start with `wlr-foreign-toplevel-management` protocol for wlroots-based compositors.
 - [ ] **Per-app dark mode rules** — Auto-toggle dark/light mode based on the foreground application (e.g., always light mode when Figma is active, dark mode for terminal/IDE). Poll the active window at a low frequency (every 5-10s) using `NSWorkspace.frontmostApplication` on macOS, `GetForegroundWindow` on Windows, or `_NET_ACTIVE_WINDOW` on Linux. Store rules as a list of `(app_name, dark_mode: bool)` in preferences.
 - [ ] **Remote control via local web UI** — Expose a lightweight HTTP interface on the local network so users can adjust brightness/volume/dark mode from a phone or tablet. The display-dj sidecar already runs an HTTP server — extend it (or add a second endpoint) with a simple HTML page served at `http://<local-ip>:<port>/`. Useful for home theater setups or adjusting a docked laptop from across the room.
 - [ ] **CLI companion commands** — Allow controlling the running app from the terminal (e.g., `display-dj2 set-brightness 50`, `display-dj2 activate-profile Focus`). Useful for scripting, automation, and integration with tools like Raycast, Alfred, or shell aliases. Implement by having the CLI send HTTP requests to the running app's sidecar server, or use Tauri's single-instance plugin to forward args to the running instance.
