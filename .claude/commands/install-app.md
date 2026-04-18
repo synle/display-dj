@@ -9,9 +9,14 @@ Download the latest release artifact from GitHub, install it, and launch the app
 
 ## Instructions
 
-1. Determine the current platform and architecture by running `uname -s` and `uname -m`.
-2. Get the latest release tag: `gh release list --limit 1 --json tagName --jq '.[0].tagName'`
-3. Download the correct artifact based on platform:
+1. **Kill running instances** of Display DJ and its sidecar (fire-and-forget, ignore errors):
+   ```bash
+   pkill -f "Display DJ" 2>/dev/null || true
+   pkill -f "display-dj-server" 2>/dev/null || true
+   ```
+2. Determine the current platform and architecture by running `uname -s` and `uname -m`.
+3. Get the latest release tag: `gh release list --limit 1 --json tagName --jq '.[0].tagName'`
+4. Download the correct artifact based on platform:
 
 | Platform | Architecture | Asset pattern |
 |----------|-------------|---------------|
@@ -22,7 +27,7 @@ Download the latest release artifact from GitHub, install it, and launch the app
 
 Use: `gh release download <tag> --pattern "<pattern>" --dir /tmp/display-dj-release --clobber`
 
-4. Install based on platform:
+5. Install based on platform:
 
 ### macOS
 
@@ -67,5 +72,5 @@ chmod +x <appimage_file>
 ./<appimage_file>
 ```
 
-5. Clean up: `rm -rf /tmp/display-dj-release`
-6. Report to the user that the app is installed and running. On macOS, remind them to grant Accessibility permission in the System Settings window that was opened.
+6. Clean up: `rm -rf /tmp/display-dj-release`
+7. Report to the user that the app is installed and running. On macOS, remind them to grant Accessibility permission in the System Settings window that was opened.
