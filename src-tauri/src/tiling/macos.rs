@@ -1448,6 +1448,10 @@ extern "C" fn snap_event_callback(
     // Re-enable tap if it was disabled by timeout
     if event_type == K_CG_EVENT_TAP_DISABLED_BY_TIMEOUT {
         let ctx = unsafe { &*(user_info as *const SnapContext) };
+        log::info!("tile_snap: event tap was disabled by timeout, re-enabling");
+        if let Some(state) = ctx.app.try_state::<crate::AppState>() {
+            crate::config::write_debug_log(&state, "tile_snap: event tap disabled by timeout, re-enabling");
+        }
         if let Ok(tap) = ctx.tap.lock() {
             if !tap.is_null() {
                 unsafe { CGEventTapEnable(*tap, true) };
@@ -1493,13 +1497,6 @@ extern "C" fn snap_event_callback(
             };
             // Refresh display frames and preferences
             state.displays = get_display_visible_frames();
-            log::debug!(
-                "tile_snap: mouse_down — {} displays, start_pos={:?}, cursor=({:.0},{:.0})",
-                state.displays.len(),
-                state.drag_start_window_pos,
-                cursor.x,
-                cursor.y,
-            );
             let prefs = ctx
                 .app
                 .try_state::<crate::AppState>()
@@ -1511,6 +1508,26 @@ extern "C" fn snap_event_callback(
                 state.side_edge_trigger = tp.side_edge_trigger as f64;
                 state.top_edge_trigger = tp.top_edge_trigger as f64;
                 state.corner_trigger = tp.corner_trigger as f64;
+            }
+            // Verbose logging for debugging (especially DMG vs dev differences)
+            if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
+                let display_info: Vec<String> = state.displays.iter().enumerate().map(|(i, d)| {
+                    format!("D{}({:.0},{:.0} {:.0}x{:.0})", i, d.x, d.y, d.width, d.height)
+                }).collect();
+                crate::config::write_debug_log(
+                    &dbg_state,
+                    &format!(
+                        "tile_snap: mouse_down — cursor=({:.0},{:.0}), start_pos={:?}, displays=[{}], \
+                         edge_triggers=(side={:.0}, top={:.0}, corner={:.0}), \
+                         tiling=(enabled={}, snap={}, half={}, third={}, gap={})",
+                        cursor.x, cursor.y,
+                        state.drag_start_window_pos,
+                        display_info.join(", "),
+                        state.side_edge_trigger, state.top_edge_trigger, state.corner_trigger,
+                        true, true, // already checked above
+                        state.half_ratio, state.third_ratio, state.gap,
+                    ),
+                );
             }
         }
 
@@ -1533,6 +1550,15 @@ extern "C" fn snap_event_callback(
                     // Only show overlay if layout changed
                     if state.current_layout != Some(layout) || state.current_display != display_idx
                     {
+                        if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
+                            crate::config::write_debug_log(
+                                &dbg_state,
+                                &format!(
+                                    "tile_snap: zone detected — layout={:?}, display={}, cursor=({:.0},{:.0})",
+                                    layout, display_idx, cursor.x, cursor.y,
+                                ),
+                            );
+                        }
                         state.current_layout = Some(layout);
                         state.current_display = display_idx;
                         let target = calculate_target_rect(
@@ -1571,17 +1597,31 @@ extern "C" fn snap_event_callback(
 
             // If cursor was in a snap zone, verify the window actually moved
             if let Some(layout) = was_in_zone {
-                let window_moved = unsafe {
-                    get_focused_window().map_or(false, |w| {
+                let (window_moved, move_detail) = unsafe {
+                    get_focused_window().map_or((false, "no focused window".to_string()), |w| {
                         let cur_pos = get_window_rect(&w).map(|r| (r.x, r.y));
                         match (start_pos, cur_pos) {
                             (Some((sx, sy)), Some((cx, cy))) => {
-                                (cx - sx).abs() > 10.0 || (cy - sy).abs() > 10.0
+                                let dx = (cx - sx).abs();
+                                let dy = (cy - sy).abs();
+                                let moved = dx > 10.0 || dy > 10.0;
+                                (moved, format!("start=({:.0},{:.0}) end=({:.0},{:.0}) dx={:.0} dy={:.0}", sx, sy, cx, cy, dx, dy))
                             }
-                            _ => false,
+                            (None, _) => (false, "no start pos".to_string()),
+                            (_, None) => (false, "no current pos".to_string()),
                         }
                     })
                 };
+
+                if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
+                    crate::config::write_debug_log(
+                        &dbg_state,
+                        &format!(
+                            "tile_snap: mouse_up — layout={:?}, window_moved={}, detail=[{}], cursor=({:.0},{:.0})",
+                            layout, window_moved, move_detail, cursor.x, cursor.y,
+                        ),
+                    );
+                }
 
                 if window_moved {
                     let layout_str = match layout {
@@ -1594,11 +1634,25 @@ extern "C" fn snap_event_callback(
                         TilingLayout::BottomRightQuarter => "bottomRightQuarter",
                         _ => return event,
                     };
+                    if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
+                        crate::config::write_debug_log(
+                            &dbg_state,
+                            &format!("tile_snap: executing tile — layout={}", layout_str),
+                        );
+                    }
                     let app = ctx.app.clone();
                     let ls = layout_str.to_string();
                     std::thread::spawn(move || {
                         execute_tile(&app, &ls);
                     });
+                }
+            } else {
+                // Log when mouse_up was not in any zone (helps confirm callback fires)
+                if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
+                    crate::config::write_debug_log(
+                        &dbg_state,
+                        &format!("tile_snap: mouse_up — no zone active, cursor=({:.0},{:.0})", cursor.x, cursor.y),
+                    );
                 }
             }
         }
@@ -1662,11 +1716,25 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
 /// Call once during app setup. Requires Accessibility permission.
 pub fn start_tile_snap(app: AppHandle) {
     let trusted = unsafe { AXIsProcessTrusted() };
+    let displays = get_display_visible_frames();
+    let display_info: Vec<String> = displays.iter().enumerate().map(|(i, d)| {
+        format!("D{}({:.0},{:.0} {:.0}x{:.0})", i, d.x, d.y, d.width, d.height)
+    }).collect();
     // Log to debug file so bundled app failures are visible
     if let Some(state) = app.try_state::<crate::AppState>() {
+        let prefs_info = state.preferences.lock().ok().map(|p| {
+            format!(
+                "tiling.enabled={}, snap_enabled={}, side={}, top={}, corner={}",
+                p.tiling.enabled, p.tiling.tile_snap_enabled,
+                p.tiling.side_edge_trigger, p.tiling.top_edge_trigger, p.tiling.corner_trigger,
+            )
+        }).unwrap_or_else(|| "prefs lock failed".into());
         crate::config::write_debug_log(
             &state,
-            &format!("tile_snap: starting, AXIsProcessTrusted={}", trusted),
+            &format!(
+                "tile_snap: starting — AXIsProcessTrusted={}, build={}, displays=[{}], {}",
+                trusted, env!("IS_DEV_BUILD"), display_info.join(", "), prefs_info,
+            ),
         );
     }
     if !trusted {
