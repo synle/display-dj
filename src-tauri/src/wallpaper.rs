@@ -95,7 +95,8 @@ fn file_content_hash(path: &Path) -> Result<String, String> {
 }
 
 /// Copies the source image to the wallpapers directory, using content-hash
-/// comparison to avoid unnecessary overwrites.
+/// comparison to avoid unnecessary overwrites. Falls back to the cached copy
+/// if the source file no longer exists.
 ///
 /// Returns the destination path on success.
 pub(crate) fn copy_to_wallpapers(
@@ -103,39 +104,73 @@ pub(crate) fn copy_to_wallpapers(
     state: &crate::AppState,
 ) -> Result<PathBuf, String> {
     let source = Path::new(source_path);
-
-    // Validate the source image
-    crate::config::write_debug_log(state, &format!("wallpaper: validating source image: {}", source_path));
-    validate_image(source).map_err(|e| {
-        let msg = format!("wallpaper: validation failed — {}", e);
-        crate::config::write_debug_log(state, &msg);
-        msg
-    })?;
-
     let dest_name = destination_filename(source_path);
     let dest = wallpapers_dir().join(&dest_name);
 
-    crate::config::write_debug_log(state, &format!("wallpaper: destination path: {}", dest.display()));
+    crate::config::write_debug_log(state, &format!("wallpaper: validating source image: {}", source_path));
 
-    if dest.exists() {
-        // Compare content hashes to decide whether to overwrite
-        let source_hash = file_content_hash(source)?;
-        let dest_hash = file_content_hash(&dest)?;
+    match validate_image(source) {
+        Ok(()) => {
+            // Source is valid — copy or update cache
+            crate::config::write_debug_log(state, &format!("wallpaper: destination path: {}", dest.display()));
 
-        if source_hash == dest_hash {
-            crate::config::write_debug_log(state, "wallpaper: content unchanged (same MD5), skipping copy");
-        } else {
-            crate::config::write_debug_log(state, "wallpaper: content changed, overwriting cached copy");
-            std::fs::copy(source, &dest)
-                .map_err(|e| format!("wallpaper: failed to copy: {}", e))?;
+            if dest.exists() {
+                let source_hash = file_content_hash(source)?;
+                let dest_hash = file_content_hash(&dest)?;
+
+                if source_hash == dest_hash {
+                    crate::config::write_debug_log(state, "wallpaper: content unchanged (same MD5), skipping copy");
+                } else {
+                    crate::config::write_debug_log(state, "wallpaper: content changed, overwriting cached copy");
+                    std::fs::copy(source, &dest)
+                        .map_err(|e| format!("wallpaper: failed to copy: {}", e))?;
+                }
+            } else {
+                crate::config::write_debug_log(state, "wallpaper: first time — copying to wallpapers dir");
+                std::fs::copy(source, &dest)
+                    .map_err(|e| format!("wallpaper: failed to copy: {}", e))?;
+            }
         }
-    } else {
-        crate::config::write_debug_log(state, "wallpaper: first time — copying to wallpapers dir");
-        std::fs::copy(source, &dest)
-            .map_err(|e| format!("wallpaper: failed to copy: {}", e))?;
+        Err(e) => {
+            // Source validation failed — fall back to cached copy if available
+            if dest.exists() {
+                crate::config::write_debug_log(
+                    state,
+                    &format!("wallpaper: source unavailable ({}) — falling back to cached copy: {}", e, dest.display()),
+                );
+            } else {
+                let msg = format!("wallpaper: validation failed — {} (no cached copy available)", e);
+                crate::config::write_debug_log(state, &msg);
+                return Err(msg);
+            }
+        }
     }
 
     Ok(dest)
+}
+
+/// Deletes all cached wallpaper files and remote pack folders.
+/// Called from the "Clear Wallpaper Cache" tray menu item.
+pub(crate) fn clear_wallpaper_cache(state: &crate::AppState) {
+    let dir = wallpapers_dir();
+    crate::config::write_debug_log(state, &format!("wallpaper: clearing cache at {}", dir.display()));
+
+    let mut removed = 0u32;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if std::fs::remove_dir_all(&path).is_ok() {
+                    removed += 1;
+                }
+            } else if std::fs::remove_file(&path).is_ok() {
+                removed += 1;
+            }
+        }
+    }
+
+    crate::config::write_debug_log(state, &format!("wallpaper: cleared {} cached items", removed));
+    log::info!("wallpaper: cleared {} cached items from {}", removed, dir.display());
 }
 
 /// Returns the base URL of the display-dj sidecar HTTP server.
