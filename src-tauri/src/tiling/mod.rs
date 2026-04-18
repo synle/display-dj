@@ -298,6 +298,7 @@ pub(crate) fn find_display_for_window(rect: &Rect, displays: &[Rect]) -> usize {
 }
 
 /// Info about an on-screen window (platform-independent subset).
+#[derive(Debug)]
 pub(crate) struct WindowInfo {
     pub window_id: i64,
     pub owner_pid: i32,
@@ -343,7 +344,7 @@ pub(crate) fn layout_grid_on_display(
     ordered: &[&WindowInfo],
     display: &Rect,
     gap: f64,
-    set_rect: &dyn Fn(&WindowInfo, &Rect),
+    set_rect: &mut dyn FnMut(&WindowInfo, &Rect),
 ) -> usize {
     let n = ordered.len();
     if n == 0 {
@@ -508,7 +509,7 @@ pub(crate) fn layout_across_displays(
     max_per_display: usize,
     gap: f64,
     spread: bool,
-    set_rect: &dyn Fn(&WindowInfo, &Rect),
+    set_rect: &mut dyn FnMut(&WindowInfo, &Rect),
 ) -> usize {
     if ordered.is_empty() || displays.is_empty() {
         return 0;
@@ -725,6 +726,159 @@ pub(crate) fn match_windows_to_rules(
         }
     }
     matched
+}
+
+// ---------------------------------------------------------------------------
+// Shared orchestration — pure logic, no OS calls
+// ---------------------------------------------------------------------------
+
+/// A planned window placement: which window goes where.
+/// Uses window_id for identification (not a reference) to avoid lifetime issues
+/// with closures inside layout_across_displays.
+#[derive(Clone, Debug)]
+pub(crate) struct Placement {
+    pub window_id: i64,
+    pub owner_pid: i32,
+    pub target: Rect,
+}
+
+/// Plan the exposé layout for all windows. Returns a list of placements.
+/// Does NOT call any OS APIs — the caller applies the placements.
+pub(crate) fn plan_expose(
+    windows: &[WindowInfo],
+    displays: &[Rect],
+    max_per_display: usize,
+    gap: f64,
+    spread: bool,
+) -> Vec<Placement> {
+    if windows.is_empty() || displays.is_empty() {
+        return Vec::new();
+    }
+
+    let total_cap = max_per_display * displays.len();
+    let ordered = build_sorted_window_list(windows, total_cap);
+    if ordered.is_empty() {
+        return Vec::new();
+    }
+
+    let mut placements = Vec::new();
+    layout_across_displays(&ordered, displays, max_per_display, gap, spread, &mut |win, rect| {
+        placements.push(Placement {
+            window_id: win.window_id,
+            owner_pid: win.owner_pid,
+            target: rect.clone(),
+        });
+    });
+    placements
+}
+
+/// Plan the app exposé layout: target app's windows on first displays,
+/// other apps' windows on remaining displays. Returns all placements.
+/// Does NOT call any OS APIs — the caller applies the placements.
+pub(crate) fn plan_expose_app(
+    all_windows: &[WindowInfo],
+    target_pid: i32,
+    displays: &[Rect],
+    max_per_display: usize,
+    gap: f64,
+    spread: bool,
+) -> Vec<Placement> {
+    if all_windows.is_empty() || displays.is_empty() {
+        return Vec::new();
+    }
+
+    let total_cap = max_per_display * displays.len();
+
+    // Filter to target app's windows, sorted by window_id for determinism
+    let mut app_windows: Vec<&WindowInfo> = all_windows
+        .iter()
+        .filter(|w| w.owner_pid == target_pid)
+        .take(total_cap)
+        .collect();
+    app_windows.sort_by_key(|w| w.window_id);
+
+    if app_windows.is_empty() {
+        return Vec::new();
+    }
+
+    let mut placements = Vec::new();
+
+    // Place target app's windows
+    let placed = layout_across_displays(&app_windows, displays, max_per_display, gap, spread, &mut |win, rect| {
+        placements.push(Placement {
+            window_id: win.window_id,
+            owner_pid: win.owner_pid,
+            target: rect.clone(),
+        });
+    });
+
+    // Calculate how many displays the app's windows fully occupied
+    let displays_consumed = if max_per_display > 0 {
+        (placed + max_per_display - 1) / max_per_display
+    } else {
+        0
+    };
+    let displays_consumed = displays_consumed.min(displays.len());
+
+    // Only use displays NOT consumed by the target app for other windows
+    let remaining_displays = &displays[displays_consumed..];
+    let remaining_cap = max_per_display * remaining_displays.len();
+
+    if remaining_cap > 0 && !remaining_displays.is_empty() {
+        let other_windows: Vec<&WindowInfo> = build_sorted_window_list(all_windows, remaining_cap)
+            .into_iter()
+            .filter(|w| w.owner_pid != target_pid)
+            .collect();
+
+        if !other_windows.is_empty() {
+            layout_across_displays(
+                &other_windows,
+                remaining_displays,
+                max_per_display,
+                gap,
+                spread,
+                &mut |win, rect| {
+                    placements.push(Placement {
+                        window_id: win.window_id,
+                        owner_pid: win.owner_pid,
+                        target: rect.clone(),
+                    });
+                },
+            );
+        }
+    }
+
+    placements
+}
+
+/// Plan the layout preset: match windows to rules and compute target rects.
+/// Returns placements for all matched windows.
+/// Does NOT call any OS APIs — the caller applies the placements.
+pub(crate) fn plan_layout_preset(
+    windows: &[WindowInfo],
+    preset: &crate::config::LayoutPreset,
+    displays: &[Rect],
+    half_ratio: u32,
+    third_ratio: u32,
+    gap: u32,
+) -> Vec<Placement> {
+    if windows.is_empty() || displays.is_empty() {
+        return Vec::new();
+    }
+
+    let matches = match_windows_to_rules(windows, &preset.rules);
+    let mut placements = Vec::new();
+
+    for (win_idx, layout, disp_idx) in matches {
+        let w = &windows[win_idx];
+        let display_index = disp_idx
+            .unwrap_or_else(|| find_display_for_window(&w.bounds, displays))
+            .min(displays.len() - 1);
+        let target = calculate_target_rect(layout, &displays[display_index], half_ratio, third_ratio, gap);
+        placements.push(Placement { window_id: w.window_id, owner_pid: w.owner_pid, target });
+    }
+
+    placements
 }
 
 // ---------------------------------------------------------------------------
@@ -1252,7 +1406,7 @@ mod tests {
     fn test_layout_grid_empty() {
         let d = display(0.0, 0.0, 1920.0, 1080.0);
         let ordered: Vec<&WindowInfo> = vec![];
-        let count = layout_grid_on_display(&ordered, &d, 10.0, &|_, _| {});
+        let count = layout_grid_on_display(&ordered, &d, 10.0, &mut |_, _| {});
         assert_eq!(count, 0);
     }
 
@@ -1262,7 +1416,7 @@ mod tests {
         let ordered: Vec<&WindowInfo> = vec![&w];
         let d = display(0.0, 0.0, 1000.0, 800.0);
         let rects = std::cell::RefCell::new(Vec::new());
-        layout_grid_on_display(&ordered, &d, 10.0, &|_, rect| {
+        layout_grid_on_display(&ordered, &d, 10.0, &mut |_, rect| {
             rects.borrow_mut().push(rect.clone());
         });
         let rects = rects.into_inner();
@@ -1278,7 +1432,7 @@ mod tests {
         let ordered: Vec<&WindowInfo> = ws.iter().collect();
         let d = display(0.0, 0.0, 1000.0, 800.0);
         let rects = std::cell::RefCell::new(Vec::new());
-        let count = layout_grid_on_display(&ordered, &d, 0.0, &|_, rect| {
+        let count = layout_grid_on_display(&ordered, &d, 0.0, &mut |_, rect| {
             rects.borrow_mut().push(rect.clone());
         });
         let rects = rects.into_inner();
@@ -1297,7 +1451,7 @@ mod tests {
         let ordered: Vec<&WindowInfo> = ws.iter().collect();
         let d = display(0.0, 0.0, 1000.0, 800.0);
         let rects = std::cell::RefCell::new(Vec::new());
-        layout_grid_on_display(&ordered, &d, 20.0, &|_, rect| {
+        layout_grid_on_display(&ordered, &d, 20.0, &mut |_, rect| {
             rects.borrow_mut().push(rect.clone());
         });
         let rects = rects.into_inner();
@@ -1331,7 +1485,7 @@ mod tests {
     fn test_across_displays_empty() {
         let ordered: Vec<&WindowInfo> = vec![];
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|_, _| {});
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |_, _| {});
         assert_eq!(count, 0);
     }
 
@@ -1340,7 +1494,7 @@ mod tests {
         let ws = vec![win(1, "A")];
         let ordered: Vec<&WindowInfo> = ws.iter().collect();
         let displays: Vec<Rect> = vec![];
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|_, _| {});
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |_, _| {});
         assert_eq!(count, 0);
     }
 
@@ -1350,7 +1504,7 @@ mod tests {
         let ordered: Vec<&WindowInfo> = ws.iter().collect();
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
         let ids = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, _| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, _| {
             ids.borrow_mut().push(w.window_id);
         });
         assert_eq!(count, 4);
@@ -1368,7 +1522,7 @@ mod tests {
             display(1920.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, rect| {
             // Track which display each window landed on by checking x coordinate
             let disp_idx = if rect.x < 1920.0 { 0 } else { 1 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
@@ -1396,7 +1550,7 @@ mod tests {
             display(1000.0, 0.0, 1000.0, 800.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, rect| {
             let disp_idx = if rect.x < 1000.0 { 0 } else { 1 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
         });
@@ -1428,7 +1582,7 @@ mod tests {
         let ordered: Vec<&WindowInfo> = ws.iter().collect();
         let displays = vec![display(0.0, 0.0, 1000.0, 800.0)];
         let ids = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, _| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, _| {
             ids.borrow_mut().push(w.window_id);
         });
         // All 4 should be placed (last/only display uses adaptive layout)
@@ -1450,7 +1604,7 @@ mod tests {
             display(2000.0, 0.0, 1000.0, 800.0),
         ];
         let ids = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, _| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, _| {
             ids.borrow_mut().push(w.window_id);
         });
         assert_eq!(count, 3);
@@ -1473,7 +1627,7 @@ mod tests {
             display(1000.0, 0.0, 1000.0, 800.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, rect| {
             let disp_idx = if rect.x < 1000.0 { 0 } else { 1 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
         });
@@ -1498,7 +1652,7 @@ mod tests {
             display(3840.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, true, &|w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, true, &mut |w, rect| {
             let disp_idx = if rect.x < 1920.0 { 0 } else if rect.x < 3840.0 { 1 } else { 2 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
         });
@@ -1524,7 +1678,7 @@ mod tests {
             display(3840.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, rect| {
             let disp_idx = if rect.x < 1920.0 { 0 } else if rect.x < 3840.0 { 1 } else { 2 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
         });
@@ -1550,7 +1704,7 @@ mod tests {
             display(3840.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, true, &|w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, true, &mut |w, rect| {
             let disp_idx = if rect.x < 1920.0 { 0 } else if rect.x < 3840.0 { 1 } else { 2 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
         });
@@ -1734,5 +1888,107 @@ mod tests {
         ];
         let matches = match_windows_to_rules(&windows, &rules);
         assert!(matches.is_empty());
+    }
+
+    // -- plan_expose --
+
+    /// Verifies plan_expose returns correct number of placements.
+    #[test]
+    fn test_plan_expose_basic() {
+        let windows = vec![win(1, "Chrome"), win(2, "Firefox"), win(3, "Terminal")];
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let placements = plan_expose(&windows, &displays, 9, 0.0, false);
+        assert_eq!(placements.len(), 3);
+    }
+
+    /// Verifies plan_expose respects display capacity.
+    #[test]
+    fn test_plan_expose_caps_at_capacity() {
+        let windows: Vec<WindowInfo> = (0..20).map(|i| win(i, &format!("App{}", i))).collect();
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let placements = plan_expose(&windows, &displays, 4, 0.0, false);
+        // Last display uses adaptive layout so may place more, but total capped
+        assert!(placements.len() <= 4);
+    }
+
+    /// Verifies plan_expose with empty windows returns empty.
+    #[test]
+    fn test_plan_expose_empty() {
+        let windows: Vec<WindowInfo> = Vec::new();
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        assert!(plan_expose(&windows, &displays, 9, 0.0, false).is_empty());
+    }
+
+    // -- plan_expose_app --
+
+    /// Verifies plan_expose_app separates target app from others.
+    #[test]
+    fn test_plan_expose_app_separates_by_pid() {
+        let windows = vec![
+            WindowInfo { window_id: 1, owner_pid: 100, owner_name: "Chrome".into(), bounds: Rect { x: 0.0, y: 0.0, width: 800.0, height: 600.0 }, min_size: None },
+            WindowInfo { window_id: 2, owner_pid: 100, owner_name: "Chrome".into(), bounds: Rect { x: 100.0, y: 0.0, width: 800.0, height: 600.0 }, min_size: None },
+            WindowInfo { window_id: 3, owner_pid: 200, owner_name: "Firefox".into(), bounds: Rect { x: 200.0, y: 0.0, width: 800.0, height: 600.0 }, min_size: None },
+        ];
+        let displays = vec![
+            display(0.0, 0.0, 1920.0, 1080.0),
+            display(1920.0, 0.0, 1920.0, 1080.0),
+        ];
+        let placements = plan_expose_app(&windows, 100, &displays, 4, 0.0, false);
+        // Chrome (2 windows) + Firefox (1 window) = 3 placements
+        assert_eq!(placements.len(), 3);
+        // First 2 should be Chrome (target app)
+        assert_eq!(placements[0].owner_pid, 100);
+        assert_eq!(placements[1].owner_pid, 100);
+    }
+
+    /// Verifies plan_expose_app does not overflow back to consumed displays.
+    #[test]
+    fn test_plan_expose_app_no_overflow_to_consumed() {
+        // 4 Chrome windows fill display 1 (cap=4), others go to display 2 only
+        let mut windows = Vec::new();
+        for i in 0..4 {
+            windows.push(WindowInfo { window_id: i, owner_pid: 100, owner_name: "Chrome".into(), bounds: Rect { x: 0.0, y: 0.0, width: 800.0, height: 600.0 }, min_size: None });
+        }
+        for i in 4..14 {
+            windows.push(WindowInfo { window_id: i, owner_pid: (200 + i) as i32, owner_name: format!("App{}", i), bounds: Rect { x: 0.0, y: 0.0, width: 800.0, height: 600.0 }, min_size: None });
+        }
+        let displays = vec![
+            display(0.0, 0.0, 1920.0, 1080.0),
+            display(1920.0, 0.0, 1920.0, 1080.0),
+        ];
+        let placements = plan_expose_app(&windows, 100, &displays, 4, 0.0, false);
+        // Chrome fills display 1 (4 windows), others go to display 2 (cap 4)
+        // No placement should have a target rect on display 1 for a non-Chrome window
+        let display1_right = 1920.0;
+        for p in &placements {
+            if p.owner_pid != 100 {
+                // Other app windows should be on display 2 (x >= 1920)
+                assert!(p.target.x >= display1_right - 1.0,
+                    "non-target app window placed on consumed display: x={}", p.target.x);
+            }
+        }
+    }
+
+    // -- plan_layout_preset --
+
+    /// Verifies plan_layout_preset matches windows and computes rects.
+    #[test]
+    fn test_plan_layout_preset_basic() {
+        let windows = vec![win(1, "Chrome"), win(2, "VS Code")];
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let preset = crate::config::LayoutPreset {
+            name: "Dev".into(),
+            rules: vec![
+                crate::config::LayoutRule { app_match: "Chrome".into(), layout: "leftHalf".into(), display_index: None },
+                crate::config::LayoutRule { app_match: "Code".into(), layout: "rightHalf".into(), display_index: None },
+            ],
+        };
+        let placements = plan_layout_preset(&windows, &preset, &displays, 50, 33, 0);
+        assert_eq!(placements.len(), 2);
+        // First should be left half (x=0, w=960)
+        assert!(placements[0].target.x < 1.0);
+        assert!(placements[0].target.width < 1000.0);
+        // Second should be right half (x=960, w=960)
+        assert!(placements[1].target.x > 900.0);
     }
 }
