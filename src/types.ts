@@ -43,6 +43,8 @@ export interface TilingPreferences {
   exposeEnabled: boolean;
   exposeColumns: number;
   exposeRows: number;
+  /** Exposé layout strategy: "spread" (even across displays) or "fill" (pack then overflow). */
+  exposeLayoutStrategy: string;
 }
 
 /** A single rule within a layout preset: match windows by app name and apply a tiling layout. */

@@ -492,11 +492,14 @@ pub(crate) fn layout_grid_on_display(
 
 /// Distribute windows across multiple displays with overflow for oversized windows.
 ///
-/// For each display (except the last), computes the grid cell size based on
-/// `max_per_display` and only places windows whose `min_size` fits within
-/// those cells. Oversized windows are deferred to subsequent displays where
-/// fewer windows mean larger cells. The last display uses the adaptive layout
-/// (wider rows for oversized windows) as a catch-all fallback.
+/// When `spread` is true, windows are distributed evenly across all displays
+/// (each gets `ceil(total / num_displays)`, capped at `max_per_display`).
+/// When `spread` is false ("fill" mode), each display is packed to capacity
+/// before overflowing to the next.
+///
+/// For each display (except the last), computes the grid cell size and only
+/// places windows whose `min_size` fits. Oversized windows defer to subsequent
+/// displays. The last display uses the adaptive layout as a catch-all fallback.
 ///
 /// Returns the total number of windows placed across all displays.
 pub(crate) fn layout_across_displays(
@@ -504,6 +507,7 @@ pub(crate) fn layout_across_displays(
     displays: &[Rect],
     max_per_display: usize,
     gap: f64,
+    spread: bool,
     set_rect: &dyn Fn(&WindowInfo, &Rect),
 ) -> usize {
     if ordered.is_empty() || displays.is_empty() {
@@ -520,7 +524,15 @@ pub(crate) fn layout_across_displays(
         }
 
         let is_last_display = i == num_displays - 1;
-        let batch_size = remaining.len().min(max_per_display);
+        // Spread: distribute evenly; Fill: pack to capacity
+        let target = if spread {
+            let displays_left = num_displays - i;
+            let even = (remaining.len() + displays_left - 1) / displays_left; // ceil division
+            even.min(max_per_display)
+        } else {
+            max_per_display
+        };
+        let batch_size = remaining.len().min(target);
 
         if is_last_display {
             // Last display: use adaptive layout for whatever remains (up to max)
@@ -1319,7 +1331,7 @@ mod tests {
     fn test_across_displays_empty() {
         let ordered: Vec<&WindowInfo> = vec![];
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|_, _| {});
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|_, _| {});
         assert_eq!(count, 0);
     }
 
@@ -1328,7 +1340,7 @@ mod tests {
         let ws = vec![win(1, "A")];
         let ordered: Vec<&WindowInfo> = ws.iter().collect();
         let displays: Vec<Rect> = vec![];
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|_, _| {});
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|_, _| {});
         assert_eq!(count, 0);
     }
 
@@ -1338,7 +1350,7 @@ mod tests {
         let ordered: Vec<&WindowInfo> = ws.iter().collect();
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
         let ids = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|w, _| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, _| {
             ids.borrow_mut().push(w.window_id);
         });
         assert_eq!(count, 4);
@@ -1356,7 +1368,7 @@ mod tests {
             display(1920.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, rect| {
             // Track which display each window landed on by checking x coordinate
             let disp_idx = if rect.x < 1920.0 { 0 } else { 1 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
@@ -1384,7 +1396,7 @@ mod tests {
             display(1000.0, 0.0, 1000.0, 800.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, rect| {
             let disp_idx = if rect.x < 1000.0 { 0 } else { 1 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
         });
@@ -1416,7 +1428,7 @@ mod tests {
         let ordered: Vec<&WindowInfo> = ws.iter().collect();
         let displays = vec![display(0.0, 0.0, 1000.0, 800.0)];
         let ids = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|w, _| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, _| {
             ids.borrow_mut().push(w.window_id);
         });
         // All 4 should be placed (last/only display uses adaptive layout)
@@ -1438,7 +1450,7 @@ mod tests {
             display(2000.0, 0.0, 1000.0, 800.0),
         ];
         let ids = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|w, _| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, _| {
             ids.borrow_mut().push(w.window_id);
         });
         assert_eq!(count, 3);
@@ -1461,7 +1473,7 @@ mod tests {
             display(1000.0, 0.0, 1000.0, 800.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, &|w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, rect| {
             let disp_idx = if rect.x < 1000.0 { 0 } else { 1 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
         });
@@ -1471,6 +1483,84 @@ mod tests {
         let on_d1 = placed.iter().filter(|p| p.1 == 1).count();
         assert_eq!(on_d0, 5);
         assert_eq!(on_d1, 2);
+    }
+
+    // -- layout_across_displays: spread mode --
+
+    /// Verifies spread mode distributes 10 windows evenly across 3 displays.
+    #[test]
+    fn test_across_displays_spread_even() {
+        let ws: Vec<WindowInfo> = (1..=10).map(|i| win(i, "App")).collect();
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let displays = vec![
+            display(0.0, 0.0, 1920.0, 1080.0),
+            display(1920.0, 0.0, 1920.0, 1080.0),
+            display(3840.0, 0.0, 1920.0, 1080.0),
+        ];
+        let placed_on = std::cell::RefCell::new(Vec::new());
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, true, &|w, rect| {
+            let disp_idx = if rect.x < 1920.0 { 0 } else if rect.x < 3840.0 { 1 } else { 2 };
+            placed_on.borrow_mut().push((w.window_id, disp_idx));
+        });
+        assert_eq!(count, 10);
+        let placed = placed_on.into_inner();
+        let on_d0 = placed.iter().filter(|p| p.1 == 0).count();
+        let on_d1 = placed.iter().filter(|p| p.1 == 1).count();
+        let on_d2 = placed.iter().filter(|p| p.1 == 2).count();
+        // ceil(10/3)=4, ceil(6/2)=3, remaining=3
+        assert_eq!(on_d0, 4);
+        assert_eq!(on_d1, 3);
+        assert_eq!(on_d2, 3);
+    }
+
+    /// Verifies fill mode packs display 1 first (legacy behavior).
+    #[test]
+    fn test_across_displays_fill_packs_first() {
+        let ws: Vec<WindowInfo> = (1..=10).map(|i| win(i, "App")).collect();
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let displays = vec![
+            display(0.0, 0.0, 1920.0, 1080.0),
+            display(1920.0, 0.0, 1920.0, 1080.0),
+            display(3840.0, 0.0, 1920.0, 1080.0),
+        ];
+        let placed_on = std::cell::RefCell::new(Vec::new());
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &|w, rect| {
+            let disp_idx = if rect.x < 1920.0 { 0 } else if rect.x < 3840.0 { 1 } else { 2 };
+            placed_on.borrow_mut().push((w.window_id, disp_idx));
+        });
+        assert_eq!(count, 10);
+        let placed = placed_on.into_inner();
+        let on_d0 = placed.iter().filter(|p| p.1 == 0).count();
+        let on_d1 = placed.iter().filter(|p| p.1 == 1).count();
+        let on_d2 = placed.iter().filter(|p| p.1 == 2).count();
+        // Fill mode: D0 gets 9, D1 gets 1, D2 gets 0
+        assert_eq!(on_d0, 9);
+        assert_eq!(on_d1, 1);
+        assert_eq!(on_d2, 0);
+    }
+
+    /// Verifies spread with fewer windows than displays uses all displays.
+    #[test]
+    fn test_across_displays_spread_fewer_than_displays() {
+        let ws: Vec<WindowInfo> = (1..=2).map(|i| win(i, "App")).collect();
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let displays = vec![
+            display(0.0, 0.0, 1920.0, 1080.0),
+            display(1920.0, 0.0, 1920.0, 1080.0),
+            display(3840.0, 0.0, 1920.0, 1080.0),
+        ];
+        let placed_on = std::cell::RefCell::new(Vec::new());
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, true, &|w, rect| {
+            let disp_idx = if rect.x < 1920.0 { 0 } else if rect.x < 3840.0 { 1 } else { 2 };
+            placed_on.borrow_mut().push((w.window_id, disp_idx));
+        });
+        assert_eq!(count, 2);
+        let placed = placed_on.into_inner();
+        let on_d0 = placed.iter().filter(|p| p.1 == 0).count();
+        let on_d1 = placed.iter().filter(|p| p.1 == 1).count();
+        // ceil(2/3)=1 per display
+        assert_eq!(on_d0, 1);
+        assert_eq!(on_d1, 1);
     }
 
     // -- find_display_for_window edge cases --

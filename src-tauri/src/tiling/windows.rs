@@ -493,13 +493,13 @@ fn execute_restore(app: &AppHandle) {
 
 /// Execute the exposé command. Lays out all on-screen windows in a grid.
 pub fn execute_expose(app: &AppHandle) {
-    let (max_per_display, gap) = {
+    let (max_per_display, gap, spread) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
             Err(_) => return,
         };
-        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap)
+        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
     };
 
     // Restore minimized windows first
@@ -529,7 +529,7 @@ pub fn execute_expose(app: &AppHandle) {
     }
 
     let g = gap as f64;
-    let placed = layout_across_displays(&ordered, &displays, max_per_display, g, &|win_info, rect| {
+    let placed = layout_across_displays(&ordered, &displays, max_per_display, g, spread, &|win_info, rect| {
         let hwnd = HWND(win_info.window_id as isize as *mut _);
         set_hwnd_rect(hwnd, rect);
         unsafe { let _ = BringWindowToTop(hwnd); }
@@ -544,13 +544,13 @@ pub fn execute_expose(app: &AppHandle) {
 
 /// Execute the app exposé command. Lays out the frontmost app's windows in a grid.
 pub fn execute_expose_app(app: &AppHandle) {
-    let (max_per_display, gap) = {
+    let (max_per_display, gap, spread) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
             Err(_) => return,
         };
-        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap)
+        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
     };
 
     // Identify the target app (foreground window's process)
@@ -602,7 +602,7 @@ pub fn execute_expose_app(app: &AppHandle) {
     }
 
     let g = gap as f64;
-    let placed = layout_across_displays(&app_windows, &displays, max_per_display, g, &|win_info, rect| {
+    let placed = layout_across_displays(&app_windows, &displays, max_per_display, g, spread, &|win_info, rect| {
         let hwnd = HWND(win_info.window_id as isize as *mut _);
         set_hwnd_rect(hwnd, rect);
         unsafe { let _ = BringWindowToTop(hwnd); }

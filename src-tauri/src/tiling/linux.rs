@@ -843,13 +843,13 @@ pub fn execute_expose(app: &AppHandle) {
         return;
     }
 
-    let (max_per_display, gap) = {
+    let (max_per_display, gap, spread) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
             Err(_) => return,
         };
-        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap)
+        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
     };
 
     let (conn, screen_num) = match connect() {
@@ -883,7 +883,7 @@ pub fn execute_expose(app: &AppHandle) {
     }
 
     let g = gap as f64;
-    let placed = layout_across_displays(&ordered, &displays, max_per_display, g, &|win_info, rect| {
+    let placed = layout_across_displays(&ordered, &displays, max_per_display, g, spread, &|win_info, rect| {
         let wid = win_info.window_id as u32;
         set_window_rect(&conn, screen_num, wid, rect);
         raise_window(&conn, root, wid);
@@ -903,13 +903,13 @@ pub fn execute_expose_app(app: &AppHandle) {
         return;
     }
 
-    let (max_per_display, gap) = {
+    let (max_per_display, gap, spread) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
             Err(_) => return,
         };
-        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap)
+        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
     };
 
     let (conn, screen_num) = match connect() {
