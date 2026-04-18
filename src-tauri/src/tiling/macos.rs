@@ -1084,37 +1084,44 @@ fn spread_expose_app(app: &AppHandle) {
         displays.len()
     );
 
-    // Fill remaining display capacity with other apps' windows
-    let remaining_cap = total_cap.saturating_sub(placed);
-    if remaining_cap > 0 {
-        let remaining_per_display = if displays.len() > 0 {
-            (remaining_cap + displays.len() - 1) / displays.len()
-        } else {
-            0
-        };
-        if remaining_per_display > 0 {
-            let other_windows: Vec<&WindowInfo> = build_sorted_window_list(
-                &all_windows,
-                remaining_cap,
-            )
-            .into_iter()
-            .filter(|w| w.owner_pid != target_pid)
-            .collect();
+    // Calculate how many displays the app's windows fully occupied.
+    // A display is "consumed" if the app placed max_per_display windows on it.
+    let displays_consumed = if max_per_display > 0 {
+        (placed + max_per_display - 1) / max_per_display
+    } else {
+        0
+    };
+    let displays_consumed = displays_consumed.min(displays.len());
 
-            if !other_windows.is_empty() {
-                let placed_others = layout_across_displays(
-                    &other_windows,
-                    &displays,
-                    remaining_per_display,
-                    g,
-                    spread,
-                    &set_window_rect_via_ax,
-                );
-                log::info!(
-                    "app_expose: filled remaining space with {} other windows",
-                    placed_others
-                );
-            }
+    // Only use displays NOT consumed by the target app for other windows.
+    let remaining_displays = &displays[displays_consumed..];
+    let remaining_cap = max_per_display * remaining_displays.len();
+
+    if remaining_cap > 0 && !remaining_displays.is_empty() {
+        let other_windows: Vec<&WindowInfo> = build_sorted_window_list(
+            &all_windows,
+            remaining_cap,
+        )
+        .into_iter()
+        .filter(|w| w.owner_pid != target_pid)
+        .collect();
+
+        if !other_windows.is_empty() {
+            let placed_others = layout_across_displays(
+                &other_windows,
+                remaining_displays,
+                max_per_display,
+                g,
+                spread,
+                &set_window_rect_via_ax,
+            );
+            log::info!(
+                "app_expose: filled remaining {} displays with {} other windows (skipped first {} displays used by '{}')",
+                remaining_displays.len(),
+                placed_others,
+                displays_consumed,
+                target_app,
+            );
         }
     }
 }
@@ -1451,13 +1458,20 @@ extern "C" fn snap_event_callback(
 
     let ctx = unsafe { &*(user_info as *const SnapContext) };
 
-    // Check if tiling is enabled
-    let enabled = ctx
+    // Check if tiling and tile snap are both enabled.
+    // Use try_lock to avoid blocking the event tap thread (which would cause
+    // macOS to disable the tap via timeout).
+    let snap_enabled = ctx
         .app
         .try_state::<crate::AppState>()
-        .and_then(|s| s.preferences.lock().ok().map(|p| p.tiling.enabled))
-        .unwrap_or(false);
-    if !enabled {
+        .and_then(|s| {
+            s.preferences
+                .try_lock()
+                .ok()
+                .map(|p| p.tiling.enabled && p.tiling.tile_snap_enabled)
+        })
+        .unwrap_or(true); // default to enabled if lock is contended
+    if !snap_enabled {
         return event;
     }
 
@@ -1479,6 +1493,13 @@ extern "C" fn snap_event_callback(
             };
             // Refresh display frames and preferences
             state.displays = get_display_visible_frames();
+            log::debug!(
+                "tile_snap: mouse_down — {} displays, start_pos={:?}, cursor=({:.0},{:.0})",
+                state.displays.len(),
+                state.drag_start_window_pos,
+                cursor.x,
+                cursor.y,
+            );
             let prefs = ctx
                 .app
                 .try_state::<crate::AppState>()
