@@ -2,7 +2,22 @@
 
 ## High Priority — Tile Snap Broken in Production
 
-- [ ] **Replace CGEventTap with NSEvent Global Monitor** — `CGEventTap` silently fails in production `.app` bundles on macOS Sequoia. `CGEventTapEnable` returns false despite `AXIsProcessTrusted()=true`. The tap receives mouse_down/up but **never delivers mouse_dragged**, making Tile Snap non-functional. Works fine in dev mode (bare binary inherits terminal trust). Root cause: macOS treats bundled `.app` ad-hoc signed processes as low-trust in the Quartz Window Server. **Option 1 (primary):** Replace with `NSEvent.addGlobalMonitorForEvents(matching:handler:)` — higher-level Cocoa API that macOS trusts from `.app` bundles, delivers drag events, listen-only, no special signing needed. Keep all existing zone detection, overlay, latch, and threshold logic. **Option 2 (complementary):** Sign with free Apple Development certificate from Xcode for stable TCC designated requirements. Can combine with Option 1.
+- [ ] **Replace CGEventTap with NSEvent Global Monitor** — `CGEventTap` silently fails in production `.app` bundles on macOS Sequoia. `CGEventTapEnable` returns false despite `AXIsProcessTrusted()=true`. The tap receives mouse_down/up but **never delivers mouse_dragged**, making Tile Snap non-functional. Works fine in dev mode (bare binary inherits terminal trust). Root cause: macOS treats bundled `.app` ad-hoc signed processes as low-trust in the Quartz Window Server. **Option 1 (primary):** Replace with `NSEvent.addGlobalMonitorForEvents(matching:handler:)` — higher-level Cocoa API that macOS trusts from `.app` bundles, delivers drag events, listen-only, no special signing needed. **Option 2 (complementary):** Sign with free Apple Development certificate from Xcode for stable TCC designated requirements. Can combine with Option 1.
+
+  **Rewrite plan:**
+
+  Keep unchanged:
+  - `detect_snap_zone_macos()` — zone detection math
+  - `SnapState` / `SnapContext` — drag tracking state
+  - Overlay system — snap preview + drop zone indicators
+  - 10px drag threshold, zone latching, deferred heavy work
+  - All the `mouse_down` / `mouse_dragged` / `mouse_up` logic flow
+
+  Replace:
+  - `CGEventTapCreate` + `CFRunLoopRun` → `NSEvent.addGlobalMonitorForEvents`
+  - `extern "C" fn snap_event_callback` → Objective-C block/closure
+  - Must add on the **main thread** (Cocoa requirement)
+  - Remove all the tap enable/retry/timeout re-enable logic
 
 ## Quick Wins
 
