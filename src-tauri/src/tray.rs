@@ -100,6 +100,8 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let force_refresh =
         MenuItemBuilder::with_id("force_refresh", "Force Refresh").build(app)?;
 
+    let clear_wallpaper_cache =
+        MenuItemBuilder::with_id("clear_wallpaper_cache", "Clear Wallpaper Cache").build(app)?;
     let reset_defaults =
         MenuItemBuilder::with_id("reset_defaults", "Reset to Default").build(app)?;
 
@@ -114,6 +116,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .item(&bridge)
             .separator()
             .item(&force_refresh)
+            .item(&clear_wallpaper_cache)
             .separator()
             .item(&reset_defaults)
             .build()?
@@ -127,6 +130,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .item(&bridge)
             .separator()
             .item(&force_refresh)
+            .item(&clear_wallpaper_cache)
             .separator()
             .item(&reset_defaults)
             .build()?
@@ -373,6 +377,11 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                     let _ = app_clone.emit("monitors-changed", ());
                     let _ = app_clone.emit("dark-mode-changed", ());
                     let _ = app_clone.emit("volume-changed", ());
+                }
+            }
+            "clear_wallpaper_cache" => {
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    crate::wallpaper::clear_wallpaper_cache(&state);
                 }
             }
             "force_refresh" => {
