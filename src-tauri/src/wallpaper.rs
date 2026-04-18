@@ -138,165 +138,23 @@ pub(crate) fn copy_to_wallpapers(
     Ok(dest)
 }
 
-/// Sets the desktop wallpaper on all monitors using platform-specific APIs.
-/// This is the portability boundary — when we move to display-dj-cli, this
-/// function becomes an HTTP call to the sidecar instead.
+/// Returns the base URL of the display-dj sidecar HTTP server.
+fn base_url() -> String {
+    let port = crate::server_port();
+    format!("http://127.0.0.1:{}", port)
+}
+
+/// Sets the desktop wallpaper on all monitors via the display-dj-cli sidecar.
+/// Calls `GET /set_wallpaper/{fit}/{path}`.
 fn set_wallpaper_on_os(path: &str, fit: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    return set_wallpaper_macos(path, fit);
-
-    #[cfg(target_os = "windows")]
-    return set_wallpaper_windows(path, fit);
-
-    #[cfg(target_os = "linux")]
-    return set_wallpaper_linux(path, fit);
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    Err("wallpaper: unsupported platform".into())
-}
-
-/// macOS: set desktop wallpaper via osascript (AppleScript).
-#[cfg(target_os = "macos")]
-fn set_wallpaper_macos(path: &str, _fit: &str) -> Result<(), String> {
-    // Use System Events to set the wallpaper on all desktops
-    let script = format!(
-        "tell application \"System Events\" to tell every desktop to set picture to \"{}\"",
-        path
-    );
-    let output = std::process::Command::new("osascript")
-        .args(["-e", &script])
-        .output()
-        .map_err(|e| format!("failed to run osascript: {}", e))?;
-
-    if output.status.success() {
+    let url = format!("{}/set_wallpaper/{}/{}", base_url(), fit, path);
+    let resp = reqwest::blocking::get(&url)
+        .map_err(|e| format!("sidecar request failed: {}", e))?;
+    if resp.status().is_success() {
         Ok(())
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("osascript failed: {}", stderr.trim()))
-    }
-}
-
-/// Windows: set desktop wallpaper via SystemParametersInfoW.
-#[cfg(target_os = "windows")]
-fn set_wallpaper_windows(path: &str, fit: &str) -> Result<(), String> {
-    use std::process::Command;
-
-    // Set the WallpaperStyle and TileWallpaper registry values for the fit mode.
-    // WallpaperStyle: 10=fill, 6=fit, 2=stretch, 0=center/tile
-    // TileWallpaper: 1=tile, 0=everything else
-    let (style, tile) = match fit {
-        "fill" => ("10", "0"),
-        "fit" => ("6", "0"),
-        "stretch" => ("2", "0"),
-        "center" => ("0", "0"),
-        "tile" => ("0", "1"),
-        _ => ("10", "0"), // default to fill
-    };
-
-    // Set registry values via reg.exe
-    Command::new("reg")
-        .args(["add", r"HKCU\Control Panel\Desktop", "/v", "WallpaperStyle", "/t", "REG_SZ", "/d", style, "/f"])
-        .output()
-        .map_err(|e| format!("failed to set WallpaperStyle: {}", e))?;
-
-    Command::new("reg")
-        .args(["add", r"HKCU\Control Panel\Desktop", "/v", "TileWallpaper", "/t", "REG_SZ", "/d", tile, "/f"])
-        .output()
-        .map_err(|e| format!("failed to set TileWallpaper: {}", e))?;
-
-    // Use PowerShell to call SystemParametersInfo via .NET interop
-    let ps_script = format!(
-        r#"Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public class W {{ [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni); }}'; [W]::SystemParametersInfo(0x0014, 0, '{}', 0x01 -bor 0x02)"#,
-        path.replace('\'', "''")
-    );
-
-    let output = Command::new("powershell")
-        .args(["-NoProfile", "-Command", &ps_script])
-        .output()
-        .map_err(|e| format!("failed to run powershell: {}", e))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("powershell wallpaper command failed: {}", stderr.trim()))
-    }
-}
-
-/// Linux: set desktop wallpaper via gsettings (GNOME), xfconf-query (XFCE), or feh.
-#[cfg(target_os = "linux")]
-fn set_wallpaper_linux(path: &str, fit: &str) -> Result<(), String> {
-    use std::process::Command;
-
-    // Map fit mode to GNOME picture-options value
-    let gnome_option = match fit {
-        "fill" => "zoom",
-        "fit" => "scaled",
-        "stretch" => "stretched",
-        "center" => "centered",
-        "tile" => "wallpaper",
-        _ => "zoom", // default to fill
-    };
-
-    // Try GNOME/Cinnamon first (gsettings)
-    let set_option = Command::new("gsettings")
-        .args(["set", "org.gnome.desktop.background", "picture-options", gnome_option])
-        .output();
-
-    let uri = format!("file://{}", path);
-    let set_uri = Command::new("gsettings")
-        .args(["set", "org.gnome.desktop.background", "picture-uri", &uri])
-        .output();
-
-    // Also set picture-uri-dark for dark mode variant (GNOME 42+)
-    let _ = Command::new("gsettings")
-        .args(["set", "org.gnome.desktop.background", "picture-uri-dark", &uri])
-        .output();
-
-    if set_option.is_ok() && set_uri.is_ok() {
-        if let (Ok(opt_out), Ok(uri_out)) = (set_option, set_uri) {
-            if opt_out.status.success() && uri_out.status.success() {
-                return Ok(());
-            }
-        }
-    }
-
-    // Fallback: try XFCE (xfconf-query)
-    let xfce_result = Command::new("xfconf-query")
-        .args([
-            "-c", "xfce4-desktop",
-            "-p", "/backdrop/screen0/monitor0/workspace0/last-image",
-            "-s", path,
-        ])
-        .output();
-
-    if let Ok(output) = xfce_result {
-        if output.status.success() {
-            return Ok(());
-        }
-    }
-
-    // Fallback: try feh
-    let feh_mode = match fit {
-        "fill" => "--bg-fill",
-        "fit" => "--bg-max",
-        "stretch" => "--bg-scale",
-        "center" => "--bg-center",
-        "tile" => "--bg-tile",
-        _ => "--bg-fill",
-    };
-
-    let feh_result = Command::new("feh")
-        .args([feh_mode, path])
-        .output();
-
-    match feh_result {
-        Ok(output) if output.status.success() => Ok(()),
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(format!("feh failed: {}", stderr.trim()))
-        }
-        Err(_) => Err("wallpaper: no supported wallpaper tool found (tried gsettings, xfconf-query, feh)".into()),
+        let body = resp.text().unwrap_or_default();
+        Err(format!("sidecar returned error: {}", body))
     }
 }
 
