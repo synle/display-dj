@@ -1083,6 +1083,40 @@ fn spread_expose_app(app: &AppHandle) {
         target_app,
         displays.len()
     );
+
+    // Fill remaining display capacity with other apps' windows
+    let remaining_cap = total_cap.saturating_sub(placed);
+    if remaining_cap > 0 {
+        let remaining_per_display = if displays.len() > 0 {
+            (remaining_cap + displays.len() - 1) / displays.len()
+        } else {
+            0
+        };
+        if remaining_per_display > 0 {
+            let other_windows: Vec<&WindowInfo> = build_sorted_window_list(
+                &all_windows,
+                remaining_cap,
+            )
+            .into_iter()
+            .filter(|w| w.owner_pid != target_pid)
+            .collect();
+
+            if !other_windows.is_empty() {
+                let placed_others = layout_across_displays(
+                    &other_windows,
+                    &displays,
+                    remaining_per_display,
+                    g,
+                    spread,
+                    &set_window_rect_via_ax,
+                );
+                log::info!(
+                    "app_expose: filled remaining space with {} other windows",
+                    placed_others
+                );
+            }
+        }
+    }
 }
 
 // ===========================================================================
