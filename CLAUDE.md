@@ -114,6 +114,19 @@ On macOS, two patterns in Tauri command handlers break the system tray icon — 
 
 These are documented inline in `config.rs` with WARNING comments.
 
+## CGEventTap / Background Thread Pitfall (Critical)
+
+On macOS, any code running inside a `CGEventTap` callback (e.g., Tile Snap's `snap_event_callback`) or on a background thread that feeds a `CFRunLoop` **must never use blocking mutex locks**. macOS imposes a timeout on event tap callbacks — if the callback blocks for too long (e.g., waiting on a contended `Mutex::lock()`), macOS disables the event tap entirely. Once disabled, no further mouse events (drag, up) are delivered, making the feature silently broken.
+
+**Rules for CGEventTap callbacks and high-frequency background threads:**
+
+1. **Always use `try_lock()`, never `lock()`** — on `state.preferences`, `AppState`, or any shared mutex. If contended, skip the operation or use a cached/default value.
+2. **`write_debug_log()` is safe** — it now uses `try_lock()` internally (since v5.11.6). If the preferences lock is contended, the log message is silently dropped instead of blocking.
+3. **No network calls or file I/O that might block** — keep callbacks fast. Spawn a thread for anything slow.
+4. **If `start_pos` or `get_focused_window()` returns None**, assume intent and proceed — don't use missing data as a reason to skip the action.
+
+This bug manifests as "works in dev, broken in production" because production builds have more background mutex contention (save_preferences, night mode schedule checks, etc.).
+
 ## Key Conventions
 
 - All Rust structs sent to frontend use `#[serde(rename_all = "camelCase")]`
