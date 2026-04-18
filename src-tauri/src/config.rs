@@ -16,6 +16,9 @@ pub struct TilingPreferences {
     pub third_ratio: u32,
     /// Gap in points between tiled windows and screen edges.
     pub gap: u32,
+    /// Toggle to enable/disable Tile Snap (mouse edge snapping). Only effective
+    /// when `enabled` is also true. Defaults to true.
+    pub tile_snap_enabled: bool,
     /// Tile Snap: pixel width of the side edge hot zone (left/right/bottom).
     pub side_edge_trigger: u32,
     /// Tile Snap: pixel height of the top edge hot zone (maximize trigger).
@@ -42,6 +45,7 @@ impl Default for TilingPreferences {
             half_ratio: 50,
             third_ratio: 33,
             gap: 0,
+            tile_snap_enabled: true,
             side_edge_trigger: 10,
             top_edge_trigger: 10,
             corner_trigger: 50,
