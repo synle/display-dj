@@ -1134,10 +1134,25 @@ fn dispatch_get_main_queue() -> DispatchQueue {
 enum OverlayCmd {
     Show { x: f64, y: f64, w: f64, h: f64 },
     Hide,
+    /// Show drop zone indicators on all displays. Provides immediate visual
+    /// feedback that the event tap is alive. Colors: green=top (maximize),
+    /// orange=sides (halves), purple=corners (quarters).
+    ShowZones {
+        displays: Vec<Rect>,
+        side_edge: f64,
+        top_edge: f64,
+        corner: f64,
+    },
+    /// Hide all drop zone indicators.
+    HideZones,
 }
 
 /// Global overlay NSWindow pointer. Only accessed from the main thread.
 static OVERLAY_PTR: std::sync::OnceLock<std::sync::atomic::AtomicUsize> =
+    std::sync::OnceLock::new();
+
+/// Global zone overlay NSWindow pointers. Created lazily, reused across drags.
+static ZONE_PTRS: std::sync::OnceLock<std::sync::Mutex<Vec<usize>>> =
     std::sync::OnceLock::new();
 
 /// Initialize the overlay on the main thread. Call once during app setup.
@@ -1190,6 +1205,63 @@ unsafe fn create_overlay_window() -> *mut c_void {
     window as *mut c_void
 }
 
+/// Create a borderless, transparent, click-through NSWindow with a custom color.
+#[allow(unexpected_cfgs)]
+unsafe fn create_colored_overlay(r: f64, g: f64, b: f64, alpha: f64) -> *mut c_void {
+    use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl};
+
+    let cls = objc::runtime::Class::get("NSWindow").unwrap();
+    let window: *mut Object = msg_send![cls, alloc];
+    let rect = CGRect {
+        origin: CGPoint { x: 0.0, y: 0.0 },
+        size: CGSize { width: 1.0, height: 1.0 },
+    };
+    let window: *mut Object = msg_send![window,
+        initWithContentRect:rect
+        styleMask:0u64
+        backing:2u64
+        defer:false
+    ];
+    let color_cls = objc::runtime::Class::get("NSColor").unwrap();
+    let color: *mut Object = msg_send![color_cls,
+        colorWithRed:r green:g blue:b alpha:alpha
+    ];
+    let _: () = msg_send![window, setBackgroundColor: color];
+    let _: () = msg_send![window, setOpaque: false];
+    let _: () = msg_send![window, setHasShadow: false];
+    let _: () = msg_send![window, setLevel: 24i64]; // just below snap overlay (25)
+    let _: () = msg_send![window, setIgnoresMouseEvents: true];
+    let _: () = msg_send![window, setReleasedWhenClosed: false];
+    window as *mut c_void
+}
+
+/// Show a zone overlay window at the given CG coordinates.
+#[allow(unexpected_cfgs)]
+unsafe fn show_zone_window(window: *mut c_void, x: f64, y: f64, w: f64, h: f64, primary_h: f64) {
+    use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl};
+
+    let win = window as *mut Object;
+    let cocoa_y = primary_h - y - h;
+    let frame = CGRect {
+        origin: CGPoint { x, y: cocoa_y },
+        size: CGSize { width: w, height: h },
+    };
+    let _: () = msg_send![win, setFrame:frame display:true];
+    let _: () = msg_send![win, orderFront:std::ptr::null::<Object>()];
+}
+
+/// Hide a zone overlay window.
+#[allow(unexpected_cfgs)]
+unsafe fn hide_zone_window(window: *mut c_void) {
+    use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl};
+
+    let win = window as *mut Object;
+    let _: () = msg_send![win, orderOut:std::ptr::null::<Object>()];
+}
+
 /// Dispatch an overlay command to the main thread.
 fn dispatch_overlay(cmd: OverlayCmd) {
     let boxed = Box::into_raw(Box::new(cmd)) as *mut c_void;
@@ -1240,6 +1312,118 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
             }
             OverlayCmd::Hide => {
                 let _: () = msg_send![window, orderOut:std::ptr::null::<Object>()];
+            }
+            OverlayCmd::ShowZones { displays, side_edge, top_edge, corner } => {
+                // Get primary screen height for coordinate conversion
+                let cls = objc::runtime::Class::get("NSScreen").unwrap();
+                let screens: *mut Object = msg_send![cls, screens];
+                let count: usize = msg_send![screens, count];
+                let primary_h = if count > 0 {
+                    let screen: *mut Object = msg_send![screens, objectAtIndex: 0usize];
+                    let frame: CGRect = msg_send![screen, frame];
+                    frame.size.height
+                } else {
+                    1080.0
+                };
+
+                // Build zone rects: per display, create top/left/right/corner zones
+                // Colors: green=top (maximize), orange=sides (halves), purple=corners
+                struct ZoneRect {
+                    x: f64, y: f64, w: f64, h: f64,
+                    /// 0=top(green), 1=side(orange), 2=corner(purple)
+                    kind: u8,
+                }
+                let mut zones: Vec<ZoneRect> = Vec::new();
+                let vis_edge = side_edge.max(20.0); // minimum 20px for visibility
+                let vis_top = top_edge.max(20.0);
+                let vis_corner = corner.max(40.0);
+
+                for d in &displays {
+                    // Top edge strip (green) — between corners
+                    zones.push(ZoneRect {
+                        x: d.x + vis_corner, y: d.y,
+                        w: d.width - vis_corner * 2.0, h: vis_top,
+                        kind: 0,
+                    });
+                    // Left edge strip (orange) — between corners
+                    zones.push(ZoneRect {
+                        x: d.x, y: d.y + vis_corner,
+                        w: vis_edge, h: d.height - vis_corner * 2.0,
+                        kind: 1,
+                    });
+                    // Right edge strip (orange) — between corners
+                    zones.push(ZoneRect {
+                        x: d.x + d.width - vis_edge, y: d.y + vis_corner,
+                        w: vis_edge, h: d.height - vis_corner * 2.0,
+                        kind: 1,
+                    });
+                    // Top-left corner (purple)
+                    zones.push(ZoneRect {
+                        x: d.x, y: d.y,
+                        w: vis_corner, h: vis_corner,
+                        kind: 2,
+                    });
+                    // Top-right corner (purple)
+                    zones.push(ZoneRect {
+                        x: d.x + d.width - vis_corner, y: d.y,
+                        w: vis_corner, h: vis_corner,
+                        kind: 2,
+                    });
+                    // Bottom-left corner (purple)
+                    zones.push(ZoneRect {
+                        x: d.x, y: d.y + d.height - vis_corner,
+                        w: vis_corner, h: vis_corner,
+                        kind: 2,
+                    });
+                    // Bottom-right corner (purple)
+                    zones.push(ZoneRect {
+                        x: d.x + d.width - vis_corner, y: d.y + d.height - vis_corner,
+                        w: vis_corner, h: vis_corner,
+                        kind: 2,
+                    });
+                }
+
+                // Ensure we have enough zone windows, creating new ones as needed
+                let zone_ptrs = ZONE_PTRS.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+                let mut ptrs = zone_ptrs.lock().unwrap();
+                while ptrs.len() < zones.len() {
+                    // Create windows for each kind with different colors
+                    // We don't know the kind yet, so create neutral ones and set color per-use
+                    ptrs.push(0); // placeholder
+                }
+
+                // Create/reuse windows and position them
+                for (i, zone) in zones.iter().enumerate() {
+                    if ptrs[i] == 0 {
+                        let (r, g, b) = match zone.kind {
+                            0 => (0.2, 0.8, 0.3), // green for top/maximize
+                            1 => (1.0, 0.6, 0.1), // orange for sides
+                            _ => (0.6, 0.3, 0.9), // purple for corners
+                        };
+                        ptrs[i] = create_colored_overlay(r, g, b, 0.25) as usize;
+                    }
+                    show_zone_window(
+                        ptrs[i] as *mut c_void,
+                        zone.x, zone.y, zone.w, zone.h,
+                        primary_h,
+                    );
+                }
+                // Hide any extra windows from a previous ShowZones with more zones
+                for i in zones.len()..ptrs.len() {
+                    if ptrs[i] != 0 {
+                        hide_zone_window(ptrs[i] as *mut c_void);
+                    }
+                }
+            }
+            OverlayCmd::HideZones => {
+                let zone_ptrs = ZONE_PTRS.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+                if let Ok(ptrs) = zone_ptrs.lock() {
+                    for &p in ptrs.iter() {
+                        if p != 0 {
+                            hide_zone_window(p as *mut c_void);
+                        }
+                    }
+                }
             }
         }
     }
@@ -1449,6 +1633,18 @@ extern "C" fn snap_event_callback(
             state.drag_start_cursor = Some((cursor.x, cursor.y));
             state.drag_start_window_pos = None;
             state.current_layout = None;
+
+            // Show drop zone indicators immediately for visual feedback.
+            // Uses cached display frames and edge triggers from the previous drag
+            // (or defaults from initialization) to avoid slow calls here.
+            if !state.displays.is_empty() {
+                dispatch_overlay(OverlayCmd::ShowZones {
+                    displays: state.displays.clone(),
+                    side_edge: state.side_edge_trigger,
+                    top_edge: state.top_edge_trigger,
+                    corner: state.corner_trigger,
+                });
+            }
         }
 
         K_CG_EVENT_LEFT_MOUSE_DRAGGED => {
@@ -1473,6 +1669,8 @@ extern "C" fn snap_event_callback(
                 // window position. This work was previously in mouse_down where
                 // it could stall the callback and cause macOS to kill the tap.
                 state.drag_confirmed = true;
+                // Hide drop zone indicators — snap overlay takes over from here
+                dispatch_overlay(OverlayCmd::HideZones);
                 state.drag_start_window_pos = unsafe {
                     get_focused_window().and_then(|w| get_window_rect(&w).map(|r| (r.x, r.y)))
                 };
@@ -1573,8 +1771,9 @@ extern "C" fn snap_event_callback(
             state.drag_confirmed = false;
             state.current_layout = None;
 
-            // Hide overlay
+            // Hide overlay and zone indicators
             dispatch_overlay(OverlayCmd::Hide);
+            dispatch_overlay(OverlayCmd::HideZones);
 
             // If cursor was in a snap zone, verify the window actually moved
             if let Some(layout) = was_in_zone {
@@ -1734,7 +1933,7 @@ pub fn start_tile_snap(app: AppHandle) {
             drag_start_window_pos: None,
             current_layout: None,
             current_display: 0,
-            displays: Vec::new(),
+            displays: displays.clone(),
             half_ratio: 50,
             third_ratio: 33,
             gap: 0,
