@@ -36,7 +36,8 @@ export interface TilingPreferences {
   topEdgeTrigger: number;
   cornerTrigger: number;
   exposeEnabled: boolean;
-  exposeMaxWindows: number;
+  exposeColumns: number;
+  exposeRows: number;
 }
 
 export interface Preferences {

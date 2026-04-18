@@ -729,7 +729,7 @@ fn spread_expose(app: &AppHandle) {
             Ok(p) => p,
             Err(_) => return,
         };
-        (prefs.tiling.expose_max_windows as usize, prefs.tiling.gap)
+        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap)
     };
 
     // Normalize: unminimize and un-fullscreen all windows first
@@ -1016,7 +1016,7 @@ fn spread_expose_app(app: &AppHandle) {
             Ok(p) => p,
             Err(_) => return,
         };
-        (prefs.tiling.expose_max_windows as usize, prefs.tiling.gap)
+        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap)
     };
 
     // Identify the target app before normalization (frontmost window)
