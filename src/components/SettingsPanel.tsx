@@ -386,38 +386,51 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 <div className='settings-divider' />
 
                 <div className='settings-section'>
-                  <label className='settings-label'>Snap Zones</label>
-                  <div style={{ marginTop: '4px' }}>
-                    <label className='settings-label'>Side Edge</label>
-                    <Slider
-                      value={tiling?.sideEdgeTrigger ?? 10}
-                      min={5}
-                      max={50}
-                      unit='px'
-                      onChange={(v) => updateTiling('sideEdgeTrigger', v)}
+                  <label className='settings-checkbox-row'>
+                    <input
+                      type='checkbox'
+                      checked={tiling?.tileSnapEnabled ?? true}
+                      onChange={(e) => updateTiling('tileSnapEnabled', e.target.checked)}
                     />
-                  </div>
-                  <div style={{ marginTop: '4px' }}>
-                    <label className='settings-label'>Top Edge</label>
-                    <Slider
-                      value={tiling?.topEdgeTrigger ?? 10}
-                      min={10}
-                      max={50}
-                      unit='px'
-                      onChange={(v) => updateTiling('topEdgeTrigger', v)}
-                    />
-                  </div>
-                  <div style={{ marginTop: '4px' }}>
-                    <label className='settings-label'>Corner</label>
-                    <Slider
-                      value={tiling?.cornerTrigger ?? 50}
-                      min={25}
-                      max={150}
-                      unit='px'
-                      onChange={(v) => updateTiling('cornerTrigger', v)}
-                    />
-                  </div>
+                    <span>Enable Tile Snap (drag to edge)</span>
+                  </label>
                 </div>
+
+                {(tiling?.tileSnapEnabled ?? true) && (
+                  <div className='settings-section'>
+                    <label className='settings-label'>Snap Zones</label>
+                    <div style={{ marginTop: '4px' }}>
+                      <label className='settings-label'>Side Edge</label>
+                      <Slider
+                        value={tiling?.sideEdgeTrigger ?? 10}
+                        min={5}
+                        max={50}
+                        unit='px'
+                        onChange={(v) => updateTiling('sideEdgeTrigger', v)}
+                      />
+                    </div>
+                    <div style={{ marginTop: '4px' }}>
+                      <label className='settings-label'>Top Edge</label>
+                      <Slider
+                        value={tiling?.topEdgeTrigger ?? 10}
+                        min={10}
+                        max={50}
+                        unit='px'
+                        onChange={(v) => updateTiling('topEdgeTrigger', v)}
+                      />
+                    </div>
+                    <div style={{ marginTop: '4px' }}>
+                      <label className='settings-label'>Corner</label>
+                      <Slider
+                        value={tiling?.cornerTrigger ?? 50}
+                        min={25}
+                        max={150}
+                        unit='px'
+                        onChange={(v) => updateTiling('cornerTrigger', v)}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className='settings-divider' />
 

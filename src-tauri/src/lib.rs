@@ -462,12 +462,19 @@ pub fn run() {
                 let _ = autostart.disable();
             }
 
-            // Start tile snap (mouse edge snapping) on macOS
+            // Start tile snap (mouse edge snapping) on macOS — requires both
+            // tiling.enabled and tiling.tile_snap_enabled to be true
             #[cfg(target_os = "macos")]
             {
-                if preferences.tiling.enabled {
+                if preferences.tiling.enabled && preferences.tiling.tile_snap_enabled {
                     let snap_handle = app.handle().clone();
                     tiling::start_tile_snap(snap_handle);
+                } else {
+                    log::info!(
+                        "tile_snap: skipped (tiling.enabled={}, tile_snap_enabled={})",
+                        preferences.tiling.enabled,
+                        preferences.tiling.tile_snap_enabled,
+                    );
                 }
             }
 
