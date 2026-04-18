@@ -100,7 +100,7 @@ jobs:
             echo "### Supported Platforms"
             echo "- **macOS** Apple Silicon (ARM64) - \`.dmg\`"
             echo "- **macOS** Intel (x64) - \`.dmg\`"
-            echo "- **Windows** (x64) - \`.msi\` / \`.exe\`"
+            echo "- **Windows** (x64) - \`.exe\`"
             echo "- **Linux** (x64) - \`.deb\` / \`.AppImage\`"
             echo ""
             echo "### Requirements"
