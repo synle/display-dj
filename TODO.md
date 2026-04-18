@@ -1,5 +1,9 @@
 # TODO - Feature Improvements
 
+## High Priority — Tile Snap Broken in Production
+
+- [ ] **Replace CGEventTap with NSEvent Global Monitor** — `CGEventTap` silently fails in production `.app` bundles on macOS Sequoia. `CGEventTapEnable` returns false despite `AXIsProcessTrusted()=true`. The tap receives mouse_down/up but **never delivers mouse_dragged**, making Tile Snap non-functional. Works fine in dev mode (bare binary inherits terminal trust). Root cause: macOS treats bundled `.app` ad-hoc signed processes as low-trust in the Quartz Window Server. **Option 1 (primary):** Replace with `NSEvent.addGlobalMonitorForEvents(matching:handler:)` — higher-level Cocoa API that macOS trusts from `.app` bundles, delivers drag events, listen-only, no special signing needed. Keep all existing zone detection, overlay, latch, and threshold logic. **Option 2 (complementary):** Sign with free Apple Development certificate from Xcode for stable TCC designated requirements. Can combine with Option 1.
+
 ## Quick Wins
 
 - [x] **Volume presets via keyboard shortcuts** — Add intermediate volume levels (e.g., 25%, 50%, 75%) alongside the existing mute/unmute shortcuts (Shift+F6/F7).
