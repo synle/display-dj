@@ -429,10 +429,12 @@ pub fn debug_log_path() -> PathBuf {
 
 /// Appends a timestamped message to the debug log (no-op if debug logging is disabled).
 /// Auto-truncates the log file when it exceeds 1 MB, keeping the last 80%.
+/// Uses try_lock to avoid blocking callers on high-frequency paths (e.g., CGEventTap
+/// callback) — if the preferences mutex is contended, the log message is silently dropped.
 pub fn write_debug_log(state: &crate::AppState, message: &str) {
     let enabled = state
         .preferences
-        .lock()
+        .try_lock()
         .map(|p| p.debug_logging)
         .unwrap_or(false);
     if !enabled {

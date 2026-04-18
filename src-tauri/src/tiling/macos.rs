@@ -1497,10 +1497,13 @@ extern "C" fn snap_event_callback(
             };
             // Refresh display frames and preferences
             state.displays = get_display_visible_frames();
+            // CRITICAL: use try_lock, not lock. A blocking lock here stalls the
+            // CGEventTap callback, causing macOS to disable the tap via timeout.
+            // If the lock is contended, we keep the previous preference values.
             let prefs = ctx
                 .app
                 .try_state::<crate::AppState>()
-                .and_then(|s| s.preferences.lock().ok().map(|p| p.tiling.clone()));
+                .and_then(|s| s.preferences.try_lock().ok().map(|p| p.tiling.clone()));
             if let Some(tp) = prefs {
                 state.half_ratio = tp.half_ratio;
                 state.third_ratio = tp.third_ratio;
@@ -1598,7 +1601,7 @@ extern "C" fn snap_event_callback(
             // If cursor was in a snap zone, verify the window actually moved
             if let Some(layout) = was_in_zone {
                 let (window_moved, move_detail) = unsafe {
-                    get_focused_window().map_or((false, "no focused window".to_string()), |w| {
+                    get_focused_window().map_or((true, "no focused window — assuming moved".to_string()), |w| {
                         let cur_pos = get_window_rect(&w).map(|r| (r.x, r.y));
                         match (start_pos, cur_pos) {
                             (Some((sx, sy)), Some((cx, cy))) => {
@@ -1607,8 +1610,11 @@ extern "C" fn snap_event_callback(
                                 let moved = dx > 10.0 || dy > 10.0;
                                 (moved, format!("start=({:.0},{:.0}) end=({:.0},{:.0}) dx={:.0} dy={:.0}", sx, sy, cx, cy, dx, dy))
                             }
-                            (None, _) => (false, "no start pos".to_string()),
-                            (_, None) => (false, "no current pos".to_string()),
+                            // If we couldn't capture start position or current position,
+                            // assume the window moved. The user dragged to an edge zone
+                            // which is strong enough intent to tile.
+                            (None, _) => (true, "no start pos — assuming moved".to_string()),
+                            (_, None) => (true, "no current pos — assuming moved".to_string()),
                         }
                     })
                 };
