@@ -44,6 +44,10 @@ hdiutil detach "/Volumes/Display DJ"
 # Strip Apple quarantine (required for unsigned builds)
 xattr -cr "/Applications/Display DJ.app"
 
+# Re-sign with explicit ad-hoc signature (required for CGEventTap / tile snap —
+# the linker-signed binary from CI builds is rejected by macOS for event taps)
+codesign --force --deep --sign - "/Applications/Display DJ.app"
+
 # Reset Accessibility permission (required after each new build)
 tccutil reset Accessibility com.synle.display-dj
 

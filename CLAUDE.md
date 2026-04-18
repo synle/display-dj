@@ -31,6 +31,9 @@ After downloading and copying the `.app` to `/Applications`, these steps are man
 # Strip Apple quarantine (required for unsigned builds)
 xattr -cr "/Applications/Display DJ.app"
 
+# Re-sign with explicit ad-hoc signature (required for CGEventTap / tile snap)
+codesign --force --deep --sign - "/Applications/Display DJ.app"
+
 # Reset Accessibility permission (required after each new build for tiling to work)
 tccutil reset Accessibility com.synle.display-dj
 
