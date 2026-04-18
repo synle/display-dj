@@ -352,6 +352,160 @@ pub(crate) fn change_wallpaper_single(
     }
 }
 
+/// Parses slideshow command arguments: `{path}` or `{interval}/{order}/{path}`.
+/// Returns `(interval_minutes, order, folder_path)`.
+pub(crate) fn parse_slideshow_args(remainder: &str) -> (Option<u32>, Option<&str>, &str) {
+    // Try to parse: {interval}/{order}/{path}
+    // If first token is a number, treat it as interval
+    if let Some(slash1) = remainder.find('/') {
+        let candidate = &remainder[..slash1];
+        if let Ok(interval) = candidate.parse::<u32>() {
+            let after_interval = &remainder[slash1 + 1..];
+            // Next token should be order (forward/backward/random)
+            if let Some(slash2) = after_interval.find('/') {
+                let order_candidate = &after_interval[..slash2];
+                if matches!(order_candidate, "forward" | "backward" | "random") {
+                    let path = &after_interval[slash2 + 1..];
+                    return (Some(interval), Some(order_candidate), path);
+                }
+            }
+        }
+    }
+    // Default: just a path
+    (None, None, remainder)
+}
+
+/// Starts a wallpaper slideshow via the display-dj-cli sidecar.
+/// Calls `GET /wallpaper_slideshow_start/{interval}/{order}/{fit}/{folder}`.
+pub(crate) fn start_slideshow(
+    state: &crate::AppState,
+    folder: &str,
+    interval: Option<u32>,
+    order: Option<&str>,
+) {
+    let (fit, default_interval, default_order) = state
+        .preferences
+        .lock()
+        .map(|p| (
+            p.wallpaper.fit.clone(),
+            p.wallpaper.slideshow_interval_minutes,
+            p.wallpaper.slideshow_order.clone(),
+        ))
+        .unwrap_or_else(|_| ("fill".into(), 30, "forward".into()));
+
+    let interval = interval.unwrap_or(default_interval).max(5);
+    let order = order.unwrap_or(&default_order);
+
+    crate::config::write_debug_log(
+        state,
+        &format!(
+            "wallpaper: starting slideshow — folder={}, interval={}min, order={}, fit={}",
+            folder, interval, order, fit
+        ),
+    );
+
+    let url = format!(
+        "{}/wallpaper_slideshow_start/{}/{}/{}/{}",
+        base_url(), interval, order, fit, folder
+    );
+
+    match reqwest::blocking::get(&url) {
+        Ok(resp) if resp.status().is_success() => {
+            crate::config::write_debug_log(state, "wallpaper: slideshow started successfully");
+
+            // Persist slideshow config so it resumes on app restart
+            if let Ok(mut prefs) = state.preferences.lock() {
+                prefs.wallpaper.slideshow_enabled = true;
+                prefs.wallpaper.slideshow_folder = Some(folder.to_string());
+                prefs.wallpaper.slideshow_interval_minutes = interval;
+                prefs.wallpaper.slideshow_order = order.to_string();
+                crate::config::save_preferences_to_disk(&prefs);
+            }
+        }
+        Ok(resp) => {
+            let body = resp.text().unwrap_or_default();
+            let msg = format!("wallpaper: slideshow start failed: {}", body);
+            crate::config::write_debug_log(state, &msg);
+            log::warn!("{}", msg);
+        }
+        Err(e) => {
+            let msg = format!("wallpaper: slideshow start request failed: {}", e);
+            crate::config::write_debug_log(state, &msg);
+            log::warn!("{}", msg);
+        }
+    }
+}
+
+/// Stops the active wallpaper slideshow via the display-dj-cli sidecar.
+pub(crate) fn stop_slideshow(state: &crate::AppState) {
+    crate::config::write_debug_log(state, "wallpaper: stopping slideshow");
+
+    let url = format!("{}/wallpaper_slideshow_stop", base_url());
+    match reqwest::blocking::get(&url) {
+        Ok(resp) if resp.status().is_success() => {
+            crate::config::write_debug_log(state, "wallpaper: slideshow stopped");
+            if let Ok(mut prefs) = state.preferences.lock() {
+                prefs.wallpaper.slideshow_enabled = false;
+                crate::config::save_preferences_to_disk(&prefs);
+            }
+        }
+        Ok(resp) => {
+            let body = resp.text().unwrap_or_default();
+            log::warn!("wallpaper: slideshow stop failed: {}", body);
+        }
+        Err(e) => {
+            log::warn!("wallpaper: slideshow stop request failed: {}", e);
+        }
+    }
+}
+
+/// Resumes a slideshow from saved preferences on app startup.
+/// Called after the sidecar is ready.
+pub(crate) fn resume_slideshow_if_enabled(state: &crate::AppState) {
+    let (enabled, folder, interval, order, fit) = match state.preferences.lock() {
+        Ok(p) => (
+            p.wallpaper.slideshow_enabled,
+            p.wallpaper.slideshow_folder.clone(),
+            p.wallpaper.slideshow_interval_minutes,
+            p.wallpaper.slideshow_order.clone(),
+            p.wallpaper.fit.clone(),
+        ),
+        Err(_) => return,
+    };
+
+    if !enabled {
+        return;
+    }
+
+    let folder = match folder {
+        Some(f) if !f.is_empty() => f,
+        _ => return,
+    };
+
+    crate::config::write_debug_log(
+        state,
+        &format!("wallpaper: resuming slideshow from preferences — folder={}", folder),
+    );
+
+    let url = format!(
+        "{}/wallpaper_slideshow_start/{}/{}/{}/{}",
+        base_url(),
+        interval.max(5),
+        order,
+        fit,
+        folder
+    );
+
+    match reqwest::blocking::get(&url) {
+        Ok(resp) if resp.status().is_success() => {
+            crate::config::write_debug_log(state, "wallpaper: slideshow resumed successfully");
+        }
+        _ => {
+            log::warn!("wallpaper: failed to resume slideshow on startup");
+        }
+    }
+}
+
 /// Generates a default gradient wallpaper as a BMP file.
 /// Creates a vertical gradient from `color_top` to `color_bottom`.
 /// Returns the path to the generated file.
@@ -607,5 +761,41 @@ mod tests {
         assert_eq!(lerp_u8(0, 255, 1.0), 255);
         assert_eq!(lerp_u8(0, 255, 0.5), 128);
         assert_eq!(lerp_u8(100, 200, 0.5), 150);
+    }
+
+    /// Verifies parse_slideshow_args with just a folder path.
+    #[test]
+    fn test_parse_slideshow_args_path_only() {
+        let (interval, order, path) = parse_slideshow_args("/Users/syle/Pictures");
+        assert_eq!(interval, None);
+        assert_eq!(order, None);
+        assert_eq!(path, "/Users/syle/Pictures");
+    }
+
+    /// Verifies parse_slideshow_args with interval, order, and path.
+    #[test]
+    fn test_parse_slideshow_args_full() {
+        let (interval, order, path) = parse_slideshow_args("15/random//Users/syle/Pictures");
+        assert_eq!(interval, Some(15));
+        assert_eq!(order, Some("random"));
+        assert_eq!(path, "/Users/syle/Pictures");
+    }
+
+    /// Verifies parse_slideshow_args with forward order.
+    #[test]
+    fn test_parse_slideshow_args_forward() {
+        let (interval, order, path) = parse_slideshow_args("30/forward//tmp/wallpapers");
+        assert_eq!(interval, Some(30));
+        assert_eq!(order, Some("forward"));
+        assert_eq!(path, "/tmp/wallpapers");
+    }
+
+    /// Verifies parse_slideshow_args treats non-numeric first token as path.
+    #[test]
+    fn test_parse_slideshow_args_nonnumeric_is_path() {
+        let (interval, order, path) = parse_slideshow_args("Pictures/nature");
+        assert_eq!(interval, None);
+        assert_eq!(order, None);
+        assert_eq!(path, "Pictures/nature");
     }
 }
