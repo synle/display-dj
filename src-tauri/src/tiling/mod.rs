@@ -803,8 +803,9 @@ pub(crate) fn plan_expose_app(
 
     let mut placements = Vec::new();
 
-    // Place target app's windows
-    let placed = layout_across_displays(&app_windows, displays, max_per_display, gap, spread, &mut |win, rect| {
+    // Place target app's windows — always use fill (not spread) so the app's
+    // windows are packed together on the first display(s), not distributed.
+    let placed = layout_across_displays(&app_windows, displays, max_per_display, gap, false, &mut |win, rect| {
         placements.push(Placement {
             window_id: win.window_id,
             owner_pid: win.owner_pid,
