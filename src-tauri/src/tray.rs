@@ -192,16 +192,23 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .item(&MenuItemBuilder::with_id("tile_expose", "Exposé").build(app)?)
             .item(&MenuItemBuilder::with_id("tile_exposeApp", "App Exposé").build(app)?)
             .separator();
-        // Grid size options (columns × rows presets)
-        let (cur_cols, cur_rows) = if let Some(state) = app.try_state::<crate::AppState>() {
+        // Layout strategy (fill vs spread)
+        let (cur_cols, cur_rows, cur_strategy) = if let Some(state) = app.try_state::<crate::AppState>() {
             state
                 .preferences
                 .lock()
-                .map(|p| (p.tiling.expose_columns, p.tiling.expose_rows))
-                .unwrap_or((3, 3))
+                .map(|p| (p.tiling.expose_columns, p.tiling.expose_rows, p.tiling.expose_layout_strategy.clone()))
+                .unwrap_or((3, 3, "fill".into()))
         } else {
-            (3, 3)
+            (3, 3, "fill".into())
         };
+        let fill_check = if cur_strategy == "fill" { "● " } else { "   " };
+        let spread_check = if cur_strategy == "spread" { "● " } else { "   " };
+        builder = builder
+            .item(&MenuItemBuilder::with_id("expose_strategy_fill", &format!("{}Fill (pack first)", fill_check)).build(app)?)
+            .item(&MenuItemBuilder::with_id("expose_strategy_spread", &format!("{}Spread (distribute)", spread_check)).build(app)?)
+            .separator();
+        // Grid size options (columns × rows presets)
         for &(c, r) in &[(2u32, 2), (2, 3), (3, 3), (3, 4), (4, 4), (5, 5)] {
             let check = if c == cur_cols && r == cur_rows { "● " } else { "   " };
             let label = format!("{}{} \u{00d7} {} = {} windows", check, c, r, c * r);
@@ -426,6 +433,15 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                             rebuild_tray_menu(app);
                         }
                     }
+                } else if other == "expose_strategy_fill" || other == "expose_strategy_spread" {
+                    let strategy = if other == "expose_strategy_fill" { "fill" } else { "spread" };
+                    if let Some(state) = app.try_state::<crate::AppState>() {
+                        if let Ok(mut prefs) = state.preferences.lock() {
+                            prefs.tiling.expose_layout_strategy = strategy.to_string();
+                            crate::config::save_preferences_to_disk(&prefs);
+                        }
+                    }
+                    rebuild_tray_menu(app);
                 } else if let Some(idx_str) = other.strip_prefix("layout_preset_") {
                     if let Ok(idx) = idx_str.parse::<usize>() {
                         let cmd = format!("command/layout/{}", idx);
