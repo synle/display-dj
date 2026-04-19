@@ -628,6 +628,35 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         <option value='fill'>Fill (pack each display before using next)</option>
                       </select>
                     </div>
+                    <div style={{ marginTop: '8px' }}>
+                      <label className='settings-label'>Min Cell Width</label>
+                      <Slider
+                        value={tiling?.exposeMinWidth ?? 400}
+                        min={100}
+                        max={800}
+                        unit='px'
+                        onChange={(v) => updateTiling('exposeMinWidth', v)}
+                      />
+                    </div>
+                    <div style={{ marginTop: '4px' }}>
+                      <label className='settings-label'>Min Cell Height</label>
+                      <Slider
+                        value={tiling?.exposeMinHeight ?? 300}
+                        min={100}
+                        max={600}
+                        unit='px'
+                        onChange={(v) => updateTiling('exposeMinHeight', v)}
+                      />
+                    </div>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        color: '#666',
+                        marginTop: '2px',
+                        display: 'block',
+                      }}>
+                      Minimum grid cell size in logical pixels (scaled by DPI on Windows)
+                    </span>
                   </div>
                 )}
               </>

@@ -45,6 +45,10 @@ export interface TilingPreferences {
   exposeRows: number;
   /** Exposé layout strategy: "spread" (even across displays) or "fill" (pack then overflow). */
   exposeLayoutStrategy: string;
+  /** Exposé: minimum grid cell width in logical pixels. Scaled by DPI on Windows. */
+  exposeMinWidth: number;
+  /** Exposé: minimum grid cell height in logical pixels. Scaled by DPI on Windows. */
+  exposeMinHeight: number;
 }
 
 /** A single rule within a layout preset: match windows by app name and apply a tiling layout. */
