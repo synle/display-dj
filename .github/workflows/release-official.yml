@@ -1,4 +1,4 @@
-name: Release
+name: Release Official
 
 on:
   push:
@@ -190,6 +190,6 @@ jobs:
           tagName: ${{ needs.resolve-tag.outputs.tag }}
           releaseName: 'Display DJ ${{ needs.resolve-tag.outputs.tag }}'
           releaseBody: ${{ needs.resolve-tag.outputs.body }}
-          releaseDraft: ${{ github.event.inputs.draft || 'true' }}
+          releaseDraft: ${{ github.event.inputs.draft }}
           prerelease: false
           args: ${{ matrix.args }}
