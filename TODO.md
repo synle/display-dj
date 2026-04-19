@@ -5,8 +5,11 @@
 - [x] **Filter desktop + system windows** (v6.0.8) — Program Manager, TextInputHost, ShellExperienceHost, SearchHost, Widgets excluded.
 - [x] **Restore maximized windows before expose** (v6.0.9) — IsZoomed check added to restore callback.
 - [x] **DPI min_size scaling on mixed-DPI setups** (v6.0.10) — Removed min_size query; Windows enforces min_size via SetWindowPos.
-- [x] **DWM border gaps on high-DPI monitors** (v6.0.10) — Logging in place; needs user data to confirm if gaps persist after min_size fix.
+- [x] **DWM border gaps on high-DPI monitors** (v6.0.16) — Option B: over-expand by DWM border so visible frames fill cells edge-to-edge. Remaining tiny gaps are DWM border quirks on mixed-DPI (cosmetic).
 - [x] **Debounce expose command** (v6.0.11) — AtomicBool guard prevents concurrent expose/app_expose runs.
+- [x] **Default fill layout** (v6.0.12) — Changed default from "spread" to "fill". App exposé always uses fill for target app windows.
+- [x] **Fill/Spread tray menu toggle** (v6.0.13) — Added to Exposé submenu before grid presets.
+- [x] **Restore maximized + minimized** (v6.0.14) — Removed sleep delay; SetWindowPos snaps regardless of animation state.
 
 ## Resolved — Tile Snap Broken in Production
 
