@@ -94,6 +94,11 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         MenuItemBuilder::with_id("open_prefs", "Open App Preferences").build(app)?;
     let open_folder =
         MenuItemBuilder::with_id("open_folder", "Open App Folder").build(app)?;
+    // macOS-only: quick link to Accessibility settings (required for tiling)
+    #[cfg(target_os = "macos")]
+    let accessibility_settings =
+        MenuItemBuilder::with_id("accessibility_settings", "Accessibility Settings").build(app)?;
+
     let port = crate::server_port();
     let bridge_label = format!("Bridge: 127.0.0.1:{}", port);
     let bridge = MenuItemBuilder::with_id("bridge", &bridge_label).build(app)?;
@@ -106,13 +111,16 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         MenuItemBuilder::with_id("reset_defaults", "Reset to Default").build(app)?;
 
     let debug_submenu = if debug_on {
-        SubmenuBuilder::new(app, "Debug")
+        let builder = SubmenuBuilder::new(app, "Debug")
             .item(&debug_disable)
             .item(&debug_open)
             .item(&debug_dump)
             .separator()
             .item(&open_prefs)
-            .item(&open_folder)
+            .item(&open_folder);
+        #[cfg(target_os = "macos")]
+        let builder = builder.item(&accessibility_settings);
+        builder
             .item(&bridge)
             .separator()
             .item(&force_refresh)
@@ -121,12 +129,15 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .item(&reset_defaults)
             .build()?
     } else {
-        SubmenuBuilder::new(app, "Debug")
+        let builder = SubmenuBuilder::new(app, "Debug")
             .item(&debug_enable)
             .item(&debug_dump)
             .separator()
             .item(&open_prefs)
-            .item(&open_folder)
+            .item(&open_folder);
+        #[cfg(target_os = "macos")]
+        let builder = builder.item(&accessibility_settings);
+        builder
             .item(&bridge)
             .separator()
             .item(&force_refresh)
@@ -316,6 +327,12 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
             }
             "open_folder" => {
                 let _ = crate::config::open_app_folder();
+            }
+            // macOS-only: open Accessibility settings for tiling permission
+            "accessibility_settings" => {
+                let _ = open::that(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                );
             }
             "tiling_enable" => {
                 if let Some(state) = app.try_state::<crate::AppState>() {
