@@ -18,12 +18,12 @@ Download the latest release artifact from GitHub, install it, and launch the app
 3. Get the latest release tag: `gh release list --limit 1 --json tagName --jq '.[0].tagName'`
 4. Download the correct artifact based on platform:
 
-| Platform | Architecture | Asset pattern |
-|----------|-------------|---------------|
-| macOS | arm64 | `*_aarch64.dmg` |
-| macOS | x86_64 | `*_x64.dmg` |
-| Windows | x86_64 | `*_x64-setup.exe` |
-| Linux | x86_64 | `*_amd64.deb` or `*_amd64.AppImage` |
+| Platform | Architecture | Asset pattern                       |
+| -------- | ------------ | ----------------------------------- |
+| macOS    | arm64        | `*_aarch64.dmg`                     |
+| macOS    | x86_64       | `*_x64.dmg`                         |
+| Windows  | x86_64       | `*_x64-setup.exe`                   |
+| Linux    | x86_64       | `*_amd64.deb` or `*_amd64.AppImage` |
 
 Use: `gh release download <tag> --pattern "<pattern>" --dir /tmp/display-dj-release --clobber`
 
@@ -43,10 +43,6 @@ hdiutil detach "/Volumes/Display DJ"
 
 # Strip Apple quarantine (required for unsigned builds)
 xattr -cr "/Applications/Display DJ.app"
-
-# Re-sign with explicit ad-hoc signature (required for CGEventTap / tile snap —
-# the linker-signed binary from CI builds is rejected by macOS for event taps)
-codesign --force --deep --sign - "/Applications/Display DJ.app"
 
 # Reset Accessibility permission (required after each new build)
 tccutil reset Accessibility com.synle.display-dj
