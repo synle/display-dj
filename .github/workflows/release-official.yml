@@ -24,113 +24,22 @@ on:
         default: ''
 
 jobs:
-  resolve-tag:
+  prepare:
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.resolve.outputs.tag }}
-      body: ${{ steps.body.outputs.body }}
+      tag: ${{ steps.pre.outputs.tag }}
+      sha: ${{ steps.pre.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: synle/gha-workflows/actions/release/begin-release@main
+        id: pre
         with:
-          fetch-depth: 0
+          mode: official
+          project_name: Display DJ
+          version: ${{ inputs.tag || github.ref_name }}
+          version_file: package.json
 
-      - name: Resolve release tag
-        id: resolve
-        run: |
-          if [ -n "${{ github.event.inputs.tag }}" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "push" ]; then
-            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          else
-            VERSION=$(node -p "require('./package.json').version")
-            echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Generate release body
-        id: body
-        env:
-          TAG: ${{ steps.resolve.outputs.tag }}
-          USER_NOTES: ${{ github.event.inputs.release_notes }}
-        run: |
-          # Find the previous release tag
-          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | grep -v "^${TAG}$" | head -1)
-          CURRENT_SHA=$(git rev-parse HEAD)
-
-          # Build changelog from commits (max 10)
-          if [ -n "$PREV_TAG" ]; then
-            RANGE="${PREV_TAG}..HEAD"
-            CHANGELOG=$(git log --oneline --no-decorate -10 "$RANGE")
-            TOTAL=$(git rev-list --count "$RANGE")
-            PREV_SHA=$(git rev-parse "$PREV_TAG")
-          else
-            CHANGELOG=$(git log --oneline --no-decorate -10)
-            TOTAL=$(git rev-list --count HEAD)
-            PREV_SHA=""
-          fi
-
-          # Start building the body
-          {
-            echo "## Display DJ ${TAG}"
-            echo ""
-
-            # User-provided notes at the top
-            if [ -n "$USER_NOTES" ]; then
-              echo "$USER_NOTES"
-              echo ""
-            fi
-
-            # Changelog section
-            echo "### Changes"
-            echo ""
-            echo '```'
-            echo "$CHANGELOG"
-            if [ "$TOTAL" -gt 10 ]; then
-              echo "... and $((TOTAL - 10)) more commits"
-            fi
-            echo '```'
-            echo ""
-
-            # Full diff link
-            if [ -n "$PREV_SHA" ]; then
-              echo "[Full diff: ${PREV_TAG}...${TAG}](https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${TAG})"
-              echo ""
-            fi
-
-            # Install instructions at the bottom
-            echo "### Supported Platforms"
-            echo "- **macOS** Apple Silicon (ARM64) - \`.dmg\`"
-            echo "- **macOS** Intel (x64) - \`.dmg\`"
-            echo "- **Windows** (x64) - \`.exe\`"
-            echo "- **Linux** (x64) - \`.deb\` / \`.AppImage\`"
-            echo ""
-            echo "### Requirements"
-            echo "- Display control is handled by the bundled [display-dj CLI](https://github.com/synle/display-dj-cli) sidecar — no external tools needed on macOS or Windows"
-            echo "- **macOS Window Tiling**: Requires Accessibility permission. Go to System Settings > Privacy & Security > Accessibility and add Display DJ. See [setup instructions](https://github.com/synle/display-dj#window-tiling-macos)"
-            echo "- **Linux**: Install \`ddcutil\` and \`brightnessctl\` for display control: \`sudo apt install ddcutil brightnessctl i2c-tools\`"
-          } > body.md
-
-          # Output as multiline string
-          {
-            echo "body<<BODY_EOF"
-            cat body.md
-            echo "BODY_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-  cleanup:
-    needs: resolve-tag
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Delete existing release for this tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.resolve-tag.outputs.tag }}
-        run: |
-          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
-
-  release:
-    needs: [resolve-tag, cleanup]
+  build:
+    needs: [prepare]
     permissions:
       contents: write
     strategy:
@@ -184,12 +93,29 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DISPLAY_DJ_CLI_VERSION: ${{ github.event.inputs.display_dj_cli_version }}
+          DISPLAY_DJ_CLI_VERSION: ${{ inputs.display_dj_cli_version }}
           TAURI_RELEASE: 'true'
         with:
-          tagName: ${{ needs.resolve-tag.outputs.tag }}
-          releaseName: 'Display DJ ${{ needs.resolve-tag.outputs.tag }}'
-          releaseBody: ${{ needs.resolve-tag.outputs.body }}
-          releaseDraft: ${{ github.event.inputs.draft }}
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseName: 'Display DJ ${{ needs.prepare.outputs.tag }}'
+          releaseBody: 'Build in progress...'
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  release:
+    needs: [prepare, build]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: synle/gha-workflows/actions/release/end-release@main
+        with:
+          tag: ${{ needs.prepare.outputs.tag }}
+          project_name: Display DJ
+          mode: official
+          build_result: ${{ needs.build.result }}
+          sha: ${{ needs.prepare.outputs.sha }}
+          user_notes: ${{ inputs.release_notes }}
+          extra_body_path: .github/release-body-static.md

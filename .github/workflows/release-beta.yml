@@ -11,87 +11,32 @@ on:
         description: 'display-dj-cli version to use (e.g. v0.4.1). Leave empty for default from package.json.'
         required: false
         default: ''
+      notes:
+        description: 'Custom release notes (optional). Prepended before the changelog.'
+        required: false
+        default: ''
 
 permissions:
   contents: write
 
 jobs:
-  resolve-tag:
+  prepare:
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.resolve.outputs.tag }}
-      sha: ${{ steps.resolve.outputs.sha }}
-      body: ${{ steps.body.outputs.body }}
+      tag: ${{ steps.pre.outputs.tag }}
+      sha: ${{ steps.pre.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: synle/gha-workflows/actions/release/begin-release@main
+        id: pre
         with:
-          fetch-depth: 0
+          mode: beta
+          project_name: Display DJ Beta
+          sha: ${{ inputs.sha }}
 
-      - name: Resolve commit and beta tag
-        id: resolve
-        run: |
-          INPUT_SHA="${{ github.event.inputs.sha }}"
-          if [ -n "$INPUT_SHA" ]; then
-            # Checkout the requested SHA
-            git checkout "$INPUT_SHA"
-            FULL_SHA=$(git rev-parse HEAD)
-          else
-            FULL_SHA=$(git rev-parse HEAD)
-          fi
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          DATE=$(date -u '+%Y-%m-%d-%H-%M')
-          TAG="release-beta-${DATE}-${SHORT_SHA}"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "sha=${FULL_SHA}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-
-      - name: Generate release body
-        id: body
-        env:
-          TAG: ${{ steps.resolve.outputs.tag }}
-          FULL_SHA: ${{ steps.resolve.outputs.sha }}
-          SHORT_SHA: ${{ steps.resolve.outputs.short_sha }}
-        run: |
-          # Recent commits (max 10) from the resolved SHA
-          CHANGELOG=$(git log --oneline --no-decorate -10 "$FULL_SHA")
-
-          {
-            echo "## Display DJ Beta — \`${SHORT_SHA}\`"
-            echo ""
-            echo "> **This is a beta build** from commit [\`${FULL_SHA}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${FULL_SHA}). Use at your own risk."
-            echo ""
-            echo "### Recent Changes"
-            echo ""
-            echo '```'
-            echo "$CHANGELOG"
-            echo '```'
-            echo ""
-            echo "### Supported Platforms"
-            echo "- **macOS** Apple Silicon (ARM64) - \`.dmg\`"
-            echo "- **macOS** Intel (x64) - \`.dmg\`"
-            echo "- **Windows** (x64) - \`.exe\`"
-            echo "- **Linux** (x64) - \`.deb\` / \`.AppImage\`"
-          } > body.md
-
-          {
-            echo "body<<BODY_EOF"
-            cat body.md
-            echo "BODY_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-  cleanup:
-    needs: resolve-tag
-    runs-on: ubuntu-latest
-    steps:
-      - name: Delete existing release for this tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.resolve-tag.outputs.tag }}
-        run: |
-          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
-
-  release:
-    needs: [resolve-tag, cleanup]
+  build:
+    needs: [prepare]
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -114,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-tag.outputs.sha }}
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -145,11 +90,27 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DISPLAY_DJ_CLI_VERSION: ${{ github.event.inputs.display_dj_cli_version }}
+          DISPLAY_DJ_CLI_VERSION: ${{ inputs.display_dj_cli_version }}
         with:
-          tagName: ${{ needs.resolve-tag.outputs.tag }}
-          releaseName: 'Display DJ Beta (${{ needs.resolve-tag.outputs.tag }})'
-          releaseBody: ${{ needs.resolve-tag.outputs.body }}
-          releaseDraft: false
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseName: 'Display DJ Beta (${{ needs.prepare.outputs.tag }})'
+          releaseBody: 'Build in progress...'
+          releaseDraft: true
           prerelease: true
           args: ${{ matrix.args }}
+
+  release:
+    needs: [prepare, build]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: synle/gha-workflows/actions/release/end-release@main
+        with:
+          tag: ${{ needs.prepare.outputs.tag }}
+          project_name: Display DJ Beta
+          mode: beta
+          build_result: ${{ needs.build.result }}
+          sha: ${{ needs.prepare.outputs.sha }}
+          user_notes: ${{ inputs.notes }}
