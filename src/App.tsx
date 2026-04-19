@@ -10,6 +10,7 @@ import DarkModeToggle from './components/DarkModeToggle';
 import ProfileButtons from './components/ProfileButtons';
 import KeepAwakeToggle from './components/KeepAwakeToggle';
 import SettingsPanel from './components/SettingsPanel';
+import AboutPanel from './components/AboutPanel';
 import { Monitor, Preferences, Profile } from './types';
 
 const ABSOLUTE_MIN_BRIGHTNESS = 5;
@@ -26,6 +27,7 @@ function App() {
   const [keepAwake, setKeepAwake] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [version, setVersion] = useState('');
   const appRef = useRef<HTMLDivElement>(null);
 
@@ -95,6 +97,10 @@ function App() {
     const unlisten1 = listen('monitors-changed', () => fetchMonitors());
     const unlisten2 = listen('dark-mode-changed', () => fetchDarkMode());
     const unlisten3 = listen('volume-changed', () => fetchVolume());
+    const unlisten4 = listen('show-about', () => {
+      setAboutOpen(true);
+      setSettingsOpen(false);
+    });
 
     // Also refetch when window becomes visible
     const handleVisibility = () => {
@@ -111,6 +117,7 @@ function App() {
       unlisten1.then((f) => f());
       unlisten2.then((f) => f());
       unlisten3.then((f) => f());
+      unlisten4.then((f) => f());
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [fetchMonitors, fetchDarkMode, fetchVolume, fetchPreferences, fetchKeepAwake]);
@@ -276,7 +283,9 @@ function App() {
         settingsOpen={settingsOpen}
       />
 
-      {settingsOpen ? (
+      {aboutOpen ? (
+        <AboutPanel onClose={() => setAboutOpen(false)} />
+      ) : settingsOpen ? (
         <SettingsPanel
           onClose={() => setSettingsOpen(false)}
           onPreferencesSaved={() => {

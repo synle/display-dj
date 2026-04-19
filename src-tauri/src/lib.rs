@@ -394,6 +394,7 @@ pub fn run() {
             config::open_debug_log,
             config::open_app_folder,
             config::get_app_version,
+            config::get_about_info,
             tray::apply_profile,
             keep_awake::get_keep_awake,
             keep_awake::set_keep_awake,

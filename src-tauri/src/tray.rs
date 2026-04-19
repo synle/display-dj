@@ -274,10 +274,13 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         }
     }
 
+    let about = MenuItemBuilder::with_id("about", "About Display DJ").build(app)?;
+
     let menu = menu
         .separator()
         .item(&debug_submenu)
         .separator()
+        .item(&about)
         .item(&quit)
         .build()?;
 
@@ -423,6 +426,10 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 let _ = app.emit("monitors-changed", ());
                 let _ = app.emit("dark-mode-changed", ());
                 let _ = app.emit("volume-changed", ());
+            }
+            "about" => {
+                show_popup_window(app);
+                let _ = app.emit("show-about", ());
             }
             "quit" => {
                 app.exit(0);

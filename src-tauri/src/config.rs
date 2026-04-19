@@ -757,6 +757,34 @@ pub fn get_app_version() -> String {
     format!("{} ({})", env!("APP_VERSION"), arch)
 }
 
+/// Returns structured about info for the About panel: version, engine,
+/// architecture, OS, build date, and homepage URL.
+#[tauri::command]
+pub fn get_about_info() -> std::collections::HashMap<String, String> {
+    let arch = match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        "x86_64" => "x64",
+        other => other,
+    };
+    let os = match std::env::consts::OS {
+        "macos" => "macOS",
+        "windows" => "Windows",
+        "linux" => "Linux",
+        other => other,
+    };
+    let mut info = std::collections::HashMap::new();
+    info.insert("version".into(), env!("APP_VERSION").to_string());
+    info.insert("engine".into(), "Tauri + Rust Sidecar".to_string());
+    info.insert("arch".into(), arch.to_string());
+    info.insert("os".into(), os.to_string());
+    info.insert("buildDate".into(), env!("BUILD_DATE").to_string());
+    info.insert(
+        "homepage".into(),
+        "https://github.com/synle/display-dj".to_string(),
+    );
+    info
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
