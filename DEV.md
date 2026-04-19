@@ -6,6 +6,7 @@ Full architecture reference for Display DJ v4. Read this before making changes.
 
 ## Table of Contents
 
+- [IDE Setup (VS Code)](#ide-setup-vs-code)
 - [Architecture Overview](#architecture-overview)
 - [Directory Structure](#directory-structure)
 - [Request Lifecycle](#request-lifecycle)
@@ -27,6 +28,69 @@ Full architecture reference for Display DJ v4. Read this before making changes.
 - [display-dj CLI Sidecar](#display-dj-cli-sidecar)
 - [Known Limitations](#known-limitations)
 - [Troubleshooting](#troubleshooting)
+
+---
+
+## IDE Setup (VS Code)
+
+The project includes a `.vscode/` directory with recommended settings, launch configs, and extensions.
+
+### Prerequisites
+
+1. [Node.js 20+](https://nodejs.org/) and npm
+2. [Rust toolchain](https://rustup.rs/) (`rustup` + stable)
+3. [Tauri v2 CLI](https://v2.tauri.app/): `cargo install tauri-cli`
+4. Platform dependencies (see [CLAUDE.md](CLAUDE.md) for Linux `apt` packages)
+
+### Getting Started
+
+```bash
+git clone https://github.com/synle/display-dj.git
+cd display-dj
+npm install
+npx tauri dev    # Full app (frontend + backend + sidecar)
+```
+
+### Recommended VS Code Extensions
+
+Install the recommended extensions when prompted (or via `.vscode/extensions.json`):
+
+- **rust-analyzer** -- Rust LSP (code completion, inline errors, go-to-definition for all Rust code)
+- **Prettier** -- Auto-format TypeScript, JSON, Markdown on save
+- **Tauri** -- Tauri v2 config schema support
+- **ESLint** -- TypeScript linting
+
+### Launch Configurations
+
+Open the **Run and Debug** panel (Cmd+Shift+D) to use these pre-configured launch targets:
+
+| Configuration                  | What it does                                                                                  |
+| ------------------------------ | --------------------------------------------------------------------------------------------- |
+| **Tauri Dev (Full App)**       | Runs `npx tauri dev` -- starts Vite + Rust backend + sidecar. The main development workflow.  |
+| **Vite Dev (Frontend Only)**   | Runs `npm run dev` -- frontend only at `localhost:1420`. No backend. Useful for pure UI work. |
+| **Vitest (Run Tests)**         | Runs `npm test` -- all frontend tests once.                                                   |
+| **Vitest (Watch Mode)**        | Runs `npm run test:watch` -- re-runs tests on file change.                                    |
+| **Cargo Test (Rust Backend)**  | Runs `cargo test` in `src-tauri/`. All 222+ Rust unit tests.                                  |
+| **Cargo Check (Rust Compile)** | Runs `cargo check` in `src-tauri/`. Fast compile check without building.                      |
+| **Tauri Build (Production)**   | Runs `npx tauri build` -- creates the production `.dmg`/`.exe`/`.deb`/`.AppImage`.            |
+
+### rust-analyzer Setup
+
+The `.vscode/settings.json` configures rust-analyzer to find the Cargo workspace at `src-tauri/Cargo.toml`. If you see "failed to discover workspace" errors, ensure rust-analyzer is pointed at the right path:
+
+```json
+"rust-analyzer.linkedProjects": ["src-tauri/Cargo.toml"]
+```
+
+### Common Dev Workflows
+
+| Task                  | Command                                  |
+| --------------------- | ---------------------------------------- |
+| Run the app locally   | `npx tauri dev`                          |
+| Check Rust compiles   | `cd src-tauri && cargo check`            |
+| Run all tests         | `npm test && cd src-tauri && cargo test` |
+| Format frontend files | `npx prettier --write src/`              |
+| Production build      | `npx tauri build`                        |
 
 ---
 
@@ -92,6 +156,10 @@ Display DJ is a system tray app built with [Tauri v2](https://v2.tauri.app/). A 
 
 ```
 display-dj2/
+├── .vscode/                      # VS Code settings, launch configs, extension recs
+│   ├── launch.json               # Debug/run configurations (Tauri dev, tests, build)
+│   ├── settings.json             # Editor settings (formatter, rust-analyzer path)
+│   └── extensions.json           # Recommended extensions
 ├── src/                          # Frontend (React 18 + TypeScript)
 │   ├── main.tsx                  # Entry point: mounts React into <div id="root">
 │   ├── App.tsx                   # Root component: all state, data fetching, layout
