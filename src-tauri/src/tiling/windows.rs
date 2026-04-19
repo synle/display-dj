@@ -574,9 +574,27 @@ fn execute_restore(app: &AppHandle) {
     }
 }
 
+/// Guard to prevent concurrent expose runs. If expose is already in progress,
+/// subsequent calls are ignored until the first one finishes.
+static EXPOSE_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Execute the exposé command. Lays out all on-screen windows in a grid.
 /// Exposé: spread all windows across displays using shared plan_expose logic.
+/// Debounced: ignores calls if expose is already running.
 pub fn execute_expose(app: &AppHandle) {
+    if EXPOSE_RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        dbg_log(app, "tiling_win: expose — skipped (already running)");
+        return;
+    }
+    // Ensure the flag is cleared when we exit, even on early returns
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            EXPOSE_RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    let _guard = Guard;
+
     let (max_per_display, gap, spread) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
@@ -653,8 +671,19 @@ pub fn execute_expose(app: &AppHandle) {
 }
 
 /// App Exposé: target app's windows on first displays, others on remaining.
-/// Uses shared plan_expose_app logic.
+/// Uses shared plan_expose_app logic. Debounced: shares the same guard as expose.
 pub fn execute_expose_app(app: &AppHandle) {
+    if EXPOSE_RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        dbg_log(app, "tiling_win: app_expose — skipped (already running)");
+        return;
+    }
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            EXPOSE_RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    let _guard = Guard;
     let (max_per_display, gap, spread) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {

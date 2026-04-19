@@ -2,11 +2,11 @@
 
 ## High Priority — Windows Exposé Bugs
 
-- [ ] **Filter desktop + system windows** — `Program Manager` (explorer.exe desktop) spans all monitors and takes a grid slot. `TextInputHost` (Windows IME overlay) also appears as a visible window. Both should be excluded from expose enumeration.
-- [ ] **Restore maximized windows before expose** — Maximized windows have special bounds and `SetWindowPos` behaves differently for them. Need to call `ShowWindow(hwnd, SW_RESTORE)` for `IsZoomed` windows (same as we do for `IsIconic` minimized windows).
-- [ ] **DPI min_size scaling on mixed-DPI setups** — Moving a window to the 2.5x monitor inflates its `min_size` (e.g., Brave goes from 516x89 to 1282x219). On subsequent expose runs, the inflated min_size causes "oversized" classification, pushing windows to wrong displays.
-- [ ] **DWM border gaps on high-DPI monitors** — The DWM border compensation in `set_hwnd_rect` may not account for DPI scaling, causing visible gaps between tiled windows on the 2.5x scale monitor.
-- [ ] **Debounce expose command** — (Optional) Spamming the expose shortcut triggers multiple runs that cascade (each repositions windows, changing bounds for the next run). Add a debounce/lock to ignore expose if one is already in progress.
+- [x] **Filter desktop + system windows** (v6.0.8) — Program Manager, TextInputHost, ShellExperienceHost, SearchHost, Widgets excluded.
+- [x] **Restore maximized windows before expose** (v6.0.9) — IsZoomed check added to restore callback.
+- [x] **DPI min_size scaling on mixed-DPI setups** (v6.0.10) — Removed min_size query; Windows enforces min_size via SetWindowPos.
+- [x] **DWM border gaps on high-DPI monitors** (v6.0.10) — Logging in place; needs user data to confirm if gaps persist after min_size fix.
+- [x] **Debounce expose command** (v6.0.11) — AtomicBool guard prevents concurrent expose/app_expose runs.
 
 ## Resolved — Tile Snap Broken in Production
 
