@@ -1,6 +1,14 @@
 # TODO - Feature Improvements
 
-## High Priority — Tile Snap Broken in Production
+## High Priority — Windows Exposé Bugs
+
+- [ ] **Filter desktop + system windows** — `Program Manager` (explorer.exe desktop) spans all monitors and takes a grid slot. `TextInputHost` (Windows IME overlay) also appears as a visible window. Both should be excluded from expose enumeration.
+- [ ] **Restore maximized windows before expose** — Maximized windows have special bounds and `SetWindowPos` behaves differently for them. Need to call `ShowWindow(hwnd, SW_RESTORE)` for `IsZoomed` windows (same as we do for `IsIconic` minimized windows).
+- [ ] **DPI min_size scaling on mixed-DPI setups** — Moving a window to the 2.5x monitor inflates its `min_size` (e.g., Brave goes from 516x89 to 1282x219). On subsequent expose runs, the inflated min_size causes "oversized" classification, pushing windows to wrong displays.
+- [ ] **DWM border gaps on high-DPI monitors** — The DWM border compensation in `set_hwnd_rect` may not account for DPI scaling, causing visible gaps between tiled windows on the 2.5x scale monitor.
+- [ ] **Debounce expose command** — (Optional) Spamming the expose shortcut triggers multiple runs that cascade (each repositions windows, changing bounds for the next run). Add a debounce/lock to ignore expose if one is already in progress.
+
+## Resolved — Tile Snap Broken in Production
 
 - [x] **Replace CGEventTap with NSEvent Global Monitor** (resolved 2026-04-18) — `CGEventTap` silently fails in production `.app` bundles on macOS Sequoia. `CGEventTapEnable` returns false despite `AXIsProcessTrusted()=true`. The tap receives mouse_down/up but **never delivers mouse_dragged**, making Tile Snap non-functional. Works fine in dev mode (bare binary inherits terminal trust). Root cause: macOS treats bundled `.app` ad-hoc signed processes as low-trust in the Quartz Window Server. **Option 1 (primary):** Replace with `NSEvent.addGlobalMonitorForEvents(matching:handler:)` — higher-level Cocoa API that macOS trusts from `.app` bundles, delivers drag events, listen-only, no special signing needed. **Option 2 (complementary):** Sign with free Apple Development certificate from Xcode for stable TCC designated requirements. Can combine with Option 1.
 
