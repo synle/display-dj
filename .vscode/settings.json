@@ -1,4 +1,13 @@
 {
+  "terminal.integrated.env.osx": {
+    "NODE_OPTIONS": "--max-old-space-size=4096"
+  },
+  "terminal.integrated.env.linux": {
+    "NODE_OPTIONS": "--max-old-space-size=4096"
+  },
+  "terminal.integrated.env.windows": {
+    "NODE_OPTIONS": "--max-old-space-size=4096"
+  },
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "[rust]": {

@@ -8,10 +8,7 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["tauri", "dev"],
       "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "env": {
-        "NODE_OPTIONS": "--max-old-space-size=4096"
-      }
+      "console": "integratedTerminal"
     },
     {
       "name": "Vite Dev (Frontend Only)",
@@ -65,10 +62,7 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["tauri", "build"],
       "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "env": {
-        "NODE_OPTIONS": "--max-old-space-size=4096"
-      }
+      "console": "integratedTerminal"
     }
   ]
 }
