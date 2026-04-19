@@ -1188,7 +1188,8 @@ unsafe fn create_overlay_window() -> *mut c_void {
     let _: () = msg_send![window, setOpaque: false];
     let _: () = msg_send![window, setHasShadow: false];
     // NSStatusWindowLevel = 25 -- above dragged windows
-    let _: () = msg_send![window, setLevel: 25i64];
+    // kCGScreenSaverWindowLevel (1000) — above all normal windows including fullscreen
+    let _: () = msg_send![window, setLevel: 1000i64];
     // Click-through: mouse events pass through to windows below
     let _: () = msg_send![window, setIgnoresMouseEvents: true];
     let _: () = msg_send![window, setReleasedWhenClosed: false];
@@ -1221,7 +1222,7 @@ unsafe fn create_colored_overlay(r: f64, g: f64, b: f64, alpha: f64) -> *mut c_v
     let _: () = msg_send![window, setBackgroundColor: color];
     let _: () = msg_send![window, setOpaque: false];
     let _: () = msg_send![window, setHasShadow: false];
-    let _: () = msg_send![window, setLevel: 24i64]; // just below snap overlay (25)
+    let _: () = msg_send![window, setLevel: 999i64]; // just below snap overlay (1000)
     let _: () = msg_send![window, setIgnoresMouseEvents: true];
     let _: () = msg_send![window, setReleasedWhenClosed: false];
     window as *mut c_void
@@ -1519,6 +1520,10 @@ struct SnapState {
     drag_start_window_size: Option<(f64, f64)>,
     current_layout: Option<TilingLayout>,
     current_display: usize,
+    /// The pre-calculated target rect for the current snap zone.
+    /// Set when the overlay is shown, used directly on mouse_up to
+    /// move the window — no re-detection or recalculation needed.
+    current_target_rect: Option<Rect>,
     displays: Vec<Rect>,
     half_ratio: u32,
     third_ratio: u32,
@@ -1606,6 +1611,7 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
             state.drag_start_window_pos = None;
             state.drag_start_window_size = None;
             state.current_layout = None;
+            state.current_target_rect = None;
             // Drop zone indicators are NOT shown here — they only appear
             // once we confirm the window is actually moving (title bar drag),
             // not on every click or resize.
@@ -1755,6 +1761,7 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                             w: target.width,
                             h: target.height,
                         });
+                        state.current_target_rect = Some(target);
                     }
                 }
                 None => {
@@ -1768,70 +1775,41 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
         }
 
         NS_EVENT_TYPE_LEFT_MOUSE_UP => {
-            let was_in_zone = state.current_layout;
-            let start_pos = state.drag_start_window_pos;
+            let target_rect = state.current_target_rect.clone();
+            let layout = state.current_layout;
+            let display_idx = state.current_display;
             state.dragging = false;
             state.drag_confirmed = false;
+            state.window_is_moving = false;
             state.current_layout = None;
+            state.current_target_rect = None;
 
             // Hide overlay and zone indicators
             dispatch_overlay(OverlayCmd::Hide);
             dispatch_overlay(OverlayCmd::HideZones);
 
-            if let Some(layout) = was_in_zone {
-                let (window_moved, move_detail) = unsafe {
-                    get_focused_window().map_or((true, "no focused window — assuming moved".to_string()), |w| {
-                        let cur_pos = get_window_rect(&w).map(|r| (r.x, r.y));
-                        match (start_pos, cur_pos) {
-                            (Some((sx, sy)), Some((cx, cy))) => {
-                                let dx = (cx - sx).abs();
-                                let dy = (cy - sy).abs();
-                                let moved = dx > 10.0 || dy > 10.0;
-                                (moved, format!("start=({:.0},{:.0}) end=({:.0},{:.0}) dx={:.0} dy={:.0}", sx, sy, cx, cy, dx, dy))
-                            }
-                            (None, _) => (true, "no start pos — assuming moved".to_string()),
-                            (_, None) => (true, "no current pos — assuming moved".to_string()),
-                        }
-                    })
-                };
-
+            // If we have a target rect from the zone detection, just move
+            // the window there directly. No re-detection, no recalculation.
+            // The target rect is exactly what the overlay preview showed.
+            if let (Some(rect), Some(layout)) = (target_rect, layout) {
                 if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
                     crate::config::write_debug_log(
                         &dbg_state,
                         &format!(
-                            "tile_snap: mouse_up — layout={:?}, window_moved={}, detail=[{}], cursor=({:.0},{:.0})",
-                            layout, window_moved, move_detail, cursor.x, cursor.y,
+                            "tile_snap: snapping — layout={:?}, display={}, target=({:.0},{:.0} {:.0}x{:.0}), cursor=({:.0},{:.0})",
+                            layout, display_idx, rect.x, rect.y, rect.width, rect.height, cursor.x, cursor.y,
                         ),
                     );
                 }
-
-                if window_moved {
-                    let layout_str = match layout {
-                        TilingLayout::LeftHalf => "leftHalf",
-                        TilingLayout::RightHalf => "rightHalf",
-                        TilingLayout::Maximize => "maximize",
-                        TilingLayout::TopLeftQuarter => "topLeftQuarter",
-                        TilingLayout::TopRightQuarter => "topRightQuarter",
-                        TilingLayout::BottomLeftQuarter => "bottomLeftQuarter",
-                        TilingLayout::BottomRightQuarter => "bottomRightQuarter",
-                        _ => return,
-                    };
-                    if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
-                        let d = &state.displays[state.current_display];
-                        crate::config::write_debug_log(
-                            &dbg_state,
-                            &format!(
-                                "tile_snap: executing tile — layout={}, display={} ({:.0},{:.0} {:.0}x{:.0}), cursor=({:.0},{:.0})",
-                                layout_str, state.current_display, d.x, d.y, d.width, d.height, cursor.x, cursor.y,
-                            ),
-                        );
+                // Move the window on a background thread (AX API calls)
+                let app = ctx.app.clone();
+                std::thread::spawn(move || {
+                    unsafe {
+                        if let Some(window) = get_focused_window() {
+                            set_window_rect(&window, &rect);
+                        }
                     }
-                    let app = ctx.app.clone();
-                    let ls = layout_str.to_string();
-                    std::thread::spawn(move || {
-                        execute_tile(&app, &ls);
-                    });
-                }
+                });
             } else {
                 if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
                     crate::config::write_debug_log(
@@ -1937,6 +1915,7 @@ pub fn start_tile_snap(app: AppHandle) {
             drag_start_window_size: None,
             current_layout: None,
             current_display: 0,
+            current_target_rect: None,
             displays: displays.clone(),
             half_ratio: 50,
             third_ratio: 33,
@@ -2234,5 +2213,95 @@ mod tests {
         ];
         let result = detect_snap_zone_macos(5.0, 1420.0, &displays, 18.0, 18.0, 50.0);
         assert_eq!(result, Some((TilingLayout::BottomLeftQuarter, 0)));
+    }
+
+    // --- build_snap_zones tests ---
+
+    /// Zone rectangles match the visual drop zone indicators exactly.
+    #[test]
+    fn test_build_snap_zones_single_display() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        let zones = build_snap_zones(&displays, 18.0, 18.0, 50.0);
+        // 4 corners + 3 edges = 7 zones per display
+        assert_eq!(zones.len(), 7);
+        // First 4 are corners
+        assert_eq!(zones[0].1, TilingLayout::TopLeftQuarter);
+        assert_eq!(zones[1].1, TilingLayout::TopRightQuarter);
+        assert_eq!(zones[2].1, TilingLayout::BottomLeftQuarter);
+        assert_eq!(zones[3].1, TilingLayout::BottomRightQuarter);
+        // Then edges
+        assert_eq!(zones[4].1, TilingLayout::Maximize);
+        assert_eq!(zones[5].1, TilingLayout::LeftHalf);
+        assert_eq!(zones[6].1, TilingLayout::RightHalf);
+    }
+
+    /// Three monitors produce 21 zones (7 per display).
+    #[test]
+    fn test_build_snap_zones_three_displays() {
+        let displays = three_monitors();
+        let zones = build_snap_zones(&displays, 18.0, 18.0, 50.0);
+        assert_eq!(zones.len(), 21);
+    }
+
+    /// Top-right corner rect of D0 has correct position and size.
+    #[test]
+    fn test_build_snap_zones_corner_rect() {
+        let displays = vec![rect(100.0, 200.0, 1920.0, 1080.0)];
+        let zones = build_snap_zones(&displays, 18.0, 18.0, 50.0);
+        // TopRightQuarter is zones[1]
+        let (r, layout, idx) = &zones[1];
+        assert_eq!(*layout, TilingLayout::TopRightQuarter);
+        assert_eq!(*idx, 0);
+        assert!((r.x - (100.0 + 1920.0 - 50.0)).abs() < 0.01);
+        assert!((r.y - 200.0).abs() < 0.01);
+        assert!((r.width - 50.0).abs() < 0.01);
+        assert!((r.height - 50.0).abs() < 0.01);
+    }
+
+    /// Right edge rect spans full display height.
+    #[test]
+    fn test_build_snap_zones_right_edge_rect() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        let zones = build_snap_zones(&displays, 18.0, 18.0, 50.0);
+        // RightHalf is zones[6]
+        let (r, layout, _) = &zones[6];
+        assert_eq!(*layout, TilingLayout::RightHalf);
+        assert!((r.x - (1920.0 - 18.0)).abs() < 0.01);
+        assert!((r.y - 0.0).abs() < 0.01);
+        assert!((r.width - 18.0).abs() < 0.01);
+        assert!((r.height - 1080.0).abs() < 0.01);
+    }
+
+    /// Adjacent displays: cursor just inside D0's right edge → RightHalf D0.
+    /// Cursor just inside D1's left edge → LeftHalf D1. No overlap confusion.
+    #[test]
+    fn test_snap_zone_adjacent_no_overlap() {
+        let displays = vec![
+            rect(0.0, 0.0, 1000.0, 800.0),
+            rect(1000.0, 0.0, 1000.0, 800.0),
+        ];
+        // 1px inside D0's right edge zone (x=983, zone starts at 982)
+        let r1 = detect_snap_zone_macos(983.0, 400.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(r1, Some((TilingLayout::RightHalf, 0)));
+        // 1px inside D1's left edge zone (x=1001)
+        let r2 = detect_snap_zone_macos(1001.0, 400.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(r2, Some((TilingLayout::LeftHalf, 1)));
+    }
+
+    /// Cursor outside all displays → None.
+    #[test]
+    fn test_snap_zone_outside_all_displays() {
+        let displays = three_monitors();
+        let result = detect_snap_zone_macos(5000.0, 5000.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, None);
+    }
+
+    /// Corner takes priority over edge when both overlap.
+    #[test]
+    fn test_snap_zone_corner_beats_edge() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        // Point at (5, 5) — inside top-left corner (50x50) AND top edge AND left edge
+        let result = detect_snap_zone_macos(5.0, 5.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::TopLeftQuarter, 0)));
     }
 }
