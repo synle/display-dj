@@ -733,13 +733,19 @@ fn set_window_rect_via_ax(win_info: &WindowInfo, rect: &Rect) {
 
 /// Spread all windows into grids using the shared plan_expose logic.
 fn spread_expose(app: &AppHandle) {
-    let (max_per_display, gap, spread) = {
+    let (max_per_display, gap, spread, expose_min_w, expose_min_h) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
             Err(_) => return,
         };
-        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
+        (
+            (prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize,
+            prefs.tiling.gap,
+            prefs.tiling.expose_layout_strategy == "spread",
+            prefs.tiling.expose_min_width as f64,
+            prefs.tiling.expose_min_height as f64,
+        )
     };
 
     // Normalize: unminimize and un-fullscreen all windows first
@@ -769,7 +775,10 @@ fn spread_expose(app: &AppHandle) {
         return;
     }
 
-    let placements = plan_expose(&all_windows, &displays, max_per_display, gap as f64, spread);
+    // macOS NSScreen returns points (logical pixels) — no DPI scaling needed
+    let min_cell_sizes: Vec<(f64, f64)> = displays.iter().map(|_| (expose_min_w, expose_min_h)).collect();
+
+    let placements = plan_expose(&all_windows, &displays, max_per_display, gap as f64, spread, &min_cell_sizes);
     for p in &placements {
         set_window_rect_by_id(p.owner_pid, p.window_id as u32, &p.target);
     }
@@ -1006,13 +1015,19 @@ pub fn execute_expose_app(app: &AppHandle) {
 /// App Exposé: target app's windows on first displays, others on remaining.
 /// Uses shared plan_expose_app logic.
 fn spread_expose_app(app: &AppHandle) {
-    let (max_per_display, gap, spread) = {
+    let (max_per_display, gap, spread, expose_min_w, expose_min_h) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
             Err(_) => return,
         };
-        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
+        (
+            (prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize,
+            prefs.tiling.gap,
+            prefs.tiling.expose_layout_strategy == "spread",
+            prefs.tiling.expose_min_width as f64,
+            prefs.tiling.expose_min_height as f64,
+        )
     };
 
     // Identify the target app before normalization (frontmost window)
@@ -1049,7 +1064,10 @@ fn spread_expose_app(app: &AppHandle) {
         return;
     }
 
-    let placements = plan_expose_app(&all_windows, target_pid, &displays, max_per_display, gap as f64, spread);
+    // macOS NSScreen returns points (logical pixels) — no DPI scaling needed
+    let min_cell_sizes: Vec<(f64, f64)> = displays.iter().map(|_| (expose_min_w, expose_min_h)).collect();
+
+    let placements = plan_expose_app(&all_windows, target_pid, &displays, max_per_display, gap as f64, spread, &min_cell_sizes);
     for p in &placements {
         set_window_rect_by_id(p.owner_pid, p.window_id as u32, &p.target);
     }
