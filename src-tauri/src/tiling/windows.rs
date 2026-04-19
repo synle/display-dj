@@ -24,7 +24,7 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowTextW,
-    GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetWindowPos, ShowWindow, HWND_TOP,
+    GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, SetWindowPos, ShowWindow, HWND_TOP,
     SWP_NOZORDER, SW_RESTORE,
 };
 
@@ -761,11 +761,14 @@ pub fn execute_expose_app(app: &AppHandle) {
     ));
 }
 
-/// Restore all minimized (iconic) windows before exposé layout.
+/// Restore all minimized and maximized windows before exposé layout.
+/// Minimized windows need to be restored so they appear in the grid.
+/// Maximized windows need to be restored because SetWindowPos behaves
+/// differently for maximized windows and their bounds span the full work area.
 fn restore_minimized_windows() {
     unsafe {
         unsafe extern "system" fn restore_callback(hwnd: HWND, _lparam: LPARAM) -> BOOL {
-            if IsIconic(hwnd).as_bool() && IsWindowVisible(hwnd).as_bool() {
+            if (IsIconic(hwnd).as_bool() || IsZoomed(hwnd).as_bool()) && IsWindowVisible(hwnd).as_bool() {
                 let _ = ShowWindow(hwnd, SW_RESTORE);
             }
             TRUE
