@@ -10,6 +10,14 @@ use super::{
     plan_layout_preset, Rect, TilingLayout, WindowInfo, WindowState,
 };
 use tauri::{AppHandle, Manager};
+
+/// Write a message to the debug log file (visible in production builds).
+/// `log::info!` only goes to stdout which is invisible in Windows GUI apps.
+fn dbg_log(app: &AppHandle, msg: &str) {
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        crate::config::write_debug_log(&state, msg);
+    }
+}
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT, TRUE};
 use windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
@@ -492,17 +500,13 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     let display_info: Vec<String> = displays.iter().enumerate().map(|(i, d)| {
         format!("D{}({},{} {}x{})", i, d.x as i32, d.y as i32, d.width as i32, d.height as i32)
     }).collect();
-    log::info!(
+    dbg_log(app, &format!(
         "tiling_win: tile '{}' — layout={}, displays=[{}], window='{}' ({}), \
          visible_rect=({},{} {}x{}), dwm_border=({},{},{},{}), prefs=(half={}, third={}, gap={})",
-        layout_str,
-        layout_str,
-        display_info.join(", "),
-        title, process,
+        layout_str, layout_str, display_info.join(", "), title, process,
         win_rect.x as i32, win_rect.y as i32, win_rect.width as i32, win_rect.height as i32,
-        bl, bt, br, bb,
-        half_ratio, third_ratio, gap,
-    );
+        bl, bt, br, bb, half_ratio, third_ratio, gap,
+    ));
 
     // Tile on the display the window is currently on
     let target_display = find_display_for_window(&win_rect, &displays);
@@ -523,12 +527,11 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
 
     // Calculate and apply target rect
     let target = calculate_target_rect(layout, &displays[target_display], half_ratio, third_ratio, gap);
-    log::info!(
+    dbg_log(app, &format!(
         "tiling_win: target_rect — display={}, layout={}, rect=({},{} {}x{})",
-        target_display,
-        layout_str,
+        target_display, layout_str,
         target.x as i32, target.y as i32, target.width as i32, target.height as i32,
-    );
+    ));
     set_hwnd_rect(hwnd, &target);
 }
 
@@ -598,20 +601,19 @@ pub fn execute_expose(app: &AppHandle) {
     let total_cap = max_per_display * displays.len();
     let cols = (max_per_display as f64).sqrt().ceil() as usize;
     let rows = if cols > 0 { (max_per_display + cols - 1) / cols } else { 0 };
-    log::info!(
+    dbg_log(app, &format!(
         "tiling_win: expose — {} windows (cap={}), {} displays=[{}], grid={}x{} (max_per_display={}), gap={}, spread={}",
         all_windows.len(), total_cap, displays.len(), display_info.join(", "),
         cols, rows, max_per_display, gap, spread,
-    );
-    // Log all discovered windows
+    ));
     for (i, w) in all_windows.iter().enumerate() {
         let min_str = w.min_size.map_or("none".to_string(), |(mw, mh)| format!("{}x{}", mw as i32, mh as i32));
-        log::info!(
+        dbg_log(app, &format!(
             "tiling_win: expose_window[{}] — '{}' (pid={}), bounds=({},{} {}x{}), min_size={}",
             i, w.owner_name, w.owner_pid,
             w.bounds.x as i32, w.bounds.y as i32, w.bounds.width as i32, w.bounds.height as i32,
             min_str,
-        );
+        ));
     }
 
     let placements = plan_expose(&all_windows, &displays, max_per_display, gap as f64, spread);
@@ -623,20 +625,20 @@ pub fn execute_expose(app: &AppHandle) {
         let display_idx = displays.iter().position(|d| {
             p.target.x >= d.x && p.target.x < d.x + d.width
         }).unwrap_or(0);
-        log::info!(
+        dbg_log(app, &format!(
             "tiling_win: expose_place[{}] — '{}' ({}), display={}, target=({},{} {}x{})",
             i, title, process, display_idx,
             p.target.x as i32, p.target.y as i32, p.target.width as i32, p.target.height as i32,
-        );
+        ));
         set_hwnd_rect(hwnd, &p.target);
         unsafe { let _ = BringWindowToTop(hwnd); }
     }
     let placed = placements.len();
     let capped = all_windows.len().saturating_sub(placed);
-    log::info!(
+    dbg_log(app, &format!(
         "tiling_win: expose_done — placed={}, capped={} (total_windows={}), displays={}",
         placed, capped, all_windows.len(), displays.len(),
-    );
+    ));
 }
 
 /// App Exposé: target app's windows on first displays, others on remaining.
@@ -689,19 +691,19 @@ pub fn execute_expose_app(app: &AppHandle) {
     let app_window_count = all_windows.iter().filter(|w| w.owner_pid == target_pid as i32).count();
     let other_window_count = all_windows.len() - app_window_count;
     let total_cap = max_per_display * displays.len();
-    log::info!(
+    dbg_log(app, &format!(
         "tiling_win: app_expose — app='{}' (pid={}), app_windows={}, other_windows={}, cap={}, \
          {} displays=[{}], max_per_display={}, gap={}, spread={}",
         target_app, target_pid, app_window_count, other_window_count, total_cap,
         displays.len(), display_info.join(", "), max_per_display, gap, spread,
-    );
+    ));
     for (i, w) in all_windows.iter().enumerate() {
         let is_target = if w.owner_pid == target_pid as i32 { "TARGET" } else { "other" };
-        log::info!(
+        dbg_log(app, &format!(
             "tiling_win: app_expose_window[{}] — [{}] '{}' (pid={}), bounds=({},{} {}x{})",
             i, is_target, w.owner_name, w.owner_pid,
             w.bounds.x as i32, w.bounds.y as i32, w.bounds.width as i32, w.bounds.height as i32,
-        );
+        ));
     }
 
     // How many displays the app's windows will consume
@@ -713,12 +715,12 @@ pub fn execute_expose_app(app: &AppHandle) {
     let app_slots_total = app_displays_used * max_per_display;
     let app_slots_unused = app_slots_total.saturating_sub(app_window_count);
     let other_slots_total = displays_for_others * max_per_display;
-    log::info!(
+    dbg_log(app, &format!(
         "tiling_win: app_expose_plan — app_windows={} → uses {} display(s) ({} slots, {} unused), \
          other_windows={} → {} display(s) remaining ({} slots)",
         app_window_count, app_displays_used, app_slots_total, app_slots_unused,
         other_window_count, displays_for_others, other_slots_total,
-    );
+    ));
 
     let placements = plan_expose_app(&all_windows, target_pid as i32, &displays, max_per_display, gap as f64, spread);
     let mut app_placed = 0;
@@ -733,20 +735,20 @@ pub fn execute_expose_app(app: &AppHandle) {
         let display_idx = displays.iter().position(|d| {
             p.target.x >= d.x && p.target.x < d.x + d.width
         }).unwrap_or(0);
-        log::info!(
+        dbg_log(app, &format!(
             "tiling_win: app_expose_place[{}] — [{}] '{}' ({}), display={}, target=({},{} {}x{})",
             i, tag, title, process, display_idx,
             p.target.x as i32, p.target.y as i32, p.target.width as i32, p.target.height as i32,
-        );
+        ));
         set_hwnd_rect(hwnd, &p.target);
         unsafe { let _ = BringWindowToTop(hwnd); }
     }
-    log::info!(
+    dbg_log(app, &format!(
         "tiling_win: app_expose_done — placed={} (app={}, other={}), \
          displays={} (app_used={}, other_used={})",
         placements.len(), app_placed, other_placed,
         displays.len(), app_displays_used, displays_for_others,
-    );
+    ));
 }
 
 /// Restore all minimized (iconic) windows before exposé layout.
