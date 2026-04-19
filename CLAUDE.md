@@ -56,7 +56,7 @@ Other version fields:
 
 - `package.json` → `"version"`: Set to `0.0.0`. Not used by the app (not published to npm).
 - `Cargo.toml` → `version`: Set to `0.0.0`. Not used (the crate is not published).
-- Release versioning is driven by git tags (`v*` triggers `release.yml`).
+- Release versioning is driven by git tags (`v*` triggers `release-official.yml`).
 
 ## Testing
 
@@ -214,7 +214,7 @@ chmod 755 display-dj-server-*
 ### CI
 
 - **`build.yml`**: Runs tests and builds on all platforms for every push and PR. On PRs, posts a comment with artifact download links.
-- **`release.yml`**: Triggered by `v*` tags or manual `workflow_dispatch`. Deletes any existing release/tag first (`--cleanup-tag`), then builds all platforms (dmg, nsis, deb, appimage only — no tar.gz/msi/rpm). Release notes are auto-generated from commit history (top 10 commits since last tag, with full diff link). Custom notes can be prepended via the `release_notes` workflow input. Sets `TAURI_RELEASE=true` so builds show clean version without `[beta]` suffix.
+- **`release-official.yml`**: Triggered by `v*` tags or manual `workflow_dispatch`. Deletes any existing release/tag first (`--cleanup-tag`), then builds all platforms (dmg, nsis, deb, appimage only — no tar.gz/msi/rpm). Release notes are auto-generated from commit history (top 10 commits since last tag, with full diff link). Custom notes can be prepended via the `release_notes` workflow input. Sets `TAURI_RELEASE=true` so builds show clean version without `[beta]` suffix.
 - **`release-beta.yml`**: Manual `workflow_dispatch` only. Takes an optional `sha` input (defaults to HEAD). Creates a prerelease tagged `release-beta-<short_sha>`. Does not set `TAURI_RELEASE` so builds show the `[beta - <sha>]` suffix. Useful for testing builds from any commit before a formal release.
 
 ## GitHub Raw File URLs
