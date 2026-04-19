@@ -196,32 +196,19 @@ fn get_dwm_border(hwnd: HWND) -> (i32, i32, i32, i32) {
     )
 }
 
-/// Move and resize a window to the given rect, compensating for invisible
-/// DWM borders. The rect specifies the desired *visible* frame position and
-/// size. Internally, `SetWindowPos` operates on the full window rect (which
-/// includes invisible borders), so we expand the position/size by the border
-/// offsets so the visible frame lands exactly where requested.
+/// Move and resize a window to the given rect.
+/// Option A: No DWM border compensation — pass raw grid rect to SetWindowPos.
+/// Invisible borders overlap between adjacent windows, eliminating gaps.
+/// Visible frame is ~7px inset from cell boundary on all sides.
 fn set_hwnd_rect(hwnd: HWND, rect: &Rect) {
-    let (bl, bt, br, bb) = get_dwm_border(hwnd);
-    let swp_x = rect.x as i32 - bl;
-    let swp_y = rect.y as i32 - bt;
-    let swp_w = rect.width as i32 + bl + br;
-    let swp_h = rect.height as i32 + bt + bb;
-    log::info!(
-        "tiling_win: set_hwnd_rect — target=({},{} {}x{}), dwm_border=({},{},{},{}), \
-         swp_args=({},{} {}x{})",
-        rect.x as i32, rect.y as i32, rect.width as i32, rect.height as i32,
-        bl, bt, br, bb,
-        swp_x, swp_y, swp_w, swp_h,
-    );
     unsafe {
         let _ = SetWindowPos(
             hwnd,
             HWND_TOP,
-            swp_x,
-            swp_y,
-            swp_w,
-            swp_h,
+            rect.x as i32,
+            rect.y as i32,
+            rect.width as i32,
+            rect.height as i32,
             SWP_NOZORDER,
         );
     }
