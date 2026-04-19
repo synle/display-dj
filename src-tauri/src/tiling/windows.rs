@@ -803,11 +803,9 @@ fn restore_minimized_windows() {
 
         let _ = EnumWindows(Some(restore_callback), LPARAM(0));
     }
-    // Pause to let Windows finish restore/un-maximize animations.
-    // 1 second is needed because un-maximize animations take longer than
-    // un-minimize. Without this, window bounds are read mid-animation
-    // and the first expose run has incorrect layout.
-    std::thread::sleep(std::time::Duration::from_millis(1000));
+    // No sleep needed — SetWindowPos will snap windows to their target rects
+    // regardless of animation state. Window bounds are not used for placement
+    // (grid targets come from display size / grid dimensions).
 }
 
 /// Execute a layout preset by name or index. Enumerates windows, matches by
