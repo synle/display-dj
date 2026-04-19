@@ -1538,6 +1538,10 @@ struct SnapState {
     /// Whether the drag has moved more than the confirmation threshold (10px).
     /// Until confirmed, snap zone detection is skipped.
     drag_confirmed: bool,
+    /// Whether the focused window's position has changed since drag start.
+    /// Only true for title-bar drags (window moves). False for resizes,
+    /// content drags, or clicks. Snap zones only activate when this is true.
+    window_is_moving: bool,
     /// Cursor position at mouse_down — used for the drag confirmation threshold.
     drag_start_cursor: Option<(f64, f64)>,
     /// Window position at mouse_down — captured lazily on first confirmed drag
@@ -1605,19 +1609,13 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
         NS_EVENT_TYPE_LEFT_MOUSE_DOWN => {
             state.dragging = true;
             state.drag_confirmed = false;
+            state.window_is_moving = false;
             state.drag_start_cursor = Some((cursor.x, cursor.y));
             state.drag_start_window_pos = None;
             state.current_layout = None;
-
-            // Show drop zone indicators immediately for visual feedback.
-            if !state.displays.is_empty() {
-                dispatch_overlay(OverlayCmd::ShowZones {
-                    displays: state.displays.clone(),
-                    side_edge: state.side_edge_trigger,
-                    top_edge: state.top_edge_trigger,
-                    corner: state.corner_trigger,
-                });
-            }
+            // Drop zone indicators are NOT shown here — they only appear
+            // once we confirm the window is actually moving (title bar drag),
+            // not on every click or resize.
         }
 
         NS_EVENT_TYPE_LEFT_MOUSE_DRAGGED => {
@@ -1678,6 +1676,52 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
 
             if state.displays.is_empty() {
                 return;
+            }
+
+            // Check if the window is actually moving (title bar drag) vs
+            // resizing or content drag. Only activate snap for window moves.
+            if !state.window_is_moving {
+                if let Some((sx, sy)) = state.drag_start_window_pos {
+                    let cur_win_pos = unsafe {
+                        get_focused_window().and_then(|w| get_window_rect(&w).map(|r| (r.x, r.y)))
+                    };
+                    if let Some((cx, cy)) = cur_win_pos {
+                        let dx = (cx - sx).abs();
+                        let dy = (cy - sy).abs();
+                        if dx > 5.0 || dy > 5.0 {
+                            state.window_is_moving = true;
+                            if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
+                                crate::config::write_debug_log(
+                                    &dbg_state,
+                                    &format!(
+                                        "tile_snap: window_is_moving — start=({:.0},{:.0}), now=({:.0},{:.0})",
+                                        sx, sy, cx, cy,
+                                    ),
+                                );
+                            }
+                            // Now show drop zone indicators
+                            dispatch_overlay(OverlayCmd::ShowZones {
+                                displays: state.displays.clone(),
+                                side_edge: state.side_edge_trigger,
+                                top_edge: state.top_edge_trigger,
+                                corner: state.corner_trigger,
+                            });
+                        }
+                    }
+                } else {
+                    // No start position captured (e.g., no focused window).
+                    // Assume it's a window move if we got this far.
+                    state.window_is_moving = true;
+                    dispatch_overlay(OverlayCmd::ShowZones {
+                        displays: state.displays.clone(),
+                        side_edge: state.side_edge_trigger,
+                        top_edge: state.top_edge_trigger,
+                        corner: state.corner_trigger,
+                    });
+                }
+                if !state.window_is_moving {
+                    return; // not a window move — skip snap zone detection
+                }
             }
 
             let zone = detect_snap_zone_macos(
@@ -1889,6 +1933,7 @@ pub fn start_tile_snap(app: AppHandle) {
         state: std::sync::Mutex::new(SnapState {
             dragging: false,
             drag_confirmed: false,
+            window_is_moving: false,
             drag_start_cursor: None,
             drag_start_window_pos: None,
             current_layout: None,
