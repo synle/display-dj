@@ -1446,7 +1446,12 @@ fn detect_snap_zone_macos(
     let passes: &[bool] = &[false, true]; // false = exact only, true = with margin
     for &allow_overflow in passes {
         for (i, d) in displays.iter().enumerate() {
-            let in_bounds = cx >= d.x && cx < d.x + d.width && cy >= d.y && cy < d.y + d.height;
+            // Use inclusive bounds (<=) on right/bottom edges so that at shared
+            // monitor boundaries, the cursor belongs to BOTH displays. Since we
+            // iterate left-to-right, the left display's right edge wins over the
+            // right display's left edge — which is the correct behavior when
+            // dragging a window toward the boundary from the left.
+            let in_bounds = cx >= d.x && cx <= d.x + d.width && cy >= d.y && cy <= d.y + d.height;
 
             if !allow_overflow && !in_bounds {
                 continue;
@@ -1459,9 +1464,9 @@ fn detect_snap_zone_macos(
                 // Horizontal overflow would bleed into adjacent side-by-side displays.
                 let v_margin = corner.max(top_edge);
                 if cx < d.x
-                    || cx >= d.x + d.width
+                    || cx > d.x + d.width
                     || cy < d.y - v_margin
-                    || cy >= d.y + d.height + v_margin
+                    || cy > d.y + d.height + v_margin
                 {
                     continue;
                 }
@@ -2164,5 +2169,103 @@ mod tests {
         // Position moved significantly, size changed by only 2px (within 3px threshold)
         let cur = rect(200.0, 300.0, 802.0, 601.0);
         assert!(is_window_move(start_pos, start_size, &cur));
+    }
+
+    // --- detect_snap_zone_macos multi-monitor boundary tests ---
+
+    /// Three side-by-side monitors matching the user's setup.
+    fn three_monitors() -> Vec<Rect> {
+        vec![
+            rect(-5120.0, -80.0, 2560.0, 1409.0), // D0: left
+            rect(-2560.0, -80.0, 2560.0, 1409.0), // D1: center
+            rect(0.0, 40.0, 2056.0, 1289.0),      // D2: right
+        ]
+    }
+
+    /// Right edge of D0 at the D0/D1 boundary → RightHalf on D0, not LeftHalf on D1.
+    #[test]
+    fn test_snap_zone_right_edge_d0_at_boundary() {
+        let displays = three_monitors();
+        // Cursor at x=-2560 (exact boundary between D0 and D1)
+        let result = detect_snap_zone_macos(-2560.0, 500.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::RightHalf, 0)));
+    }
+
+    /// Right edge of D1 at the D1/D2 boundary → RightHalf on D1, not LeftHalf on D2.
+    #[test]
+    fn test_snap_zone_right_edge_d1_at_boundary() {
+        let displays = three_monitors();
+        // Cursor at x=0 (exact boundary between D1 and D2)
+        let result = detect_snap_zone_macos(0.0, 500.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::RightHalf, 1)));
+    }
+
+    /// 1px into D1 from D0 → LeftHalf on D1.
+    #[test]
+    fn test_snap_zone_left_edge_d1_just_inside() {
+        let displays = three_monitors();
+        // Cursor at x=-2559 (1px inside D1)
+        let result = detect_snap_zone_macos(-2559.0, 500.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::LeftHalf, 1)));
+    }
+
+    /// Left edge of D0 → LeftHalf on D0.
+    #[test]
+    fn test_snap_zone_left_edge_d0() {
+        let displays = three_monitors();
+        let result = detect_snap_zone_macos(-5120.0, 500.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::LeftHalf, 0)));
+    }
+
+    /// Right edge of D2 (rightmost monitor) → RightHalf on D2.
+    #[test]
+    fn test_snap_zone_right_edge_d2() {
+        let displays = three_monitors();
+        let result = detect_snap_zone_macos(2056.0, 500.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::RightHalf, 2)));
+    }
+
+    /// Top-right corner of D0 at boundary → TopRightQuarter on D0.
+    #[test]
+    fn test_snap_zone_top_right_corner_d0_at_boundary() {
+        let displays = three_monitors();
+        // Cursor at top-right corner of D0 (x=-2560, y=-80)
+        let result = detect_snap_zone_macos(-2560.0, -80.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::TopRightQuarter, 0)));
+    }
+
+    /// Two vertically stacked monitors — boundary between top and bottom.
+    /// Bottom-center of D0 isn't a snap zone (no "bottom half" layout), so the
+    /// cursor falls through to D1 where it matches as top edge (Maximize).
+    #[test]
+    fn test_snap_zone_vertical_boundary_maximize() {
+        let displays = vec![
+            rect(0.0, 0.0, 2560.0, 1440.0),    // top monitor
+            rect(0.0, 1440.0, 2560.0, 1440.0),  // bottom monitor
+        ];
+        // Cursor at y=1440 (exact boundary), center-x
+        let result = detect_snap_zone_macos(1280.0, 1440.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::Maximize, 1)));
+    }
+
+    /// Two vertically stacked monitors — bottom-left corner of top monitor
+    /// at boundary should be BottomLeftQuarter on D0 (corners use at_bottom).
+    #[test]
+    fn test_snap_zone_vertical_boundary_corner() {
+        let displays = vec![
+            rect(0.0, 0.0, 2560.0, 1440.0),    // top monitor
+            rect(0.0, 1440.0, 2560.0, 1440.0),  // bottom monitor
+        ];
+        // Cursor at bottom-left corner of D0 (x=5, y=1440)
+        let result = detect_snap_zone_macos(5.0, 1440.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::BottomLeftQuarter, 0)));
+    }
+
+    /// Cursor in the middle of D1 → no snap zone.
+    #[test]
+    fn test_snap_zone_middle_no_zone() {
+        let displays = three_monitors();
+        let result = detect_snap_zone_macos(-1280.0, 500.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, None);
     }
 }
