@@ -197,18 +197,25 @@ fn get_dwm_border(hwnd: HWND) -> (i32, i32, i32, i32) {
 }
 
 /// Move and resize a window to the given rect.
-/// Option A: No DWM border compensation — pass raw grid rect to SetWindowPos.
-/// Invisible borders overlap between adjacent windows, eliminating gaps.
-/// Visible frame is ~7px inset from cell boundary on all sides.
+/// Option B: Over-expand by DWM border amount so visible frames fill cells
+/// edge-to-edge. Adjacent windows' invisible borders overlap (~14px), but
+/// visible frames touch perfectly with no gaps and no inset.
 fn set_hwnd_rect(hwnd: HWND, rect: &Rect) {
+    let (bl, _bt, br, bb) = get_dwm_border(hwnd);
+    // Expand outward by the border amount on each side.
+    // Top border (bt) is typically 0 on Windows 10/11 (title bar has no invisible border).
+    let swp_x = rect.x as i32 - bl;
+    let swp_y = rect.y as i32; // no top expansion (bt is 0)
+    let swp_w = rect.width as i32 + bl + br;
+    let swp_h = rect.height as i32 + bb; // expand bottom only
     unsafe {
         let _ = SetWindowPos(
             hwnd,
             HWND_TOP,
-            rect.x as i32,
-            rect.y as i32,
-            rect.width as i32,
-            rect.height as i32,
+            swp_x,
+            swp_y,
+            swp_w,
+            swp_h,
             SWP_NOZORDER,
         );
     }
