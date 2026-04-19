@@ -1007,6 +1007,33 @@ pub fn start_tile_snap(app: AppHandle) {
 // Tests (shared layout math — runs on all platforms)
 // ---------------------------------------------------------------------------
 
+/// Check if a window should be excluded from tiling and exposé enumeration.
+/// Filters system/shell windows that appear as visible top-level windows
+/// but are not user application windows. Used on Windows; no-op on other platforms.
+pub(crate) fn should_skip_system_window(process_name: &str, title: &str) -> bool {
+    // Program Manager = the Windows desktop background (explorer.exe)
+    if title == "Program Manager" {
+        return true;
+    }
+    // Windows Input Experience = touch keyboard / emoji picker / IME overlay
+    if process_name == "TextInputHost" {
+        return true;
+    }
+    // Windows Shell Experience Host = Start menu, Action Center, taskbar flyouts
+    if process_name == "ShellExperienceHost" {
+        return true;
+    }
+    // Search UI
+    if process_name == "SearchHost" || process_name == "SearchUI" {
+        return true;
+    }
+    // Widgets
+    if process_name == "Widgets" {
+        return true;
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1990,5 +2017,55 @@ mod tests {
         assert!(placements[0].target.width < 1000.0);
         // Second should be right half (x=960, w=960)
         assert!(placements[1].target.x > 900.0);
+    }
+
+    // --- should_skip_system_window tests ---
+
+    /// Program Manager (Windows desktop) is skipped.
+    #[test]
+    fn test_skip_program_manager() {
+        assert!(should_skip_system_window("explorer", "Program Manager"));
+    }
+
+    /// Regular explorer window (File Explorer) is NOT skipped.
+    #[test]
+    fn test_keep_file_explorer() {
+        assert!(!should_skip_system_window("explorer", "This PC - File Explorer"));
+        assert!(!should_skip_system_window("explorer", "C:\\Users\\test - File Explorer"));
+    }
+
+    /// TextInputHost (Windows IME) is skipped.
+    #[test]
+    fn test_skip_text_input_host() {
+        assert!(should_skip_system_window("TextInputHost", "Windows Input Experience"));
+    }
+
+    /// ShellExperienceHost (Start menu, Action Center) is skipped.
+    #[test]
+    fn test_skip_shell_experience_host() {
+        assert!(should_skip_system_window("ShellExperienceHost", "Start"));
+    }
+
+    /// SearchHost and SearchUI are skipped.
+    #[test]
+    fn test_skip_search() {
+        assert!(should_skip_system_window("SearchHost", "Search"));
+        assert!(should_skip_system_window("SearchUI", "Search"));
+    }
+
+    /// Widgets is skipped.
+    #[test]
+    fn test_skip_widgets() {
+        assert!(should_skip_system_window("Widgets", "Widgets"));
+    }
+
+    /// Normal app windows are NOT skipped.
+    #[test]
+    fn test_keep_normal_windows() {
+        assert!(!should_skip_system_window("chrome", "GitHub - Google Chrome"));
+        assert!(!should_skip_system_window("WindowsTerminal", "Ubuntu-24.04"));
+        assert!(!should_skip_system_window("brave", "Sy's Favorites - Brave"));
+        assert!(!should_skip_system_window("7zFM", "archive.zip"));
+        assert!(!should_skip_system_window("sublime_text", "file.rs"));
     }
 }

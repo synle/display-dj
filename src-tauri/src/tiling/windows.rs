@@ -318,6 +318,8 @@ fn get_window_min_size(hwnd: HWND) -> Option<(f64, f64)> {
     }
 }
 
+use super::should_skip_system_window;
+
 /// Enumerate all visible, non-minimized top-level windows.
 /// Returns a list of WindowInfo with HWND stored as i64.
 fn get_all_windows() -> Vec<WindowInfo> {
@@ -360,6 +362,14 @@ fn get_all_windows() -> Vec<WindowInfo> {
 
             // Get process name for grouping
             let owner_name = get_process_name_from_pid(pid);
+
+            // Get window title as String for filtering
+            let title = String::from_utf16_lossy(&title_buf[..title_len as usize]);
+
+            // Skip system/desktop windows that should not be tiled or exposed
+            if should_skip_system_window(&owner_name, &title) {
+                return TRUE;
+            }
 
             windows.push(WindowInfo {
                 window_id: hwnd.0 as isize as i64,
@@ -807,3 +817,4 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
         }
     }
 }
+
