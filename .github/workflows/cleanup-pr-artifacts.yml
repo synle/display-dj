@@ -10,8 +10,8 @@ concurrency:
 
 jobs:
   cleanup:
-    # https://github.com/synle/gha-workflows/blob/main/.github/workflows/cleanup-pr-artifacts.yml
-    uses: synle/gha-workflows/.github/workflows/cleanup-pr-artifacts.yml@main
+    # https://github.com/synle/workflows/blob/main/.github/workflows/cleanup-pr-artifacts.yml
+    uses: synle/workflows/.github/workflows/cleanup-pr-artifacts.yml@main
     permissions:
       actions: write
     with:

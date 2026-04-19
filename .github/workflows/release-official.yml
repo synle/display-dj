@@ -33,7 +33,7 @@ jobs:
       tag: ${{ steps.pre.outputs.tag }}
       sha: ${{ steps.pre.outputs.sha }}
     steps:
-      - uses: synle/gha-workflows/actions/release/begin-release@main
+      - uses: synle/workflows/actions/release/begin-release@main
         id: pre
         with:
           mode: official
@@ -113,7 +113,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: synle/gha-workflows/actions/release/end-release@main
+      - uses: synle/workflows/actions/release/end-release@main
         with:
           tag: ${{ needs.prepare.outputs.tag }}
           project_name: Display DJ

@@ -36,8 +36,8 @@ concurrency:
 
 jobs:
   cleanup:
-    # https://github.com/synle/gha-workflows/blob/main/.github/workflows/cleanup-releases.yml
-    uses: synle/gha-workflows/.github/workflows/cleanup-releases.yml@main
+    # https://github.com/synle/workflows/blob/main/.github/workflows/cleanup-releases.yml
+    uses: synle/workflows/.github/workflows/cleanup-releases.yml@main
     permissions:
       contents: write
     with:
