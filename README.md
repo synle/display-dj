@@ -165,6 +165,103 @@ Layout presets let you define named configurations that automatically tile speci
 
 Presets are triggered via `command/layout/{name_or_index}` and can be bound to keyboard shortcuts, included in profiles, or triggered from the "Layout Presets" tray submenu. Configure presets by editing `preferences.json` (accessible via "Open App Preferences" in the tray menu) or browse the config directory via "Open App Folder".
 
+## Wallpaper
+
+Display DJ can change your desktop wallpaper via commands that work from keyboard shortcuts, profiles, and night/day schedules.
+
+### Setting a Wallpaper
+
+Use the `command/wallpaper/change/{path}` command in your keyboard shortcuts or profiles. The path must be an absolute path to an image file.
+
+**macOS:**
+
+```json
+"command/wallpaper/change//Users/jane/Pictures/mountain.jpg"
+```
+
+**Windows:**
+
+```json
+"command/wallpaper/change/D:\\Pictures\\mountain.jpg"
+"command/wallpaper/change/C:\\Users\\YourName\\Pictures\\wallpaper.png"
+```
+
+Windows network shares (UNC paths) also work:
+
+```json
+"command/wallpaper/change/\\\\NAS-SERVER\\g\\share\\Wallpapers\\sunset.jpg"
+```
+
+> **Note:** In JSON, backslashes must be doubled (`\\`). The path `\\NAS-SERVER\g\share\Wallpapers\sunset.jpg` becomes `\\\\NAS-SERVER\\g\\share\\Wallpapers\\sunset.jpg` in `preferences.json`.
+
+**Fit modes:** Add a fit mode before the path to control how the image fills the screen: `fill` (default), `fit`, `stretch`, `center`, `tile`.
+
+```json
+"command/wallpaper/change/fit/D:\\Pictures\\wide-banner.jpg"
+```
+
+**Per-monitor wallpaper** (macOS + Windows only):
+
+```json
+"command/wallpaper/change_single/Dell U2723QE/D:\\Pictures\\left-monitor.jpg"
+"command/wallpaper/change_single/builtin/fill//Users/jane/Pictures/laptop.jpg"
+```
+
+The monitor name is matched by case-insensitive substring (e.g., `"Dell"` matches `"Dell U2723QE"`).
+
+### Slideshow
+
+Start a slideshow that cycles through all images in a folder:
+
+```json
+"command/wallpaper/slideshow/D:\\Pictures\\Wallpapers"
+"command/wallpaper/slideshow/\\\\NAS-SERVER\\g\\share\\Wallpapers"
+"command/wallpaper/slideshow//Users/jane/Pictures/rotation"
+```
+
+With explicit interval (minutes) and order (`forward`, `backward`, `random`):
+
+```json
+"command/wallpaper/slideshow/15/random/D:\\Pictures\\Wallpapers"
+"command/wallpaper/slideshow/30/forward/\\\\NAS-SERVER\\g\\share\\Wallpapers"
+```
+
+Stop the active slideshow:
+
+```json
+"command/wallpaper/slideshow_stop"
+```
+
+### Remote Wallpaper Packs
+
+Download a `.zip` of images from a URL and start a slideshow on them:
+
+```json
+"command/wallpaper/slideshow_remote/https://example.com/nature-pack.zip"
+```
+
+The zip is downloaded once (max 500 MB), extracted to the config directory, and the slideshow starts automatically. Subsequent calls with the same URL skip the download if images already exist.
+
+### Slideshow Settings
+
+The Settings panel (General tab) has controls for:
+
+- **Wallpaper Fit** -- dropdown for fill/fit/stretch/center/tile
+- **Enable Slideshow** -- checkbox to start/stop
+- **Folder** -- path to the image folder
+- **Interval** -- hours + minutes dropdowns (minimum 5 minutes)
+- **Order** -- Forward, Backward, or Random
+
+Slideshow can also be configured in `preferences.json` under the `wallpaper` key:
+
+| Setting                              | Default     | Description                                           |
+| ------------------------------------ | ----------- | ----------------------------------------------------- |
+| `wallpaper.fit`                      | `"fill"`    | Default fit mode for wallpaper commands               |
+| `wallpaper.slideshowEnabled`         | `false`     | Whether the slideshow is active                       |
+| `wallpaper.slideshowFolder`          | `""`        | Absolute path to the image folder                     |
+| `wallpaper.slideshowIntervalMinutes` | `30`        | Cycle interval in minutes (minimum 5)                 |
+| `wallpaper.slideshowOrder`           | `"forward"` | Cycle order: `"forward"`, `"backward"`, or `"random"` |
+
 ### Enabling Tiling
 
 1. Open the tray menu and go to **Tiling > Enable Tiling**, or toggle **Enable Window Tiling** in the Settings panel (Tiling tab)
@@ -193,20 +290,22 @@ No special permissions are needed on X11. Tiling uses EWMH window manager hints 
 
 Tiling settings are stored in `preferences.json` under the `tiling` key. They can also be configured via the Settings panel (Tiling tab).
 
-| Setting                | Default    | Range     | Description                                                                                                          |
-| ---------------------- | ---------- | --------- | -------------------------------------------------------------------------------------------------------------------- |
-| `enabled`              | `true`     | --        | Master toggle for all tiling features                                                                                |
-| `halfRatio`            | `50`       | --        | Percentage for half splits (affects halves and quarters)                                                             |
-| `thirdRatio`           | `33`       | --        | Percentage for third splits (center = 100 - 2 x third)                                                               |
-| `gap`                  | `0`        | --        | Padding in points around the tiling area                                                                             |
-| `tileSnapEnabled`      | `true`     | --        | Enable/disable Tile Snap mouse edge snapping (macOS only)                                                            |
-| `sideEdgeTrigger`      | `10`       | 5-50 px   | Tile Snap: width of left/right/bottom edge zone                                                                      |
-| `topEdgeTrigger`       | `10`       | 10-50 px  | Tile Snap: height of top edge zone (maximize)                                                                        |
-| `cornerTrigger`        | `50`       | 25-150 px | Tile Snap: size of corner zone (quarter tiles)                                                                       |
-| `exposeEnabled`        | `true`     | --        | Master toggle for Exposé features                                                                                    |
-| `exposeColumns`        | `3`        | 1-5       | Number of columns in the Exposé grid per display                                                                     |
-| `exposeRows`           | `3`        | 1-5       | Number of rows in the Exposé grid per display                                                                        |
-| `exposeLayoutStrategy` | `"spread"` | --        | `"spread"` distributes windows evenly across displays; `"fill"` packs each display to capacity before using the next |
+| Setting                | Default    | Range      | Description                                                                                                                          |
+| ---------------------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `enabled`              | `true`     | --         | Master toggle for all tiling features                                                                                                |
+| `halfRatio`            | `50`       | --         | Percentage for half splits (affects halves and quarters)                                                                             |
+| `thirdRatio`           | `33`       | --         | Percentage for third splits (center = 100 - 2 x third)                                                                               |
+| `gap`                  | `0`        | --         | Padding in points around the tiling area                                                                                             |
+| `tileSnapEnabled`      | `true`     | --         | Enable/disable Tile Snap mouse edge snapping (macOS only)                                                                            |
+| `sideEdgeTrigger`      | `10`       | 5-50 px    | Tile Snap: width of left/right/bottom edge zone                                                                                      |
+| `topEdgeTrigger`       | `10`       | 10-50 px   | Tile Snap: height of top edge zone (maximize)                                                                                        |
+| `cornerTrigger`        | `50`       | 25-150 px  | Tile Snap: size of corner zone (quarter tiles)                                                                                       |
+| `exposeEnabled`        | `true`     | --         | Master toggle for Exposé features                                                                                                    |
+| `exposeColumns`        | `3`        | 1-5        | Number of columns in the Exposé grid per display                                                                                     |
+| `exposeRows`           | `3`        | 1-5        | Number of rows in the Exposé grid per display                                                                                        |
+| `exposeLayoutStrategy` | `"spread"` | --         | `"spread"` distributes windows evenly across displays; `"fill"` packs each display to capacity before using the next                 |
+| `exposeMinWidth`       | `400`      | 100-800 px | Minimum grid cell width in logical pixels. Cells smaller than this cause overflow to less-crowded displays. Scaled by DPI on Windows |
+| `exposeMinHeight`      | `300`      | 100-600 px | Minimum grid cell height in logical pixels. Same DPI scaling as width                                                                |
 
 ## Known Issues
 
