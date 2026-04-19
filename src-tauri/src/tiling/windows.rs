@@ -588,16 +588,17 @@ pub fn execute_expose(app: &AppHandle) {
 
     restore_minimized_windows();
 
-    let mut all_windows = get_all_windows();
+    let all_windows = get_all_windows();
     if all_windows.is_empty() {
         log::info!("expose: no windows found");
         return;
     }
 
-    for w in &mut all_windows {
-        let hwnd = HWND(w.window_id as isize as *mut _);
-        w.min_size = get_window_min_size(hwnd);
-    }
+    // NOTE: We intentionally do NOT query min_size here. On mixed-DPI setups,
+    // min_size is DPI-dependent and changes when windows move between monitors.
+    // This caused "oversized" misclassification (e.g., Brave at 516x89 on 1x
+    // became 1282x219 on 2.5x). Windows will enforce their own min_size when
+    // SetWindowPos is called — they just won't shrink below it.
 
     let displays = get_display_work_areas();
     if displays.is_empty() {
@@ -684,10 +685,7 @@ pub fn execute_expose_app(app: &AppHandle) {
         return;
     }
 
-    for w in &mut all_windows {
-        let hwnd = HWND(w.window_id as isize as *mut _);
-        w.min_size = get_window_min_size(hwnd);
-    }
+    // Skip min_size query — see comment in execute_expose for rationale.
 
     let displays = get_display_work_areas();
     if displays.is_empty() {
