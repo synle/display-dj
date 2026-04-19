@@ -803,8 +803,11 @@ fn restore_minimized_windows() {
 
         let _ = EnumWindows(Some(restore_callback), LPARAM(0));
     }
-    // Brief pause to let Windows finish animations
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    // Pause to let Windows finish restore/un-maximize animations.
+    // 1 second is needed because un-maximize animations take longer than
+    // un-minimize. Without this, window bounds are read mid-animation
+    // and the first expose run has incorrect layout.
+    std::thread::sleep(std::time::Duration::from_millis(1000));
 }
 
 /// Execute a layout preset by name or index. Enumerates windows, matches by

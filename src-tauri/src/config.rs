@@ -55,7 +55,7 @@ impl Default for TilingPreferences {
             expose_enabled: true,
             expose_columns: 3,
             expose_rows: 3,
-            expose_layout_strategy: "spread".into(),
+            expose_layout_strategy: "fill".into(),
             expose_max_windows: 0,
         }
     }
