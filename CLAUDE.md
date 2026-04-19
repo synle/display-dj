@@ -31,9 +31,6 @@ After downloading and copying the `.app` to `/Applications`, these steps are man
 # Strip Apple quarantine (required for unsigned builds)
 xattr -cr "/Applications/Display DJ.app"
 
-# Re-sign with explicit ad-hoc signature (required for CGEventTap / tile snap)
-codesign --force --deep --sign - "/Applications/Display DJ.app"
-
 # Reset Accessibility permission (required after each new build for tiling to work)
 tccutil reset Accessibility com.synle.display-dj
 
@@ -117,43 +114,25 @@ On macOS, two patterns in Tauri command handlers break the system tray icon — 
 
 These are documented inline in `config.rs` with WARNING comments.
 
-## CGEventTap / Background Thread Pitfall (Critical)
+## Tile Snap Event Monitoring (NSEvent Global Monitor)
 
-On macOS, any code running inside a `CGEventTap` callback (e.g., Tile Snap's `snap_event_callback`) or on a background thread that feeds a `CFRunLoop` **must never use blocking mutex locks**. macOS imposes a timeout on event tap callbacks — if the callback blocks for too long (e.g., waiting on a contended `Mutex::lock()`), macOS disables the event tap entirely. Once disabled, no further mouse events (drag, up) are delivered, making the feature silently broken.
+Tile Snap uses `NSEvent.addGlobalMonitorForEvents(matching:handler:)` to observe mouse events (down, up, dragged) globally. This replaced the previous `CGEventTap` approach which silently failed in production `.app` bundles (macOS Sequoia rejects `CGEventTapEnable` for ad-hoc signed bundles — drag events were never delivered).
 
-**Rules for CGEventTap callbacks and high-frequency background threads:**
+**Why NSEvent instead of CGEventTap:**
 
-1. **Always use `try_lock()`, never `lock()`** — on `state.preferences`, `AppState`, or any shared mutex. If contended, skip the operation or use a cached/default value.
-2. **`write_debug_log()` is safe** — it now uses `try_lock()` internally (since v5.11.6). If the preferences lock is contended, the log message is silently dropped instead of blocking.
-3. **No network calls or file I/O that might block** — keep callbacks fast. Spawn a thread for anything slow.
-4. **No AX API calls (`get_focused_window`, `get_window_rect`) or NSScreen queries (`get_display_visible_frames`) in `mouse_down`** — these are slow enough to exceed macOS's event tap timeout, especially in production builds with background contention. Defer them to the first confirmed drag event (after a 10px movement threshold) where the cost is amortized over a real drag gesture.
-5. **If `start_pos` or `get_focused_window()` returns None**, assume intent and proceed — don't use missing data as a reason to skip the action.
+- `NSEvent` is a higher-level Cocoa API that macOS trusts from `.app` bundles without special code signing
+- Listen-only (which is all Tile Snap needs — it observes, never blocks/modifies events)
+- No `codesign` workaround needed — works with the default ad-hoc linker signature from `tauri build`
+- Handler runs on the main thread automatically (no separate `CFRunLoopRun` thread needed)
 
-This bug manifests as "works in dev, broken in production" because production builds have more background mutex contention (save_preferences, night mode schedule checks, etc.).
+**Rules for the NSEvent handler (runs on main thread):**
 
-## CGEventTap Code Signing Issue (Unsolved)
-
-`CGEventTapCreate` succeeds and `AXIsProcessTrusted()` returns `true` in production `.app` bundles, but `CGEventTapEnable(tap, true)` silently fails — `CGEventTapIsEnabled` returns `false` immediately after. The tap partially works (mouse_down/mouse_up events are delivered) but **mouse_dragged events are never delivered**, making Tile Snap non-functional.
-
-**Findings from investigation (2026-04-18):**
-
-- **Dev builds** (`npx tauri dev`, bare binary): `tap_enabled=true`, all events delivered, tile snap works perfectly
-- **Production `.app` bundles** (from `tauri build` or CI DMG): `tap_enabled=false`, drag events missing
-- Both binaries are `adhoc,linker-signed` with `Signature=adhoc`, `TeamIdentifier=not set`
-- `codesign --force --deep --sign -` (explicit ad-hoc, removes `linker-signed` flag) does NOT fix it — retried across multiple sessions
-- Retrying `CGEventTapEnable` up to 10 times over 5 seconds does not help
-- The event mask is correct: `0x46` (down=1, up=2, dragged=6 all registered)
-- Accessibility permission is confirmed granted in TCC database (`auth_value=2`)
-- The difference: dev builds run as a bare Mach-O binary, production builds run inside a `.app` bundle (`Contents/MacOS/display-dj`)
-
-**Current workaround:** Tile Snap only works in dev mode. Keyboard shortcut tiling and Exposé work fine in production (they don't use CGEventTap).
-
-**Potential solutions to investigate:**
-1. Apple Developer certificate ($99/year) for proper code signing
-2. Destroy and recreate the entire tap (not just re-enable) in the retry loop
-3. Use a different event monitoring API (e.g., `NSEvent.addGlobalMonitorForEvents` instead of `CGEventTap`)
-4. Add specific entitlements to the app bundle (e.g., `com.apple.security.automation.apple-events`)
-5. Use `CGEventTapCreateForPid` (process-specific tap) instead of session-wide tap
+1. **Keep it fast** — the handler runs on the main thread. AX API calls (`get_focused_window`, `get_window_rect`) are deferred to the first confirmed drag (after 10px threshold).
+2. **Use `try_lock()`, never `lock()`** — same as before, to avoid blocking the main thread.
+3. **`catch_unwind` wraps the handler** — Rust panics cannot unwind through the Objective-C block boundary (would abort). The handler catches panics silently.
+4. **`objc_msgSend` for `[event type]`** — `type` is a Rust keyword; `msg_send![event, r#type]` causes ObjC exceptions. Use raw `objc_msgSend` with `Sel::register("type")` instead.
+5. **Cocoa coordinate conversion** — `[NSEvent mouseLocation]` returns Cocoa coords (Y up from bottom-left). Convert to CG coords (Y down from top-left) using `primary_h - cocoa_y`.
+6. **`block` crate (v0.1)** — used to create Objective-C blocks from Rust closures for the NSEvent handler. Must stay alive (heap-allocated via `.copy()`) for the lifetime of the monitor.
 
 ## Key Conventions
 
