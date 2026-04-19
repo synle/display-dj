@@ -197,17 +197,18 @@ fn get_dwm_border(hwnd: HWND) -> (i32, i32, i32, i32) {
 }
 
 /// Move and resize a window to the given rect.
-/// Option B: Over-expand by DWM border amount so visible frames fill cells
-/// edge-to-edge. Adjacent windows' invisible borders overlap (~14px), but
-/// visible frames touch perfectly with no gaps and no inset.
+/// Over-expands by DWM border amount so visible frames fill cells edge-to-edge.
+/// Uses post-move correction for mixed-DPI setups: after the first SetWindowPos,
+/// the window may land on a different-DPI display where DWM borders differ.
+/// A second corrective SetWindowPos aligns the visible frame to the target rect.
 fn set_hwnd_rect(hwnd: HWND, rect: &Rect) {
     let (bl, _bt, br, bb) = get_dwm_border(hwnd);
     // Expand outward by the border amount on each side.
     // Top border (bt) is typically 0 on Windows 10/11 (title bar has no invisible border).
-    let swp_x = rect.x as i32 - bl;
-    let swp_y = rect.y as i32; // no top expansion (bt is 0)
-    let swp_w = rect.width as i32 + bl + br;
-    let swp_h = rect.height as i32 + bb; // expand bottom only
+    let mut swp_x = rect.x as i32 - bl;
+    let mut swp_y = rect.y as i32; // no top expansion (bt is 0)
+    let mut swp_w = rect.width as i32 + bl + br;
+    let mut swp_h = rect.height as i32 + bb; // expand bottom only
     unsafe {
         let _ = SetWindowPos(
             hwnd,
@@ -219,16 +220,52 @@ fn set_hwnd_rect(hwnd: HWND, rect: &Rect) {
             SWP_NOZORDER,
         );
     }
-    // Log the actual result after SetWindowPos
+
+    // Post-move correction for mixed-DPI setups.
+    // After the first SetWindowPos, the window is on the target display and DWM
+    // renders it with that display's DPI-scaled borders. Read back the actual
+    // visible frame and apply a second corrective SetWindowPos if it doesn't
+    // match the target rect. This fixes gaps on high-DPI monitors where borders
+    // are larger (~18px at 2.5x) than the pre-move borders (~7px at 1x).
     if let Some(actual) = get_hwnd_rect(hwnd) {
+        let dx = actual.x as i32 - rect.x as i32;
+        let dy = actual.y as i32 - rect.y as i32;
+        let dw = actual.width as i32 - rect.width as i32;
+        let dh = actual.height as i32 - rect.height as i32;
+
+        if dx != 0 || dy != 0 || dw != 0 || dh != 0 {
+            log::info!(
+                "tiling_win: post-move correction — delta=(dx={}, dy={}, dw={}, dh={})",
+                dx, dy, dw, dh,
+            );
+            swp_x -= dx;
+            swp_y -= dy;
+            swp_w -= dw;
+            swp_h -= dh;
+            unsafe {
+                let _ = SetWindowPos(
+                    hwnd,
+                    HWND_TOP,
+                    swp_x,
+                    swp_y,
+                    swp_w,
+                    swp_h,
+                    SWP_NOZORDER,
+                );
+            }
+        }
+    }
+
+    // Log final result for debugging
+    if let Some(final_rect) = get_hwnd_rect(hwnd) {
         log::info!(
             "tiling_win: after SetWindowPos — actual_visible=({},{} {}x{}), \
              delta=(dx={}, dy={}, dw={}, dh={})",
-            actual.x as i32, actual.y as i32, actual.width as i32, actual.height as i32,
-            actual.x as i32 - rect.x as i32,
-            actual.y as i32 - rect.y as i32,
-            actual.width as i32 - rect.width as i32,
-            actual.height as i32 - rect.height as i32,
+            final_rect.x as i32, final_rect.y as i32, final_rect.width as i32, final_rect.height as i32,
+            final_rect.x as i32 - rect.x as i32,
+            final_rect.y as i32 - rect.y as i32,
+            final_rect.width as i32 - rect.width as i32,
+            final_rect.height as i32 - rect.height as i32,
         );
     }
 }

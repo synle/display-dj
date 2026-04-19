@@ -1,15 +1,12 @@
 # TODO - Feature Improvements
 
-## Open — DWM Border Gaps on Mixed-DPI Windows Setups
-
-- [ ] **Investigate DPI-scaled DWM borders for gap-free tiling** — Option B (over-expand by DWM border) works well on 1x monitors but still shows small gaps on the 2.5x DPI monitor. Root cause: DWM border offsets (`get_dwm_border`) scale with DPI but the expansion uses the border values from the window's current DPI context, which may not match the target display's DPI. On 2.5x, borders are ~18px instead of ~7px, and the top border (`bt`) is 0 while bottom (`bb`) is non-zero — creating asymmetric expansion. The right edge of the last column and bottom-right corners show visible gaps. **Potential fixes:** (1) Query DWM borders after moving the window to the target display (post-move adjustment pass). (2) Use per-monitor DPI via `GetDpiForWindow` and scale the expansion accordingly. (3) Use a fixed expansion amount (e.g., 10px on all sides) instead of querying DWM per-window. (4) FancyZones approach: detect adjacent windows in the grid and overlap their borders precisely.
-
 ## Resolved — Windows Exposé Bugs
 
 - [x] **Filter desktop + system windows** (v6.0.8) — Program Manager, TextInputHost, ShellExperienceHost, SearchHost, Widgets excluded.
 - [x] **Restore maximized windows before expose** (v6.0.9) — IsZoomed check added to restore callback.
 - [x] **DPI min_size scaling on mixed-DPI setups** (v6.0.10) — Removed min_size query; Windows enforces min_size via SetWindowPos.
-- [x] **DWM border gaps on high-DPI monitors** (v6.0.16) — Option B: over-expand by DWM border so visible frames fill cells edge-to-edge. Remaining tiny gaps are DWM border quirks on mixed-DPI (cosmetic).
+- [x] **DWM border gaps on high-DPI monitors** (v6.0.16) — Option B: over-expand by DWM border so visible frames fill cells edge-to-edge.
+- [x] **DWM border gaps on mixed-DPI setups** (v6.1.1) — Post-move DPI correction: after first SetWindowPos, reads back the actual visible frame via DwmGetWindowAttribute and applies a corrective second SetWindowPos if DWM borders changed due to cross-DPI move (e.g., ~7px at 1x → ~18px at 2.5x).
 - [x] **Debounce expose command** (v6.0.11) — AtomicBool guard prevents concurrent expose/app_expose runs.
 - [x] **Default fill layout** (v6.0.12) — Changed default from "spread" to "fill". App exposé always uses fill for target app windows.
 - [x] **Fill/Spread tray menu toggle** (v6.0.13) — Added to Exposé submenu before grid presets.
