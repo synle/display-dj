@@ -1544,9 +1544,11 @@ struct SnapState {
     window_is_moving: bool,
     /// Cursor position at mouse_down — used for the drag confirmation threshold.
     drag_start_cursor: Option<(f64, f64)>,
-    /// Window position at mouse_down — captured lazily on first confirmed drag
+    /// Window position and size at mouse_down — captured lazily on first confirmed drag
     /// to keep the mouse_down handler fast (avoids AX API calls in the callback).
+    /// Position is used for move detection; size is used to distinguish moves from resizes.
     drag_start_window_pos: Option<(f64, f64)>,
+    drag_start_window_size: Option<(f64, f64)>,
     current_layout: Option<TilingLayout>,
     current_display: usize,
     displays: Vec<Rect>,
@@ -1556,6 +1558,28 @@ struct SnapState {
     side_edge_trigger: f64,
     top_edge_trigger: f64,
     corner_trigger: f64,
+}
+
+/// Determine if a window drag is a title-bar move (not a resize or content drag).
+/// Returns true only when the window position changed but size stayed the same.
+/// - Position changed + size same → title bar drag (move) → true
+/// - Position changed + size changed → resize from top/left edge → false
+/// - Position same (any size) → resize from bottom/right or content drag → false
+fn is_window_move(
+    start_pos: (f64, f64),
+    start_size: Option<(f64, f64)>,
+    cur_rect: &Rect,
+) -> bool {
+    let pos_dx = (cur_rect.x - start_pos.0).abs();
+    let pos_dy = (cur_rect.y - start_pos.1).abs();
+    let pos_changed = pos_dx > 5.0 || pos_dy > 5.0;
+    if !pos_changed {
+        return false;
+    }
+    let size_changed = start_size.map_or(false, |(sw, sh)| {
+        (cur_rect.width - sw).abs() > 3.0 || (cur_rect.height - sh).abs() > 3.0
+    });
+    pos_changed && !size_changed
 }
 
 /// Handle a mouse event from the NSEvent global monitor.
@@ -1612,6 +1636,7 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
             state.window_is_moving = false;
             state.drag_start_cursor = Some((cursor.x, cursor.y));
             state.drag_start_window_pos = None;
+            state.drag_start_window_size = None;
             state.current_layout = None;
             // Drop zone indicators are NOT shown here — they only appear
             // once we confirm the window is actually moving (title bar drag),
@@ -1638,9 +1663,11 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                 // Drag confirmed — lazy-load display frames, preferences, and
                 // window position.
                 state.drag_confirmed = true;
-                state.drag_start_window_pos = unsafe {
-                    get_focused_window().and_then(|w| get_window_rect(&w).map(|r| (r.x, r.y)))
+                let start_rect = unsafe {
+                    get_focused_window().and_then(|w| get_window_rect(&w))
                 };
+                state.drag_start_window_pos = start_rect.as_ref().map(|r| (r.x, r.y));
+                state.drag_start_window_size = start_rect.as_ref().map(|r| (r.width, r.height));
                 state.displays = get_display_visible_frames();
                 let prefs = ctx
                     .app
@@ -1682,20 +1709,18 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
             // resizing or content drag. Only activate snap for window moves.
             if !state.window_is_moving {
                 if let Some((sx, sy)) = state.drag_start_window_pos {
-                    let cur_win_pos = unsafe {
-                        get_focused_window().and_then(|w| get_window_rect(&w).map(|r| (r.x, r.y)))
+                    let cur_rect = unsafe {
+                        get_focused_window().and_then(|w| get_window_rect(&w))
                     };
-                    if let Some((cx, cy)) = cur_win_pos {
-                        let dx = (cx - sx).abs();
-                        let dy = (cy - sy).abs();
-                        if dx > 5.0 || dy > 5.0 {
+                    if let Some(r) = cur_rect {
+                        if is_window_move((sx, sy), state.drag_start_window_size, &r) {
                             state.window_is_moving = true;
                             if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
                                 crate::config::write_debug_log(
                                     &dbg_state,
                                     &format!(
                                         "tile_snap: window_is_moving — start=({:.0},{:.0}), now=({:.0},{:.0})",
-                                        sx, sy, cx, cy,
+                                        sx, sy, r.x, r.y,
                                     ),
                                 );
                             }
@@ -1720,7 +1745,7 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                     });
                 }
                 if !state.window_is_moving {
-                    return; // not a window move — skip snap zone detection
+                    return; // not a window move (resize or content drag) — skip snap
                 }
             }
 
@@ -1936,6 +1961,7 @@ pub fn start_tile_snap(app: AppHandle) {
             window_is_moving: false,
             drag_start_cursor: None,
             drag_start_window_pos: None,
+            drag_start_window_size: None,
             current_layout: None,
             current_display: 0,
             displays: displays.clone(),
@@ -2043,5 +2069,100 @@ pub fn start_tile_snap(app: AppHandle) {
             raw as *mut c_void,
             register_monitor,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper to build a Rect for tests.
+    fn rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
+        Rect { x, y, width: w, height: h }
+    }
+
+    // --- is_window_move tests ---
+
+    /// Title bar drag: position moved, size unchanged → true.
+    #[test]
+    fn test_is_window_move_title_bar_drag() {
+        let start_pos = (100.0, 200.0);
+        let start_size = Some((800.0, 600.0));
+        let cur = rect(150.0, 250.0, 800.0, 600.0);
+        assert!(is_window_move(start_pos, start_size, &cur));
+    }
+
+    /// Resize from bottom/right: position same, size changed → false.
+    #[test]
+    fn test_is_window_move_resize_bottom_right() {
+        let start_pos = (100.0, 200.0);
+        let start_size = Some((800.0, 600.0));
+        let cur = rect(100.0, 200.0, 900.0, 700.0);
+        assert!(!is_window_move(start_pos, start_size, &cur));
+    }
+
+    /// Resize from top edge: position AND size both change → false.
+    #[test]
+    fn test_is_window_move_resize_top_edge() {
+        let start_pos = (100.0, 200.0);
+        let start_size = Some((800.0, 600.0));
+        // Dragging top edge up: y decreases, height increases
+        let cur = rect(100.0, 150.0, 800.0, 650.0);
+        assert!(!is_window_move(start_pos, start_size, &cur));
+    }
+
+    /// Resize from left edge: position AND size both change → false.
+    #[test]
+    fn test_is_window_move_resize_left_edge() {
+        let start_pos = (100.0, 200.0);
+        let start_size = Some((800.0, 600.0));
+        // Dragging left edge left: x decreases, width increases
+        let cur = rect(50.0, 200.0, 850.0, 600.0);
+        assert!(!is_window_move(start_pos, start_size, &cur));
+    }
+
+    /// Resize from top-left corner: position AND size both change → false.
+    #[test]
+    fn test_is_window_move_resize_top_left_corner() {
+        let start_pos = (100.0, 200.0);
+        let start_size = Some((800.0, 600.0));
+        let cur = rect(50.0, 150.0, 850.0, 650.0);
+        assert!(!is_window_move(start_pos, start_size, &cur));
+    }
+
+    /// Content drag or click: no position or size change → false.
+    #[test]
+    fn test_is_window_move_content_drag() {
+        let start_pos = (100.0, 200.0);
+        let start_size = Some((800.0, 600.0));
+        let cur = rect(100.0, 200.0, 800.0, 600.0);
+        assert!(!is_window_move(start_pos, start_size, &cur));
+    }
+
+    /// Tiny jitter within threshold: position moved < 5px → false.
+    #[test]
+    fn test_is_window_move_tiny_jitter() {
+        let start_pos = (100.0, 200.0);
+        let start_size = Some((800.0, 600.0));
+        let cur = rect(103.0, 202.0, 800.0, 600.0);
+        assert!(!is_window_move(start_pos, start_size, &cur));
+    }
+
+    /// No start size captured: position changed → true (assumes move).
+    #[test]
+    fn test_is_window_move_no_start_size() {
+        let start_pos = (100.0, 200.0);
+        let cur = rect(200.0, 300.0, 800.0, 600.0);
+        assert!(is_window_move(start_pos, None, &cur));
+    }
+
+    /// Tiny size change within threshold (3px): treated as move, not resize.
+    #[test]
+    fn test_is_window_move_tiny_size_jitter() {
+        let start_pos = (100.0, 200.0);
+        let start_size = Some((800.0, 600.0));
+        // Position moved significantly, size changed by only 2px (within 3px threshold)
+        let cur = rect(200.0, 300.0, 802.0, 601.0);
+        assert!(is_window_move(start_pos, start_size, &cur));
     }
 }
