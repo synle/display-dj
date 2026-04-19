@@ -109,11 +109,12 @@ display-dj2/
 │       ├── VolumeControl.tsx     # Volume slider with mute/unmute icon
 │       ├── DarkModeToggle.tsx    # Dark / Light toggle buttons
 │       ├── SettingsPanel.tsx     # Settings: min brightness, contrast, night mode, etc.
+│       ├── AboutPanel.tsx       # About: version, update check, engine, build date, macOS troubleshooting
 │       └── ProfileButtons.tsx    # Profile quick-action buttons with overflow menu
 │
 ├── src-tauri/                    # Backend (Rust + Tauri v2)
 │   ├── Cargo.toml                # Rust dependencies
-│   ├── build.rs                  # Downloads sidecar binary + sets APP_VERSION from tauri.conf.json
+│   ├── build.rs                  # Downloads sidecar binary + sets APP_VERSION and BUILD_DATE
 │   ├── tauri.conf.json           # App config: window, tray icon, sidecar, bundling
 │   ├── binaries/                 # display-dj CLI sidecar (per-platform)
 │   ├── capabilities/default.json # Security permissions for frontend JS
@@ -238,6 +239,7 @@ Presentational components that render UI and call `invoke()` to talk to the back
 | `VolumeControl`      | Volume slider with muted/unmuted icon                             |
 | `DarkModeToggle`     | Dark / Light mode buttons                                         |
 | `SettingsPanel`      | Full settings UI (min brightness, night mode, etc.)               |
+| `AboutPanel`         | About: version check, engine, build date, macOS troubleshooting   |
 | `ProfileButtons`     | Profile quick-apply buttons with overflow menu                    |
 
 ### 2. Tauri IPC Bridge

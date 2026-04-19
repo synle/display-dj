@@ -48,6 +48,7 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Layout Presets** -- named presets that automatically tile specific apps to specific layouts. Triggered via keyboard shortcuts, profiles, or the tray menu
 - **Dynamic tray icon** -- the system tray icon updates to reflect app state: dark/light mode (border color), keep-awake active (blue fill), and muted (red X overlay)
 - **Settings panel** -- tabbed UI (General + Tiling) with auto-save. Configure brightness, contrast, monitors, night mode, snap zones, exposé grid size, layout strategy, and launch at login
+- **About / Update check** -- "About Display DJ" in the tray menu shows current version, latest GitHub release, engine, platform, build date, and homepage. Green "Up to date" or orange "Update available" badge with download link. macOS section includes quarantine fix and Accessibility settings commands
 - **System tray app** -- lives in your menu bar / system tray with no dock or taskbar clutter
 
 ## Download & Install
