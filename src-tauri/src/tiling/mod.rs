@@ -491,12 +491,28 @@ pub(crate) fn layout_grid_on_display(
     total
 }
 
+/// Compute the maximum number of windows that fit on a display while keeping
+/// grid cells at least `min_w × min_h`. Returns `usize::MAX` if either
+/// dimension is zero (no constraint).
+fn effective_capacity(display: &Rect, gap: f64, min_w: f64, min_h: f64) -> usize {
+    if min_w <= 0.0 || min_h <= 0.0 {
+        return usize::MAX;
+    }
+    let max_cols = ((display.width - gap) / (min_w + gap)).floor().max(1.0) as usize;
+    let max_rows = ((display.height - gap) / (min_h + gap)).floor().max(1.0) as usize;
+    max_cols * max_rows
+}
+
 /// Distribute windows across multiple displays with overflow for oversized windows.
 ///
 /// When `spread` is true, windows are distributed evenly across all displays
 /// (each gets `ceil(total / num_displays)`, capped at `max_per_display`).
 /// When `spread` is false ("fill" mode), each display is packed to capacity
 /// before overflowing to the next.
+///
+/// `min_cell_sizes` (one per display, DPI-scaled) sets a floor on grid cell
+/// dimensions. Displays where the grid cells would be smaller than the minimum
+/// accept fewer windows. Pass `&[]` for no minimum constraint.
 ///
 /// For each display (except the last), computes the grid cell size and only
 /// places windows whose `min_size` fits. Oversized windows defer to subsequent
@@ -509,6 +525,7 @@ pub(crate) fn layout_across_displays(
     max_per_display: usize,
     gap: f64,
     spread: bool,
+    min_cell_sizes: &[(f64, f64)],
     set_rect: &mut dyn FnMut(&WindowInfo, &Rect),
 ) -> usize {
     if ordered.is_empty() || displays.is_empty() {
@@ -525,13 +542,18 @@ pub(crate) fn layout_across_displays(
         }
 
         let is_last_display = i == num_displays - 1;
+
+        // Apply min cell size constraint: cap per-display capacity
+        let (min_w, min_h) = min_cell_sizes.get(i).copied().unwrap_or((0.0, 0.0));
+        let eff_max = max_per_display.min(effective_capacity(display, gap, min_w, min_h));
+
         // Spread: distribute evenly; Fill: pack to capacity
         let target = if spread {
             let displays_left = num_displays - i;
             let even = (remaining.len() + displays_left - 1) / displays_left; // ceil division
-            even.min(max_per_display)
+            even.min(eff_max)
         } else {
-            max_per_display
+            eff_max
         };
         let batch_size = remaining.len().min(target);
 
@@ -743,6 +765,8 @@ pub(crate) struct Placement {
 }
 
 /// Plan the exposé layout for all windows. Returns a list of placements.
+/// `min_cell_sizes` (one per display, DPI-scaled) sets a floor on grid cell
+/// dimensions. Pass `&[]` for no minimum constraint.
 /// Does NOT call any OS APIs — the caller applies the placements.
 pub(crate) fn plan_expose(
     windows: &[WindowInfo],
@@ -750,19 +774,28 @@ pub(crate) fn plan_expose(
     max_per_display: usize,
     gap: f64,
     spread: bool,
+    min_cell_sizes: &[(f64, f64)],
 ) -> Vec<Placement> {
     if windows.is_empty() || displays.is_empty() {
         return Vec::new();
     }
 
-    let total_cap = max_per_display * displays.len();
+    // Compute effective total capacity accounting for min cell size constraints
+    let total_cap: usize = displays
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            let (mw, mh) = min_cell_sizes.get(i).copied().unwrap_or((0.0, 0.0));
+            max_per_display.min(effective_capacity(d, gap, mw, mh))
+        })
+        .sum();
     let ordered = build_sorted_window_list(windows, total_cap);
     if ordered.is_empty() {
         return Vec::new();
     }
 
     let mut placements = Vec::new();
-    layout_across_displays(&ordered, displays, max_per_display, gap, spread, &mut |win, rect| {
+    layout_across_displays(&ordered, displays, max_per_display, gap, spread, min_cell_sizes, &mut |win, rect| {
         placements.push(Placement {
             window_id: win.window_id,
             owner_pid: win.owner_pid,
@@ -774,6 +807,8 @@ pub(crate) fn plan_expose(
 
 /// Plan the app exposé layout: target app's windows on first displays,
 /// other apps' windows on remaining displays. Returns all placements.
+/// `min_cell_sizes` (one per display, DPI-scaled) sets a floor on grid cell
+/// dimensions. Pass `&[]` for no minimum constraint.
 /// Does NOT call any OS APIs — the caller applies the placements.
 pub(crate) fn plan_expose_app(
     all_windows: &[WindowInfo],
@@ -782,12 +817,21 @@ pub(crate) fn plan_expose_app(
     max_per_display: usize,
     gap: f64,
     spread: bool,
+    min_cell_sizes: &[(f64, f64)],
 ) -> Vec<Placement> {
     if all_windows.is_empty() || displays.is_empty() {
         return Vec::new();
     }
 
-    let total_cap = max_per_display * displays.len();
+    // Compute effective total capacity accounting for min cell size constraints
+    let total_cap: usize = displays
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            let (mw, mh) = min_cell_sizes.get(i).copied().unwrap_or((0.0, 0.0));
+            max_per_display.min(effective_capacity(d, gap, mw, mh))
+        })
+        .sum();
 
     // Filter to target app's windows, sorted by window_id for determinism
     let mut app_windows: Vec<&WindowInfo> = all_windows
@@ -805,7 +849,7 @@ pub(crate) fn plan_expose_app(
 
     // Place target app's windows — always use fill (not spread) so the app's
     // windows are packed together on the first display(s), not distributed.
-    let placed = layout_across_displays(&app_windows, displays, max_per_display, gap, false, &mut |win, rect| {
+    let placed = layout_across_displays(&app_windows, displays, max_per_display, gap, false, min_cell_sizes, &mut |win, rect| {
         placements.push(Placement {
             window_id: win.window_id,
             owner_pid: win.owner_pid,
@@ -823,7 +867,19 @@ pub(crate) fn plan_expose_app(
 
     // Only use displays NOT consumed by the target app for other windows
     let remaining_displays = &displays[displays_consumed..];
-    let remaining_cap = max_per_display * remaining_displays.len();
+    let remaining_min_cells = if displays_consumed < min_cell_sizes.len() {
+        &min_cell_sizes[displays_consumed..]
+    } else {
+        &[]
+    };
+    let remaining_cap: usize = remaining_displays
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            let (mw, mh) = remaining_min_cells.get(i).copied().unwrap_or((0.0, 0.0));
+            max_per_display.min(effective_capacity(d, gap, mw, mh))
+        })
+        .sum();
 
     if remaining_cap > 0 && !remaining_displays.is_empty() {
         let other_windows: Vec<&WindowInfo> = build_sorted_window_list(all_windows, remaining_cap)
@@ -838,6 +894,7 @@ pub(crate) fn plan_expose_app(
                 max_per_display,
                 gap,
                 spread,
+                remaining_min_cells,
                 &mut |win, rect| {
                     placements.push(Placement {
                         window_id: win.window_id,
@@ -1513,7 +1570,7 @@ mod tests {
     fn test_across_displays_empty() {
         let ordered: Vec<&WindowInfo> = vec![];
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |_, _| {});
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |_, _| {});
         assert_eq!(count, 0);
     }
 
@@ -1522,7 +1579,7 @@ mod tests {
         let ws = vec![win(1, "A")];
         let ordered: Vec<&WindowInfo> = ws.iter().collect();
         let displays: Vec<Rect> = vec![];
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |_, _| {});
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |_, _| {});
         assert_eq!(count, 0);
     }
 
@@ -1532,7 +1589,7 @@ mod tests {
         let ordered: Vec<&WindowInfo> = ws.iter().collect();
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
         let ids = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, _| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, _| {
             ids.borrow_mut().push(w.window_id);
         });
         assert_eq!(count, 4);
@@ -1550,7 +1607,7 @@ mod tests {
             display(1920.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, rect| {
             // Track which display each window landed on by checking x coordinate
             let disp_idx = if rect.x < 1920.0 { 0 } else { 1 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
@@ -1578,7 +1635,7 @@ mod tests {
             display(1000.0, 0.0, 1000.0, 800.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, rect| {
             let disp_idx = if rect.x < 1000.0 { 0 } else { 1 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
         });
@@ -1610,7 +1667,7 @@ mod tests {
         let ordered: Vec<&WindowInfo> = ws.iter().collect();
         let displays = vec![display(0.0, 0.0, 1000.0, 800.0)];
         let ids = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, _| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, _| {
             ids.borrow_mut().push(w.window_id);
         });
         // All 4 should be placed (last/only display uses adaptive layout)
@@ -1632,7 +1689,7 @@ mod tests {
             display(2000.0, 0.0, 1000.0, 800.0),
         ];
         let ids = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, _| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, _| {
             ids.borrow_mut().push(w.window_id);
         });
         assert_eq!(count, 3);
@@ -1655,7 +1712,7 @@ mod tests {
             display(1000.0, 0.0, 1000.0, 800.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, rect| {
             let disp_idx = if rect.x < 1000.0 { 0 } else { 1 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
         });
@@ -1680,7 +1737,7 @@ mod tests {
             display(3840.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, true, &mut |w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, true, &[], &mut |w, rect| {
             let disp_idx = if rect.x < 1920.0 { 0 } else if rect.x < 3840.0 { 1 } else { 2 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
         });
@@ -1706,7 +1763,7 @@ mod tests {
             display(3840.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &mut |w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, rect| {
             let disp_idx = if rect.x < 1920.0 { 0 } else if rect.x < 3840.0 { 1 } else { 2 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
         });
@@ -1732,7 +1789,7 @@ mod tests {
             display(3840.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, true, &mut |w, rect| {
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, true, &[], &mut |w, rect| {
             let disp_idx = if rect.x < 1920.0 { 0 } else if rect.x < 3840.0 { 1 } else { 2 };
             placed_on.borrow_mut().push((w.window_id, disp_idx));
         });
@@ -1918,6 +1975,84 @@ mod tests {
         assert!(matches.is_empty());
     }
 
+    // -- effective_capacity --
+
+    /// Verifies effective_capacity returns usize::MAX when min is (0,0).
+    #[test]
+    fn test_effective_capacity_no_constraint() {
+        let d = display(0.0, 0.0, 1920.0, 1080.0);
+        assert_eq!(effective_capacity(&d, 0.0, 0.0, 0.0), usize::MAX);
+    }
+
+    /// Verifies effective_capacity for a 1920x1080 display with 400x300 min.
+    #[test]
+    fn test_effective_capacity_1080p() {
+        let d = display(0.0, 0.0, 1920.0, 1080.0);
+        // max_cols = floor(1920 / 400) = 4, max_rows = floor(1080 / 300) = 3
+        assert_eq!(effective_capacity(&d, 0.0, 400.0, 300.0), 12);
+    }
+
+    /// Verifies effective_capacity with DPI-scaled min on a 2.5x display.
+    #[test]
+    fn test_effective_capacity_high_dpi() {
+        let d = display(0.0, 0.0, 3840.0, 2280.0);
+        // min 400x300 at 2.5x = 1000x750
+        // max_cols = floor(3840 / 1000) = 3, max_rows = floor(2280 / 750) = 3
+        assert_eq!(effective_capacity(&d, 0.0, 1000.0, 750.0), 9);
+    }
+
+    /// Verifies effective_capacity with gaps.
+    #[test]
+    fn test_effective_capacity_with_gap() {
+        let d = display(0.0, 0.0, 1920.0, 1080.0);
+        // With gap=10: max_cols = floor((1920-10)/(400+10)) = floor(1910/410) = 4
+        // max_rows = floor((1080-10)/(300+10)) = floor(1070/310) = 3
+        assert_eq!(effective_capacity(&d, 10.0, 400.0, 300.0), 12);
+    }
+
+    // -- layout_across_displays: min_cell_sizes --
+
+    /// Verifies min_cell_sizes caps the number of windows placed on a display.
+    #[test]
+    fn test_layout_across_displays_min_cell_caps_batch() {
+        // 1920x1080 display, min_cell = 700x600 → max_cols=2, max_rows=1 → cap=2
+        let ws: Vec<WindowInfo> = (0..6).map(|i| win(i, "App")).collect();
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let min_cells = vec![(700.0, 600.0)];
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &min_cells, &mut |_, _| {});
+        // Only 2 windows should fit (700*2=1400 < 1920, 700*3=2100 > 1920)
+        assert_eq!(count, 2);
+    }
+
+    /// Verifies empty min_cell_sizes applies no constraint (backward compat).
+    #[test]
+    fn test_layout_across_displays_empty_min_cells() {
+        let ws: Vec<WindowInfo> = (0..6).map(|i| win(i, "App")).collect();
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |_, _| {});
+        assert_eq!(count, 6);
+    }
+
+    /// Verifies min_cell_sizes with mixed-DPI displays: high-DPI display caps
+    /// more aggressively due to scaled minimum.
+    #[test]
+    fn test_layout_across_displays_mixed_dpi_min_cells() {
+        let ws: Vec<WindowInfo> = (0..15).map(|i| win(i, "App")).collect();
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        // D0: 3840x2280 (2.5x) → min_cell = 1000x750 → cap=9 (3x3)
+        // D1: 1920x1080 (1x) → min_cell = 400x300 → cap=12 (4x3)
+        let displays = vec![
+            display(0.0, 0.0, 3840.0, 2280.0),
+            display(3840.0, 0.0, 1920.0, 1080.0),
+        ];
+        let min_cells = vec![(1000.0, 750.0), (400.0, 300.0)];
+        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &min_cells, &mut |_, _| {});
+        // D0 accepts 9 (min cap=9, max_per_display=9), D1 accepts 6 remaining (9 cap, 6 left)
+        assert_eq!(count, 15);
+    }
+
     // -- plan_expose --
 
     /// Verifies plan_expose returns correct number of placements.
@@ -1925,7 +2060,7 @@ mod tests {
     fn test_plan_expose_basic() {
         let windows = vec![win(1, "Chrome"), win(2, "Firefox"), win(3, "Terminal")];
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let placements = plan_expose(&windows, &displays, 9, 0.0, false);
+        let placements = plan_expose(&windows, &displays, 9, 0.0, false, &[]);
         assert_eq!(placements.len(), 3);
     }
 
@@ -1934,7 +2069,7 @@ mod tests {
     fn test_plan_expose_caps_at_capacity() {
         let windows: Vec<WindowInfo> = (0..20).map(|i| win(i, &format!("App{}", i))).collect();
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        let placements = plan_expose(&windows, &displays, 4, 0.0, false);
+        let placements = plan_expose(&windows, &displays, 4, 0.0, false, &[]);
         // Last display uses adaptive layout so may place more, but total capped
         assert!(placements.len() <= 4);
     }
@@ -1944,7 +2079,7 @@ mod tests {
     fn test_plan_expose_empty() {
         let windows: Vec<WindowInfo> = Vec::new();
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
-        assert!(plan_expose(&windows, &displays, 9, 0.0, false).is_empty());
+        assert!(plan_expose(&windows, &displays, 9, 0.0, false, &[]).is_empty());
     }
 
     // -- plan_expose_app --
@@ -1961,7 +2096,7 @@ mod tests {
             display(0.0, 0.0, 1920.0, 1080.0),
             display(1920.0, 0.0, 1920.0, 1080.0),
         ];
-        let placements = plan_expose_app(&windows, 100, &displays, 4, 0.0, false);
+        let placements = plan_expose_app(&windows, 100, &displays, 4, 0.0, false, &[]);
         // Chrome (2 windows) + Firefox (1 window) = 3 placements
         assert_eq!(placements.len(), 3);
         // First 2 should be Chrome (target app)
@@ -1984,7 +2119,7 @@ mod tests {
             display(0.0, 0.0, 1920.0, 1080.0),
             display(1920.0, 0.0, 1920.0, 1080.0),
         ];
-        let placements = plan_expose_app(&windows, 100, &displays, 4, 0.0, false);
+        let placements = plan_expose_app(&windows, 100, &displays, 4, 0.0, false, &[]);
         // Chrome fills display 1 (4 windows), others go to display 2 (cap 4)
         // No placement should have a target rect on display 1 for a non-Chrome window
         let display1_right = 1920.0;

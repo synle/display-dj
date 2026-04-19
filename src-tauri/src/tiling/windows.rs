@@ -32,20 +32,20 @@ use windows::Win32::UI::WindowsAndMessaging::{
 // Display enumeration
 // ---------------------------------------------------------------------------
 
-/// Per-monitor info collected during enumeration (work area + full bounds).
+/// Per-monitor info collected during enumeration (work area + full bounds + DPI).
 struct MonitorDebugInfo {
     work: Rect,
     full: Rect,
+    dpi_scale: f64,
 }
 
-/// Get work areas (visible frames) for all monitors, sorted left-to-right.
-/// Uses `EnumDisplayMonitors` + `GetMonitorInfoW` to get the work area
-/// (excludes taskbar and other app bars).
-fn get_display_work_areas() -> Vec<Rect> {
+/// Get work areas (visible frames) and DPI scale for all monitors, sorted
+/// left-to-right. Uses `EnumDisplayMonitors` + `GetMonitorInfoW` + `GetDpiForMonitor`.
+fn get_display_work_areas() -> Vec<(Rect, f64)> {
     let mut infos: Vec<MonitorDebugInfo> = Vec::new();
 
     unsafe {
-        // Callback collects MONITORINFO for each monitor (work area + full bounds)
+        // Callback collects MONITORINFO + DPI for each monitor
         unsafe extern "system" fn monitor_callback(
             hmonitor: HMONITOR,
             _hdc: HDC,
@@ -60,6 +60,14 @@ fn get_display_work_areas() -> Vec<Rect> {
             if GetMonitorInfoW(hmonitor, &mut info).as_bool() {
                 let rc = info.rcWork;
                 let fm = info.rcMonitor;
+
+                // Query effective DPI for this monitor (96 = 1x, 192 = 2x, 240 = 2.5x)
+                use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+                let mut dpi_x: u32 = 96;
+                let mut dpi_y: u32 = 96;
+                let _ = GetDpiForMonitor(hmonitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y);
+                let dpi_scale = dpi_x as f64 / 96.0;
+
                 infos.push(MonitorDebugInfo {
                     work: Rect {
                         x: rc.left as f64,
@@ -73,6 +81,7 @@ fn get_display_work_areas() -> Vec<Rect> {
                         width: (fm.right - fm.left) as f64,
                         height: (fm.bottom - fm.top) as f64,
                     },
+                    dpi_scale,
                 });
             }
             TRUE
@@ -93,14 +102,15 @@ fn get_display_work_areas() -> Vec<Rect> {
             .then(a.work.y.partial_cmp(&b.work.y).unwrap_or(std::cmp::Ordering::Equal))
     });
 
-    // Log full vs work area for each display (helps debug taskbar/gap issues)
+    // Log full vs work area + DPI for each display (helps debug gap issues)
     for (i, info) in infos.iter().enumerate() {
         log::info!(
             "tiling_win: display[{}] — full=({},{} {}x{}), work_area=({},{} {}x{}), \
-             taskbar_insets=(left={}, top={}, right={}, bottom={})",
+             dpi_scale={:.2}, taskbar_insets=(left={}, top={}, right={}, bottom={})",
             i,
             info.full.x as i32, info.full.y as i32, info.full.width as i32, info.full.height as i32,
             info.work.x as i32, info.work.y as i32, info.work.width as i32, info.work.height as i32,
+            info.dpi_scale,
             (info.work.x - info.full.x) as i32,
             (info.work.y - info.full.y) as i32,
             ((info.full.x + info.full.width) - (info.work.x + info.work.width)) as i32,
@@ -108,7 +118,7 @@ fn get_display_work_areas() -> Vec<Rect> {
         );
     }
 
-    infos.into_iter().map(|i| i.work).collect()
+    infos.into_iter().map(|i| (i.work, i.dpi_scale)).collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -527,8 +537,8 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
         }
     };
 
-    // Get displays
-    let displays = get_display_work_areas();
+    // Get displays (unpack work areas, discard DPI for tiling)
+    let displays: Vec<Rect> = get_display_work_areas().into_iter().map(|(r, _)| r).collect();
     if displays.is_empty() {
         log::warn!("tiling: no displays found");
         return;
@@ -626,13 +636,19 @@ pub fn execute_expose(app: &AppHandle) {
     }
     let _guard = Guard;
 
-    let (max_per_display, gap, spread) = {
+    let (max_per_display, gap, spread, expose_min_w, expose_min_h) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
             Err(_) => return,
         };
-        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
+        (
+            (prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize,
+            prefs.tiling.gap,
+            prefs.tiling.expose_layout_strategy == "spread",
+            prefs.tiling.expose_min_width as f64,
+            prefs.tiling.expose_min_height as f64,
+        )
     };
 
     restore_minimized_windows();
@@ -649,22 +665,29 @@ pub fn execute_expose(app: &AppHandle) {
     // became 1282x219 on 2.5x). Windows will enforce their own min_size when
     // SetWindowPos is called — they just won't shrink below it.
 
-    let displays = get_display_work_areas();
-    if displays.is_empty() {
+    let display_infos = get_display_work_areas();
+    if display_infos.is_empty() {
         return;
     }
 
+    // Unpack work areas and compute DPI-scaled min cell sizes
+    let displays: Vec<Rect> = display_infos.iter().map(|(r, _)| r.clone()).collect();
+    let min_cell_sizes: Vec<(f64, f64)> = display_infos
+        .iter()
+        .map(|(_, scale)| (expose_min_w * scale, expose_min_h * scale))
+        .collect();
+
     // Log display work areas for debugging gap issues
-    let display_info: Vec<String> = displays.iter().enumerate().map(|(i, d)| {
-        format!("D{}({},{} {}x{})", i, d.x as i32, d.y as i32, d.width as i32, d.height as i32)
+    let display_info: Vec<String> = display_infos.iter().enumerate().map(|(i, (d, scale))| {
+        format!("D{}({},{} {}x{} @{:.1}x)", i, d.x as i32, d.y as i32, d.width as i32, d.height as i32, scale)
     }).collect();
     let total_cap = max_per_display * displays.len();
     let cols = (max_per_display as f64).sqrt().ceil() as usize;
     let rows = if cols > 0 { (max_per_display + cols - 1) / cols } else { 0 };
     dbg_log(app, &format!(
-        "tiling_win: expose — {} windows (cap={}), {} displays=[{}], grid={}x{} (max_per_display={}), gap={}, spread={}",
+        "tiling_win: expose — {} windows (cap={}), {} displays=[{}], grid={}x{} (max_per_display={}), gap={}, spread={}, min_cell={}x{}",
         all_windows.len(), total_cap, displays.len(), display_info.join(", "),
-        cols, rows, max_per_display, gap, spread,
+        cols, rows, max_per_display, gap, spread, expose_min_w as i32, expose_min_h as i32,
     ));
     for (i, w) in all_windows.iter().enumerate() {
         let min_str = w.min_size.map_or("none".to_string(), |(mw, mh)| format!("{}x{}", mw as i32, mh as i32));
@@ -676,7 +699,7 @@ pub fn execute_expose(app: &AppHandle) {
         ));
     }
 
-    let placements = plan_expose(&all_windows, &displays, max_per_display, gap as f64, spread);
+    let placements = plan_expose(&all_windows, &displays, max_per_display, gap as f64, spread, &min_cell_sizes);
     for (i, p) in placements.iter().enumerate() {
         let hwnd = HWND(p.window_id as isize as *mut _);
         let title = get_window_title(hwnd);
@@ -715,13 +738,19 @@ pub fn execute_expose_app(app: &AppHandle) {
         }
     }
     let _guard = Guard;
-    let (max_per_display, gap, spread) = {
+    let (max_per_display, gap, spread, expose_min_w, expose_min_h) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
             Err(_) => return,
         };
-        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
+        (
+            (prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize,
+            prefs.tiling.gap,
+            prefs.tiling.expose_layout_strategy == "spread",
+            prefs.tiling.expose_min_width as f64,
+            prefs.tiling.expose_min_height as f64,
+        )
     };
 
     let hwnd = match get_foreground_hwnd() {
@@ -747,23 +776,31 @@ pub fn execute_expose_app(app: &AppHandle) {
 
     // Skip min_size query — see comment in execute_expose for rationale.
 
-    let displays = get_display_work_areas();
-    if displays.is_empty() {
+    let display_infos = get_display_work_areas();
+    if display_infos.is_empty() {
         return;
     }
 
+    // Unpack work areas and compute DPI-scaled min cell sizes
+    let displays: Vec<Rect> = display_infos.iter().map(|(r, _)| r.clone()).collect();
+    let min_cell_sizes: Vec<(f64, f64)> = display_infos
+        .iter()
+        .map(|(_, scale)| (expose_min_w * scale, expose_min_h * scale))
+        .collect();
+
     // Log display work areas for debugging gap issues
-    let display_info: Vec<String> = displays.iter().enumerate().map(|(i, d)| {
-        format!("D{}({},{} {}x{})", i, d.x as i32, d.y as i32, d.width as i32, d.height as i32)
+    let display_info: Vec<String> = display_infos.iter().enumerate().map(|(i, (d, scale))| {
+        format!("D{}({},{} {}x{} @{:.1}x)", i, d.x as i32, d.y as i32, d.width as i32, d.height as i32, scale)
     }).collect();
     let app_window_count = all_windows.iter().filter(|w| w.owner_pid == target_pid as i32).count();
     let other_window_count = all_windows.len() - app_window_count;
     let total_cap = max_per_display * displays.len();
     dbg_log(app, &format!(
         "tiling_win: app_expose — app='{}' (pid={}), app_windows={}, other_windows={}, cap={}, \
-         {} displays=[{}], max_per_display={}, gap={}, spread={}",
+         {} displays=[{}], max_per_display={}, gap={}, spread={}, min_cell={}x{}",
         target_app, target_pid, app_window_count, other_window_count, total_cap,
         displays.len(), display_info.join(", "), max_per_display, gap, spread,
+        expose_min_w as i32, expose_min_h as i32,
     ));
     for (i, w) in all_windows.iter().enumerate() {
         let is_target = if w.owner_pid == target_pid as i32 { "TARGET" } else { "other" };
@@ -790,7 +827,7 @@ pub fn execute_expose_app(app: &AppHandle) {
         other_window_count, displays_for_others, other_slots_total,
     ));
 
-    let placements = plan_expose_app(&all_windows, target_pid as i32, &displays, max_per_display, gap as f64, spread);
+    let placements = plan_expose_app(&all_windows, target_pid as i32, &displays, max_per_display, gap as f64, spread, &min_cell_sizes);
     let mut app_placed = 0;
     let mut other_placed = 0;
     for (i, p) in placements.iter().enumerate() {
@@ -865,7 +902,7 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
         return;
     }
 
-    let displays = get_display_work_areas();
+    let displays: Vec<Rect> = get_display_work_areas().into_iter().map(|(r, _)| r).collect();
     if displays.is_empty() {
         log::warn!("layout_preset: no displays found");
         return;

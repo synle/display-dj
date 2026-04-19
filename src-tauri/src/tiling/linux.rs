@@ -845,13 +845,19 @@ pub fn execute_expose(app: &AppHandle) {
         return;
     }
 
-    let (max_per_display, gap, spread) = {
+    let (max_per_display, gap, spread, expose_min_w, expose_min_h) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
             Err(_) => return,
         };
-        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
+        (
+            (prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize,
+            prefs.tiling.gap,
+            prefs.tiling.expose_layout_strategy == "spread",
+            prefs.tiling.expose_min_width as f64,
+            prefs.tiling.expose_min_height as f64,
+        )
     };
 
     let (conn, screen_num) = match connect() {
@@ -877,7 +883,10 @@ pub fn execute_expose(app: &AppHandle) {
         return;
     }
 
-    let placements = plan_expose(&all_windows, &displays, max_per_display, gap as f64, spread);
+    // X11 typically runs at 1x — use logical min values directly
+    let min_cell_sizes: Vec<(f64, f64)> = displays.iter().map(|_| (expose_min_w, expose_min_h)).collect();
+
+    let placements = plan_expose(&all_windows, &displays, max_per_display, gap as f64, spread, &min_cell_sizes);
     for p in &placements {
         let wid = p.window_id as u32;
         set_window_rect(&conn, screen_num, wid, &p.target);
@@ -894,13 +903,19 @@ pub fn execute_expose_app(app: &AppHandle) {
         return;
     }
 
-    let (max_per_display, gap, spread) = {
+    let (max_per_display, gap, spread, expose_min_w, expose_min_h) = {
         let state = app.state::<crate::AppState>();
         let prefs = match state.preferences.lock() {
             Ok(p) => p,
             Err(_) => return,
         };
-        ((prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize, prefs.tiling.gap, prefs.tiling.expose_layout_strategy == "spread")
+        (
+            (prefs.tiling.expose_columns * prefs.tiling.expose_rows) as usize,
+            prefs.tiling.gap,
+            prefs.tiling.expose_layout_strategy == "spread",
+            prefs.tiling.expose_min_width as f64,
+            prefs.tiling.expose_min_height as f64,
+        )
     };
 
     let (conn, screen_num) = match connect() {
@@ -940,7 +955,10 @@ pub fn execute_expose_app(app: &AppHandle) {
         return;
     }
 
-    let placements = plan_expose_app(&all_windows, target_pid as i32, &displays, max_per_display, gap as f64, spread);
+    // X11 typically runs at 1x — use logical min values directly
+    let min_cell_sizes: Vec<(f64, f64)> = displays.iter().map(|_| (expose_min_w, expose_min_h)).collect();
+
+    let placements = plan_expose_app(&all_windows, target_pid as i32, &displays, max_per_display, gap as f64, spread, &min_cell_sizes);
     for p in &placements {
         let wid = p.window_id as u32;
         set_window_rect(&conn, screen_num, wid, &p.target);

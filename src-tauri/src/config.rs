@@ -34,6 +34,12 @@ pub struct TilingPreferences {
     /// Exposé layout strategy: "spread" distributes windows evenly across all
     /// displays; "fill" packs each display to capacity before using the next.
     pub expose_layout_strategy: String,
+    /// Exposé: minimum grid cell width in logical pixels. Cells smaller than
+    /// this cause windows to overflow to less-crowded displays. Scaled by
+    /// display DPI on Windows (macOS uses points natively).
+    pub expose_min_width: u32,
+    /// Exposé: minimum grid cell height in logical pixels. Same scaling as width.
+    pub expose_min_height: u32,
     /// Legacy field for backward-compatible deserialization of old configs.
     /// Not serialized; on load, if columns/rows are at defaults and this is
     /// non-zero, we migrate sqrt(value) into columns and rows.
@@ -56,6 +62,8 @@ impl Default for TilingPreferences {
             expose_columns: 3,
             expose_rows: 3,
             expose_layout_strategy: "fill".into(),
+            expose_min_width: 400,
+            expose_min_height: 300,
             expose_max_windows: 0,
         }
     }
