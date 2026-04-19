@@ -36,7 +36,7 @@ jobs:
           mode: official
           project_name: Display DJ
           version: ${{ inputs.tag || github.ref_name }}
-          version_file: package.json
+          version_file: src-tauri/tauri.conf.json
 
   build:
     needs: [prepare]
