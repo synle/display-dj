@@ -1,0 +1,74 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Tauri Dev (Full App)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tauri", "dev"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=4096"
+      }
+    },
+    {
+      "name": "Vite Dev (Frontend Only)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Vitest (Run Tests)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["test"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Vitest (Watch Mode)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "test:watch"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Cargo Test (Rust Backend)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "cargo",
+      "runtimeArgs": ["test"],
+      "cwd": "${workspaceFolder}/src-tauri",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Cargo Check (Rust Compile)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "cargo",
+      "runtimeArgs": ["check"],
+      "cwd": "${workspaceFolder}/src-tauri",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Tauri Build (Production)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tauri", "build"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=4096"
+      }
+    }
+  ]
+}
