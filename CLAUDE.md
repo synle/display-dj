@@ -242,4 +242,5 @@ sudo usermod -aG i2c $USER
 ## Git / PR Merge Policy
 
 - Always use **squash and merge** when merging PRs. Never use merge commits or rebase merges. This keeps the git history clean with one commit per PR.
+- **Always rebase before pushing** (`git pull --rebase` before `git push`).
 - You may `git merge origin/main` or `git merge origin/master` locally to sync branches, but PR merges must always be squash merges.
