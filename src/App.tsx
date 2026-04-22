@@ -113,12 +113,19 @@ function App() {
     };
     document.addEventListener('visibilitychange', handleVisibility);
 
+    // Close the About panel when the window loses focus (user clicks away)
+    const handleBlur = () => {
+      setAboutOpen(false);
+    };
+    window.addEventListener('blur', handleBlur);
+
     return () => {
       unlisten1.then((f) => f());
       unlisten2.then((f) => f());
       unlisten3.then((f) => f());
       unlisten4.then((f) => f());
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('blur', handleBlur);
     };
   }, [fetchMonitors, fetchDarkMode, fetchVolume, fetchPreferences, fetchKeepAwake]);
 
