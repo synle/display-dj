@@ -188,9 +188,13 @@ Monitor IDs are the sidecar API IDs (e.g. `"1"`, `"2"`, `"builtin"`). Brightness
 
 The display-dj CLI sidecar handles all platform-specific display and volume dependencies internally. No external tools need to be installed for display or volume control. The `keepawake` crate handles sleep prevention natively on all platforms (macOS IOKit, Windows SetThreadExecutionState, Linux D-Bus). The `tauri-plugin-dialog` crate provides native OS confirmation dialogs (used by Reset to Default). The `md5` crate (v0.7) provides MD5 hashing for wallpaper filename generation and content comparison. The `zip` crate (v2) extracts remote wallpaper packs downloaded as .zip files. The `windows` crate (v0.58) is a Windows-only dependency used for Win32 window tiling APIs (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`). The `x11rb` crate (v0.13) is a Linux-only dependency (pure Rust X11 client) used for X11/EWMH window tiling (`_NET_ACTIVE_WINDOW`, `_NET_MOVERESIZE_WINDOW`, `_NET_CLIENT_LIST`, XRandr).
 
-### Stale Sidecar Cleanup
+### Sidecar Lifecycle & Cleanup
 
-On startup, `kill_stale_sidecars()` kills any leftover `display-dj-server` processes from a previous run that didn't exit cleanly (crash, force-quit, installer update). Uses `pkill` on macOS/Linux and `taskkill` on Windows.
+The sidecar has three layers of shutdown protection:
+
+1. **Parent-death detection (primary)**: The sidecar monitors stdin in a background thread. Tauri's shell plugin pipes stdin automatically. When Tauri exits (normal exit, crash, force-quit), the OS closes the pipe → stdin returns EOF → the sidecar shuts itself down via `process::exit(0)`. This is the fastest and most reliable mechanism.
+2. **Explicit kill on exit**: On `RunEvent::Exit`, `lib.rs` calls `child.kill()` on the stored `CommandChild` as a belt-and-suspenders backup.
+3. **Stale process cleanup on startup**: `kill_stale_sidecars()` kills any leftover `display-dj-server` processes from a previous run using `pkill` on macOS/Linux and `taskkill` on Windows. This catches edge cases where both (1) and (2) failed (e.g., `SIGKILL` to both processes simultaneously).
 
 ### Sidecar binaries
 

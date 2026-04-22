@@ -382,9 +382,10 @@ All display and dark mode operations go through the sidecar's HTTP API. The Rust
 Sidecar lifecycle:
 
 1. `lib.rs` finds an available port (starting from 51337)
-2. Spawns `display-dj-server serve <port>` via Tauri shell plugin
+2. Spawns `display-dj-server serve <port>` via Tauri shell plugin (stdin is piped automatically)
 3. Polls `/health` until ready (up to 5 seconds)
-4. On app exit, `child.kill()` terminates the sidecar
+4. On app exit: the sidecar detects stdin EOF (parent-death detection) and shuts itself down; `child.kill()` in `RunEvent::Exit` serves as backup
+5. On next startup: `kill_stale_sidecars()` cleans up any orphans that survived both (4) mechanisms
 
 ### 5. Platform-Specific Code (`volume.rs`, `tiling/`)
 
@@ -434,7 +435,7 @@ There is no external state library. All state lives in `App.tsx` as `useState` h
 
 - `preferences: Mutex<Preferences>` -- shared across all Tauri commands
 - `last_tray_rect: Mutex<Option<Rect>>` -- used by window positioning
-- `sidecar_child: Mutex<Option<CommandChild>>` -- killed on app exit
+- `sidecar_child: Mutex<Option<CommandChild>>` -- killed on app exit (backup; sidecar also self-terminates via stdin EOF)
 - `SERVER_PORT: AtomicU16` -- global, set once at startup
 
 ---
