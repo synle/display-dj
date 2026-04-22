@@ -64,43 +64,16 @@ function AboutPanel({ onClose }: AboutPanelProps) {
           &times;
         </button>
       </div>
-      <div className='settings-content'>
+      <div className='settings-content about-content'>
         <div style={{ marginBottom: '8px' }}>
           {updateStatus === 'checking' && (
-            <span
-              style={{
-                background: '#888',
-                color: '#fff',
-                padding: '2px 8px',
-                borderRadius: '4px',
-                fontSize: '11px',
-              }}>
-              Checking...
-            </span>
+            <span className='about-badge about-badge-checking'>Checking...</span>
           )}
           {updateStatus === 'up-to-date' && (
-            <span
-              style={{
-                background: '#4caf50',
-                color: '#fff',
-                padding: '2px 8px',
-                borderRadius: '4px',
-                fontSize: '11px',
-              }}>
-              Up to date
-            </span>
+            <span className='about-badge about-badge-up-to-date'>Up to date</span>
           )}
           {updateStatus === 'update-available' && (
-            <span
-              style={{
-                background: '#ff9800',
-                color: '#fff',
-                padding: '2px 8px',
-                borderRadius: '4px',
-                fontSize: '11px',
-              }}>
-              Update available
-            </span>
+            <span className='about-badge about-badge-update'>Update available</span>
           )}
         </div>
 
@@ -133,11 +106,7 @@ function AboutPanel({ onClose }: AboutPanelProps) {
 
         <div style={{ marginTop: '10px', fontSize: '12px' }}>
           <span style={{ fontWeight: 'bold' }}>Home</span>{' '}
-          <a
-            href={info.homepage || '#'}
-            target='_blank'
-            rel='noopener noreferrer'
-            style={{ color: '#2196f3' }}>
+          <a href={info.homepage || '#'} target='_blank' rel='noopener noreferrer'>
             synle/display-dj
           </a>
         </div>
@@ -148,44 +117,23 @@ function AboutPanel({ onClose }: AboutPanelProps) {
               href='https://github.com/synle/display-dj/releases/latest'
               target='_blank'
               rel='noopener noreferrer'
-              style={{ color: '#ff9800' }}>
+              className='about-download-link'>
               Download {latestVersion}
             </a>
           </div>
         )}
 
         {isMac && (
-          <div style={{ marginTop: '12px', borderTop: '1px solid #333', paddingTop: '10px' }}>
+          <div className='about-macos-section'>
             <div style={{ fontSize: '11px', marginBottom: '6px' }}>
               <strong>macOS Troubleshooting:</strong> If you see "app is damaged", run in Terminal:
             </div>
-            <code
-              style={{
-                display: 'block',
-                background: '#1a1a1a',
-                color: '#ccc',
-                padding: '6px 8px',
-                borderRadius: '4px',
-                fontSize: '11px',
-                userSelect: 'all',
-                marginBottom: '8px',
-              }}>
-              xattr -cr "/Applications/Display DJ.app"
-            </code>
+            <code className='about-code-block'>xattr -cr "/Applications/Display DJ.app"</code>
             <div style={{ fontSize: '11px', marginBottom: '6px' }}>
               <strong>Tiling Permission:</strong> Open Accessibility settings to grant tiling
               access:
             </div>
-            <code
-              style={{
-                display: 'block',
-                background: '#1a1a1a',
-                color: '#ccc',
-                padding: '6px 8px',
-                borderRadius: '4px',
-                fontSize: '11px',
-                userSelect: 'all',
-              }}>
+            <code className='about-code-block'>
               open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
             </code>
           </div>
