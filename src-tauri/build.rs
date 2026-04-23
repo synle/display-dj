@@ -49,15 +49,17 @@ fn expose_app_version() {
     let app_version = if is_release {
         version.to_string()
     } else {
-        // Get short commit SHA for dev/beta builds
-        let short_sha = Command::new("git")
-            .args(["rev-parse", "--short", "HEAD"])
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-        format!("{version} [beta - {short_sha}]")
+        // Build timestamp for dev builds: MM/DD/YYYY HH:MM
+        let secs = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let days = secs / 86400;
+        let (y, m, d) = civil_from_days(days as i64);
+        let day_secs = secs % 86400;
+        let hh = day_secs / 3600;
+        let mm = (day_secs % 3600) / 60;
+        format!("{version} [DEV - {m:02}/{d:02}/{y:04} {hh:02}:{mm:02}]")
     };
 
     println!("cargo:rustc-env=APP_VERSION={app_version}");

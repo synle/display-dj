@@ -514,6 +514,40 @@ pub fn run() {
                 }
                 // Fetch initial dark mode and volume state for tray icon indicators
                 fetch_initial_tray_state(&startup_handle, port);
+                // Pre-warm the sidecar cache so the first popup open is instant.
+                // Uses the same endpoints as fetch_all_state but blocking.
+                {
+                    let base = format!("http://127.0.0.1:{}", port);
+                    let state = startup_handle.state::<AppState>();
+
+                    // Cache monitors
+                    if let Ok(resp) = reqwest::blocking::get(format!("{}/get_all", base)) {
+                        if let Ok(displays) = resp.json::<Vec<display::DjDisplay>>() {
+                            let monitors: Vec<display::Monitor> = displays.into_iter().map(|d| d.into_monitor()).collect();
+                            let prefs = state.preferences.lock().unwrap();
+                            let merged = display::merge_with_configs(monitors, &prefs.monitor_configs);
+                            state.sidecar_cache.set_monitors(merged);
+                        }
+                    }
+                    // Cache dark mode
+                    if let Ok(resp) = reqwest::blocking::get(format!("{}/theme", base)) {
+                        if let Ok(text) = resp.text() {
+                            state.sidecar_cache.set_dark_mode(text.contains("dark"));
+                        }
+                    }
+                    // Cache volume
+                    if let Ok(resp) = reqwest::blocking::get(format!("{}/get_volume", base)) {
+                        if let Ok(text) = resp.text() {
+                            if let Some(v) = text.split("volume\":")
+                                .nth(1)
+                                .and_then(|s| s.trim().trim_end_matches('}').trim().parse::<u32>().ok())
+                            {
+                                state.sidecar_cache.set_volume(v);
+                            }
+                        }
+                    }
+                    log::info!("sidecar cache pre-warmed on startup");
+                }
                 // Resume wallpaper slideshow if it was enabled before shutdown
                 let wp_state = startup_handle.state::<AppState>();
                 wallpaper::resume_slideshow_if_enabled(&wp_state);

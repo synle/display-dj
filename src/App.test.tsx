@@ -10,6 +10,22 @@ beforeEach(() => {
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
     switch (cmd) {
+      case 'fetch_all_state':
+        return Promise.resolve({
+          monitors: [
+            {
+              id: 'builtin-0',
+              uid: 'builtin-0::Built-in Display',
+              name: 'Built-in Display',
+              originalName: 'Built-in Display',
+              brightness: 50,
+              supportsBrightness: true,
+              isBuiltIn: true,
+            },
+          ],
+          isDark: false,
+          volume: 50,
+        });
       case 'get_monitors':
         return Promise.resolve([
           {
@@ -92,9 +108,9 @@ describe('App smoke test', () => {
   it('fetches initial data on mount', async () => {
     render(<App />);
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('get_monitors');
-      expect(mockInvoke).toHaveBeenCalledWith('get_dark_mode');
-      expect(mockInvoke).toHaveBeenCalledWith('get_volume');
+      expect(mockInvoke).toHaveBeenCalledWith('fetch_all_state');
+      expect(mockInvoke).toHaveBeenCalledWith('get_preferences');
+      expect(mockInvoke).toHaveBeenCalledWith('get_keep_awake');
       expect(mockInvoke).toHaveBeenCalledWith('get_app_version');
     });
   });
@@ -187,38 +203,45 @@ describe('App smoke test', () => {
 
   it('renders with multiple monitors without JS errors', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const multiMonitors = [
+      {
+        id: 'builtin-0',
+        uid: 'builtin-0::Built-in Display',
+        name: 'Built-in Display',
+        originalName: 'Built-in Display',
+        brightness: 100,
+        supportsBrightness: true,
+        isBuiltIn: true,
+      },
+      {
+        id: '1',
+        uid: '1::Dell U2723QE',
+        name: 'Dell U2723QE',
+        originalName: 'Dell U2723QE',
+        brightness: 80,
+        supportsBrightness: true,
+        isBuiltIn: false,
+      },
+      {
+        id: '2',
+        uid: '2::LG 27UK850',
+        name: '',
+        originalName: 'LG 27UK850',
+        brightness: 60,
+        supportsBrightness: true,
+        isBuiltIn: false,
+      },
+    ];
     mockInvoke.mockImplementation((cmd: string) => {
       switch (cmd) {
+        case 'fetch_all_state':
+          return Promise.resolve({
+            monitors: multiMonitors,
+            isDark: true,
+            volume: 75,
+          });
         case 'get_monitors':
-          return Promise.resolve([
-            {
-              id: 'builtin-0',
-              uid: 'builtin-0::Built-in Display',
-              name: 'Built-in Display',
-              originalName: 'Built-in Display',
-              brightness: 100,
-              supportsBrightness: true,
-              isBuiltIn: true,
-            },
-            {
-              id: '1',
-              uid: '1::Dell U2723QE',
-              name: 'Dell U2723QE',
-              originalName: 'Dell U2723QE',
-              brightness: 80,
-              supportsBrightness: true,
-              isBuiltIn: false,
-            },
-            {
-              id: '2',
-              uid: '2::LG 27UK850',
-              name: '',
-              originalName: 'LG 27UK850',
-              brightness: 60,
-              supportsBrightness: true,
-              isBuiltIn: false,
-            },
-          ]);
+          return Promise.resolve(multiMonitors);
         case 'get_dark_mode':
           return Promise.resolve(true);
         case 'get_volume':
@@ -279,20 +302,27 @@ describe('App smoke test', () => {
   });
 
   it('calls set_brightness with API id (not uid)', async () => {
+    const singleMonitor = [
+      {
+        id: '1',
+        uid: '1::Dell U2723QE',
+        name: 'Dell U2723QE',
+        originalName: 'Dell U2723QE',
+        brightness: 50,
+        supportsBrightness: true,
+        isBuiltIn: false,
+      },
+    ];
     mockInvoke.mockImplementation((cmd: string) => {
       switch (cmd) {
+        case 'fetch_all_state':
+          return Promise.resolve({
+            monitors: singleMonitor,
+            isDark: false,
+            volume: 50,
+          });
         case 'get_monitors':
-          return Promise.resolve([
-            {
-              id: '1',
-              uid: '1::Dell U2723QE',
-              name: 'Dell U2723QE',
-              originalName: 'Dell U2723QE',
-              brightness: 50,
-              supportsBrightness: true,
-              isBuiltIn: false,
-            },
-          ]);
+          return Promise.resolve(singleMonitor);
         case 'get_dark_mode':
           return Promise.resolve(false);
         case 'get_volume':
