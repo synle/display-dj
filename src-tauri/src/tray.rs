@@ -389,11 +389,12 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                     .blocking_show();
                 if confirmed {
                     crate::config::reset_to_defaults();
-                    // Reload in-memory state
+                    // Reload in-memory state and invalidate cache
                     if let Some(state) = app_clone.try_state::<crate::AppState>() {
                         if let Ok(mut prefs) = state.preferences.lock() {
                             *prefs = crate::config::load_preferences();
                         }
+                        state.sidecar_cache.invalidate_all();
                     }
                     // Re-register shortcuts with default keybindings
                     let prefs = crate::config::Preferences::default();
@@ -416,9 +417,10 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 if let Some(state) = app.try_state::<crate::AppState>() {
                     if let Ok(mut prefs) = state.preferences.lock() {
                         *prefs = crate::config::load_preferences();
-                        // Re-register shortcuts with reloaded keybindings
                         register_shortcuts(app, &prefs.key_bindings);
                     }
+                    // Invalidate sidecar cache so next fetch is fresh
+                    state.sidecar_cache.invalidate_all();
                 }
                 // Rebuild tray menu to reflect any preference changes
                 rebuild_tray_menu(app);

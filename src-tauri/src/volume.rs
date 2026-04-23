@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use tauri::Manager;
 
 #[derive(Deserialize)]
 struct VolumeResponse {
@@ -12,8 +13,15 @@ fn base_url() -> String {
 }
 
 /// Returns the current system volume (0-100) from the sidecar.
+/// Uses a 2-minute TTL cache to avoid hitting the sidecar on every poll.
 #[tauri::command]
-pub async fn get_volume() -> Result<u32, String> {
+pub async fn get_volume(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<u32, String> {
+    if let Some(cached) = state.sidecar_cache.get_volume() {
+        return Ok(cached);
+    }
+
     let url = format!("{}/get_volume", base_url());
     log::info!("get_volume: GET {}", url);
     let resp: VolumeResponse = reqwest::get(&url).await
@@ -21,6 +29,7 @@ pub async fn get_volume() -> Result<u32, String> {
         .json().await
         .map_err(|e| format!("Failed to parse volume response: {}", e))?;
     log::info!("get_volume: volume={}", resp.volume);
+    state.sidecar_cache.set_volume(resp.volume);
     Ok(resp.volume)
 }
 
@@ -34,6 +43,10 @@ pub async fn set_volume(value: u32, app: tauri::AppHandle) -> Result<(), String>
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set volume: {}", e))?;
     log::info!("set_volume: done");
+    // Invalidate cache since volume changed
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        state.sidecar_cache.invalidate_volume();
+    }
     crate::tray_icon::set_muted_state(&app, clamped == 0);
     Ok(())
 }
