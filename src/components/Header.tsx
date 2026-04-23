@@ -6,10 +6,11 @@ interface HeaderProps {
 
 /** App header with version display and settings gear button. */
 export default function Header({ version, onSettingsToggle, settingsOpen }: HeaderProps) {
-  // Split version into base (e.g. "6.3.19") and tag (e.g. "[DEV - 04/23/2026 08:30]")
-  const tagMatch = version.match(/^([\d.]+)\s*(\[.+\])$/);
-  const baseVersion = tagMatch ? tagMatch[1] : version;
-  const devTag = tagMatch ? tagMatch[2] : '';
+  // Split version to find dev/beta tag (e.g. "[DEV - 04/23/2026 08:30]")
+  // Version format: "6.3.19 [DEV - ...] (arm64)" or "6.3.19 (arm64)"
+  const tagMatch = version.match(/(\[.+?\])/);
+  const devTag = tagMatch ? tagMatch[1] : '';
+  const baseVersion = devTag ? version.replace(devTag, '').replace(/\s+/g, ' ').trim() : version;
 
   return (
     <div className='header'>

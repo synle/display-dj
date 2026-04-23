@@ -151,7 +151,7 @@ function App() {
     const observer = new ResizeObserver(() => {
       const height = el.scrollHeight;
       if (height > 0) {
-        win.setSize(new LogicalSize(360, height));
+        win.setSize(new LogicalSize(400, height));
       }
     });
     observer.observe(el);
