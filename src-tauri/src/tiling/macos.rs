@@ -2127,9 +2127,15 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                     }
                 }
                 None => {
-                    // Latch: keep the last detected zone active even when
-                    // the cursor drifts out. Only hide the snap preview overlay.
+                    // Clear snap when cursor leaves the zone. The user must
+                    // release inside a zone for the snap to apply. This
+                    // prevents re-snapping when dragging a window OUT of a
+                    // snapped position (e.g., dragging a maximized window
+                    // down — cursor starts in the top zone but should not
+                    // re-maximize on release).
                     if state.current_layout.is_some() {
+                        state.current_layout = None;
+                        state.current_target_rect = None;
                         dispatch_overlay(OverlayCmd::Hide);
                     }
                 }
