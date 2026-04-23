@@ -203,6 +203,7 @@ pub async fn get_monitors(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Vec<Monitor>, String> {
     let t0 = std::time::Instant::now();
+    crate::config::write_debug_log(&state, "benchmark: get_monitors — START");
 
     // Return cached monitors if fresh
     if let Some(cached) = state.sidecar_cache.get_monitors() {
@@ -213,8 +214,13 @@ pub async fn get_monitors(
         return Ok(cached);
     }
 
+    crate::config::write_debug_log(&state, "benchmark: get_monitors — calling sidecar...");
     let monitors = detect_monitors().await;
     let t_sidecar = t0.elapsed();
+    crate::config::write_debug_log(
+        &state,
+        &format!("benchmark: get_monitors — sidecar returned in {:.1}ms ({} displays)", t_sidecar.as_secs_f64() * 1000.0, monitors.len()),
+    );
 
     let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
 

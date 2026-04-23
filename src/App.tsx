@@ -83,12 +83,27 @@ function App() {
     }
   }, []);
 
+  /** Fetches monitors, dark mode, and volume in a single parallel sidecar call. */
+  const fetchAllState = useCallback(async () => {
+    try {
+      const state = await invoke<{
+        monitors: Monitor[];
+        isDark: boolean;
+        volume: number;
+      }>('fetch_all_state');
+      setMonitors(state.monitors);
+      setDarkMode(state.isDark);
+      setVolume(state.volume);
+    } catch (e) {
+      console.error('Failed to fetch all state:', e);
+    }
+  }, []);
+
   useEffect(() => {
-    fetchMonitors();
-    fetchDarkMode();
-    fetchVolume();
+    fetchAllState();
     fetchPreferences();
     fetchKeepAwake();
+    invoke<boolean>('get_accessibility_trusted').catch(() => {});
     invoke<string>('get_app_version')
       .then(setVersion)
       .catch(() => {});
@@ -105,10 +120,9 @@ function App() {
     // Also refetch when window becomes visible
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        fetchMonitors();
-        fetchDarkMode();
-        fetchVolume();
+        fetchAllState();
         fetchKeepAwake();
+        invoke<boolean>('get_accessibility_trusted').catch(() => {});
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);

@@ -19,6 +19,7 @@ pub async fn get_volume(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<u32, String> {
     let t0 = std::time::Instant::now();
+    crate::config::write_debug_log(&state, "benchmark: get_volume — START");
 
     if let Some(cached) = state.sidecar_cache.get_volume() {
         crate::config::write_debug_log(

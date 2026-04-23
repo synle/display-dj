@@ -613,15 +613,21 @@ pub fn reset_to_defaults() {
 #[tauri::command]
 pub fn get_preferences(state: tauri::State<'_, crate::AppState>) -> Result<Preferences, String> {
     let t0 = std::time::Instant::now();
+    // Log START before acquiring the lock (write_debug_log uses try_lock internally,
+    // so it works here since we haven't locked yet).
+    write_debug_log(&state, "benchmark: get_preferences — START");
     let prefs = state.preferences.lock().map_err(|e| e.to_string())?;
     let result = prefs.clone();
+    let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+    let n_monitors = result.monitor_configs.len();
+    let n_profiles = result.profiles.len();
+    // Drop the lock BEFORE logging the END so write_debug_log can acquire it.
+    drop(prefs);
     write_debug_log(
         &state,
         &format!(
             "benchmark: get_preferences — {:.1}ms (in-memory, {} monitors, {} profiles)",
-            t0.elapsed().as_secs_f64() * 1000.0,
-            result.monitor_configs.len(),
-            result.profiles.len(),
+            elapsed, n_monitors, n_profiles,
         ),
     );
     Ok(result)
