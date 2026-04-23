@@ -923,6 +923,23 @@ fn set_window_rect_by_id(pid: i32, wid: u32, rect: &Rect) {
     }
 }
 
+/// Find the frontmost normal window at a given cursor position using CGWindowList.
+/// Returns (pid, wid) of the topmost window whose bounds contain the cursor.
+/// Works even when AX get_focused_window() fails (e.g., during Chromium drags).
+fn find_window_at_cursor(cx: f64, cy: f64) -> Option<(i32, u32)> {
+    let windows = get_all_windows();
+    // CGWindowList returns windows in z-order (front to back).
+    // Find the first window whose bounds contain the cursor point.
+    for w in &windows {
+        let b = &w.bounds;
+        if cx >= b.x && cx < b.x + b.width && cy >= b.y && cy < b.y + b.height {
+            return Some((w.owner_pid, w.window_id as u32));
+        }
+    }
+    // Fallback: return the frontmost window regardless of cursor position
+    windows.first().map(|w| (w.owner_pid, w.window_id as u32))
+}
+
 /// Callback for layout_grid_on_display: set window rect and raise to front.
 fn set_window_rect_via_ax(win_info: &WindowInfo, rect: &Rect) {
     unsafe {
@@ -2203,23 +2220,37 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                         ),
                     );
                 }
-                // Apply the snap directly using the pre-captured window ref.
-                // Done inline (not on a background thread) to avoid the race
-                // where focus shifts after overlay hide. AX set calls are fast
-                // enough for the main thread on mouse_up.
+                // Apply the snap using the pre-captured window ref, or fall
+                // back to finding the window at the cursor via CGWindowList
+                // (works when AX get_focused_window fails during Chromium drags).
                 if let Some(ref window) = focused {
                     unsafe {
                         set_window_rect(window, &rect);
                     }
                 } else {
-                    if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
-                        crate::config::write_debug_log(
-                            &dbg_state,
-                            &format!(
-                                "tile_snap: FAILED snap {} — could not get focused window (AX API returned None after retries)",
-                                win_title,
-                            ),
-                        );
+                    // Fallback: find the window at the cursor via CGWindowList
+                    // and use set_window_rect_by_id (PID + CGWindowID).
+                    if let Some((pid, wid)) = find_window_at_cursor(cursor.x, cursor.y) {
+                        if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
+                            crate::config::write_debug_log(
+                                &dbg_state,
+                                &format!(
+                                    "tile_snap: snap {} via CGWindowList fallback — pid={}, wid={}",
+                                    win_title, pid, wid,
+                                ),
+                            );
+                        }
+                        set_window_rect_by_id(pid, wid, &rect);
+                    } else {
+                        if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
+                            crate::config::write_debug_log(
+                                &dbg_state,
+                                &format!(
+                                    "tile_snap: FAILED snap {} — no window found at cursor or via AX API",
+                                    win_title,
+                                ),
+                            );
+                        }
                     }
                 }
             } else {
