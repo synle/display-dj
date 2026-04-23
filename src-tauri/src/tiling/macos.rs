@@ -1947,7 +1947,7 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                 .ok()
                 .map(|p| p.tiling.enabled && p.tiling.tile_snap_enabled)
         })
-        .unwrap_or(true); // default to enabled if lock is contended
+        .unwrap_or(false); // default to disabled if lock is contended
     if !snap_enabled {
         return;
     }
