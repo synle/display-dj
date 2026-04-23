@@ -22,7 +22,7 @@ pub struct Monitor {
 
 /// Response from the display-dj HTTP server's /get_all and /list endpoints.
 #[derive(Deserialize, Debug)]
-struct DjDisplay {
+pub struct DjDisplay {
     id: String,
     name: String,
     display_type: String,
@@ -33,7 +33,7 @@ struct DjDisplay {
 impl DjDisplay {
     /// Converts a sidecar API response into the app's Monitor struct,
     /// computing the composite UID and defaulting brightness to 50 if unknown.
-    fn into_monitor(self) -> Monitor {
+    pub fn into_monitor(self) -> Monitor {
         let is_built_in = self.display_type == "builtin";
         let uid = format!("{}::{}", self.id, self.name);
         Monitor {
@@ -121,7 +121,7 @@ async fn set_all_monitors_contrast(value: u32) -> Result<(), String> {
 
 /// Applies saved metadata (custom labels, hidden state) to detected monitors
 /// and sorts them by the user's configured sort order.
-fn merge_with_configs(
+pub fn merge_with_configs(
     monitors: Vec<Monitor>,
     configs: &[crate::config::MonitorMetadata],
 ) -> Vec<Monitor> {

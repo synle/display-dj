@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// Cache TTL: entries older than this are considered stale.
-const CACHE_TTL: Duration = Duration::from_secs(120); // 2 minutes
+const CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
 
 /// A single cached value with a timestamp.
 struct CacheEntry<T> {

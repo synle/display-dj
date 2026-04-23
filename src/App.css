@@ -82,6 +82,11 @@ body,
   font-weight: 400;
 }
 
+.header-dev-tag {
+  color: #e74c3c;
+  font-weight: 600;
+}
+
 .header-toggle {
   background: none;
   border: none;
