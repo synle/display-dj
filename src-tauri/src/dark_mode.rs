@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use tauri::Manager;
 
 #[derive(Deserialize)]
 struct ThemeResponse {
@@ -12,8 +13,15 @@ fn base_url() -> String {
 }
 
 /// Queries the sidecar for the current OS theme and returns true if dark mode is active.
+/// Uses a 2-minute TTL cache to avoid hitting the sidecar on every poll.
 #[tauri::command]
-pub async fn get_dark_mode() -> Result<bool, String> {
+pub async fn get_dark_mode(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<bool, String> {
+    if let Some(cached) = state.sidecar_cache.get_dark_mode() {
+        return Ok(cached);
+    }
+
     let url = format!("{}/theme", base_url());
     log::info!("get_dark_mode: GET {}", url);
     let resp: ThemeResponse = reqwest::get(&url).await
@@ -22,6 +30,7 @@ pub async fn get_dark_mode() -> Result<bool, String> {
         .map_err(|e| format!("Failed to parse theme response: {}", e))?;
     let is_dark = resp.theme == "dark";
     log::info!("get_dark_mode: theme={} is_dark={}", resp.theme, is_dark);
+    state.sidecar_cache.set_dark_mode(is_dark);
     Ok(is_dark)
 }
 
@@ -38,6 +47,10 @@ pub async fn set_dark_mode(
     reqwest::get(&url).await
         .map_err(|e| format!("Failed to set dark mode: {}", e))?;
     log::info!("set_dark_mode: done");
+    // Invalidate cache since dark mode changed
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        state.sidecar_cache.invalidate_dark_mode();
+    }
     crate::tray_icon::set_dark_mode_state(&app, enabled);
     Ok(())
 }

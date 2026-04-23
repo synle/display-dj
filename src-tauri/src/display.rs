@@ -196,11 +196,17 @@ fn ensure_metadata_for_monitors(
 // ===========================================================================
 
 /// Returns all connected monitors with saved metadata applied.
+/// Uses a 2-minute TTL cache to avoid hitting the sidecar on every poll.
 /// Reconciles migrated configs and ensures new monitors get metadata entries.
 #[tauri::command]
 pub async fn get_monitors(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Vec<Monitor>, String> {
+    // Return cached monitors if fresh
+    if let Some(cached) = state.sidecar_cache.get_monitors() {
+        return Ok(cached);
+    }
+
     let monitors = detect_monitors().await;
     let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
 
@@ -210,7 +216,9 @@ pub async fn get_monitors(
         crate::config::save_preferences_to_disk(&prefs);
     }
 
-    Ok(merge_with_configs(monitors, &prefs.monitor_configs))
+    let result = merge_with_configs(monitors, &prefs.monitor_configs);
+    state.sidecar_cache.set_monitors(result.clone());
+    Ok(result)
 }
 
 /// Sets brightness for a single monitor, enforcing the minimum brightness floor.
@@ -221,6 +229,7 @@ pub async fn set_brightness(
     value: u32,
 ) -> Result<(), String> {
     let min = state.preferences.lock().map_err(|e| e.to_string())?.effective_min_brightness();
+    state.sidecar_cache.invalidate_monitors();
     set_monitor_brightness(&monitor_id, value, min).await
 }
 
@@ -231,6 +240,7 @@ pub async fn set_all_brightness(
     value: u32,
 ) -> Result<(), String> {
     let min = state.preferences.lock().map_err(|e| e.to_string())?.effective_min_brightness();
+    state.sidecar_cache.invalidate_monitors();
     set_all_monitors_brightness(value, min).await
 }
 

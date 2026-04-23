@@ -2,6 +2,7 @@ mod config;
 mod dark_mode;
 mod display;
 mod keep_awake;
+pub mod sidecar_cache;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod tiling;
 mod tray;
@@ -62,6 +63,8 @@ pub struct AppState {
     /// Per-window tiling state (original positions, current layout, display index).
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     pub tiling_state: std::sync::Mutex<tiling::TilingState>,
+    /// TTL-based cache for sidecar HTTP responses (monitors, dark mode, volume).
+    pub sidecar_cache: sidecar_cache::SidecarCache,
 }
 
 /// Kill any stale display-dj-server sidecar processes left over from a previous run.
@@ -374,6 +377,7 @@ pub fn run() {
             is_muted: std::sync::Mutex::new(false),
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling_state: std::sync::Mutex::new(tiling::TilingState::new()),
+            sidecar_cache: sidecar_cache::SidecarCache::new(),
         })
         .invoke_handler(tauri::generate_handler![
             display::get_monitors,
