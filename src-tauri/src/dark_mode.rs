@@ -19,6 +19,7 @@ pub async fn get_dark_mode(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<bool, String> {
     let t0 = std::time::Instant::now();
+    crate::config::write_debug_log(&state, "benchmark: get_dark_mode — START");
 
     if let Some(cached) = state.sidecar_cache.get_dark_mode() {
         crate::config::write_debug_log(

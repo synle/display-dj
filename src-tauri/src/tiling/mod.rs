@@ -1011,6 +1011,7 @@ pub fn get_accessibility_trusted(
     state: tauri::State<'_, crate::AppState>,
 ) -> bool {
     let t0 = std::time::Instant::now();
+    crate::config::write_debug_log(&state, "benchmark: get_accessibility_trusted — START");
 
     if let Some(cached) = state.sidecar_cache.get_accessibility() {
         crate::config::write_debug_log(

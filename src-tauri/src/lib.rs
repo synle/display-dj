@@ -44,6 +44,73 @@ pub fn server_port() -> u16 {
     SERVER_PORT.load(Ordering::Relaxed)
 }
 
+/// Response from `fetch_all_state` — all sidecar data in one call.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AllState {
+    pub monitors: Vec<display::Monitor>,
+    pub is_dark: bool,
+    pub volume: u32,
+}
+
+/// Fetches monitors, dark mode, and volume from the sidecar in parallel.
+/// Returns all three in a single response so the frontend only makes one
+/// IPC call. Logs benchmark timing for each sub-call and the total.
+#[tauri::command]
+async fn fetch_all_state(
+    app: tauri::AppHandle,
+) -> Result<AllState, String> {
+    use tauri::Manager;
+    let t0 = std::time::Instant::now();
+    if let Some(s) = app.try_state::<AppState>() {
+        config::write_debug_log(&s, "benchmark: fetch_all_state — START");
+    }
+
+    // Run all 3 sidecar calls in parallel using spawned tasks.
+    // Each task gets its own AppHandle clone (cheap Arc clone).
+    let a1 = app.clone();
+    let a2 = app.clone();
+    let a3 = app.clone();
+
+    let h_monitors = tauri::async_runtime::spawn(async move {
+        let state = a1.state::<AppState>();
+        display::get_monitors(state).await
+    });
+    let h_dark = tauri::async_runtime::spawn(async move {
+        let state = a2.state::<AppState>();
+        dark_mode::get_dark_mode(state).await
+    });
+    let h_volume = tauri::async_runtime::spawn(async move {
+        let state = a3.state::<AppState>();
+        volume::get_volume(state).await
+    });
+
+    let monitors_result = h_monitors.await.map_err(|e| e.to_string())?;
+    let dark_result = h_dark.await.map_err(|e| e.to_string())?;
+    let volume_result = h_volume.await.map_err(|e| e.to_string())?;
+
+    let monitors = monitors_result.unwrap_or_default();
+    let is_dark = dark_result.unwrap_or(false);
+    let volume = volume_result.unwrap_or(0);
+
+    let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+    if let Some(s) = app.try_state::<AppState>() {
+        config::write_debug_log(
+            &s,
+            &format!(
+                "benchmark: fetch_all_state — {:.1}ms total ({} monitors, is_dark={}, volume={})",
+                elapsed, monitors.len(), is_dark, volume,
+            ),
+        );
+    }
+
+    Ok(AllState {
+        monitors,
+        is_dark,
+        volume,
+    })
+}
+
 pub struct AppState {
     pub preferences: std::sync::Mutex<config::Preferences>,
     pub last_tray_rect: std::sync::Mutex<Option<tauri::Rect>>,
@@ -380,6 +447,7 @@ pub fn run() {
             sidecar_cache: sidecar_cache::SidecarCache::new(),
         })
         .invoke_handler(tauri::generate_handler![
+            fetch_all_state,
             display::get_monitors,
             display::set_brightness,
             display::set_all_brightness,
