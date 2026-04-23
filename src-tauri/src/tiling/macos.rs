@@ -12,9 +12,10 @@ use std::ffi::{c_char, c_void, CString};
 use tauri::{AppHandle, Manager};
 
 use super::{
-    build_sorted_window_list, calculate_target_rect, find_display_for_window,
-    layout_across_displays, plan_expose, plan_expose_app, plan_layout_preset,
-    Rect, TilingLayout, WindowInfo, WindowState,
+    build_sorted_window_list, calculate_smart_restore_rect,
+    calculate_smart_restore_rect_at_cursor, calculate_target_rect,
+    find_display_for_window, is_rect_oversized, layout_across_displays, plan_expose,
+    plan_expose_app, plan_layout_preset, Rect, TilingLayout, WindowInfo, WindowState,
 };
 
 // ---------------------------------------------------------------------------
@@ -36,6 +37,17 @@ extern "C" {
         c_str: *const c_char,
         encoding: u32,
     ) -> CFStringRef;
+    fn CFNumberCreate(
+        allocator: CFAllocatorRef,
+        the_type: i64,
+        value_ptr: *const c_void,
+    ) -> CFTypeRef;
+    fn CFArrayCreate(
+        allocator: CFAllocatorRef,
+        values: *const CFTypeRef,
+        num_values: i64,
+        callbacks: *const c_void,
+    ) -> CFArrayRef;
 }
 
 /// RAII wrapper for CoreFoundation objects. Calls CFRelease on drop.
@@ -210,6 +222,119 @@ fn get_display_visible_frames() -> Vec<Rect> {
 
         frames
     }
+}
+
+/// Get full frames for all displays in AX/CoreGraphics coordinates
+/// (top-left origin, in points). Includes menu bar and dock area (NSScreen.frame).
+/// Used to detect pseudo-fullscreen windows (browser F11 / video fullscreen)
+/// that cover the entire display but don't set AXFullScreen.
+#[allow(unexpected_cfgs)]
+fn get_display_full_frames() -> Vec<Rect> {
+    unsafe {
+        use objc::runtime::Object;
+        use objc::{msg_send, sel, sel_impl};
+
+        let cls = match objc::runtime::Class::get("NSScreen") {
+            Some(c) => c,
+            None => return Vec::new(),
+        };
+
+        let screens: *mut Object = msg_send![cls, screens];
+        if screens.is_null() {
+            return Vec::new();
+        }
+        let count: usize = msg_send![screens, count];
+        if count == 0 {
+            return Vec::new();
+        }
+
+        let primary_screen: *mut Object = msg_send![screens, objectAtIndex: 0usize];
+        let primary_frame: CGRect = msg_send![primary_screen, frame];
+        let primary_h = primary_frame.size.height;
+
+        let mut frames = Vec::with_capacity(count);
+        for i in 0..count {
+            let screen: *mut Object = msg_send![screens, objectAtIndex: i];
+            // frame: full display including menu bar/dock (Cocoa coords)
+            let full: CGRect = msg_send![screen, frame];
+            // Convert to CG/AX coords
+            frames.push(Rect {
+                x: full.origin.x,
+                y: primary_h - full.origin.y - full.size.height,
+                width: full.size.width,
+                height: full.size.height,
+            });
+        }
+
+        frames.sort_by(|a, b| {
+            a.x.partial_cmp(&b.x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal))
+        });
+
+        frames
+    }
+}
+
+/// Check if a window covers an entire display (including menu bar area).
+/// Used to detect browser F11 fullscreen or video fullscreen which don't
+/// set the native AXFullScreen attribute.
+fn is_pseudo_fullscreen(win_bounds: &Rect, full_frames: &[Rect]) -> bool {
+    for d in full_frames {
+        // Window must roughly match the display's full frame (within 5px)
+        if (win_bounds.x - d.x).abs() < 5.0
+            && (win_bounds.y - d.y).abs() < 5.0
+            && (win_bounds.width - d.width).abs() < 5.0
+            && (win_bounds.height - d.height).abs() < 5.0
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Send an Escape keystroke to the current frontmost app via CGEvent.
+/// Used to exit browser F11 fullscreen or video player fullscreen.
+unsafe fn send_escape_key() {
+    extern "C" {
+        fn CGEventCreateKeyboardEvent(
+            source: *const c_void,
+            virtual_key: u16,
+            key_down: bool,
+        ) -> *mut c_void;
+        fn CGEventPost(tap: u32, event: *mut c_void);
+    }
+    const K_CG_SESSION_EVENT_TAP: u32 = 1;
+    const K_VK_ESCAPE: u16 = 53;
+
+    let key_down = CGEventCreateKeyboardEvent(std::ptr::null(), K_VK_ESCAPE, true);
+    if !key_down.is_null() {
+        CGEventPost(K_CG_SESSION_EVENT_TAP, key_down);
+        CFRelease(key_down);
+    }
+    let key_up = CGEventCreateKeyboardEvent(std::ptr::null(), K_VK_ESCAPE, false);
+    if !key_up.is_null() {
+        CGEventPost(K_CG_SESSION_EVENT_TAP, key_up);
+        CFRelease(key_up);
+    }
+}
+
+/// Activate (bring to front) an app by PID via NSRunningApplication.
+unsafe fn activate_app_by_pid(pid: i32) {
+    use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl};
+
+    let cls = match objc::runtime::Class::get("NSRunningApplication") {
+        Some(c) => c,
+        None => return,
+    };
+    let app: *mut Object =
+        msg_send![cls, runningApplicationWithProcessIdentifier: pid];
+    if app.is_null() {
+        return;
+    }
+    // NSApplicationActivateIgnoringOtherApps = 1 << 1 = 2
+    let _: bool = msg_send![app, activateWithOptions: 2u64];
 }
 
 // ---------------------------------------------------------------------------
@@ -496,6 +621,9 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
 }
 
 /// Restore the focused window to its pre-tiled position and size.
+/// If the saved original rect is oversized (≥ 85% of the display in both
+/// dimensions), a smart restore size is used instead: 60% of the smallest
+/// display, but no smaller than the app's own minimum size (AXMinimumSize).
 fn execute_restore(app: &AppHandle) {
     if unsafe { !AXIsProcessTrusted() } {
         log::warn!(
@@ -528,15 +656,31 @@ fn execute_restore(app: &AppHandle) {
     };
 
     if let Some(rect) = original {
-        log::info!(
-            "tiling: restore -> ({}, {}, {}x{})",
-            rect.x,
-            rect.y,
-            rect.width,
-            rect.height,
-        );
+        let displays = get_display_visible_frames();
+        let display_index = find_display_for_window(&rect, &displays);
+
+        // If the original was oversized, use smart restore sizing instead
+        let restore_rect = if !displays.is_empty()
+            && is_rect_oversized(&rect, &displays[display_index])
+        {
+            let app_min = unsafe { get_window_min_size(&window) };
+            let smart =
+                calculate_smart_restore_rect(&displays, display_index, app_min);
+            log::info!(
+                "tiling: smart restore (original was oversized) -> ({}, {}, {}x{}), app_min={:?}",
+                smart.x, smart.y, smart.width, smart.height, app_min,
+            );
+            smart
+        } else {
+            log::info!(
+                "tiling: restore -> ({}, {}, {}x{})",
+                rect.x, rect.y, rect.width, rect.height,
+            );
+            rect
+        };
+
         unsafe {
-            set_window_rect(&window, &rect);
+            set_window_rect(&window, &restore_rect);
         }
     } else {
         log::info!("tiling: no saved state to restore");
@@ -748,6 +892,14 @@ fn spread_expose(app: &AppHandle) {
         )
     };
 
+    // Move all windows from other Spaces to the current Space so Exposé
+    // covers every window, not just the ones on the active virtual desktop.
+    let moved = move_all_windows_to_current_space();
+    if moved > 0 {
+        log::info!("expose: moved {} windows to current space", moved);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+
     // Normalize: unminimize and un-fullscreen all windows first
     let (unmin, unfs) = normalize_all_windows();
     if unmin > 0 || unfs > 0 {
@@ -774,6 +926,10 @@ fn spread_expose(app: &AppHandle) {
     if displays.is_empty() {
         return;
     }
+
+    // Brief pause before layout to let space-move and normalization
+    // animations finish (windows may still be animating into place).
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
     // macOS NSScreen returns points (logical pixels) — no DPI scaling needed
     let min_cell_sizes: Vec<(f64, f64)> = displays.iter().map(|_| (expose_min_w, expose_min_h)).collect();
@@ -956,22 +1112,123 @@ unsafe fn get_all_ax_windows_for_pid(pid: i32) -> Vec<(CfRef, u32)> {
     result
 }
 
-/// Normalize all windows: unminimize minimized windows and exit fullscreen.
-/// Returns the number of windows that were changed (for logging).
+/// Get PIDs of all running GUI applications via NSWorkspace.
+/// Returns regular activation-policy apps (menu-bar apps, not agents/daemons).
+unsafe fn get_all_gui_app_pids() -> Vec<i32> {
+    use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl};
+
+    let ws_cls = match objc::runtime::Class::get("NSWorkspace") {
+        Some(c) => c,
+        None => return Vec::new(),
+    };
+    let workspace: *mut Object = msg_send![ws_cls, sharedWorkspace];
+    if workspace.is_null() {
+        return Vec::new();
+    }
+    let apps: *mut Object = msg_send![workspace, runningApplications];
+    if apps.is_null() {
+        return Vec::new();
+    }
+    let count: usize = msg_send![apps, count];
+
+    let mut pids = Vec::new();
+    for i in 0..count {
+        let app: *mut Object = msg_send![apps, objectAtIndex: i];
+        if app.is_null() {
+            continue;
+        }
+        // activationPolicy: 0 = Regular (GUI), 1 = Accessory, 2 = Prohibited
+        let policy: i64 = msg_send![app, activationPolicy];
+        if policy == 0 {
+            let pid: i32 = msg_send![app, processIdentifier];
+            if pid > 0 {
+                pids.push(pid);
+            }
+        }
+    }
+    pids
+}
+
+// ---------------------------------------------------------------------------
+// Spaces (virtual desktops) — private CGS API
+// ---------------------------------------------------------------------------
+
+// These private CoreGraphics Server APIs are used by major macOS window
+// managers (yabai, Amethyst, AeroSpace) and have been stable since macOS 10.6.
+// They let us move windows from other Spaces to the current one before Exposé.
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGSMainConnectionID() -> i32;
+    /// Returns the Space ID of the currently active Space on the main display.
+    fn CGSGetActiveSpace(cid: i32) -> u64;
+    /// Move a set of windows to a managed Space. `windows` is a CFArray of
+    /// CFNumber(kCFNumberSInt32Type) window IDs. `space` is the Space ID.
+    fn CGSMoveWindowsToManagedSpace(cid: i32, windows: CFArrayRef, space: u64) -> i32;
+}
+
+/// Move all windows from all running GUI apps to the currently active Space.
+/// Uses AX API to enumerate windows across all Spaces, then the private CGS
+/// API to move them. Gracefully skips if the private APIs fail.
+fn move_all_windows_to_current_space() -> usize {
+    unsafe {
+        let cid = CGSMainConnectionID();
+        if cid == 0 {
+            log::warn!("expose: CGSMainConnectionID returned 0 — skipping space collapse");
+            return 0;
+        }
+        let current_space = CGSGetActiveSpace(cid);
+        if current_space == 0 {
+            log::warn!("expose: CGSGetActiveSpace returned 0 — skipping space collapse");
+            return 0;
+        }
+
+        let pids = get_all_gui_app_pids();
+        let mut moved = 0usize;
+
+        for &pid in &pids {
+            let ax_windows = get_all_ax_windows_for_pid(pid);
+            for (_ax_win, wid) in &ax_windows {
+                // Create a CFArray with one CFNumber (the window ID)
+                let wid_val = *wid as i32;
+                let cf_num = CFNumberCreate(
+                    std::ptr::null(),
+                    K_CF_NUMBER_SINT32_TYPE,
+                    &wid_val as *const i32 as *const c_void,
+                );
+                if cf_num.is_null() {
+                    continue;
+                }
+                let arr = CFArrayCreate(
+                    std::ptr::null(),
+                    &cf_num as *const CFTypeRef,
+                    1,
+                    std::ptr::null(), // no callbacks needed for CFNumber
+                );
+                if !arr.is_null() {
+                    let err = CGSMoveWindowsToManagedSpace(cid, arr, current_space);
+                    if err == 0 {
+                        moved += 1;
+                    }
+                    CFRelease(arr);
+                }
+                CFRelease(cf_num);
+            }
+        }
+
+        moved
+    }
+}
+
+/// Normalize all windows: unminimize minimized windows, exit native fullscreen,
+/// and exit browser/video pseudo-fullscreen (by sending Escape key).
+/// Returns (unminimized_count, unfullscreened_count).
 /// After calling this, the caller should re-fetch the window list since
 /// windows may now be visible that weren't before.
 fn normalize_all_windows() -> (usize, usize) {
-    // Collect unique PIDs from on-screen windows first, then also check
-    // all running GUI apps for minimized windows (which won't appear in CGWindowList).
-    let mut pids: Vec<i32> = Vec::new();
-
-    // Get on-screen windows for their PIDs
-    let on_screen = get_all_windows();
-    for w in &on_screen {
-        if !pids.contains(&w.owner_pid) {
-            pids.push(w.owner_pid);
-        }
-    }
+    // Use all running GUI app PIDs so we catch minimized windows and
+    // windows on other Spaces (not just on-screen ones).
+    let pids = unsafe { get_all_gui_app_pids() };
 
     let mut unminimized = 0;
     let mut unfullscreened = 0;
@@ -991,6 +1248,40 @@ fn normalize_all_windows() -> (usize, usize) {
                     }
                 }
             }
+        }
+    }
+
+    // Detect pseudo-fullscreen windows (browser F11 / video fullscreen):
+    // these cover the full display frame but don't set AXFullScreen.
+    // Send Escape key to each to exit the browser/player fullscreen.
+    let full_frames = get_display_full_frames();
+    if !full_frames.is_empty() {
+        let on_screen = get_all_windows();
+        let mut pseudo_fs_pids: Vec<i32> = Vec::new();
+        for w in &on_screen {
+            if is_pseudo_fullscreen(&w.bounds, &full_frames) {
+                // Check that this window is NOT native fullscreen (already handled above).
+                // A native-fullscreen window has its own Space, so it shouldn't
+                // appear in get_all_windows() after being un-fullscreened, but
+                // guard against double-action anyway.
+                let is_native = unsafe {
+                    get_ax_window_by_id(w.owner_pid, w.window_id as u32)
+                        .map_or(false, |ax| is_window_fullscreen(&ax))
+                };
+                if !is_native && !pseudo_fs_pids.contains(&w.owner_pid) {
+                    pseudo_fs_pids.push(w.owner_pid);
+                }
+            }
+        }
+        for &pid in &pseudo_fs_pids {
+            unsafe {
+                activate_app_by_pid(pid);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                send_escape_key();
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            unfullscreened += 1;
+            log::info!("expose: sent Escape to exit pseudo-fullscreen (pid={})", pid);
         }
     }
 
@@ -1039,6 +1330,13 @@ fn spread_expose_app(app: &AppHandle) {
     let target_pid = pre_windows[0].owner_pid;
     let target_app = pre_windows[0].owner_name.clone();
 
+    // Move all windows from other Spaces to the current Space
+    let moved = move_all_windows_to_current_space();
+    if moved > 0 {
+        log::info!("app_expose: moved {} windows to current space", moved);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+
     let (unmin, unfs) = normalize_all_windows();
     if unmin > 0 || unfs > 0 {
         log::info!("app_expose: normalized {} unminimized, {} un-fullscreened", unmin, unfs);
@@ -1063,6 +1361,10 @@ fn spread_expose_app(app: &AppHandle) {
     if displays.is_empty() {
         return;
     }
+
+    // Brief pause before layout to let space-move and normalization
+    // animations finish (windows may still be animating into place).
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
     // macOS NSScreen returns points (logical pixels) — no DPI scaling needed
     let min_cell_sizes: Vec<(f64, f64)> = displays.iter().map(|_| (expose_min_w, expose_min_h)).collect();
@@ -1716,6 +2018,63 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                                     ),
                                 );
                             }
+
+                            // If the window is oversized (e.g. coming from
+                            // maximize/fullscreen), shrink it to smart size
+                            // centered on the cursor so the user can see snap
+                            // zones while dragging.
+                            if let Some((sw, sh)) = state.drag_start_window_size {
+                                let start_rect = Rect {
+                                    x: sx,
+                                    y: sy,
+                                    width: sw,
+                                    height: sh,
+                                };
+                                let di = find_display_for_window(
+                                    &start_rect,
+                                    &state.displays,
+                                );
+                                if is_rect_oversized(
+                                    &start_rect,
+                                    &state.displays[di],
+                                ) {
+                                    let app_min = unsafe {
+                                        get_focused_window()
+                                            .and_then(|w| get_window_min_size(&w))
+                                    };
+                                    let smart =
+                                        calculate_smart_restore_rect_at_cursor(
+                                            &state.displays,
+                                            di,
+                                            cursor.x,
+                                            cursor.y,
+                                            app_min,
+                                        );
+                                    unsafe {
+                                        if let Some(w) = get_focused_window() {
+                                            set_window_rect(&w, &smart);
+                                        }
+                                    }
+                                    state.drag_start_window_pos =
+                                        Some((smart.x, smart.y));
+                                    state.drag_start_window_size =
+                                        Some((smart.width, smart.height));
+                                    if let Some(dbg_state) =
+                                        ctx.app.try_state::<crate::AppState>()
+                                    {
+                                        crate::config::write_debug_log(
+                                            &dbg_state,
+                                            &format!(
+                                                "tile_snap: smart shrink — oversized window shrunk to \
+                                                 ({:.0},{:.0} {:.0}x{:.0}), app_min={:?}",
+                                                smart.x, smart.y, smart.width,
+                                                smart.height, app_min,
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+
                             // Now show drop zone indicators
                             dispatch_overlay(OverlayCmd::ShowZones {
                                 displays: state.displays.clone(),
