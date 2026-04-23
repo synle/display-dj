@@ -2028,10 +2028,10 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                                 );
                             }
 
-                            // If the window is oversized (e.g. coming from
-                            // maximize/fullscreen), shrink it to smart size
-                            // centered on the cursor so the user can see snap
-                            // zones while dragging.
+                            // Shrink the window to smart size (60% of smallest
+                            // display, or app min if larger) centered on the
+                            // cursor. This gives a consistent drag experience
+                            // and makes snap zones visible around the window.
                             if let Some((sw, sh)) = state.drag_start_window_size {
                                 let start_rect = Rect {
                                     x: sx,
@@ -2043,44 +2043,39 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                                     &start_rect,
                                     &state.displays,
                                 );
-                                if is_rect_oversized(
-                                    &start_rect,
-                                    &state.displays[di],
-                                ) {
-                                    let app_min = unsafe {
-                                        get_focused_window()
-                                            .and_then(|w| get_window_min_size(&w))
-                                    };
-                                    let smart =
-                                        calculate_smart_restore_rect_at_cursor(
-                                            &state.displays,
-                                            di,
-                                            cursor.x,
-                                            cursor.y,
-                                            app_min,
-                                        );
-                                    unsafe {
-                                        if let Some(w) = get_focused_window() {
-                                            set_window_rect(&w, &smart);
-                                        }
+                                let app_min = unsafe {
+                                    get_focused_window()
+                                        .and_then(|w| get_window_min_size(&w))
+                                };
+                                let smart =
+                                    calculate_smart_restore_rect_at_cursor(
+                                        &state.displays,
+                                        di,
+                                        cursor.x,
+                                        cursor.y,
+                                        app_min,
+                                    );
+                                unsafe {
+                                    if let Some(w) = get_focused_window() {
+                                        set_window_rect(&w, &smart);
                                     }
-                                    state.drag_start_window_pos =
-                                        Some((smart.x, smart.y));
-                                    state.drag_start_window_size =
-                                        Some((smart.width, smart.height));
-                                    if let Some(dbg_state) =
-                                        ctx.app.try_state::<crate::AppState>()
-                                    {
-                                        crate::config::write_debug_log(
-                                            &dbg_state,
-                                            &format!(
-                                                "tile_snap: smart shrink — oversized window shrunk to \
-                                                 ({:.0},{:.0} {:.0}x{:.0}), app_min={:?}",
-                                                smart.x, smart.y, smart.width,
-                                                smart.height, app_min,
-                                            ),
-                                        );
-                                    }
+                                }
+                                state.drag_start_window_pos =
+                                    Some((smart.x, smart.y));
+                                state.drag_start_window_size =
+                                    Some((smart.width, smart.height));
+                                if let Some(dbg_state) =
+                                    ctx.app.try_state::<crate::AppState>()
+                                {
+                                    crate::config::write_debug_log(
+                                        &dbg_state,
+                                        &format!(
+                                            "tile_snap: smart shrink — window shrunk to \
+                                             ({:.0},{:.0} {:.0}x{:.0}), app_min={:?}",
+                                            smart.x, smart.y, smart.width,
+                                            smart.height, app_min,
+                                        ),
+                                    );
                                 }
                             }
 
