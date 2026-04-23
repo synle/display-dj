@@ -57,7 +57,7 @@ impl Default for TilingPreferences {
             tile_snap_enabled: true,
             side_edge_trigger: 50,
             top_edge_trigger: 50,
-            corner_trigger: 80,
+            corner_trigger: 50,
             expose_enabled: true,
             expose_columns: 3,
             expose_rows: 3,
