@@ -5,10 +5,9 @@
 //! Not supported on Wayland-only sessions — `is_x11_available()` returns false.
 
 use super::{
-    build_sorted_window_list, calculate_smart_restore_rect, calculate_target_rect,
-    find_display_for_window, is_rect_oversized, layout_across_displays,
-    layout_grid_on_display, plan_expose, plan_expose_app, plan_layout_preset, Rect,
-    TilingLayout, WindowInfo, WindowState,
+    build_sorted_window_list, calculate_target_rect, find_display_for_window,
+    layout_across_displays, layout_grid_on_display, plan_expose, plan_expose_app,
+    plan_layout_preset, Rect, TilingLayout, WindowInfo, WindowState,
 };
 use tauri::{AppHandle, Manager};
 use x11rb::connection::Connection;
@@ -805,9 +804,6 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
 }
 
 /// Restore the focused window to its pre-tiled position and size.
-/// If the saved original rect is oversized (≥ 85% of the display in both
-/// dimensions), a smart restore size is used instead: 60% of the smallest
-/// display, centered on the current display.
 fn execute_restore(app: &AppHandle) {
     let (conn, screen_num) = match connect() {
         Some(c) => c,
@@ -828,29 +824,11 @@ fn execute_restore(app: &AppHandle) {
     };
 
     if let Some(rect) = original {
-        let displays = get_display_work_areas();
-        let display_index = find_display_for_window(&rect, &displays);
-
-        // If the original was oversized, use smart restore sizing instead
-        let restore_rect = if !displays.is_empty()
-            && is_rect_oversized(&rect, &displays[display_index])
-        {
-            let smart =
-                calculate_smart_restore_rect(&displays, display_index, None);
-            log::info!(
-                "tiling: smart restore (original was oversized) -> ({}, {}, {}x{})",
-                smart.x, smart.y, smart.width, smart.height,
-            );
-            smart
-        } else {
-            log::info!(
-                "tiling: restore -> ({}, {}, {}x{})",
-                rect.x, rect.y, rect.width, rect.height,
-            );
-            rect
-        };
-
-        set_window_rect(&conn, screen_num, window, &restore_rect);
+        log::info!(
+            "tiling: restore -> ({}, {}, {}x{})",
+            rect.x, rect.y, rect.width, rect.height,
+        );
+        set_window_rect(&conn, screen_num, window, &rect);
     } else {
         log::info!("tiling: no saved state to restore");
     }
