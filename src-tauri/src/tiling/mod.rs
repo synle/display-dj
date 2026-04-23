@@ -297,6 +297,102 @@ pub(crate) fn find_display_for_window(rect: &Rect, displays: &[Rect]) -> usize {
         .unwrap_or(0)
 }
 
+// ---------------------------------------------------------------------------
+// Smart restore sizing
+// ---------------------------------------------------------------------------
+
+/// The fraction of the smallest display used for smart restore sizing.
+const SMART_RESTORE_FRACTION: f64 = 0.6;
+
+/// Threshold: a window is "oversized" when it covers ≥ 85% of both the
+/// display width and height. Oversized windows get smart-sized on restore
+/// and during Tile Snap drag instead of keeping their original dimensions.
+const OVERSIZED_THRESHOLD: f64 = 0.85;
+
+/// Check whether a window rect covers most of a display (≥ 85% width AND height).
+/// Used to detect windows restored from maximize / fullscreen that would be
+/// awkwardly large.
+pub(crate) fn is_rect_oversized(rect: &Rect, display: &Rect) -> bool {
+    rect.width >= display.width * OVERSIZED_THRESHOLD
+        && rect.height >= display.height * OVERSIZED_THRESHOLD
+}
+
+/// Calculate a smart restore rect: 60% of the smallest display, centered on
+/// `display_index`. If `app_min_size` is provided and larger than the 60%
+/// size, the app minimum is used instead (so we never shrink below what the
+/// app allows).
+pub(crate) fn calculate_smart_restore_rect(
+    displays: &[Rect],
+    display_index: usize,
+    app_min_size: Option<(f64, f64)>,
+) -> Rect {
+    // Find the minimum width and height across all displays
+    let min_w = displays
+        .iter()
+        .map(|d| d.width)
+        .fold(f64::INFINITY, f64::min);
+    let min_h = displays
+        .iter()
+        .map(|d| d.height)
+        .fold(f64::INFINITY, f64::min);
+
+    // 60% of the smallest display
+    let mut smart_w = min_w * SMART_RESTORE_FRACTION;
+    let mut smart_h = min_h * SMART_RESTORE_FRACTION;
+
+    // Respect the app's own minimum size if it is larger
+    if let Some((app_w, app_h)) = app_min_size {
+        smart_w = smart_w.max(app_w);
+        smart_h = smart_h.max(app_h);
+    }
+
+    // Clamp to the target display so we never exceed it
+    let d = &displays[display_index];
+    smart_w = smart_w.min(d.width);
+    smart_h = smart_h.min(d.height);
+
+    // Center on the target display
+    let x = d.x + (d.width - smart_w) / 2.0;
+    let y = d.y + (d.height - smart_h) / 2.0;
+
+    Rect {
+        x,
+        y,
+        width: smart_w,
+        height: smart_h,
+    }
+}
+
+/// Calculate a smart restore rect centered on a cursor position rather than
+/// the display center. Used by Tile Snap to shrink oversized windows around
+/// the drag point. The rect is clamped to stay within the display bounds.
+pub(crate) fn calculate_smart_restore_rect_at_cursor(
+    displays: &[Rect],
+    display_index: usize,
+    cursor_x: f64,
+    cursor_y: f64,
+    app_min_size: Option<(f64, f64)>,
+) -> Rect {
+    // Start with display-centered smart rect for dimensions
+    let smart = calculate_smart_restore_rect(displays, display_index, app_min_size);
+
+    // Center on the cursor
+    let d = &displays[display_index];
+    let mut x = cursor_x - smart.width / 2.0;
+    let mut y = cursor_y - smart.height / 2.0;
+
+    // Clamp to display bounds
+    x = x.max(d.x).min(d.x + d.width - smart.width);
+    y = y.max(d.y).min(d.y + d.height - smart.height);
+
+    Rect {
+        x,
+        y,
+        width: smart.width,
+        height: smart.height,
+    }
+}
+
 /// Info about an on-screen window (platform-independent subset).
 #[derive(Debug)]
 pub(crate) struct WindowInfo {
@@ -336,10 +432,10 @@ pub(crate) fn build_sorted_window_list(windows: &[WindowInfo], max: usize) -> Ve
 /// Lay out windows in a grid on a single display. Returns the number of windows placed.
 ///
 /// Uses an adaptive layout when some windows have a minimum size that exceeds
-/// the default grid cell dimensions: normal-sized windows are placed first in a
-/// standard grid, then oversized windows get rows with fewer columns so their
-/// cells meet the minimum width requirement. The last window in an incomplete
-/// oversized row is right-aligned to the grid's right edge.
+/// the default grid cell dimensions: normal-sized windows are placed first
+/// (1×1 cells), then oversized windows are placed last, each consuming
+/// ceil'd grid cells (snap to grid boundaries — no gaps between oversized
+/// windows and the grid).
 pub(crate) fn layout_grid_on_display(
     ordered: &[&WindowInfo],
     display: &Rect,
@@ -351,19 +447,22 @@ pub(crate) fn layout_grid_on_display(
         return 0;
     }
 
-    // Calculate the default grid dimensions
+    // Initial grid dimensions (as if all windows are 1-cell)
     let cols = (n as f64).sqrt().ceil() as usize;
-    let rows = (n + cols - 1) / cols;
+    let initial_rows = (n + cols - 1) / cols;
     let cell_w = (display.width - gap * (cols as f64 + 1.0)) / cols as f64;
-    let cell_h = (display.height - gap * (rows as f64 + 1.0)) / rows as f64;
+    let initial_cell_h =
+        (display.height - gap * (initial_rows as f64 + 1.0)) / initial_rows as f64;
 
-    // Partition: windows that fit in a normal cell vs those that don't
+    // Classify windows: fits (1×1) vs oversized (multi-cell)
     let mut fits: Vec<&WindowInfo> = Vec::new();
-    let mut oversized: Vec<&WindowInfo> = Vec::new();
+    let mut oversized: Vec<(&WindowInfo, usize, usize)> = Vec::new(); // (window, span_c, span_r)
     for &w in ordered {
         if let Some((min_w, min_h)) = w.min_size {
-            if min_w > cell_w || min_h > cell_h {
-                oversized.push(w);
+            if min_w > cell_w || min_h > initial_cell_h {
+                let sc = (min_w / cell_w).ceil().max(1.0) as usize;
+                let sr = (min_h / initial_cell_h).ceil().max(1.0) as usize;
+                oversized.push((w, sc.min(cols), sr));
                 continue;
             }
         }
@@ -376,9 +475,52 @@ pub(crate) fn layout_grid_on_display(
             let col = idx % cols;
             let row = idx / cols;
             let x = display.x + gap + col as f64 * (cell_w + gap);
-            let y = display.y + gap + row as f64 * (cell_h + gap);
+            let y = display.y + gap + row as f64 * (initial_cell_h + gap);
             set_rect(
                 win_info,
+                &Rect {
+                    x,
+                    y,
+                    width: cell_w,
+                    height: initial_cell_h,
+                },
+            );
+        }
+        return n;
+    }
+
+    // Calculate total cells needed (fits=1 each, oversized=span_c×span_r each)
+    // Iterate up to 3 times to stabilize row count (cell_h ↔ span_r dependency)
+    let mut grid_rows = initial_rows;
+    let mut cell_h = initial_cell_h;
+    for _ in 0..3 {
+        // Recalculate vertical spans with current cell_h
+        for os in &mut oversized {
+            if let Some((_, min_h)) = os.0.min_size {
+                os.2 = (min_h / cell_h).ceil().max(1.0) as usize;
+            }
+        }
+        let total_cells: usize =
+            fits.len() + oversized.iter().map(|(_, sc, sr)| sc * sr).sum::<usize>();
+        let needed_rows = (total_cells + cols - 1) / cols;
+        if needed_rows <= grid_rows {
+            break;
+        }
+        grid_rows = needed_rows;
+        cell_h = (display.height - gap * (grid_rows as f64 + 1.0)) / grid_rows as f64;
+    }
+
+    // Build occupied-cell grid
+    let mut occupied = vec![vec![false; cols]; grid_rows];
+
+    // Place fits windows first (1×1 cells, row-major order)
+    for w in &fits {
+        if let Some((r, c)) = find_free_cell(&occupied) {
+            occupied[r][c] = true;
+            let x = display.x + gap + c as f64 * (cell_w + gap);
+            let y = display.y + gap + r as f64 * (cell_h + gap);
+            set_rect(
+                w,
                 &Rect {
                     x,
                     y,
@@ -387,108 +529,104 @@ pub(crate) fn layout_grid_on_display(
                 },
             );
         }
-        return n;
     }
 
-    // Adaptive layout: normal windows first, then oversized in wider rows
-    let total = fits.len() + oversized.len();
-    // Recalculate: how many rows do normal windows need?
-    let normal_cols = if fits.is_empty() {
-        1
-    } else {
-        (fits.len() as f64).sqrt().ceil() as usize
-    };
-    let normal_rows = if fits.is_empty() {
-        0
-    } else {
-        (fits.len() + normal_cols - 1) / normal_cols
-    };
-
-    // For oversized windows, figure out how many columns each row needs
-    // by finding the max min_width among oversized windows
-    let max_min_w = oversized
-        .iter()
-        .filter_map(|w| w.min_size.map(|(mw, _)| mw))
-        .fold(0.0f64, f64::max);
-    let oversized_cols = if max_min_w > 0.0 {
-        ((display.width - gap) / (max_min_w + gap)).floor() as usize
-    } else {
-        normal_cols
-    }
-    .max(1);
-    let oversized_rows = if oversized.is_empty() {
-        0
-    } else {
-        (oversized.len() + oversized_cols - 1) / oversized_cols
-    };
-
-    let total_rows = normal_rows + oversized_rows;
-    let row_h = (display.height - gap * (total_rows as f64 + 1.0)) / total_rows as f64;
-
-    // Layout normal windows
-    let normal_cell_w = if normal_cols > 0 {
-        (display.width - gap * (normal_cols as f64 + 1.0)) / normal_cols as f64
-    } else {
-        0.0
-    };
-
-    for (idx, win_info) in fits.iter().enumerate() {
-        let col = idx % normal_cols;
-        let row = idx / normal_cols;
-        let x = display.x + gap + col as f64 * (normal_cell_w + gap);
-        let y = display.y + gap + row as f64 * (row_h + gap);
-        set_rect(
-            win_info,
-            &Rect {
-                x,
-                y,
-                width: normal_cell_w,
-                height: row_h,
-            },
-        );
-    }
-
-    // Layout oversized windows
-    let oversized_cell_w = if oversized_cols > 0 {
-        (display.width - gap * (oversized_cols as f64 + 1.0)) / oversized_cols as f64
-    } else {
-        0.0
-    };
-
-    for (idx, win_info) in oversized.iter().enumerate() {
-        let col = idx % oversized_cols;
-        let row = normal_rows + idx / oversized_cols;
-        let is_last_row = row == total_rows - 1;
-        let items_in_this_row = if is_last_row {
-            let remaining = oversized.len() - (row - normal_rows) * oversized_cols;
-            remaining.min(oversized_cols)
+    // Place oversized windows last (span_c × span_r cells, grid-aligned)
+    for &(w, span_c, span_r) in &oversized {
+        if let Some((r, c)) = find_free_block(&occupied, span_c, span_r) {
+            mark_block(&mut occupied, r, c, span_c, span_r);
+            let x = display.x + gap + c as f64 * (cell_w + gap);
+            let y = display.y + gap + r as f64 * (cell_h + gap);
+            let w_size = span_c as f64 * cell_w + (span_c - 1) as f64 * gap;
+            let h_size = span_r as f64 * cell_h + (span_r - 1) as f64 * gap;
+            set_rect(
+                w,
+                &Rect {
+                    x,
+                    y,
+                    width: w_size,
+                    height: h_size,
+                },
+            );
         } else {
-            oversized_cols
-        };
-
-        // Right-align the last window in an incomplete row
-        let x = if is_last_row
-            && col == items_in_this_row - 1
-            && items_in_this_row < oversized_cols
-        {
-            // Right-align: position so right edge aligns with grid right edge
-            display.x + display.width - gap - oversized_cell_w
-        } else {
-            display.x + gap + col as f64 * (oversized_cell_w + gap)
-        };
-        let y = display.y + gap + row as f64 * (row_h + gap);
-        set_rect(
-            win_info,
-            &Rect {
-                x,
-                y,
-                width: oversized_cell_w,
-                height: row_h,
-            },
-        );
+            // Fallback: place at bottom-left if no free block (shouldn't happen
+            // with a correctly-sized grid, but be safe)
+            let x = display.x + gap;
+            let y = display.y + display.height - gap - cell_h;
+            set_rect(
+                w,
+                &Rect {
+                    x,
+                    y,
+                    width: cell_w,
+                    height: cell_h,
+                },
+            );
+        }
     }
 
-    total
+    n
+}
+
+/// Find the next free 1×1 cell in row-major order.
+fn find_free_cell(occupied: &[Vec<bool>]) -> Option<(usize, usize)> {
+    for (r, row) in occupied.iter().enumerate() {
+        for (c, &taken) in row.iter().enumerate() {
+            if !taken {
+                return Some((r, c));
+            }
+        }
+    }
+    None
+}
+
+/// Find the next position where a `span_c × span_r` block of cells is free.
+/// Scans row-major: tries each (row, col) as the top-left corner.
+fn find_free_block(
+    occupied: &[Vec<bool>],
+    span_c: usize,
+    span_r: usize,
+) -> Option<(usize, usize)> {
+    let rows = occupied.len();
+    let cols = if rows > 0 { occupied[0].len() } else { 0 };
+    for r in 0..rows {
+        if r + span_r > rows {
+            break;
+        }
+        'col: for c in 0..cols {
+            if c + span_c > cols {
+                continue;
+            }
+            for dr in 0..span_r {
+                for dc in 0..span_c {
+                    if occupied[r + dr][c + dc] {
+                        continue 'col;
+                    }
+                }
+            }
+            return Some((r, c));
+        }
+    }
+    None
+}
+
+/// Mark a `span_c × span_r` block of cells as occupied.
+fn mark_block(
+    occupied: &mut [Vec<bool>],
+    r: usize,
+    c: usize,
+    span_c: usize,
+    span_r: usize,
+) {
+    let rows = occupied.len();
+    let cols = if rows > 0 { occupied[0].len() } else { 0 };
+    for dr in 0..span_r {
+        for dc in 0..span_c {
+            if r + dr < rows && c + dc < cols {
+                occupied[r + dr][c + dc] = true;
+            }
+        }
+    }
 }
 
 /// Compute the maximum number of windows that fit on a display while keeping
@@ -1323,6 +1461,141 @@ mod tests {
         assert!(state.windows.is_empty());
     }
 
+    // -- is_rect_oversized --
+
+    /// Window covering 100% of the display is oversized.
+    #[test]
+    fn test_oversized_fullscreen() {
+        let d = display(0.0, 0.0, 1920.0, 1080.0);
+        let w = Rect { x: 0.0, y: 0.0, width: 1920.0, height: 1080.0 };
+        assert!(is_rect_oversized(&w, &d));
+    }
+
+    /// Window at exactly 85% in both dimensions is oversized (≥ threshold).
+    #[test]
+    fn test_oversized_at_threshold() {
+        let d = display(0.0, 0.0, 1920.0, 1080.0);
+        let w = Rect { x: 0.0, y: 0.0, width: 1632.0, height: 918.0 };
+        assert!(is_rect_oversized(&w, &d));
+    }
+
+    /// Window at 80% is NOT oversized (below 85% threshold).
+    #[test]
+    fn test_not_oversized_80_percent() {
+        let d = display(0.0, 0.0, 1920.0, 1080.0);
+        let w = Rect { x: 0.0, y: 0.0, width: 1536.0, height: 864.0 };
+        assert!(!is_rect_oversized(&w, &d));
+    }
+
+    /// Window that is wide but short is NOT oversized (both dims must exceed).
+    #[test]
+    fn test_not_oversized_wide_only() {
+        let d = display(0.0, 0.0, 1920.0, 1080.0);
+        let w = Rect { x: 0.0, y: 0.0, width: 1920.0, height: 540.0 };
+        assert!(!is_rect_oversized(&w, &d));
+    }
+
+    // -- calculate_smart_restore_rect --
+
+    /// Smart restore on a single 1920x1080 display: 60% centered.
+    #[test]
+    fn test_smart_restore_single_display() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let r = calculate_smart_restore_rect(&displays, 0, None);
+        // 60% of 1920 = 1152, 60% of 1080 = 648
+        assert!(approx(r.width, 1152.0));
+        assert!(approx(r.height, 648.0));
+        // Centered: x = (1920 - 1152) / 2 = 384, y = (1080 - 648) / 2 = 216
+        assert!(approx(r.x, 384.0));
+        assert!(approx(r.y, 216.0));
+    }
+
+    /// Smart restore picks the smaller display's dimensions.
+    #[test]
+    fn test_smart_restore_multi_display_uses_min() {
+        let displays = vec![
+            display(0.0, 0.0, 2560.0, 1440.0),
+            display(2560.0, 0.0, 1920.0, 1080.0),
+        ];
+        let r = calculate_smart_restore_rect(&displays, 0, None);
+        // Min dims: 1920, 1080. 60% → 1152, 648. Centered on display 0 (2560x1440).
+        assert!(approx(r.width, 1152.0));
+        assert!(approx(r.height, 648.0));
+        assert!(approx(r.x, (2560.0 - 1152.0) / 2.0));
+        assert!(approx(r.y, (1440.0 - 648.0) / 2.0));
+    }
+
+    /// Smart restore respects app minimum size when it exceeds 60%.
+    #[test]
+    fn test_smart_restore_respects_app_min() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        // App min 1400x700 exceeds 60% (1152x648)
+        let r = calculate_smart_restore_rect(&displays, 0, Some((1400.0, 700.0)));
+        assert!(approx(r.width, 1400.0));
+        assert!(approx(r.height, 700.0));
+    }
+
+    /// Smart restore clamps to display size when app min exceeds display.
+    #[test]
+    fn test_smart_restore_clamps_to_display() {
+        let displays = vec![display(0.0, 0.0, 1000.0, 800.0)];
+        let r = calculate_smart_restore_rect(&displays, 0, Some((2000.0, 1500.0)));
+        assert!(approx(r.width, 1000.0));
+        assert!(approx(r.height, 800.0));
+    }
+
+    /// Smart restore on a secondary display at an offset position.
+    #[test]
+    fn test_smart_restore_on_offset_display() {
+        let displays = vec![
+            display(0.0, 0.0, 1920.0, 1080.0),
+            display(1920.0, 0.0, 1920.0, 1080.0),
+        ];
+        let r = calculate_smart_restore_rect(&displays, 1, None);
+        // 60% of 1920 = 1152, 60% of 1080 = 648
+        assert!(approx(r.width, 1152.0));
+        assert!(approx(r.height, 648.0));
+        // Centered on display 1: x = 1920 + (1920 - 1152) / 2 = 2304
+        assert!(approx(r.x, 1920.0 + 384.0));
+        assert!(approx(r.y, 216.0));
+    }
+
+    // -- calculate_smart_restore_rect_at_cursor --
+
+    /// Cursor-centered smart restore places the window around the cursor.
+    #[test]
+    fn test_smart_restore_at_cursor_center() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let r = calculate_smart_restore_rect_at_cursor(&displays, 0, 960.0, 540.0, None);
+        // 60%: 1152x648. Centered on (960, 540) → x=960-576=384, y=540-324=216
+        assert!(approx(r.width, 1152.0));
+        assert!(approx(r.height, 648.0));
+        assert!(approx(r.x, 384.0));
+        assert!(approx(r.y, 216.0));
+    }
+
+    /// Cursor at top-left corner: rect is clamped to display bounds.
+    #[test]
+    fn test_smart_restore_at_cursor_clamped() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let r = calculate_smart_restore_rect_at_cursor(&displays, 0, 0.0, 0.0, None);
+        // Would be negative, clamped to (0, 0)
+        assert!(approx(r.x, 0.0));
+        assert!(approx(r.y, 0.0));
+        assert!(approx(r.width, 1152.0));
+        assert!(approx(r.height, 648.0));
+    }
+
+    /// Cursor at bottom-right: rect is clamped so it doesn't exceed display.
+    #[test]
+    fn test_smart_restore_at_cursor_clamped_bottom_right() {
+        let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
+        let r = calculate_smart_restore_rect_at_cursor(&displays, 0, 1920.0, 1080.0, None);
+        // Clamped to right/bottom edges
+        assert!(approx(r.x, 1920.0 - 1152.0));
+        assert!(approx(r.y, 1080.0 - 648.0));
+    }
+
     // -- Snap zone detection --
 
     #[test]
@@ -1546,6 +1819,82 @@ mod tests {
         assert!((rects[0].y - 20.0).abs() < 1.0);
         assert!((rects[0].width - 960.0).abs() < 1.0);
         assert!((rects[0].height - 760.0).abs() < 1.0);
+    }
+
+    /// Oversized window snaps to grid cells (takes multiple cells).
+    #[test]
+    fn test_layout_grid_oversized_snaps_to_grid() {
+        // 4 windows on 1000×800: 2×2 grid, cell ~500×400
+        // Window 4 has min_size 600×500 → needs 2 cols × 2 rows = 4 cells
+        // Total cells = 3 + 4 = 7, grid becomes 3×3 (ceil(sqrt(7))=3)
+        let ws = vec![
+            win(1, "A"),
+            win(2, "B"),
+            win(3, "C"),
+        ];
+        let big = win_with_min(4, "Big", 600.0, 500.0);
+        let mut all: Vec<&WindowInfo> = ws.iter().collect();
+        all.push(&big);
+        let d = display(0.0, 0.0, 1000.0, 800.0);
+        let ids_and_rects = std::cell::RefCell::new(Vec::new());
+        let count = layout_grid_on_display(&all, &d, 0.0, &mut |w, rect| {
+            ids_and_rects
+                .borrow_mut()
+                .push((w.window_id, rect.clone()));
+        });
+        assert_eq!(count, 4);
+        let results = ids_and_rects.into_inner();
+
+        // Normal windows should be placed first in 1×1 cells
+        for &(id, _) in &results[..3] {
+            assert!(id >= 1 && id <= 3);
+        }
+
+        // The oversized window should be grid-aligned and span multiple cells
+        let big_rect = &results.iter().find(|(id, _)| *id == 4).unwrap().1;
+        // Its width should be a multiple of cell width (grid-aligned)
+        // Its position should be at a grid boundary
+        assert!(big_rect.width > 300.0, "oversized window should span >1 col");
+        assert!(big_rect.height > 250.0, "oversized window should span >1 row");
+    }
+
+    /// With no oversized windows, layout_grid_on_display is unchanged.
+    #[test]
+    fn test_layout_grid_no_oversized_unchanged() {
+        let ws = vec![win(1, "A"), win(2, "B"), win(3, "C"), win(4, "D")];
+        let ordered: Vec<&WindowInfo> = ws.iter().collect();
+        let d = display(0.0, 0.0, 1000.0, 800.0);
+        let rects = std::cell::RefCell::new(Vec::new());
+        layout_grid_on_display(&ordered, &d, 0.0, &mut |_, rect| {
+            rects.borrow_mut().push(rect.clone());
+        });
+        let rects = rects.into_inner();
+        assert_eq!(rects.len(), 4);
+        // 2×2 grid, each cell 500×400
+        for r in &rects {
+            assert!((r.width - 500.0).abs() < 1.0);
+            assert!((r.height - 400.0).abs() < 1.0);
+        }
+    }
+
+    /// Fits windows are placed before oversized windows.
+    #[test]
+    fn test_layout_grid_fits_before_oversized() {
+        let ws = vec![win(1, "A"), win(2, "B")];
+        let big = win_with_min(3, "Big", 900.0, 700.0);
+        let mut all: Vec<&WindowInfo> = ws.iter().collect();
+        all.push(&big);
+        let d = display(0.0, 0.0, 1000.0, 800.0);
+        let order = std::cell::RefCell::new(Vec::new());
+        layout_grid_on_display(&all, &d, 0.0, &mut |w, _| {
+            order.borrow_mut().push(w.window_id);
+        });
+        let order = order.into_inner();
+        assert_eq!(order.len(), 3);
+        // Fits (ids 1, 2) should come before oversized (id 3)
+        assert!(order[0] == 1 || order[0] == 2);
+        assert!(order[1] == 1 || order[1] == 2);
+        assert_eq!(order[2], 3);
     }
 
     // -- layout_across_displays --
