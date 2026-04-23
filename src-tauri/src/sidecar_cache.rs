@@ -25,14 +25,16 @@ impl<T> CacheEntry<T> {
     }
 }
 
-/// Thread-safe cache for sidecar HTTP responses.
+/// Thread-safe cache for sidecar HTTP responses and system state.
 pub struct SidecarCache {
-    /// Cached monitor JSON string (raw sidecar response before metadata merge).
+    /// Cached monitor list (from sidecar /get_all + metadata merge).
     monitors: Mutex<Option<CacheEntry<Vec<crate::display::Monitor>>>>,
-    /// Cached dark mode state.
+    /// Cached dark mode state (from sidecar /theme).
     dark_mode: Mutex<Option<CacheEntry<bool>>>,
-    /// Cached volume level.
+    /// Cached volume level (from sidecar /get_volume).
     volume: Mutex<Option<CacheEntry<u32>>>,
+    /// Cached macOS Accessibility permission status (AXIsProcessTrusted).
+    accessibility: Mutex<Option<CacheEntry<bool>>>,
 }
 
 impl SidecarCache {
@@ -42,6 +44,7 @@ impl SidecarCache {
             monitors: Mutex::new(None),
             dark_mode: Mutex::new(None),
             volume: Mutex::new(None),
+            accessibility: Mutex::new(None),
         }
     }
 
@@ -95,6 +98,29 @@ impl SidecarCache {
         }
     }
 
+    /// Get cached accessibility status if fresh, otherwise None.
+    pub fn get_accessibility(&self) -> Option<bool> {
+        let lock = self.accessibility.lock().ok()?;
+        lock.as_ref().filter(|e| e.is_fresh()).map(|e| e.value)
+    }
+
+    /// Store accessibility status in cache.
+    pub fn set_accessibility(&self, trusted: bool) {
+        if let Ok(mut lock) = self.accessibility.lock() {
+            *lock = Some(CacheEntry {
+                value: trusted,
+                fetched_at: Instant::now(),
+            });
+        }
+    }
+
+    /// Invalidate the accessibility cache.
+    pub fn invalidate_accessibility(&self) {
+        if let Ok(mut lock) = self.accessibility.lock() {
+            *lock = None;
+        }
+    }
+
     /// Invalidate the monitors cache (e.g., after set_brightness).
     pub fn invalidate_monitors(&self) {
         if let Ok(mut lock) = self.monitors.lock() {
@@ -121,6 +147,7 @@ impl SidecarCache {
         self.invalidate_monitors();
         self.invalidate_dark_mode();
         self.invalidate_volume();
+        self.invalidate_accessibility();
     }
 }
 

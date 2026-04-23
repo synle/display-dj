@@ -1005,24 +1005,33 @@ pub fn get_tiling_supported() -> bool {
 
 /// Tauri command: check if accessibility/permissions are granted for tiling.
 /// On Windows and Linux (X11), no special permission is needed — always returns true.
+/// Uses a 2-minute TTL cache to avoid repeated system calls.
 #[tauri::command]
-pub fn get_accessibility_trusted() -> bool {
+pub fn get_accessibility_trusted(
+    state: tauri::State<'_, crate::AppState>,
+) -> bool {
+    if let Some(cached) = state.sidecar_cache.get_accessibility() {
+        return cached;
+    }
+    let result;
     #[cfg(target_os = "macos")]
     {
-        macos::is_accessibility_trusted()
+        result = macos::is_accessibility_trusted();
     }
     #[cfg(target_os = "windows")]
     {
-        true // Win32 window management needs no special permissions
+        result = true; // Win32 window management needs no special permissions
     }
     #[cfg(target_os = "linux")]
     {
-        true // X11 allows any client to manipulate windows
+        result = true; // X11 allows any client to manipulate windows
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
-        false
+        result = false;
     }
+    state.sidecar_cache.set_accessibility(result);
+    result
 }
 
 /// Tauri command: open the macOS Accessibility settings pane.
