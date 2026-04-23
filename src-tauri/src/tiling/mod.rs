@@ -1010,7 +1010,16 @@ pub fn get_tiling_supported() -> bool {
 pub fn get_accessibility_trusted(
     state: tauri::State<'_, crate::AppState>,
 ) -> bool {
+    let t0 = std::time::Instant::now();
+
     if let Some(cached) = state.sidecar_cache.get_accessibility() {
+        crate::config::write_debug_log(
+            &state,
+            &format!(
+                "benchmark: get_accessibility_trusted — {:.1}ms (cache hit, trusted={})",
+                t0.elapsed().as_secs_f64() * 1000.0, cached,
+            ),
+        );
         return cached;
     }
     let result;
@@ -1020,17 +1029,25 @@ pub fn get_accessibility_trusted(
     }
     #[cfg(target_os = "windows")]
     {
-        result = true; // Win32 window management needs no special permissions
+        result = true;
     }
     #[cfg(target_os = "linux")]
     {
-        result = true; // X11 allows any client to manipulate windows
+        result = true;
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         result = false;
     }
     state.sidecar_cache.set_accessibility(result);
+
+    crate::config::write_debug_log(
+        &state,
+        &format!(
+            "benchmark: get_accessibility_trusted — {:.1}ms (system call, trusted={})",
+            t0.elapsed().as_secs_f64() * 1000.0, result,
+        ),
+    );
     result
 }
 

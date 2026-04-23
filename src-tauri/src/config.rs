@@ -612,12 +612,19 @@ pub fn reset_to_defaults() {
 /// Use `log::info!` instead.
 #[tauri::command]
 pub fn get_preferences(state: tauri::State<'_, crate::AppState>) -> Result<Preferences, String> {
+    let t0 = std::time::Instant::now();
     let prefs = state.preferences.lock().map_err(|e| e.to_string())?;
-    log::info!(
-        "get_preferences: show_contrast={} min_brightness={} monitors={} profiles={}",
-        prefs.show_contrast, prefs.min_brightness, prefs.monitor_configs.len(), prefs.profiles.len()
+    let result = prefs.clone();
+    write_debug_log(
+        &state,
+        &format!(
+            "benchmark: get_preferences — {:.1}ms (in-memory, {} monitors, {} profiles)",
+            t0.elapsed().as_secs_f64() * 1000.0,
+            result.monitor_configs.len(),
+            result.profiles.len(),
+        ),
     );
-    Ok(prefs.clone())
+    Ok(result)
 }
 
 /// Saves updated preferences from the frontend, syncs autostart with the OS, and persists to disk.

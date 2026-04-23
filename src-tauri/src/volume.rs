@@ -18,18 +18,30 @@ fn base_url() -> String {
 pub async fn get_volume(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<u32, String> {
+    let t0 = std::time::Instant::now();
+
     if let Some(cached) = state.sidecar_cache.get_volume() {
+        crate::config::write_debug_log(
+            &state,
+            &format!("benchmark: get_volume — {:.1}ms (cache hit)", t0.elapsed().as_secs_f64() * 1000.0),
+        );
         return Ok(cached);
     }
 
     let url = format!("{}/get_volume", base_url());
-    log::info!("get_volume: GET {}", url);
     let resp: VolumeResponse = reqwest::get(&url).await
         .map_err(|e| format!("Failed to get volume: {}", e))?
         .json().await
         .map_err(|e| format!("Failed to parse volume response: {}", e))?;
-    log::info!("get_volume: volume={}", resp.volume);
     state.sidecar_cache.set_volume(resp.volume);
+
+    crate::config::write_debug_log(
+        &state,
+        &format!(
+            "benchmark: get_volume — {:.1}ms (sidecar, volume={})",
+            t0.elapsed().as_secs_f64() * 1000.0, resp.volume,
+        ),
+    );
     Ok(resp.volume)
 }
 
