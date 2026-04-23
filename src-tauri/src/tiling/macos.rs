@@ -12,8 +12,7 @@ use std::ffi::{c_char, c_void, CString};
 use tauri::{AppHandle, Manager};
 
 use super::{
-    build_sorted_window_list, calculate_smart_restore_rect,
-    calculate_smart_restore_rect_at_cursor, calculate_target_rect,
+    build_sorted_window_list, calculate_smart_restore_rect, calculate_target_rect,
     find_display_for_window, is_rect_oversized, layout_across_displays, plan_expose,
     plan_expose_app, plan_layout_preset, Rect, TilingLayout, WindowInfo, WindowState,
 };
@@ -371,6 +370,56 @@ unsafe fn get_focused_window() -> Option<CfRef> {
         return None;
     }
     CfRef::new(win_ref)
+}
+
+/// Get the window title (AXTitle) and owning app name for debug logging.
+unsafe fn get_window_debug_info(window: &CfRef) -> String {
+    extern "C" {
+        fn CFStringGetLength(s: CFStringRef) -> i64;
+        fn CFStringGetCString(
+            s: CFStringRef,
+            buffer: *mut c_char,
+            buffer_size: i64,
+            encoding: u32,
+        ) -> bool;
+    }
+    let read_str = |attr_name: &str| -> String {
+        let attr = match cfstr(attr_name) {
+            Some(a) => a,
+            None => return String::new(),
+        };
+        let mut val: CFTypeRef = std::ptr::null();
+        if AXUIElementCopyAttributeValue(window.as_ptr(), attr.as_ptr(), &mut val)
+            != K_AX_ERROR_SUCCESS
+            || val.is_null()
+        {
+            return String::new();
+        }
+        let len = CFStringGetLength(val);
+        let buf_size = len * 4 + 1;
+        let mut buf = vec![0u8; buf_size as usize];
+        let ok = CFStringGetCString(
+            val,
+            buf.as_mut_ptr() as *mut c_char,
+            buf_size,
+            K_CF_STRING_ENCODING_UTF8,
+        );
+        CFRelease(val);
+        if ok {
+            let c_str = std::ffi::CStr::from_ptr(buf.as_ptr() as *const c_char);
+            c_str.to_string_lossy().into_owned()
+        } else {
+            String::new()
+        }
+    };
+    let title = read_str("AXTitle");
+    // Truncate long titles
+    let title_short = if title.len() > 40 {
+        format!("{}…", &title[..40])
+    } else {
+        title
+    };
+    format!("'{}'", title_short)
 }
 
 /// Get the CGWindowID for an AXUIElement window (uses private API).
@@ -1863,25 +1912,22 @@ struct SnapState {
 }
 
 /// Determine if a window drag is a title-bar move (not a resize or content drag).
-/// Returns true only when the window position changed but size stayed the same.
-/// - Position changed + size same → title bar drag (move) → true
-/// - Position changed + size changed → resize from top/left edge → false
-/// - Position same (any size) → resize from bottom/right or content drag → false
+/// Returns true when the window position changed by more than 5px.
+///
+/// Previous versions also checked that the window size stayed the same, but
+/// Chromium-based browsers (Chrome, Brave, Edge) change the window size during
+/// title-bar drags (un-maximize, tab tear-off, DPI transitions). The size
+/// check caused false negatives for these browsers. Since the 10px drag
+/// confirmation threshold + snap zone geometry already prevent false positives,
+/// checking position alone is sufficient.
 fn is_window_move(
     start_pos: (f64, f64),
-    start_size: Option<(f64, f64)>,
+    _start_size: Option<(f64, f64)>,
     cur_rect: &Rect,
 ) -> bool {
     let pos_dx = (cur_rect.x - start_pos.0).abs();
     let pos_dy = (cur_rect.y - start_pos.1).abs();
-    let pos_changed = pos_dx > 5.0 || pos_dy > 5.0;
-    if !pos_changed {
-        return false;
-    }
-    let size_changed = start_size.map_or(false, |(sw, sh)| {
-        (cur_rect.width - sw).abs() > 3.0 || (cur_rect.height - sh).abs() > 3.0
-    });
-    pos_changed && !size_changed
+    pos_dx > 5.0 || pos_dy > 5.0
 }
 
 /// Handle a mouse event from the NSEvent global monitor.
@@ -1966,8 +2012,11 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                 // Drag confirmed — lazy-load display frames, preferences, and
                 // window position.
                 state.drag_confirmed = true;
-                let start_rect = unsafe {
-                    get_focused_window().and_then(|w| get_window_rect(&w))
+                let (start_rect, win_info) = unsafe {
+                    let w = get_focused_window();
+                    let r = w.as_ref().and_then(|w| get_window_rect(w));
+                    let info = w.as_ref().map_or(String::from("?"), |w| get_window_debug_info(w));
+                    (r, info)
                 };
                 state.drag_start_window_pos = start_rect.as_ref().map(|r| (r.x, r.y));
                 state.drag_start_window_size = start_rect.as_ref().map(|r| (r.width, r.height));
@@ -1991,11 +2040,14 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                     crate::config::write_debug_log(
                         &dbg_state,
                         &format!(
-                            "tile_snap: drag_confirmed — cursor=({:.0},{:.0}), start_pos={:?}, displays=[{}], \
+                            "tile_snap: drag_confirmed — window={}, cursor=({:.0},{:.0}), \
+                             start_pos={:?}, start_size={:?}, displays=[{}], \
                              edge_triggers=(side={:.0}, top={:.0}, corner={:.0}), \
                              tiling=(half={}, third={}, gap={})",
+                            win_info,
                             cursor.x, cursor.y,
                             state.drag_start_window_pos,
+                            state.drag_start_window_size,
                             display_info.join(", "),
                             state.side_edge_trigger, state.top_edge_trigger, state.corner_trigger,
                             state.half_ratio, state.third_ratio, state.gap,
@@ -2022,61 +2074,10 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                                 crate::config::write_debug_log(
                                     &dbg_state,
                                     &format!(
-                                        "tile_snap: window_is_moving — start=({:.0},{:.0}), now=({:.0},{:.0})",
-                                        sx, sy, r.x, r.y,
+                                        "tile_snap: window_is_moving — start=({:.0},{:.0}), now=({:.0},{:.0} {:.0}x{:.0})",
+                                        sx, sy, r.x, r.y, r.width, r.height,
                                     ),
                                 );
-                            }
-
-                            // Shrink the window to smart size (60% of smallest
-                            // display, or app min if larger) centered on the
-                            // cursor. This gives a consistent drag experience
-                            // and makes snap zones visible around the window.
-                            if let Some((sw, sh)) = state.drag_start_window_size {
-                                let start_rect = Rect {
-                                    x: sx,
-                                    y: sy,
-                                    width: sw,
-                                    height: sh,
-                                };
-                                let di = find_display_for_window(
-                                    &start_rect,
-                                    &state.displays,
-                                );
-                                let app_min = unsafe {
-                                    get_focused_window()
-                                        .and_then(|w| get_window_min_size(&w))
-                                };
-                                let smart =
-                                    calculate_smart_restore_rect_at_cursor(
-                                        &state.displays,
-                                        di,
-                                        cursor.x,
-                                        cursor.y,
-                                        app_min,
-                                    );
-                                unsafe {
-                                    if let Some(w) = get_focused_window() {
-                                        set_window_rect(&w, &smart);
-                                    }
-                                }
-                                state.drag_start_window_pos =
-                                    Some((smart.x, smart.y));
-                                state.drag_start_window_size =
-                                    Some((smart.width, smart.height));
-                                if let Some(dbg_state) =
-                                    ctx.app.try_state::<crate::AppState>()
-                                {
-                                    crate::config::write_debug_log(
-                                        &dbg_state,
-                                        &format!(
-                                            "tile_snap: smart shrink — window shrunk to \
-                                             ({:.0},{:.0} {:.0}x{:.0}), app_min={:?}",
-                                            smart.x, smart.y, smart.width,
-                                            smart.height, app_min,
-                                        ),
-                                    );
-                                }
                             }
 
                             // Now show drop zone indicators
@@ -2439,33 +2440,32 @@ mod tests {
         assert!(!is_window_move(start_pos, start_size, &cur));
     }
 
-    /// Resize from top edge: position AND size both change → false.
+    /// Resize from top edge: position changed >5px → true (size check removed
+    /// to support Chromium browsers that change size during title-bar drags).
     #[test]
     fn test_is_window_move_resize_top_edge() {
         let start_pos = (100.0, 200.0);
         let start_size = Some((800.0, 600.0));
-        // Dragging top edge up: y decreases, height increases
         let cur = rect(100.0, 150.0, 800.0, 650.0);
-        assert!(!is_window_move(start_pos, start_size, &cur));
+        assert!(is_window_move(start_pos, start_size, &cur));
     }
 
-    /// Resize from left edge: position AND size both change → false.
+    /// Resize from left edge: position changed >5px → true.
     #[test]
     fn test_is_window_move_resize_left_edge() {
         let start_pos = (100.0, 200.0);
         let start_size = Some((800.0, 600.0));
-        // Dragging left edge left: x decreases, width increases
         let cur = rect(50.0, 200.0, 850.0, 600.0);
-        assert!(!is_window_move(start_pos, start_size, &cur));
+        assert!(is_window_move(start_pos, start_size, &cur));
     }
 
-    /// Resize from top-left corner: position AND size both change → false.
+    /// Resize from top-left corner: position changed >5px → true.
     #[test]
     fn test_is_window_move_resize_top_left_corner() {
         let start_pos = (100.0, 200.0);
         let start_size = Some((800.0, 600.0));
         let cur = rect(50.0, 150.0, 850.0, 650.0);
-        assert!(!is_window_move(start_pos, start_size, &cur));
+        assert!(is_window_move(start_pos, start_size, &cur));
     }
 
     /// Content drag or click: no position or size change → false.
@@ -2492,6 +2492,27 @@ mod tests {
         let start_pos = (100.0, 200.0);
         let cur = rect(200.0, 300.0, 800.0, 600.0);
         assert!(is_window_move(start_pos, None, &cur));
+    }
+
+    /// Browser un-maximize: position changed + both dims shrunk → true.
+    /// Chrome/Brave un-maximize the window when dragging a maximized title bar,
+    /// changing both position and size. This should count as a move.
+    #[test]
+    fn test_is_window_move_browser_unmaximize() {
+        // Window was maximized at (0, 0, 2560, 1440), now shrunk during drag
+        let start_pos = (0.0, 0.0);
+        let start_size = Some((2560.0, 1440.0));
+        let cur = rect(200.0, 100.0, 1200.0, 800.0);
+        assert!(is_window_move(start_pos, start_size, &cur));
+    }
+
+    /// Edge resize that grows one dim: position changed >5px → true.
+    #[test]
+    fn test_is_window_move_resize_grows_width() {
+        let start_pos = (100.0, 200.0);
+        let start_size = Some((800.0, 600.0));
+        let cur = rect(50.0, 200.0, 900.0, 550.0);
+        assert!(is_window_move(start_pos, start_size, &cur));
     }
 
     /// Tiny size change within threshold (3px): treated as move, not resize.
