@@ -5,10 +5,9 @@
 //! `EnumWindows`. No special permissions are required on Windows.
 
 use super::{
-    build_sorted_window_list, calculate_smart_restore_rect, calculate_target_rect,
-    find_display_for_window, is_rect_oversized, layout_across_displays,
-    layout_grid_on_display, plan_expose, plan_expose_app, plan_layout_preset, Rect,
-    TilingLayout, WindowInfo, WindowState,
+    build_sorted_window_list, calculate_target_rect, find_display_for_window,
+    layout_across_displays, layout_grid_on_display, plan_expose, plan_expose_app,
+    plan_layout_preset, Rect, TilingLayout, WindowInfo, WindowState,
 };
 use tauri::{AppHandle, Manager};
 
@@ -588,9 +587,6 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
 }
 
 /// Restore the focused window to its pre-tiled position and size.
-/// If the saved original rect is oversized (≥ 85% of the display in both
-/// dimensions), a smart restore size is used instead: 60% of the smallest
-/// display, centered on the current display.
 fn execute_restore(app: &AppHandle) {
     let hwnd = match get_foreground_hwnd() {
         Some(h) => h,
@@ -606,38 +602,11 @@ fn execute_restore(app: &AppHandle) {
     };
 
     if let Some(rect) = original {
-        let displays: Vec<Rect> =
-            get_display_work_areas().into_iter().map(|(r, _)| r).collect();
-        let display_index = find_display_for_window(&rect, &displays);
-
-        // If the original was oversized, use smart restore sizing instead
-        let restore_rect = if !displays.is_empty()
-            && is_rect_oversized(&rect, &displays[display_index])
-        {
-            let smart =
-                calculate_smart_restore_rect(&displays, display_index, None);
-            dbg_log(
-                app,
-                &format!(
-                    "tiling_win: smart restore (original was oversized) -> ({},{} {}x{})",
-                    smart.x as i32, smart.y as i32,
-                    smart.width as i32, smart.height as i32,
-                ),
-            );
-            smart
-        } else {
-            dbg_log(
-                app,
-                &format!(
-                    "tiling_win: restore -> ({},{} {}x{})",
-                    rect.x as i32, rect.y as i32,
-                    rect.width as i32, rect.height as i32,
-                ),
-            );
-            rect
-        };
-
-        set_hwnd_rect(hwnd, &restore_rect);
+        log::info!(
+            "tiling: restore -> ({}, {}, {}x{})",
+            rect.x, rect.y, rect.width, rect.height,
+        );
+        set_hwnd_rect(hwnd, &rect);
     } else {
         log::info!("tiling: no saved state to restore");
     }

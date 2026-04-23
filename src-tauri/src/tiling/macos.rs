@@ -12,9 +12,9 @@ use std::ffi::{c_char, c_void, CString};
 use tauri::{AppHandle, Manager};
 
 use super::{
-    build_sorted_window_list, calculate_smart_restore_rect, calculate_target_rect,
-    find_display_for_window, is_rect_oversized, layout_across_displays, plan_expose,
-    plan_expose_app, plan_layout_preset, Rect, TilingLayout, WindowInfo, WindowState,
+    build_sorted_window_list, calculate_target_rect, find_display_for_window,
+    layout_across_displays, plan_expose, plan_expose_app, plan_layout_preset, Rect,
+    TilingLayout, WindowInfo, WindowState,
 };
 
 // ---------------------------------------------------------------------------
@@ -714,31 +714,12 @@ fn execute_restore(app: &AppHandle) {
     };
 
     if let Some(rect) = original {
-        let displays = get_display_visible_frames();
-        let display_index = find_display_for_window(&rect, &displays);
-
-        // If the original was oversized, use smart restore sizing instead
-        let restore_rect = if !displays.is_empty()
-            && is_rect_oversized(&rect, &displays[display_index])
-        {
-            let app_min = unsafe { get_window_min_size(&window) };
-            let smart =
-                calculate_smart_restore_rect(&displays, display_index, app_min);
-            log::info!(
-                "tiling: smart restore (original was oversized) -> ({}, {}, {}x{}), app_min={:?}",
-                smart.x, smart.y, smart.width, smart.height, app_min,
-            );
-            smart
-        } else {
-            log::info!(
-                "tiling: restore -> ({}, {}, {}x{})",
-                rect.x, rect.y, rect.width, rect.height,
-            );
-            rect
-        };
-
+        log::info!(
+            "tiling: restore -> ({}, {}, {}x{})",
+            rect.x, rect.y, rect.width, rect.height,
+        );
         unsafe {
-            set_window_rect(&window, &restore_rect);
+            set_window_rect(&window, &rect);
         }
     } else {
         log::info!("tiling: no saved state to restore");
