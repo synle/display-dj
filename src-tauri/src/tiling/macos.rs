@@ -1896,6 +1896,8 @@ struct SnapState {
     /// Position is used for move detection; size is used to distinguish moves from resizes.
     drag_start_window_pos: Option<(f64, f64)>,
     drag_start_window_size: Option<(f64, f64)>,
+    /// Window title captured at drag_confirmed for debug logging.
+    drag_window_title: String,
     current_layout: Option<TilingLayout>,
     current_display: usize,
     /// The pre-calculated target rect for the current snap zone.
@@ -1909,6 +1911,9 @@ struct SnapState {
     side_edge_trigger: f64,
     top_edge_trigger: f64,
     corner_trigger: f64,
+    /// Last cursor position logged during drag (throttle: only log when
+    /// cursor moves ≥50px from last logged position).
+    last_log_cursor: Option<(f64, f64)>,
 }
 
 /// Determine if a window drag is a title-bar move (not a resize or content drag).
@@ -1934,29 +1939,6 @@ fn is_window_move(
 /// Called on the main thread by AppKit. Must stay fast — spawn threads
 /// for any AX API calls.
 fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
-    // Log down/up and first drag per gesture for diagnostics
-    {
-        let should_log = event_type == NS_EVENT_TYPE_LEFT_MOUSE_DOWN
-            || event_type == NS_EVENT_TYPE_LEFT_MOUSE_UP;
-        let is_first_drag = event_type == NS_EVENT_TYPE_LEFT_MOUSE_DRAGGED && {
-            ctx.state.try_lock().map(|s| s.dragging && !s.drag_confirmed).unwrap_or(false)
-        };
-        if should_log || is_first_drag {
-            if let Some(state) = ctx.app.try_state::<crate::AppState>() {
-                let label = match event_type {
-                    1 => "mouse_down",
-                    2 => "mouse_up",
-                    6 => "mouse_dragged(first)",
-                    _ => "unknown",
-                };
-                crate::config::write_debug_log(
-                    &state,
-                    &format!("tile_snap: event — type={} ({}), cursor=({:.0},{:.0})", event_type, label, cursor.x, cursor.y),
-                );
-            }
-        }
-    }
-
     // Check if tiling and tile snap are both enabled.
     let snap_enabled = ctx
         .app
@@ -1985,11 +1967,10 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
             state.drag_start_cursor = Some((cursor.x, cursor.y));
             state.drag_start_window_pos = None;
             state.drag_start_window_size = None;
+            state.drag_window_title = String::new();
             state.current_layout = None;
             state.current_target_rect = None;
-            // Drop zone indicators are NOT shown here — they only appear
-            // once we confirm the window is actually moving (title bar drag),
-            // not on every click or resize.
+            state.last_log_cursor = None;
         }
 
         NS_EVENT_TYPE_LEFT_MOUSE_DRAGGED => {
@@ -2020,6 +2001,7 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                 };
                 state.drag_start_window_pos = start_rect.as_ref().map(|r| (r.x, r.y));
                 state.drag_start_window_size = start_rect.as_ref().map(|r| (r.width, r.height));
+                state.drag_window_title = win_info.clone();
                 state.displays = get_display_visible_frames();
                 let prefs = ctx
                     .app
@@ -2154,22 +2136,55 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                     }
                 }
             }
+
+            // Throttled drag position logging: only log when cursor moved ≥50px
+            // from last logged position. Helps debug without spamming.
+            let should_log_pos = state.last_log_cursor.map_or(true, |(lx, ly)| {
+                (cursor.x - lx).abs() >= 50.0 || (cursor.y - ly).abs() >= 50.0
+            });
+            if should_log_pos {
+                state.last_log_cursor = Some((cursor.x, cursor.y));
+                if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
+                    crate::config::write_debug_log(
+                        &dbg_state,
+                        &format!(
+                            "tile_snap: dragging {} — cursor=({:.0},{:.0}), zone={:?}",
+                            state.drag_window_title,
+                            cursor.x, cursor.y,
+                            state.current_layout,
+                        ),
+                    );
+                }
+            }
         }
 
         NS_EVENT_TYPE_LEFT_MOUSE_UP => {
             let target_rect = state.current_target_rect.clone();
             let layout = state.current_layout;
             let display_idx = state.current_display;
+            let win_title = state.drag_window_title.clone();
             state.dragging = false;
             state.drag_confirmed = false;
             state.window_is_moving = false;
             state.current_layout = None;
             state.current_target_rect = None;
 
-            // Capture the focused window BEFORE hiding overlays — hiding
-            // overlays can shift focus away from the window being dragged,
-            // which would cause get_focused_window() to return None later.
-            let focused = unsafe { get_focused_window() };
+            // Capture the focused window BEFORE hiding overlays.
+            // Chromium browsers may make the focused window temporarily
+            // unavailable during drag. Retry up to 3 times with short delays.
+            let focused = unsafe {
+                let mut win = get_focused_window();
+                if win.is_none() {
+                    for _ in 0..3 {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                        win = get_focused_window();
+                        if win.is_some() {
+                            break;
+                        }
+                    }
+                }
+                win
+            };
 
             // Hide overlay and zone indicators
             dispatch_overlay(OverlayCmd::Hide);
@@ -2183,8 +2198,8 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                     crate::config::write_debug_log(
                         &dbg_state,
                         &format!(
-                            "tile_snap: snapping — layout={:?}, display={}, target=({:.0},{:.0} {:.0}x{:.0}), cursor=({:.0},{:.0})",
-                            layout, display_idx, rect.x, rect.y, rect.width, rect.height, cursor.x, cursor.y,
+                            "tile_snap: snapping {} — layout={:?}, display={}, target=({:.0},{:.0} {:.0}x{:.0}), cursor=({:.0},{:.0})",
+                            win_title, layout, display_idx, rect.x, rect.y, rect.width, rect.height, cursor.x, cursor.y,
                         ),
                     );
                 }
@@ -2196,12 +2211,22 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                     unsafe {
                         set_window_rect(window, &rect);
                     }
+                } else {
+                    if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
+                        crate::config::write_debug_log(
+                            &dbg_state,
+                            &format!(
+                                "tile_snap: FAILED snap {} — could not get focused window (AX API returned None after retries)",
+                                win_title,
+                            ),
+                        );
+                    }
                 }
             } else {
                 if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
                     crate::config::write_debug_log(
                         &dbg_state,
-                        &format!("tile_snap: mouse_up — no zone active, cursor=({:.0},{:.0})", cursor.x, cursor.y),
+                        &format!("tile_snap: mouse_up {} — no zone active, cursor=({:.0},{:.0})", win_title, cursor.x, cursor.y),
                     );
                 }
             }
@@ -2310,6 +2335,8 @@ pub fn start_tile_snap(app: AppHandle) {
             side_edge_trigger: 18.0,
             top_edge_trigger: 18.0,
             corner_trigger: 50.0,
+            drag_window_title: String::new(),
+            last_log_cursor: None,
         }),
     });
 
