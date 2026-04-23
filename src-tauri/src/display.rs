@@ -202,12 +202,20 @@ fn ensure_metadata_for_monitors(
 pub async fn get_monitors(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Vec<Monitor>, String> {
+    let t0 = std::time::Instant::now();
+
     // Return cached monitors if fresh
     if let Some(cached) = state.sidecar_cache.get_monitors() {
+        crate::config::write_debug_log(
+            &state,
+            &format!("benchmark: get_monitors — {:.1}ms (cache hit)", t0.elapsed().as_secs_f64() * 1000.0),
+        );
         return Ok(cached);
     }
 
     let monitors = detect_monitors().await;
+    let t_sidecar = t0.elapsed();
+
     let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
 
     let mut dirty = reconcile_migrated_configs(&monitors, &mut prefs.monitor_configs);
@@ -218,6 +226,16 @@ pub async fn get_monitors(
 
     let result = merge_with_configs(monitors, &prefs.monitor_configs);
     state.sidecar_cache.set_monitors(result.clone());
+
+    crate::config::write_debug_log(
+        &state,
+        &format!(
+            "benchmark: get_monitors — {:.1}ms total (sidecar={:.1}ms, {} monitors)",
+            t0.elapsed().as_secs_f64() * 1000.0,
+            t_sidecar.as_secs_f64() * 1000.0,
+            result.len(),
+        ),
+    );
     Ok(result)
 }
 
