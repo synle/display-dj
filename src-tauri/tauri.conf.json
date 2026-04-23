@@ -15,7 +15,7 @@
       {
         "label": "main",
         "title": "Display DJ",
-        "width": 360,
+        "width": 400,
         "height": 520,
         "visible": false,
         "decorations": false,

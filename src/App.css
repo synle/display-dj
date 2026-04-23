@@ -83,7 +83,7 @@ body,
 }
 
 .header-dev-tag {
-  color: #e74c3c;
+  color: #ff4444 !important;
   font-weight: 600;
 }
 
