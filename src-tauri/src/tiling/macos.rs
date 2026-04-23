@@ -67,6 +67,15 @@ impl CfRef {
     fn as_ptr(&self) -> CFTypeRef {
         self.0
     }
+
+    /// Consume the CfRef and return the raw pointer WITHOUT calling CFRelease.
+    /// The caller is responsible for releasing the pointer (or wrapping it in
+    /// a new CfRef on another thread).
+    fn into_raw(self) -> CFTypeRef {
+        let ptr = self.0;
+        std::mem::forget(self); // skip Drop
+        ptr
+    }
 }
 
 impl Drop for CfRef {
@@ -2161,6 +2170,11 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
             state.current_layout = None;
             state.current_target_rect = None;
 
+            // Capture the focused window BEFORE hiding overlays — hiding
+            // overlays can shift focus away from the window being dragged,
+            // which would cause get_focused_window() to return None later.
+            let focused = unsafe { get_focused_window() };
+
             // Hide overlay and zone indicators
             dispatch_overlay(OverlayCmd::Hide);
             dispatch_overlay(OverlayCmd::HideZones);
@@ -2178,15 +2192,15 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                         ),
                     );
                 }
-                // Move the window on a background thread (AX API calls)
-                let app = ctx.app.clone();
-                std::thread::spawn(move || {
+                // Apply the snap directly using the pre-captured window ref.
+                // Done inline (not on a background thread) to avoid the race
+                // where focus shifts after overlay hide. AX set calls are fast
+                // enough for the main thread on mouse_up.
+                if let Some(ref window) = focused {
                     unsafe {
-                        if let Some(window) = get_focused_window() {
-                            set_window_rect(&window, &rect);
-                        }
+                        set_window_rect(window, &rect);
                     }
-                });
+                }
             } else {
                 if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
                     crate::config::write_debug_log(
