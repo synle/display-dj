@@ -328,7 +328,7 @@ This recursively clears the quarantine flag so macOS allows the app to run. You 
 
 ## Tech Stack
 
-[Tauri v2](https://v2.tauri.app/) (Rust) + React 18 + TypeScript + Vite 6 + [display-dj CLI](https://github.com/synle/display-dj-cli)
+[Tauri v2](https://v2.tauri.app/) (Rust) + React 19 + TypeScript + Vite 6 + [display-dj CLI](https://github.com/synle/display-dj-cli)
 
 Display and dark mode operations are handled by the bundled [display-dj CLI](https://github.com/synle/display-dj-cli) sidecar -- no external tools need to be installed on macOS or Windows.
 
