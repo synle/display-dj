@@ -19,6 +19,11 @@ npx tauri build      # Production build (binary + .dmg/.exe/.deb/.AppImage)
 cargo check          # Check Rust compilation (from src-tauri/)
 ```
 
+**VSCode debugging:** `.vscode/launch.json` provides launch configs for full
+Tauri dev, Vite dev (frontend only), Vitest (run / watch), Cargo test, Cargo
+check, and Tauri build. `.vscode/tasks.json` defines the `ui:dev` background
+task referenced by the lldb-based Tauri Dev launch entry.
+
 ## Local Install from Release
 
 Use the `/install-app` slash command to download and install the latest release for the current platform. It handles all platform-specific steps automatically.
