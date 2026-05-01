@@ -1131,6 +1131,70 @@ pub fn start_tile_snap(app: AppHandle) {
 }
 
 // ---------------------------------------------------------------------------
+// Z-order control (bring window/app to front, send to back)
+// ---------------------------------------------------------------------------
+
+/// Z-order action requested via `command/window/...` or `command/app/...`.
+///
+/// Two scopes (focused window vs. all windows of focused app) are exposed.
+/// More variants (back, toggle) will be added in subsequent cycles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowZOrderAction {
+    /// Raise the focused window above all other windows (across apps).
+    /// Activates the owning app and brings just this window to the top.
+    WindowToFront,
+    /// Raise every window of the focused app above all other apps' windows.
+    /// Equivalent to macOS "Bring All to Front" or alt-tab to all of an app's windows.
+    AppToFront,
+}
+
+/// Parse a z-order command string. Returns `None` if it isn't a z-order command.
+///
+/// Recognized commands:
+///   - `command/window/moveToFront` → [`WindowZOrderAction::WindowToFront`]
+///   - `command/app/moveToFront`    → [`WindowZOrderAction::AppToFront`]
+pub fn parse_zorder_command(command: &str) -> Option<WindowZOrderAction> {
+    match command {
+        "command/window/moveToFront" => Some(WindowZOrderAction::WindowToFront),
+        "command/app/moveToFront" => Some(WindowZOrderAction::AppToFront),
+        _ => None,
+    }
+}
+
+/// Execute a z-order action. Dispatches to the active platform implementation.
+/// No-op (with a warning log) on platforms where z-order is not supported.
+pub fn execute_zorder(app: &AppHandle, action: WindowZOrderAction) {
+    match action {
+        WindowZOrderAction::WindowToFront => {
+            #[cfg(target_os = "macos")]
+            macos::move_window_to_front(app);
+            #[cfg(target_os = "windows")]
+            windows::move_window_to_front(app);
+            #[cfg(target_os = "linux")]
+            linux::move_window_to_front(app);
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            {
+                let _ = app;
+                log::warn!("zorder: window/moveToFront not supported on this platform");
+            }
+        }
+        WindowZOrderAction::AppToFront => {
+            #[cfg(target_os = "macos")]
+            macos::move_app_to_front(app);
+            #[cfg(target_os = "windows")]
+            windows::move_app_to_front(app);
+            #[cfg(target_os = "linux")]
+            linux::move_app_to_front(app);
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            {
+                let _ = app;
+                log::warn!("zorder: app/moveToFront not supported on this platform");
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests (shared layout math — runs on all platforms)
 // ---------------------------------------------------------------------------
 
@@ -2348,5 +2412,39 @@ mod tests {
         assert!(!should_skip_system_window("brave", "Sy's Favorites - Brave"));
         assert!(!should_skip_system_window("7zFM", "archive.zip"));
         assert!(!should_skip_system_window("sublime_text", "file.rs"));
+    }
+
+    /// `command/window/moveToFront` parses to the WindowToFront action.
+    #[test]
+    fn test_parse_zorder_window_move_to_front() {
+        assert_eq!(
+            parse_zorder_command("command/window/moveToFront"),
+            Some(WindowZOrderAction::WindowToFront),
+        );
+    }
+
+    /// `command/app/moveToFront` parses to the AppToFront action.
+    #[test]
+    fn test_parse_zorder_app_move_to_front() {
+        assert_eq!(
+            parse_zorder_command("command/app/moveToFront"),
+            Some(WindowZOrderAction::AppToFront),
+        );
+    }
+
+    /// Unrelated commands do not parse as z-order commands.
+    #[test]
+    fn test_parse_zorder_rejects_unrelated() {
+        assert_eq!(parse_zorder_command("command/tile/leftHalf"), None);
+        assert_eq!(parse_zorder_command("command/window/somethingElse"), None);
+        assert_eq!(parse_zorder_command(""), None);
+        assert_eq!(parse_zorder_command("command/changeBrightness/50"), None);
+    }
+
+    /// Parse is case-sensitive (matches existing camelCase command convention).
+    #[test]
+    fn test_parse_zorder_case_sensitive() {
+        assert_eq!(parse_zorder_command("command/window/movetofront"), None);
+        assert_eq!(parse_zorder_command("Command/Window/MoveToFront"), None);
     }
 }
