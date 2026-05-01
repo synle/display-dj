@@ -25,8 +25,8 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowTextW,
     GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, SetForegroundWindow,
-    SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-    SW_RESTORE,
+    SetWindowPos, ShowWindow, HWND_BOTTOM, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SWP_NOZORDER, SW_RESTORE,
 };
 
 // ---------------------------------------------------------------------------
@@ -577,6 +577,70 @@ pub fn move_app_to_front(_app: &AppHandle) {
         // window after the raise loop.
         let _ = BringWindowToTop(hwnd);
         let _ = SetForegroundWindow(hwnd);
+    }
+}
+
+/// Send the focused window to the bottom of the z-order via
+/// `SetWindowPos(HWND_BOTTOM)`. Doesn't change focus explicitly — Windows
+/// transfers focus to the next-frontmost window automatically.
+pub fn move_window_to_back(_app: &AppHandle) {
+    let hwnd = match get_foreground_hwnd() {
+        Some(h) => h,
+        None => {
+            log::info!("move_window_to_back: no foreground window");
+            return;
+        }
+    };
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_BOTTOM,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
+}
+
+/// Send all top-level windows of the focused app's PID to the bottom of
+/// the z-order.
+///
+/// `EnumWindows` returns windows in front-to-back z-order. Iterating
+/// forward and calling `SetWindowPos(HWND_BOTTOM)` on each one in turn
+/// preserves the relative within-app order: each call drops one window
+/// to the absolute bottom, so the originally frontmost-of-app ends up
+/// topmost-among-the-lowered-set.
+pub fn move_app_to_back(_app: &AppHandle) {
+    let hwnd = match get_foreground_hwnd() {
+        Some(h) => h,
+        None => {
+            log::info!("move_app_to_back: no foreground window");
+            return;
+        }
+    };
+    let mut target_pid: u32 = 0;
+    unsafe {
+        GetWindowThreadProcessId(hwnd, Some(&mut target_pid));
+    }
+    if target_pid == 0 {
+        log::info!("move_app_to_back: could not resolve PID for foreground window");
+        return;
+    }
+    let hwnds = collect_hwnds_for_pid(target_pid);
+    unsafe {
+        for h in hwnds.iter() {
+            let _ = SetWindowPos(
+                *h,
+                HWND_BOTTOM,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
     }
 }
 
