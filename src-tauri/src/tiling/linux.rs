@@ -768,6 +768,85 @@ pub fn move_app_to_front(_app: &AppHandle) {
     raise_window(&conn, root, focused);
 }
 
+/// Lower a window to the bottom of the X11 stacking order using
+/// `ConfigureWindow` with `stack_mode = BELOW`. This is the X11-level
+/// "lower" call; most window managers (Mutter, KWin, xfwm4, etc.) honor
+/// it as long as the window is owned by a regular client.
+fn lower_window(conn: &RustConnection, window: Window) {
+    let _ = conn.configure_window(
+        window,
+        &ConfigureWindowAux::new().stack_mode(StackMode::BELOW),
+    );
+    let _ = conn.flush();
+}
+
+/// Send the focused window to the bottom of the stacking order.
+/// No-op on Wayland-only sessions or if no focused window can be resolved.
+pub fn move_window_to_back(_app: &AppHandle) {
+    if !is_x11_available() {
+        log::warn!("move_window_to_back: X11 not available");
+        return;
+    }
+    let (conn, screen_num) = match connect() {
+        Some(c) => c,
+        None => return,
+    };
+    let root = conn.setup().roots[screen_num].root;
+    let window = match get_focused_window(&conn, root) {
+        Some(w) => w,
+        None => {
+            log::info!("move_window_to_back: no focused window");
+            return;
+        }
+    };
+    lower_window(&conn, window);
+}
+
+/// Send every top-level window of the focused app's PID to the bottom.
+/// Iterates `_NET_CLIENT_LIST`, filters by `_NET_WM_PID`, and lowers each
+/// match. Each call moves that window to the absolute bottom, so iterating
+/// in client-list order roughly preserves the originally-frontmost-of-app
+/// staying frontmost-of-app within the lowered set.
+pub fn move_app_to_back(_app: &AppHandle) {
+    if !is_x11_available() {
+        log::warn!("move_app_to_back: X11 not available");
+        return;
+    }
+    let (conn, screen_num) = match connect() {
+        Some(c) => c,
+        None => return,
+    };
+    let root = conn.setup().roots[screen_num].root;
+    let focused = match get_focused_window(&conn, root) {
+        Some(w) => w,
+        None => {
+            log::info!("move_app_to_back: no focused window");
+            return;
+        }
+    };
+    let target_pid = match get_window_pid(&conn, focused) {
+        Some(p) => p,
+        None => {
+            log::info!("move_app_to_back: focused window has no _NET_WM_PID");
+            return;
+        }
+    };
+
+    let net_client_list = match intern_atom(&conn, "_NET_CLIENT_LIST") {
+        Some(a) => a,
+        None => return,
+    };
+    let clients = get_window_list(&conn, root, net_client_list);
+    for w in clients {
+        if !is_normal_window(&conn, w) {
+            continue;
+        }
+        if get_window_pid(&conn, w) == Some(target_pid) {
+            lower_window(&conn, w);
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------

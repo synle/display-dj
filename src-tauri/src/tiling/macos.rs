@@ -130,6 +130,7 @@ extern "C" {
     fn _AXUIElementGetWindow(element: CFTypeRef, window_id: *mut u32) -> AXError;
 }
 
+
 // ---------------------------------------------------------------------------
 // Geometry types (compatible with CoreGraphics C structs)
 // ---------------------------------------------------------------------------
@@ -990,6 +991,80 @@ pub fn move_app_to_front(_app: &AppHandle) {
     }
 }
 
+/// Send a window to the absolute bottom of the global z-order via CGSOrderWindow.
+/// `order = -1` (kCGSOrderBelow), `relative_to = 0` (absolute, behind everything).
+unsafe fn send_window_to_back_by_id(wid: u32) {
+    let cid = CGSMainConnectionID();
+    let _ = CGSOrderWindow(cid, wid, -1, 0);
+}
+
+/// Send the focused window to the back of the global z-order.
+///
+/// There is no public AX API for "lower window," so we use the private
+/// CGS API `CGSOrderWindow` — the standard approach used by yabai,
+/// Rectangle, and AeroSpace. The next-frontmost window naturally takes
+/// focus once this one is lowered.
+///
+/// No-op if Accessibility permission isn't granted or there's no focused window.
+pub fn move_window_to_back(_app: &AppHandle) {
+    if !unsafe { AXIsProcessTrusted() } {
+        log::warn!("move_window_to_back: Accessibility permission not granted");
+        return;
+    }
+    unsafe {
+        let window = match get_focused_window() {
+            Some(w) => w,
+            None => {
+                log::info!("move_window_to_back: no focused window");
+                return;
+            }
+        };
+        let wid = match get_window_id(&window) {
+            Some(id) => id,
+            None => {
+                log::info!("move_window_to_back: could not get CGWindowID");
+                return;
+            }
+        };
+        send_window_to_back_by_id(wid);
+    }
+}
+
+/// Send every window of the focused app to the back of the global z-order.
+///
+/// Iterates `get_all_ax_windows_for_pid` and calls `CGSOrderWindow(below, 0)`
+/// on each. Each successive call moves that window to the absolute bottom,
+/// so iterating in z-order (frontmost first) leaves the originally
+/// frontmost-of-app on top of the bottom-stack — preserving the relative
+/// in-app order.
+///
+/// No-op if Accessibility permission isn't granted or there's no focused window.
+pub fn move_app_to_back(_app: &AppHandle) {
+    if !unsafe { AXIsProcessTrusted() } {
+        log::warn!("move_app_to_back: Accessibility permission not granted");
+        return;
+    }
+    unsafe {
+        let focused = match get_focused_window() {
+            Some(w) => w,
+            None => {
+                log::info!("move_app_to_back: no focused window");
+                return;
+            }
+        };
+        let pid = match get_window_pid(&focused) {
+            Some(p) => p,
+            None => {
+                log::info!("move_app_to_back: could not resolve PID for focused window");
+                return;
+            }
+        };
+        for (_w, wid) in get_all_ax_windows_for_pid(pid) {
+            send_window_to_back_by_id(wid);
+        }
+    }
+}
+
 /// Set a window rect by PID and CGWindowID. Used by shared plan_* functions.
 fn set_window_rect_by_id(pid: i32, wid: u32, rect: &Rect) {
     unsafe {
@@ -1317,6 +1392,13 @@ extern "C" {
     /// Move a set of windows to a managed Space. `windows` is a CFArray of
     /// CFNumber(kCFNumberSInt32Type) window IDs. `space` is the Space ID.
     fn CGSMoveWindowsToManagedSpace(cid: i32, windows: CFArrayRef, space: u64) -> i32;
+    /// Change a window's z-order via the window server.
+    /// `order`: 1 = above, 0 = remove from screen, -1 = below.
+    /// `relative_to`: window ID to be relative to, or 0 for absolute (above
+    /// everything / below everything).
+    /// There is no public AX API to lower a window — this is the standard
+    /// approach used by every macOS tiling WM that supports "send to back".
+    fn CGSOrderWindow(cid: i32, wid: u32, order: i32, relative_to: u32) -> i32;
 }
 
 /// Move all windows from all running GUI apps to the currently active Space.

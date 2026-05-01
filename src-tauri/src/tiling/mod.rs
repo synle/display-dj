@@ -1136,8 +1136,8 @@ pub fn start_tile_snap(app: AppHandle) {
 
 /// Z-order action requested via `command/window/...` or `command/app/...`.
 ///
-/// Two scopes (focused window vs. all windows of focused app) are exposed.
-/// More variants (back, toggle) will be added in subsequent cycles.
+/// Two scopes (focused window vs. all windows of focused app) × two directions
+/// (front, back) are exposed. The toggle variant will be added in a later cycle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WindowZOrderAction {
     /// Raise the focused window above all other windows (across apps).
@@ -1146,6 +1146,11 @@ pub enum WindowZOrderAction {
     /// Raise every window of the focused app above all other apps' windows.
     /// Equivalent to macOS "Bring All to Front" or alt-tab to all of an app's windows.
     AppToFront,
+    /// Lower the focused window below all other windows. The next-frontmost
+    /// window naturally takes focus.
+    WindowToBack,
+    /// Lower every window of the focused app below all other apps' windows.
+    AppToBack,
 }
 
 /// Parse a z-order command string. Returns `None` if it isn't a z-order command.
@@ -1153,10 +1158,14 @@ pub enum WindowZOrderAction {
 /// Recognized commands:
 ///   - `command/window/moveToFront` → [`WindowZOrderAction::WindowToFront`]
 ///   - `command/app/moveToFront`    → [`WindowZOrderAction::AppToFront`]
+///   - `command/window/moveToBack`  → [`WindowZOrderAction::WindowToBack`]
+///   - `command/app/moveToBack`     → [`WindowZOrderAction::AppToBack`]
 pub fn parse_zorder_command(command: &str) -> Option<WindowZOrderAction> {
     match command {
         "command/window/moveToFront" => Some(WindowZOrderAction::WindowToFront),
         "command/app/moveToFront" => Some(WindowZOrderAction::AppToFront),
+        "command/window/moveToBack" => Some(WindowZOrderAction::WindowToBack),
+        "command/app/moveToBack" => Some(WindowZOrderAction::AppToBack),
         _ => None,
     }
 }
@@ -1189,6 +1198,32 @@ pub fn execute_zorder(app: &AppHandle, action: WindowZOrderAction) {
             {
                 let _ = app;
                 log::warn!("zorder: app/moveToFront not supported on this platform");
+            }
+        }
+        WindowZOrderAction::WindowToBack => {
+            #[cfg(target_os = "macos")]
+            macos::move_window_to_back(app);
+            #[cfg(target_os = "windows")]
+            windows::move_window_to_back(app);
+            #[cfg(target_os = "linux")]
+            linux::move_window_to_back(app);
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            {
+                let _ = app;
+                log::warn!("zorder: window/moveToBack not supported on this platform");
+            }
+        }
+        WindowZOrderAction::AppToBack => {
+            #[cfg(target_os = "macos")]
+            macos::move_app_to_back(app);
+            #[cfg(target_os = "windows")]
+            windows::move_app_to_back(app);
+            #[cfg(target_os = "linux")]
+            linux::move_app_to_back(app);
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            {
+                let _ = app;
+                log::warn!("zorder: app/moveToBack not supported on this platform");
             }
         }
     }
@@ -2432,6 +2467,24 @@ mod tests {
         );
     }
 
+    /// `command/window/moveToBack` parses to the WindowToBack action.
+    #[test]
+    fn test_parse_zorder_window_move_to_back() {
+        assert_eq!(
+            parse_zorder_command("command/window/moveToBack"),
+            Some(WindowZOrderAction::WindowToBack),
+        );
+    }
+
+    /// `command/app/moveToBack` parses to the AppToBack action.
+    #[test]
+    fn test_parse_zorder_app_move_to_back() {
+        assert_eq!(
+            parse_zorder_command("command/app/moveToBack"),
+            Some(WindowZOrderAction::AppToBack),
+        );
+    }
+
     /// Unrelated commands do not parse as z-order commands.
     #[test]
     fn test_parse_zorder_rejects_unrelated() {
@@ -2446,5 +2499,19 @@ mod tests {
     fn test_parse_zorder_case_sensitive() {
         assert_eq!(parse_zorder_command("command/window/movetofront"), None);
         assert_eq!(parse_zorder_command("Command/Window/MoveToFront"), None);
+        assert_eq!(parse_zorder_command("command/window/movetoback"), None);
+    }
+
+    /// All four z-order actions are distinct.
+    #[test]
+    fn test_zorder_actions_are_distinct() {
+        let front_window = parse_zorder_command("command/window/moveToFront");
+        let front_app = parse_zorder_command("command/app/moveToFront");
+        let back_window = parse_zorder_command("command/window/moveToBack");
+        let back_app = parse_zorder_command("command/app/moveToBack");
+        assert_ne!(front_window, front_app);
+        assert_ne!(front_window, back_window);
+        assert_ne!(back_window, back_app);
+        assert_ne!(front_app, back_app);
     }
 }

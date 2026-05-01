@@ -1025,8 +1025,10 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             log::warn!("Tiling is not yet supported on this platform: {}", layout);
         }
-        // Z-order control: command/window/moveToFront, command/app/moveToFront
-        ["command", "window", "moveToFront"] | ["command", "app", "moveToFront"] => {
+        // Z-order control: command/window/{moveToFront,moveToBack},
+        // command/app/{moveToFront,moveToBack}.
+        // Wildcard match — the parser is the source of truth for valid actions.
+        ["command", "window", _] | ["command", "app", _] => {
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             {
                 if let Some(action) = crate::tiling::parse_zorder_command(command) {
@@ -1311,6 +1313,14 @@ mod tests {
         );
         assert_eq!(
             build_command_url("command/app/moveToFront", BASE, 10),
+            None
+        );
+        assert_eq!(
+            build_command_url("command/window/moveToBack", BASE, 10),
+            None
+        );
+        assert_eq!(
+            build_command_url("command/app/moveToBack", BASE, 10),
             None
         );
     }
