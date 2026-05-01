@@ -1323,5 +1323,13 @@ mod tests {
             build_command_url("command/app/moveToBack", BASE, 10),
             None
         );
+        assert_eq!(
+            build_command_url("command/window/toggleFrontBack", BASE, 10),
+            None
+        );
+        assert_eq!(
+            build_command_url("command/app/toggleFrontBack", BASE, 10),
+            None
+        );
     }
 }

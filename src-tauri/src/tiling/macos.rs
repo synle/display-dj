@@ -1065,6 +1065,51 @@ pub fn move_app_to_back(_app: &AppHandle) {
     }
 }
 
+/// Check if the focused window is the global topmost window.
+///
+/// `CGWindowListCopyWindowInfo` (via `get_all_windows()`) returns normal
+/// (layer-0) on-screen windows in front-to-back z-order. We compare the
+/// focused window's CGWindowID against the first entry.
+fn is_focused_window_at_front() -> bool {
+    let focused_id = unsafe {
+        match get_focused_window().and_then(|w| get_window_id(&w)) {
+            Some(id) => id as i64,
+            None => return false,
+        }
+    };
+    let z_order: Vec<i64> = get_all_windows().iter().map(|w| w.window_id).collect();
+    super::is_window_at_front(focused_id, &z_order)
+}
+
+/// Toggle: if the focused window is the global topmost, send it to back;
+/// otherwise bring it to front. Stateless — decided per-call from the live
+/// z-order, not from saved state.
+pub fn toggle_window_front_back(app: &AppHandle) {
+    if !unsafe { AXIsProcessTrusted() } {
+        log::warn!("toggle_window_front_back: Accessibility permission not granted");
+        return;
+    }
+    if is_focused_window_at_front() {
+        move_window_to_back(app);
+    } else {
+        move_window_to_front(app);
+    }
+}
+
+/// Toggle: if the focused window is the global topmost, send the whole app
+/// to back; otherwise bring the whole app to front.
+pub fn toggle_app_front_back(app: &AppHandle) {
+    if !unsafe { AXIsProcessTrusted() } {
+        log::warn!("toggle_app_front_back: Accessibility permission not granted");
+        return;
+    }
+    if is_focused_window_at_front() {
+        move_app_to_back(app);
+    } else {
+        move_app_to_front(app);
+    }
+}
+
 /// Set a window rect by PID and CGWindowID. Used by shared plan_* functions.
 fn set_window_rect_by_id(pid: i32, wid: u32, rect: &Rect) {
     unsafe {

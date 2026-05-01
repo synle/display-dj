@@ -1136,8 +1136,8 @@ pub fn start_tile_snap(app: AppHandle) {
 
 /// Z-order action requested via `command/window/...` or `command/app/...`.
 ///
-/// Two scopes (focused window vs. all windows of focused app) × two directions
-/// (front, back) are exposed. The toggle variant will be added in a later cycle.
+/// Two scopes (focused window vs. all windows of focused app) × three actions
+/// (front, back, toggle).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WindowZOrderAction {
     /// Raise the focused window above all other windows (across apps).
@@ -1151,23 +1151,43 @@ pub enum WindowZOrderAction {
     WindowToBack,
     /// Lower every window of the focused app below all other apps' windows.
     AppToBack,
+    /// If the focused window is the global topmost → send it to back;
+    /// otherwise → bring it to the front. Stateless (decided per-call from
+    /// the live z-order, not from any saved state).
+    WindowToggleFrontBack,
+    /// If the focused window is the global topmost → send the whole app's
+    /// windows to back; otherwise → bring the whole app to front.
+    AppToggleFrontBack,
 }
 
 /// Parse a z-order command string. Returns `None` if it isn't a z-order command.
 ///
 /// Recognized commands:
-///   - `command/window/moveToFront` → [`WindowZOrderAction::WindowToFront`]
-///   - `command/app/moveToFront`    → [`WindowZOrderAction::AppToFront`]
-///   - `command/window/moveToBack`  → [`WindowZOrderAction::WindowToBack`]
-///   - `command/app/moveToBack`     → [`WindowZOrderAction::AppToBack`]
+///   - `command/window/moveToFront`     → [`WindowZOrderAction::WindowToFront`]
+///   - `command/app/moveToFront`        → [`WindowZOrderAction::AppToFront`]
+///   - `command/window/moveToBack`      → [`WindowZOrderAction::WindowToBack`]
+///   - `command/app/moveToBack`         → [`WindowZOrderAction::AppToBack`]
+///   - `command/window/toggleFrontBack` → [`WindowZOrderAction::WindowToggleFrontBack`]
+///   - `command/app/toggleFrontBack`    → [`WindowZOrderAction::AppToggleFrontBack`]
 pub fn parse_zorder_command(command: &str) -> Option<WindowZOrderAction> {
     match command {
         "command/window/moveToFront" => Some(WindowZOrderAction::WindowToFront),
         "command/app/moveToFront" => Some(WindowZOrderAction::AppToFront),
         "command/window/moveToBack" => Some(WindowZOrderAction::WindowToBack),
         "command/app/moveToBack" => Some(WindowZOrderAction::AppToBack),
+        "command/window/toggleFrontBack" => Some(WindowZOrderAction::WindowToggleFrontBack),
+        "command/app/toggleFrontBack" => Some(WindowZOrderAction::AppToggleFrontBack),
         _ => None,
     }
+}
+
+/// Pure helper: true iff `focused_id` is the first entry in a front-to-back
+/// z-ordered window list. Each platform builds its own front-to-back list
+/// (CGWindowList on macOS, EnumWindows on Windows, reversed
+/// `_NET_CLIENT_LIST_STACKING` on Linux) and calls this helper to keep the
+/// "is at front" semantic identical across platforms.
+pub fn is_window_at_front(focused_id: i64, front_to_back_z_order: &[i64]) -> bool {
+    front_to_back_z_order.first().copied() == Some(focused_id)
 }
 
 /// Execute a z-order action. Dispatches to the active platform implementation.
@@ -1224,6 +1244,32 @@ pub fn execute_zorder(app: &AppHandle, action: WindowZOrderAction) {
             {
                 let _ = app;
                 log::warn!("zorder: app/moveToBack not supported on this platform");
+            }
+        }
+        WindowZOrderAction::WindowToggleFrontBack => {
+            #[cfg(target_os = "macos")]
+            macos::toggle_window_front_back(app);
+            #[cfg(target_os = "windows")]
+            windows::toggle_window_front_back(app);
+            #[cfg(target_os = "linux")]
+            linux::toggle_window_front_back(app);
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            {
+                let _ = app;
+                log::warn!("zorder: window/toggleFrontBack not supported on this platform");
+            }
+        }
+        WindowZOrderAction::AppToggleFrontBack => {
+            #[cfg(target_os = "macos")]
+            macos::toggle_app_front_back(app);
+            #[cfg(target_os = "windows")]
+            windows::toggle_app_front_back(app);
+            #[cfg(target_os = "linux")]
+            linux::toggle_app_front_back(app);
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            {
+                let _ = app;
+                log::warn!("zorder: app/toggleFrontBack not supported on this platform");
             }
         }
     }
@@ -2502,16 +2548,72 @@ mod tests {
         assert_eq!(parse_zorder_command("command/window/movetoback"), None);
     }
 
-    /// All four z-order actions are distinct.
+    /// All six z-order actions are distinct.
     #[test]
     fn test_zorder_actions_are_distinct() {
-        let front_window = parse_zorder_command("command/window/moveToFront");
-        let front_app = parse_zorder_command("command/app/moveToFront");
-        let back_window = parse_zorder_command("command/window/moveToBack");
-        let back_app = parse_zorder_command("command/app/moveToBack");
-        assert_ne!(front_window, front_app);
-        assert_ne!(front_window, back_window);
-        assert_ne!(back_window, back_app);
-        assert_ne!(front_app, back_app);
+        let actions = [
+            parse_zorder_command("command/window/moveToFront"),
+            parse_zorder_command("command/app/moveToFront"),
+            parse_zorder_command("command/window/moveToBack"),
+            parse_zorder_command("command/app/moveToBack"),
+            parse_zorder_command("command/window/toggleFrontBack"),
+            parse_zorder_command("command/app/toggleFrontBack"),
+        ];
+        for (i, a) in actions.iter().enumerate() {
+            assert!(a.is_some(), "action {} should parse", i);
+            for (j, b) in actions.iter().enumerate() {
+                if i != j {
+                    assert_ne!(a, b, "actions {} and {} should differ", i, j);
+                }
+            }
+        }
+    }
+
+    /// `command/window/toggleFrontBack` parses to WindowToggleFrontBack.
+    #[test]
+    fn test_parse_zorder_window_toggle() {
+        assert_eq!(
+            parse_zorder_command("command/window/toggleFrontBack"),
+            Some(WindowZOrderAction::WindowToggleFrontBack),
+        );
+    }
+
+    /// `command/app/toggleFrontBack` parses to AppToggleFrontBack.
+    #[test]
+    fn test_parse_zorder_app_toggle() {
+        assert_eq!(
+            parse_zorder_command("command/app/toggleFrontBack"),
+            Some(WindowZOrderAction::AppToggleFrontBack),
+        );
+    }
+
+    /// `is_window_at_front` is true when the window ID is the first in the
+    /// front-to-back z-order list.
+    #[test]
+    fn test_is_window_at_front_true() {
+        let z_order = vec![100, 200, 300];
+        assert!(is_window_at_front(100, &z_order));
+    }
+
+    /// `is_window_at_front` is false when the window is below another in the stack.
+    #[test]
+    fn test_is_window_at_front_false() {
+        let z_order = vec![100, 200, 300];
+        assert!(!is_window_at_front(200, &z_order));
+        assert!(!is_window_at_front(300, &z_order));
+    }
+
+    /// `is_window_at_front` is false when the window is not in the list at all.
+    #[test]
+    fn test_is_window_at_front_missing() {
+        let z_order = vec![100, 200, 300];
+        assert!(!is_window_at_front(999, &z_order));
+    }
+
+    /// `is_window_at_front` is false on an empty list (no windows on screen).
+    #[test]
+    fn test_is_window_at_front_empty() {
+        let z_order: Vec<i64> = Vec::new();
+        assert!(!is_window_at_front(100, &z_order));
     }
 }

@@ -644,6 +644,57 @@ pub fn move_app_to_back(_app: &AppHandle) {
     }
 }
 
+/// Check if the focused window is the global topmost. On Windows the
+/// foreground window is generally the topmost, so this almost always
+/// returns true unless the user's app is covered by a topmost (always-on-top)
+/// system overlay or the focus is on a non-foreground window. Used by the
+/// toggle dispatch.
+fn is_focused_window_at_front() -> bool {
+    let foreground = match get_foreground_hwnd() {
+        Some(h) => h,
+        None => return false,
+    };
+    let foreground_id = foreground.0 as isize as i64;
+    // Build a front-to-back list of visible top-level HWNDs (filtering
+    // skip-list system windows like Program Manager / TextInputHost).
+    let mut z_order: Vec<i64> = Vec::new();
+    unsafe extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let z = &mut *(lparam.0 as *mut Vec<i64>);
+        if !IsWindowVisible(hwnd).as_bool() {
+            return TRUE;
+        }
+        let process = get_process_name(hwnd);
+        let title = get_window_title(hwnd);
+        if super::should_skip_system_window(&process, &title) {
+            return TRUE;
+        }
+        z.push(hwnd.0 as isize as i64);
+        TRUE
+    }
+    unsafe {
+        let _ = EnumWindows(Some(cb), LPARAM(&mut z_order as *mut Vec<i64> as isize));
+    }
+    super::is_window_at_front(foreground_id, &z_order)
+}
+
+/// Toggle the focused window's z-order: front if it isn't, back if it is.
+pub fn toggle_window_front_back(app: &AppHandle) {
+    if is_focused_window_at_front() {
+        move_window_to_back(app);
+    } else {
+        move_window_to_front(app);
+    }
+}
+
+/// Toggle the focused app's z-order: front if it isn't, back if it is.
+pub fn toggle_app_front_back(app: &AppHandle) {
+    if is_focused_window_at_front() {
+        move_app_to_back(app);
+    } else {
+        move_app_to_front(app);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
