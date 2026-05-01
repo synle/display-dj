@@ -382,6 +382,18 @@ impl Default for Preferences {
                     key: "Ctrl+Down".into(),
                     command: CommandValue::Single("command/tile/exposeApp".into()),
                 },
+                // Z-order: toggle focused window front/back.
+                // Mnemonic: Left = single (one window), Right = many (whole app).
+                // Shift+Ctrl+Super (Cmd on macOS, Win on Windows, Super on Linux)
+                // is unbound by default in all three OSes.
+                KeyBinding {
+                    key: "Shift+Ctrl+Super+Left".into(),
+                    command: CommandValue::Single("command/window/toggleFrontBack".into()),
+                },
+                KeyBinding {
+                    key: "Shift+Ctrl+Super+Right".into(),
+                    command: CommandValue::Single("command/app/toggleFrontBack".into()),
+                },
             ],
             profiles: vec![
                 Profile {
@@ -807,7 +819,7 @@ mod tests {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.min_brightness, 10);
-        assert_eq!(prefs.key_bindings.len(), 26);
+        assert_eq!(prefs.key_bindings.len(), 28);
     }
 
     #[test]
@@ -1021,7 +1033,7 @@ mod tests {
         let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(loaded.min_brightness, 10);
-        assert_eq!(loaded.key_bindings.len(), 26);
+        assert_eq!(loaded.key_bindings.len(), 28);
 
         std::fs::remove_dir_all(&dir).ok();
     }

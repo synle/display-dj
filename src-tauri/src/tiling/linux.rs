@@ -847,6 +847,74 @@ pub fn move_app_to_back(_app: &AppHandle) {
     }
 }
 
+/// Check if the focused window is the global topmost.
+///
+/// `_NET_CLIENT_LIST_STACKING` returns windows in bottom-to-top z-order,
+/// so the LAST entry is topmost. Filter to normal+non-hidden windows
+/// (hidden = minimized in EWMH) before comparing.
+fn is_focused_window_at_front() -> bool {
+    let (conn, screen_num) = match connect() {
+        Some(c) => c,
+        None => return false,
+    };
+    let root = conn.setup().roots[screen_num].root;
+    let focused = match get_focused_window(&conn, root) {
+        Some(w) => w,
+        None => return false,
+    };
+    let stacking_atom = match intern_atom(&conn, "_NET_CLIENT_LIST_STACKING") {
+        Some(a) => a,
+        None => return false,
+    };
+    // Reverse to get front-to-back order, then filter out non-normal /
+    // minimized windows so the comparison reflects what the user sees.
+    let mut front_to_back: Vec<i64> = get_window_list(&conn, root, stacking_atom)
+        .into_iter()
+        .rev()
+        .filter(|&w| is_normal_window(&conn, w) && !is_window_hidden(&conn, w))
+        .map(|w| w as i64)
+        .collect();
+    // If the WM doesn't expose _NET_CLIENT_LIST_STACKING, fall back to
+    // _NET_CLIENT_LIST (mapping order — not z-order, but better than nothing).
+    if front_to_back.is_empty() {
+        if let Some(client_list_atom) = intern_atom(&conn, "_NET_CLIENT_LIST") {
+            front_to_back = get_window_list(&conn, root, client_list_atom)
+                .into_iter()
+                .rev()
+                .filter(|&w| is_normal_window(&conn, w) && !is_window_hidden(&conn, w))
+                .map(|w| w as i64)
+                .collect();
+        }
+    }
+    super::is_window_at_front(focused as i64, &front_to_back)
+}
+
+/// Toggle the focused window's z-order: front if it isn't, back if it is.
+pub fn toggle_window_front_back(app: &AppHandle) {
+    if !is_x11_available() {
+        log::warn!("toggle_window_front_back: X11 not available");
+        return;
+    }
+    if is_focused_window_at_front() {
+        move_window_to_back(app);
+    } else {
+        move_window_to_front(app);
+    }
+}
+
+/// Toggle the focused app's z-order: front if it isn't, back if it is.
+pub fn toggle_app_front_back(app: &AppHandle) {
+    if !is_x11_available() {
+        log::warn!("toggle_app_front_back: X11 not available");
+        return;
+    }
+    if is_focused_window_at_front() {
+        move_app_to_back(app);
+    } else {
+        move_app_to_front(app);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
