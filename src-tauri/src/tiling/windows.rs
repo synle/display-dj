@@ -24,8 +24,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowTextW,
-    GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, SetWindowPos, ShowWindow, HWND_TOP,
-    SWP_NOZORDER, SW_RESTORE,
+    GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, SetForegroundWindow,
+    SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+    SW_RESTORE,
 };
 
 // ---------------------------------------------------------------------------
@@ -475,6 +476,107 @@ fn get_process_name_from_pid(pid: u32) -> String {
             }
             Err(_) => String::new(),
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Z-order helpers
+// ---------------------------------------------------------------------------
+
+/// Collect all top-level visible HWNDs that belong to a given PID, in the
+/// order returned by `EnumWindows` (front-to-back z-order).
+fn collect_hwnds_for_pid(target_pid: u32) -> Vec<HWND> {
+    struct Ctx {
+        pid: u32,
+        out: Vec<HWND>,
+    }
+    let mut ctx = Ctx {
+        pid: target_pid,
+        out: Vec::new(),
+    };
+    unsafe extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let ctx = &mut *(lparam.0 as *mut Ctx);
+        if !IsWindowVisible(hwnd).as_bool() {
+            return TRUE;
+        }
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == ctx.pid {
+            ctx.out.push(hwnd);
+        }
+        TRUE
+    }
+    unsafe {
+        let _ = EnumWindows(Some(cb), LPARAM(&mut ctx as *mut Ctx as isize));
+    }
+    ctx.out
+}
+
+/// Bring the focused (foreground) window to the top of the z-order
+/// and give it focus.
+pub fn move_window_to_front(_app: &AppHandle) {
+    let hwnd = match get_foreground_hwnd() {
+        Some(h) => h,
+        None => {
+            log::info!("move_window_to_front: no foreground window");
+            return;
+        }
+    };
+    unsafe {
+        // Raise in z-order without activating (avoids double-activation flicker),
+        // then ensure focus via SetForegroundWindow + BringWindowToTop.
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_TOP,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetForegroundWindow(hwnd);
+    }
+}
+
+/// Bring all top-level windows of the focused app's PID to the top of
+/// the z-order. The originally focused window stays focused / topmost.
+pub fn move_app_to_front(_app: &AppHandle) {
+    let hwnd = match get_foreground_hwnd() {
+        Some(h) => h,
+        None => {
+            log::info!("move_app_to_front: no foreground window");
+            return;
+        }
+    };
+    let mut target_pid: u32 = 0;
+    unsafe {
+        GetWindowThreadProcessId(hwnd, Some(&mut target_pid));
+    }
+    if target_pid == 0 {
+        log::info!("move_app_to_front: could not resolve PID for foreground window");
+        return;
+    }
+    let hwnds = collect_hwnds_for_pid(target_pid);
+    unsafe {
+        // Raise each app window to HWND_TOP without activating. EnumWindows
+        // returns front-to-back z-order, so iterating in reverse means the
+        // already-topmost window ends up topmost again.
+        for h in hwnds.iter().rev() {
+            let _ = SetWindowPos(
+                *h,
+                HWND_TOP,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+        // Make sure the originally focused window remains the foreground
+        // window after the raise loop.
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetForegroundWindow(hwnd);
     }
 }
 

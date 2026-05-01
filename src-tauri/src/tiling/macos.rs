@@ -120,6 +120,10 @@ extern "C" {
     fn AXValueCreate(value_type: u32, value: *const c_void) -> CFTypeRef;
     fn AXValueGetValue(value: CFTypeRef, value_type: u32, value_out: *mut c_void) -> bool;
     fn AXUIElementPerformAction(element: CFTypeRef, action: CFStringRef) -> AXError;
+    /// Public API: returns the PID of the process that owns this AXUIElement.
+    /// Used to bridge focused-window AX elements back to NSRunningApplication
+    /// for app activation (move-to-front, etc.).
+    fn AXUIElementGetPid(element: CFTypeRef, pid: *mut i32) -> AXError;
     /// Private API: bridges AXUIElement to CGWindowID.
     /// Used by AeroSpace, Rectangle, and other tiling WMs.
     /// Available since macOS 10.6, confirmed working through macOS 26.
@@ -329,6 +333,18 @@ unsafe fn send_escape_key() {
 
 /// Activate (bring to front) an app by PID via NSRunningApplication.
 unsafe fn activate_app_by_pid(pid: i32) {
+    activate_app_by_pid_with_options(pid, 2);
+}
+
+/// Activate an app by PID with explicit NSApplicationActivationOptions.
+///
+/// Common option masks:
+///   - `2` = `NSApplicationActivateIgnoringOtherApps` (1 << 1) — make this app
+///     active, but only its key/main window is brought forward.
+///   - `3` = `NSApplicationActivateAllWindows | NSApplicationActivateIgnoringOtherApps`
+///     (1 | 2) — make this app active AND raise every one of its windows above
+///     all other apps' windows.
+unsafe fn activate_app_by_pid_with_options(pid: i32, options: u64) {
     use objc::runtime::Object;
     use objc::{msg_send, sel, sel_impl};
 
@@ -341,8 +357,7 @@ unsafe fn activate_app_by_pid(pid: i32) {
     if app.is_null() {
         return;
     }
-    // NSApplicationActivateIgnoringOtherApps = 1 << 1 = 2
-    let _: bool = msg_send![app, activateWithOptions: 2u64];
+    let _: bool = msg_send![app, activateWithOptions: options];
 }
 
 // ---------------------------------------------------------------------------
@@ -891,6 +906,87 @@ pub fn execute_expose(app: &AppHandle) {
 unsafe fn raise_window(window: &CfRef) {
     if let Some(action) = cfstr("AXRaise") {
         AXUIElementPerformAction(window.as_ptr(), action.as_ptr());
+    }
+}
+
+/// Read the PID of the process that owns an AXUIElement (e.g. a window).
+/// Used to bridge a focused-window AX element back to NSRunningApplication
+/// for app activation.
+unsafe fn get_window_pid(window: &CfRef) -> Option<i32> {
+    let mut pid: i32 = 0;
+    if AXUIElementGetPid(window.as_ptr(), &mut pid) == K_AX_ERROR_SUCCESS && pid > 0 {
+        Some(pid)
+    } else {
+        None
+    }
+}
+
+/// Bring the currently focused window to the front.
+///
+/// 1. Activates the owning app (NSRunningApplication, opts=2)
+/// 2. Performs `AXRaise` on the window so it's the topmost within the app.
+///
+/// No-op if Accessibility permission isn't granted or there's no focused window.
+pub fn move_window_to_front(_app: &AppHandle) {
+    if !unsafe { AXIsProcessTrusted() } {
+        log::warn!("move_window_to_front: Accessibility permission not granted");
+        return;
+    }
+    unsafe {
+        let window = match get_focused_window() {
+            Some(w) => w,
+            None => {
+                log::info!("move_window_to_front: no focused window");
+                return;
+            }
+        };
+        if let Some(pid) = get_window_pid(&window) {
+            activate_app_by_pid(pid);
+        }
+        raise_window(&window);
+    }
+}
+
+/// Bring all windows of the focused app above all other apps' windows.
+///
+/// Uses `NSApplicationActivateAllWindows | NSApplicationActivateIgnoringOtherApps`
+/// (opts=3) plus an explicit `AXRaise` loop on every AX window of the app as a
+/// belt-and-suspenders fallback (some macOS versions don't fully respect the
+/// `NSApplicationActivateAllWindows` flag). The originally focused window is
+/// raised last so it remains topmost.
+///
+/// No-op if Accessibility permission isn't granted or there's no focused window.
+pub fn move_app_to_front(_app: &AppHandle) {
+    if !unsafe { AXIsProcessTrusted() } {
+        log::warn!("move_app_to_front: Accessibility permission not granted");
+        return;
+    }
+    unsafe {
+        let focused = match get_focused_window() {
+            Some(w) => w,
+            None => {
+                log::info!("move_app_to_front: no focused window");
+                return;
+            }
+        };
+        let pid = match get_window_pid(&focused) {
+            Some(p) => p,
+            None => {
+                log::info!("move_app_to_front: could not resolve PID for focused window");
+                return;
+            }
+        };
+        // Activate with NSApplicationActivateAllWindows so macOS raises every
+        // window of the app above other apps' windows.
+        activate_app_by_pid_with_options(pid, 3);
+        // Belt-and-suspenders: explicitly raise each AX window. Some macOS
+        // versions ignore NSApplicationActivateAllWindows; AXRaise is reliable.
+        for (w, _wid) in get_all_ax_windows_for_pid(pid) {
+            raise_window(&w);
+        }
+        // Re-raise the originally focused window so it remains topmost
+        // (AXRaise is "raise within app", so the last raise wins).
+        raise_window(&focused);
     }
 }
 

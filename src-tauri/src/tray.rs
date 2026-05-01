@@ -1025,6 +1025,22 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             log::warn!("Tiling is not yet supported on this platform: {}", layout);
         }
+        // Z-order control: command/window/moveToFront, command/app/moveToFront
+        ["command", "window", "moveToFront"] | ["command", "app", "moveToFront"] => {
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            {
+                if let Some(action) = crate::tiling::parse_zorder_command(command) {
+                    let app_clone = app.clone();
+                    std::thread::spawn(move || {
+                        crate::tiling::execute_zorder(&app_clone, action);
+                    });
+                } else {
+                    log::warn!("Unknown z-order command: {}", command);
+                }
+            }
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            log::warn!("Z-order is not supported on this platform: {}", command);
+        }
         // Apply a layout preset: command/layout/{name_or_index}
         ["command", "layout", name_or_index] => {
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
@@ -1281,6 +1297,20 @@ mod tests {
         );
         assert_eq!(
             build_command_url("command/wallpaper/change/center//Users/pic.jpg", BASE, 10),
+            None
+        );
+    }
+
+    /// Window/app z-order commands are dispatched in-process to the tiling
+    /// module — they do not map to a sidecar HTTP URL.
+    #[test]
+    fn test_build_url_zorder_returns_none() {
+        assert_eq!(
+            build_command_url("command/window/moveToFront", BASE, 10),
+            None
+        );
+        assert_eq!(
+            build_command_url("command/app/moveToFront", BASE, 10),
             None
         );
     }

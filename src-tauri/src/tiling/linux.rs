@@ -694,6 +694,81 @@ fn restore_minimized_windows(conn: &RustConnection, root: Window) {
 }
 
 // ---------------------------------------------------------------------------
+// Z-order helpers
+// ---------------------------------------------------------------------------
+
+/// Bring the focused (active) window to the front via `_NET_ACTIVE_WINDOW`.
+/// No-op on Wayland-only sessions or if no focused window can be resolved.
+pub fn move_window_to_front(_app: &AppHandle) {
+    if !is_x11_available() {
+        log::warn!("move_window_to_front: X11 not available");
+        return;
+    }
+    let (conn, screen_num) = match connect() {
+        Some(c) => c,
+        None => return,
+    };
+    let root = conn.setup().roots[screen_num].root;
+    let window = match get_focused_window(&conn, root) {
+        Some(w) => w,
+        None => {
+            log::info!("move_window_to_front: no focused window");
+            return;
+        }
+    };
+    raise_window(&conn, root, window);
+}
+
+/// Bring every top-level window of the focused app's PID to the front.
+/// Iterates `_NET_CLIENT_LIST`, filters by `_NET_WM_PID` matching the
+/// focused window's PID, and raises each. The originally focused window is
+/// raised last so it remains the active (topmost) window.
+pub fn move_app_to_front(_app: &AppHandle) {
+    if !is_x11_available() {
+        log::warn!("move_app_to_front: X11 not available");
+        return;
+    }
+    let (conn, screen_num) = match connect() {
+        Some(c) => c,
+        None => return,
+    };
+    let root = conn.setup().roots[screen_num].root;
+    let focused = match get_focused_window(&conn, root) {
+        Some(w) => w,
+        None => {
+            log::info!("move_app_to_front: no focused window");
+            return;
+        }
+    };
+    let target_pid = match get_window_pid(&conn, focused) {
+        Some(p) => p,
+        None => {
+            log::info!("move_app_to_front: focused window has no _NET_WM_PID");
+            return;
+        }
+    };
+
+    let net_client_list = match intern_atom(&conn, "_NET_CLIENT_LIST") {
+        Some(a) => a,
+        None => return,
+    };
+    let clients = get_window_list(&conn, root, net_client_list);
+    for w in clients {
+        if w == focused {
+            continue;
+        }
+        if !is_normal_window(&conn, w) {
+            continue;
+        }
+        if get_window_pid(&conn, w) == Some(target_pid) {
+            raise_window(&conn, root, w);
+        }
+    }
+    // Raise focused last so it ends up topmost.
+    raise_window(&conn, root, focused);
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
