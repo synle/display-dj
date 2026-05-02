@@ -649,7 +649,10 @@ pub fn move_app_to_back(_app: &AppHandle) {
 /// returns true unless the user's app is covered by a topmost (always-on-top)
 /// system overlay or the focus is on a non-foreground window. Used by the
 /// toggle dispatch.
-fn is_focused_window_at_front() -> bool {
+///
+/// `pub(super)` so the shared z-order self-test in `tiling/mod.rs` can read
+/// live front/back state when `DISPLAY_DJ_ZORDER_SELFTEST=1`.
+pub(super) fn is_focused_window_at_front() -> bool {
     let foreground = match get_foreground_hwnd() {
         Some(h) => h,
         None => return false,

@@ -623,6 +623,29 @@ pub fn run() {
                 }
             }
 
+            // Z-order self-test (debug aid — opt-in via env var).
+            // When DISPLAY_DJ_ZORDER_SELFTEST=1, spawn a background thread
+            // that runs `run_zorder_selftest`. The routine sleeps 5s before
+            // doing anything (so the operator has time to focus the window
+            // they want to test), then exercises all 6 z-order commands
+            // with snapshots between steps. Logs everything with a
+            // `[zorder-selftest]` prefix. Defaults OFF — running this on
+            // every launch would be jarring (it manipulates whatever
+            // window is focused).
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            {
+                if std::env::var("DISPLAY_DJ_ZORDER_SELFTEST")
+                    .ok()
+                    .filter(|v| !v.is_empty() && v != "0")
+                    .is_some()
+                {
+                    let selftest_handle = app.handle().clone();
+                    std::thread::spawn(move || {
+                        tiling::run_zorder_selftest(&selftest_handle);
+                    });
+                }
+            }
+
             // Start night mode schedule checker
             let schedule_handle = app.handle().clone();
             std::thread::spawn(move || {
