@@ -198,7 +198,9 @@ Lives in the `tiling/` module — shares focused-window resolution and AX/Win32/
 - `command/window/moveToBack`, `command/app/moveToBack`
 - `command/window/toggleFrontBack`, `command/app/toggleFrontBack`
 
-**Default keybindings**: `Shift+Ctrl+Super+Left` = window toggle, `Shift+Ctrl+Super+Right` = app toggle (mnemonic: Left = single window, Right = many windows; `Super` = Cmd/Win/Super).
+**Default keybindings**: `Shift+Ctrl+Super+Left` = `command/app/moveToBack`, `Shift+Ctrl+Super+Right` = `command/app/moveToFront` (mnemonic: Left = back/away, Right = front/toward you; `Super` = Cmd/Win/Super). App-scope rather than window-scope so the visible behavior is symmetric on macOS — see "Back" below for why single-window scope can't visibly lower the active app's only window.
+
+**Self-test (debug aid)**: Set `DISPLAY_DJ_ZORDER_SELFTEST=1` before launching. Five seconds after startup, `tiling::run_zorder_selftest()` runs all 6 z-order commands on whatever window is currently focused, with state snapshots between steps. Logs everything with a `[zorder-selftest]` prefix. Off by default — running on every launch would manipulate the user's focused window.
 
 Parsing centralized in `tiling::parse_zorder_command()`; dispatch in `tiling::execute_zorder()` which forwards to platform impls. Dispatched in-process from `tray.rs::execute_command()` on a background thread (no sidecar HTTP), so `build_command_url()` returns `None`.
 
@@ -210,7 +212,7 @@ Parsing centralized in `tiling::parse_zorder_command()`; dispatch in `tiling::ex
 
 ### Back
 
-- **macOS**: no public AX API to lower — uses private `CGSOrderWindow(cid, wid, -1, 0)` (CoreGraphics SkyLight, `kCGSOrderBelow`), the standard approach in yabai/Rectangle/AeroSpace. CGS extern declared next to existing `CGSGetActiveSpace`/`CGSMoveWindowsToManagedSpace` in `tiling/macos.rs`. `move_window_to_back` resolves AX → CGWindowID via `_AXUIElementGetWindow`. `move_app_to_back` iterates AXWindows front-first, lowering each — preserves within-app relative order at the bottom of the stack.
+- **macOS**: no public AX API to lower — uses private `CGSOrderWindow(cid, wid, -1, 0)` (CoreGraphics SkyLight, `kCGSOrderBelow`), the standard approach in yabai/Rectangle/AeroSpace. CGS extern declared next to existing `CGSGetActiveSpace`/`CGSMoveWindowsToManagedSpace` in `tiling/macos.rs`. `move_window_to_back` resolves AX → CGWindowID via `_AXUIElementGetWindow`. `move_app_to_back` iterates AXWindows front-first, lowering each — preserves within-app relative order at the bottom of the stack. **Critical: `CGSOrderWindow` alone is invisible when the lowered window's app is the active app** — every window of the active app sits above every window of every inactive app on macOS, regardless of within-app z-order. After lowering, `activate_next_app_excluding_pid()` activates the frontmost window's PID from `get_all_windows()` whose owner differs from the lowered app, dropping the lowered app into the inactive layer. The lowered PID is then stored in the module-local `LAST_BACKED_PID: Mutex<Option<i32>>` so a subsequent `move_window_to_front` / `move_app_to_front` can bring that PID back even though focus has shifted to the app we activated. The remembered PID is consumed (cleared) on the first front call after a back, giving natural back/front-pair undo semantics; once consumed, front falls back to "currently focused window." Windows and Linux do not need this trick (no active-app grouping at the WM level), so the remembered-PID logic is macOS-only.
 - **Windows**: `SetWindowPos(HWND_BOTTOM, …, SWP_NOACTIVATE)` (Windows transfers focus automatically). App scope iterates HWNDs front-to-back so each `HWND_BOTTOM` drops one window to the absolute bottom.
 - **Linux**: `ConfigureWindow(stack_mode = BELOW)` via `lower_window()` — honored by Mutter/KWin/xfwm4.
 

@@ -1275,6 +1275,93 @@ pub fn execute_zorder(app: &AppHandle, action: WindowZOrderAction) {
     }
 }
 
+/// Read the live "is the focused window at the front?" state for the active
+/// platform. Returns `None` on platforms without a z-order implementation.
+///
+/// Used exclusively by `run_zorder_selftest()` to log before/after snapshots
+/// so an operator can confirm the OS-level commands actually moved the
+/// window. The return value is observational only — the toggle dispatch
+/// inside each platform module already has its own private check.
+fn focused_window_at_front_snapshot() -> Option<bool> {
+    #[cfg(target_os = "macos")]
+    {
+        Some(macos::is_focused_window_at_front())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        Some(windows::is_focused_window_at_front())
+    }
+    #[cfg(target_os = "linux")]
+    {
+        Some(linux::is_focused_window_at_front())
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        None
+    }
+}
+
+/// Z-order self-test: exercises every z-order command on whatever window the
+/// user has focused, with state snapshots between steps so an operator can
+/// verify the commands work end-to-end.
+///
+/// **Runs only when `DISPLAY_DJ_ZORDER_SELFTEST=1`** (checked in
+/// `lib.rs::run()` before this function is called). Must be opt-in because
+/// it manipulates the user's focused window — not something we want
+/// happening on every launch.
+///
+/// Sequence (with 1.5s pauses so the operator can see each window move):
+/// 1. Initial snapshot
+/// 2. `WindowToFront` → snapshot (expect `front=true`)
+/// 3. `WindowToBack`  → snapshot (expect `front=false`)
+/// 4. `WindowToggleFrontBack` → snapshot (was back → expect `front=true`)
+/// 5. `WindowToggleFrontBack` → snapshot (was front → expect `front=false`)
+/// 6. `AppToFront` → snapshot
+/// 7. `AppToBack`  → snapshot
+/// 8. `AppToggleFrontBack` → snapshot
+/// 9. `AppToggleFrontBack` → snapshot
+///
+/// Logs every step via `log::info!` with a `[zorder-selftest]` prefix so it
+/// is easy to grep in console output. Designed to be invoked from a
+/// background thread (sleeps internally; do not call on the main run-loop).
+pub fn run_zorder_selftest(app: &AppHandle) {
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    log::info!("[zorder-selftest] === starting z-order self-test ===");
+    log::info!(
+        "[zorder-selftest] focus the window you want to test in the next 5s; this routine \
+         will manipulate whatever window is focused at each step"
+    );
+    sleep(Duration::from_secs(5));
+
+    let snapshot = |label: &str| {
+        match focused_window_at_front_snapshot() {
+            Some(at_front) => log::info!("[zorder-selftest] {} :: at_front={}", label, at_front),
+            None => log::info!("[zorder-selftest] {} :: at_front=<unsupported platform>", label),
+        }
+    };
+
+    let step = |action: WindowZOrderAction, label: &str| {
+        log::info!("[zorder-selftest] -> dispatching {:?} ({})", action, label);
+        execute_zorder(app, action);
+        sleep(Duration::from_millis(1500));
+        snapshot(&format!("after {}", label));
+    };
+
+    snapshot("initial");
+    step(WindowZOrderAction::WindowToFront, "WindowToFront");
+    step(WindowZOrderAction::WindowToBack, "WindowToBack");
+    step(WindowZOrderAction::WindowToggleFrontBack, "WindowToggleFrontBack #1 (back→front)");
+    step(WindowZOrderAction::WindowToggleFrontBack, "WindowToggleFrontBack #2 (front→back)");
+    step(WindowZOrderAction::AppToFront, "AppToFront");
+    step(WindowZOrderAction::AppToBack, "AppToBack");
+    step(WindowZOrderAction::AppToggleFrontBack, "AppToggleFrontBack #1");
+    step(WindowZOrderAction::AppToggleFrontBack, "AppToggleFrontBack #2");
+
+    log::info!("[zorder-selftest] === self-test complete ===");
+}
+
 // ---------------------------------------------------------------------------
 // Tests (shared layout math — runs on all platforms)
 // ---------------------------------------------------------------------------

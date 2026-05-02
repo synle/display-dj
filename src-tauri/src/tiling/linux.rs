@@ -852,7 +852,10 @@ pub fn move_app_to_back(_app: &AppHandle) {
 /// `_NET_CLIENT_LIST_STACKING` returns windows in bottom-to-top z-order,
 /// so the LAST entry is topmost. Filter to normal+non-hidden windows
 /// (hidden = minimized in EWMH) before comparing.
-fn is_focused_window_at_front() -> bool {
+///
+/// `pub(super)` so the shared z-order self-test in `tiling/mod.rs` can read
+/// live front/back state when `DISPLAY_DJ_ZORDER_SELFTEST=1`.
+pub(super) fn is_focused_window_at_front() -> bool {
     let (conn, screen_num) = match connect() {
         Some(c) => c,
         None => return false,

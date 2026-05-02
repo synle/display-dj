@@ -382,17 +382,18 @@ impl Default for Preferences {
                     key: "Ctrl+Down".into(),
                     command: CommandValue::Single("command/tile/exposeApp".into()),
                 },
-                // Z-order: toggle focused window front/back.
-                // Mnemonic: Left = single (one window), Right = many (whole app).
-                // Shift+Ctrl+Super (Cmd on macOS, Win on Windows, Super on Linux)
-                // is unbound by default in all three OSes.
+                // Z-order: send all windows of focused app to back / bring
+                // them all to front. Mnemonic: Left = back (away), Right =
+                // front (toward you). Shift+Ctrl+Super (Cmd on macOS, Win
+                // on Windows, Super on Linux) is unbound by default in all
+                // three OSes.
                 KeyBinding {
                     key: "Shift+Ctrl+Super+Left".into(),
-                    command: CommandValue::Single("command/window/toggleFrontBack".into()),
+                    command: CommandValue::Single("command/app/moveToBack".into()),
                 },
                 KeyBinding {
                     key: "Shift+Ctrl+Super+Right".into(),
-                    command: CommandValue::Single("command/app/toggleFrontBack".into()),
+                    command: CommandValue::Single("command/app/moveToFront".into()),
                 },
             ],
             profiles: vec![

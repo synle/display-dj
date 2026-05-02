@@ -9,7 +9,36 @@
 //! System Settings > Privacy & Security > Accessibility.
 
 use std::ffi::{c_char, c_void, CString};
+use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
+
+/// Remembers the PID of the app most recently sent to back via
+/// `move_window_to_back` / `move_app_to_back`, so the next
+/// `move_window_to_front` / `move_app_to_front` can target that app instead
+/// of "whatever is currently focused" — which would just be the *other*
+/// app we activated to push the original behind.
+///
+/// Acts as a single-slot LIFO stack: each back overwrites the previous
+/// memory; each front consumes it. If the memory is empty (or the stored
+/// PID is no longer alive / has no visible window), front falls back to the
+/// currently focused window.
+static LAST_BACKED_PID: Mutex<Option<i32>> = Mutex::new(None);
+
+/// Record `pid` as "the app we just sent to back," so a subsequent
+/// move-to-front can bring it back even though focus has shifted to a
+/// different app. Logs at info level.
+fn remember_backed_pid(pid: i32) {
+    if let Ok(mut g) = LAST_BACKED_PID.lock() {
+        *g = Some(pid);
+        log::info!("remember_backed_pid: stored pid={} for next moveToFront", pid);
+    }
+}
+
+/// Take the remembered backed PID, if any. Returns the PID and clears the
+/// memory so the next call after this one falls back to the focused window.
+fn take_backed_pid() -> Option<i32> {
+    LAST_BACKED_PID.lock().ok().and_then(|mut g| g.take())
+}
 
 use super::{
     build_sorted_window_list, calculate_target_rect, find_display_for_window,
@@ -933,6 +962,25 @@ pub fn move_window_to_front(_app: &AppHandle) {
         log::warn!("move_window_to_front: Accessibility permission not granted");
         return;
     }
+    // If the most recent action was a moveToBack, the focused app is
+    // whatever we activated to push the original app behind — not the
+    // window the user wants to bring forward. Prefer the remembered
+    // "last backed PID" so a back/front pair forms a natural undo.
+    if let Some(remembered_pid) = take_backed_pid() {
+        unsafe {
+            activate_app_by_pid(remembered_pid);
+            // Raise the frontmost AX window of that app so it's the
+            // topmost window within the (now-active) app.
+            if let Some((w, _wid)) = get_all_ax_windows_for_pid(remembered_pid).into_iter().next() {
+                raise_window(&w);
+            }
+        }
+        log::info!(
+            "move_window_to_front: brought back remembered pid={} (was sent to back earlier)",
+            remembered_pid,
+        );
+        return;
+    }
     unsafe {
         let window = match get_focused_window() {
             Some(w) => w,
@@ -941,10 +989,16 @@ pub fn move_window_to_front(_app: &AppHandle) {
                 return;
             }
         };
-        if let Some(pid) = get_window_pid(&window) {
-            activate_app_by_pid(pid);
+        let wid = get_window_id(&window);
+        let pid = get_window_pid(&window);
+        if let Some(p) = pid {
+            activate_app_by_pid(p);
         }
         raise_window(&window);
+        log::info!(
+            "move_window_to_front: dispatched (pid={:?}, wid={:?})",
+            pid, wid,
+        );
     }
 }
 
@@ -962,20 +1016,62 @@ pub fn move_app_to_front(_app: &AppHandle) {
         log::warn!("move_app_to_front: Accessibility permission not granted");
         return;
     }
+    // Same back/front-pair reasoning as `move_window_to_front`: if a
+    // moveToBack just ran, the focused app is the one we activated to
+    // push the original behind. Prefer the remembered PID so all of its
+    // windows come back together.
+    let remembered = take_backed_pid();
     unsafe {
-        let focused = match get_focused_window() {
-            Some(w) => w,
-            None => {
-                log::info!("move_app_to_front: no focused window");
-                return;
+        let (focused, pid) = if let Some(p) = remembered {
+            // Synthesize a "focused window" from the first AX window of
+            // the remembered app. If it has no AX windows, fall through
+            // to the regular focused-window path below.
+            match get_all_ax_windows_for_pid(p).into_iter().next() {
+                Some((w, _wid)) => {
+                    log::info!(
+                        "move_app_to_front: bringing back remembered pid={} (was sent to back earlier)",
+                        p,
+                    );
+                    (w, p)
+                }
+                None => {
+                    log::info!(
+                        "move_app_to_front: remembered pid={} has no AX windows; falling back to focused",
+                        p,
+                    );
+                    let f = match get_focused_window() {
+                        Some(w) => w,
+                        None => {
+                            log::info!("move_app_to_front: no focused window");
+                            return;
+                        }
+                    };
+                    let fp = match get_window_pid(&f) {
+                        Some(fp) => fp,
+                        None => {
+                            log::info!("move_app_to_front: could not resolve PID for focused window");
+                            return;
+                        }
+                    };
+                    (f, fp)
+                }
             }
-        };
-        let pid = match get_window_pid(&focused) {
-            Some(p) => p,
-            None => {
-                log::info!("move_app_to_front: could not resolve PID for focused window");
-                return;
-            }
+        } else {
+            let f = match get_focused_window() {
+                Some(w) => w,
+                None => {
+                    log::info!("move_app_to_front: no focused window");
+                    return;
+                }
+            };
+            let fp = match get_window_pid(&f) {
+                Some(fp) => fp,
+                None => {
+                    log::info!("move_app_to_front: could not resolve PID for focused window");
+                    return;
+                }
+            };
+            (f, fp)
         };
         // Activate with NSApplicationActivateAllWindows so macOS raises every
         // window of the app above other apps' windows.
@@ -996,6 +1092,41 @@ pub fn move_app_to_front(_app: &AppHandle) {
 unsafe fn send_window_to_back_by_id(wid: u32) {
     let cid = CGSMainConnectionID();
     let _ = CGSOrderWindow(cid, wid, -1, 0);
+}
+
+/// Activate the next visible app (any window from a different PID than
+/// `excluded_pid`) so the excluded app loses "active app" status.
+///
+/// On macOS, every window of the active app sits above every window of every
+/// inactive app — that grouping is enforced by the window server. So calling
+/// `CGSOrderWindow(below, 0)` on a window of the *active* app only reorders
+/// it within that app's windows, leaving it visually on top of all other
+/// apps' windows. To genuinely push the user's window behind everything, we
+/// also have to activate a different app, which makes the original app
+/// inactive and drops all its windows below the newly active one.
+///
+/// Picks the frontmost window in the global z-order whose PID differs from
+/// `excluded_pid`. Returns true if an app was activated, false if no other
+/// app has a visible normal-layer window (e.g. only one app is on screen).
+unsafe fn activate_next_app_excluding_pid(excluded_pid: i32) -> bool {
+    // get_all_windows() returns normal-layer (layer 0), on-screen,
+    // non-tiny windows in front-to-back z-order — exactly the candidate
+    // set we want for "what should become active instead".
+    for w in get_all_windows() {
+        if w.owner_pid != excluded_pid && w.owner_pid > 0 {
+            log::info!(
+                "activate_next_app_excluding_pid: activating pid={} ('{}') wid={}",
+                w.owner_pid, w.owner_name, w.window_id,
+            );
+            activate_app_by_pid(w.owner_pid);
+            return true;
+        }
+    }
+    log::info!(
+        "activate_next_app_excluding_pid: no other app with a visible window (excluded_pid={})",
+        excluded_pid,
+    );
+    false
 }
 
 /// Send the focused window to the back of the global z-order.
@@ -1026,7 +1157,23 @@ pub fn move_window_to_back(_app: &AppHandle) {
                 return;
             }
         };
+        let pid = get_window_pid(&window).unwrap_or(0);
         send_window_to_back_by_id(wid);
+        // Lowering alone is not visible if this window's app is the active
+        // app on macOS — the active app's windows always sit above every
+        // other app's windows. Activate another app to drop this app
+        // (and its now-lowered window) into the inactive layer.
+        if pid > 0 {
+            activate_next_app_excluding_pid(pid);
+            // Remember which PID we just sent back so a subsequent
+            // moveToFront can bring it back, even though focus has now
+            // shifted to the app we just activated.
+            remember_backed_pid(pid);
+        }
+        log::info!(
+            "move_window_to_back: CGSOrderWindow sent (wid={}, pid={})",
+            wid, pid,
+        );
     }
 }
 
@@ -1062,6 +1209,14 @@ pub fn move_app_to_back(_app: &AppHandle) {
         for (_w, wid) in get_all_ax_windows_for_pid(pid) {
             send_window_to_back_by_id(wid);
         }
+        // Same reasoning as `move_window_to_back`: lowering is invisible
+        // while this app is the active app. Activate another app to push
+        // every window of this app into the inactive layer.
+        activate_next_app_excluding_pid(pid);
+        // Remember which PID we just sent back so a subsequent
+        // moveToFront can bring its windows back.
+        remember_backed_pid(pid);
+        log::info!("move_app_to_back: dispatched (pid={})", pid);
     }
 }
 
@@ -1070,7 +1225,10 @@ pub fn move_app_to_back(_app: &AppHandle) {
 /// `CGWindowListCopyWindowInfo` (via `get_all_windows()`) returns normal
 /// (layer-0) on-screen windows in front-to-back z-order. We compare the
 /// focused window's CGWindowID against the first entry.
-fn is_focused_window_at_front() -> bool {
+///
+/// `pub(super)` so the shared z-order self-test in `tiling/mod.rs` can read
+/// live front/back state when `DISPLAY_DJ_ZORDER_SELFTEST=1`.
+pub(super) fn is_focused_window_at_front() -> bool {
     let focused_id = unsafe {
         match get_focused_window().and_then(|w| get_window_id(&w)) {
             Some(id) => id as i64,
