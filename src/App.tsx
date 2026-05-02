@@ -31,15 +31,33 @@ function App() {
   const [version, setVersion] = useState('');
   const appRef = useRef<HTMLDivElement>(null);
 
+  /** Merges refetched monitors with the current state, preserving client-side
+   * brightness/contrast values. The client is the source of truth for these —
+   * reading them back from the sidecar can return stale values while DDC
+   * settles, which causes the slider to snap back to the pre-change value. */
+  const mergeMonitors = useCallback((fetched: Monitor[], prev: Monitor[]): Monitor[] => {
+    return fetched.map((m) => {
+      const existing = prev.find((p) => p.uid === m.uid);
+      if (!existing) return m;
+      return {
+        ...m,
+        brightness: existing.brightness,
+        // Only preserve contrast when both sides still report DDC capability
+        contrast:
+          m.contrast !== null && existing.contrast !== null ? existing.contrast : m.contrast,
+      };
+    });
+  }, []);
+
   /** Fetches the list of connected monitors from the backend. */
   const fetchMonitors = useCallback(async () => {
     try {
       const m = await invoke<Monitor[]>('get_monitors');
-      setMonitors(m);
+      setMonitors((prev) => mergeMonitors(m, prev));
     } catch (e) {
       console.error('Failed to get monitors:', e);
     }
-  }, []);
+  }, [mergeMonitors]);
 
   /** Fetches the current dark mode state from the backend. */
   const fetchDarkMode = useCallback(async () => {
@@ -91,13 +109,15 @@ function App() {
         isDark: boolean;
         volume: number;
       }>('fetch_all_state');
-      setMonitors(state.monitors);
+      setMonitors((prev) =>
+        prev.length === 0 ? state.monitors : mergeMonitors(state.monitors, prev),
+      );
       setDarkMode(state.isDark);
       setVolume(state.volume);
     } catch (e) {
       console.error('Failed to fetch all state:', e);
     }
-  }, []);
+  }, [mergeMonitors]);
 
   useEffect(() => {
     fetchAllState();
