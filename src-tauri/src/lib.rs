@@ -417,24 +417,6 @@ mod tests {
         assert!(!is_night_time(420, 420, 420));
         assert!(!is_night_time(420, 420, 1000));
     }
-
-    // -- single-instance plugin --
-
-    /// Verifies that `tauri_plugin_single_instance::init` is callable with the
-    /// callback signature we use in `run()`. This guards against accidental
-    /// removal of the dependency or signature drift in plugin upgrades. We
-    /// build the plugin without registering it with a Tauri builder, which is
-    /// safe because `init` itself doesn't spawn anything — the singleton lock
-    /// is acquired only when the plugin is registered with `Builder::plugin`.
-    #[test]
-    fn test_single_instance_plugin_callback_signature() {
-        let _plugin = tauri_plugin_single_instance::init(
-            |_app: &tauri::AppHandle, _args: Vec<String>, _cwd: String| {
-                // Callback body intentionally empty — we only verify the
-                // signature compiles and the plugin can be constructed.
-            },
-        );
-    }
 }
 
 /// Main entry point: builds the Tauri app, spawns the display-dj sidecar,
@@ -445,21 +427,6 @@ pub fn run() {
     let preferences = config::load_preferences();
 
     tauri::Builder::default()
-        // Singleton enforcement: if a second copy of Display DJ is launched, the
-        // plugin notifies this (the first) instance via the callback below and
-        // the second process exits immediately. This prevents duplicate tray
-        // icons and conflicting sidecar processes when the app is launched
-        // multiple times (e.g. user double-clicks .app, autostart races a
-        // manual launch, etc.). The callback receives the second instance's
-        // CLI args + cwd; we only log them since the app is tray-only and has
-        // no main window to refocus.
-        .plugin(tauri_plugin_single_instance::init(|_app, args, cwd| {
-            log::info!(
-                "single-instance: ignored duplicate launch (args={:?}, cwd={:?})",
-                args,
-                cwd,
-            );
-        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

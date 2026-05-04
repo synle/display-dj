@@ -315,10 +315,6 @@ sudo modprobe i2c-dev
 sudo usermod -aG i2c $USER
 ```
 
-## Single-Instance Enforcement
-
-Display DJ is a **singleton** — only one copy can run at a time. Enforced via `tauri-plugin-single-instance` (registered first in the Tauri builder in `lib.rs::run()`). When a second instance launches, the plugin acquires-or-detects a per-`identifier` (`com.synle.display-dj`) lock; if the lock is held by another running instance, the second process exits immediately and the running instance's callback fires (we just `log::info!` the duplicate launch — there's no main window to refocus, the app is tray-only). This prevents duplicate tray icons and conflicting sidecar processes when the user double-clicks the `.app`, when autostart races a manual launch, or when the app is opened from multiple Finder/Explorer windows. The plugin **must** be the first plugin registered so the lock check happens before any other initialization (sidecar spawn, tray setup, etc.).
-
 ## Sidecar Lifecycle
 
 Three layers of shutdown protection:
