@@ -93,7 +93,7 @@ The frontend calls Rust functions using `invoke("command_name", { params })`. Th
 
 ```
 display-dj2/
-├── src/                          # Frontend (React 18 + TypeScript)
+├── src/                          # Frontend (React 19 + TypeScript)
 │   ├── main.tsx                  # Entry point -- mounts React into <div id="root">
 │   ├── App.tsx                   # Root component: fetches data, manages state, renders layout
 │   ├── App.test.tsx              # Smoke test: App renders, fetches data, handles errors
