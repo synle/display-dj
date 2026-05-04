@@ -1,4 +1,5 @@
 mod config;
+pub mod core;
 mod dark_mode;
 mod display;
 mod keep_awake;
@@ -10,14 +11,9 @@ mod tray_icon;
 mod volume;
 mod wallpaper;
 
-use std::sync::atomic::{AtomicU16, Ordering};
 use chrono::Timelike;
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
-use tauri_plugin_shell::ShellExt;
-use tauri_plugin_shell::process::CommandChild;
-
-static SERVER_PORT: AtomicU16 = AtomicU16::new(51337);
 
 /// Stub tiling commands for platforms without tiling support (e.g. FreeBSD).
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -39,12 +35,7 @@ mod tiling_stubs {
     pub fn open_accessibility_settings() {}
 }
 
-/// Returns the current display-dj sidecar HTTP server port.
-pub fn server_port() -> u16 {
-    SERVER_PORT.load(Ordering::Relaxed)
-}
-
-/// Response from `fetch_all_state` — all sidecar data in one call.
+/// Response from `fetch_all_state` — all backend state in one call.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AllState {
@@ -53,8 +44,8 @@ pub struct AllState {
     pub volume: u32,
 }
 
-/// Fetches monitors, dark mode, and volume from the sidecar in parallel.
-/// Returns all three in a single response so the frontend only makes one
+/// Fetches monitors, dark mode, and volume in parallel via the in-process platform
+/// layer. Returns all three in a single response so the frontend only makes one
 /// IPC call. Logs benchmark timing for each sub-call and the total.
 #[tauri::command]
 async fn fetch_all_state(
@@ -66,8 +57,8 @@ async fn fetch_all_state(
         config::write_debug_log(&s, "benchmark: fetch_all_state — START");
     }
 
-    // Run all 3 sidecar calls in parallel using spawned tasks.
-    // Each task gets its own AppHandle clone (cheap Arc clone).
+    // Run all 3 probes in parallel using spawned tasks. Each task gets its
+    // own AppHandle clone (cheap Arc clone).
     let a1 = app.clone();
     let a2 = app.clone();
     let a3 = app.clone();
@@ -114,7 +105,6 @@ async fn fetch_all_state(
 pub struct AppState {
     pub preferences: std::sync::Mutex<config::Preferences>,
     pub last_tray_rect: std::sync::Mutex<Option<tauri::Rect>>,
-    pub sidecar_child: std::sync::Mutex<Option<CommandChild>>,
     /// True while we're waiting for the window to gain focus after being shown.
     /// Blocks spurious `Focused(false)` events that fire before `Focused(true)`
     /// (a known issue on Linux/X11 and some Windows configurations).
@@ -130,114 +120,21 @@ pub struct AppState {
     /// Per-window tiling state (original positions, current layout, display index).
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     pub tiling_state: std::sync::Mutex<tiling::TilingState>,
-    /// TTL-based cache for sidecar HTTP responses (monitors, dark mode, volume).
+    /// TTL-based cache for monitor / dark mode / volume probes.
     pub sidecar_cache: sidecar_cache::SidecarCache,
 }
 
-/// Kill any stale display-dj-server sidecar processes left over from a previous run.
-/// This prevents port conflicts and zombie processes when the app crashed or was force-quit.
-fn kill_stale_sidecars() {
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    {
-        let output = std::process::Command::new("pkill")
-            .args(["-f", "display-dj-server.*serve"])
-            .output();
-        match output {
-            Ok(o) if o.status.success() => {
-                log::info!("killed stale display-dj-server process(es)");
-            }
-            _ => {
-                log::info!("no stale display-dj-server processes found");
-            }
-        }
+/// Fetch initial dark mode and volume state via the in-process platform layer
+/// and update the tray icon. Called on startup to seed the icon state.
+fn fetch_initial_tray_state(app: &tauri::AppHandle) {
+    if let Some(is_dark) = core::theme::get_dark_mode() {
+        tray_icon::set_dark_mode_state(app, is_dark);
+        log::info!("initial tray state: dark_mode={}", is_dark);
     }
-
-    #[cfg(target_os = "windows")]
-    {
-        // On Windows the sidecar binary name includes .exe
-        let output = std::process::Command::new("taskkill")
-            .args(["/F", "/IM", "display-dj-server*.exe"])
-            .output();
-        match output {
-            Ok(o) if o.status.success() => {
-                log::info!("killed stale display-dj-server process(es)");
-            }
-            _ => {
-                log::info!("no stale display-dj-server processes found");
-            }
-        }
-    }
-}
-
-/// Find an available port starting from the default.
-fn find_available_port(start: u16) -> u16 {
-    for port in start..start + 100 {
-        if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
-            return port;
-        }
-    }
-    start
-}
-
-/// Fetch the `/debug` endpoint from the sidecar and prepend to the debug log.
-fn fetch_debug_on_startup(port: u16) {
-    let url = format!("http://127.0.0.1:{}/debug", port);
-    match reqwest::blocking::get(&url) {
-        Ok(resp) => {
-            if let Ok(body) = resp.text() {
-                let path = config::debug_log_path();
-                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-                let header = format!(
-                    "[{}] === display-dj-cli debug dump (startup) ===\n{}\n[{}] === end debug dump ===\n",
-                    timestamp, body, timestamp
-                );
-                // Prepend to existing log content
-                let existing = std::fs::read_to_string(&path).unwrap_or_default();
-                std::fs::write(&path, format!("{}{}", header, existing)).ok();
-            }
-        }
-        Err(e) => {
-            log::warn!("Failed to fetch /debug endpoint: {}", e);
-        }
-    }
-}
-
-/// Wait for the display-dj server to become ready.
-fn wait_for_server(port: u16) {
-    let url = format!("http://127.0.0.1:{}/health", port);
-    for _ in 0..50 {
-        if let Ok(resp) = reqwest::blocking::get(&url) {
-            if resp.status().is_success() {
-                log::info!("display-dj server ready on port {}", port);
-                return;
-            }
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    log::warn!("display-dj server did not become ready on port {} within 5s", port);
-}
-
-/// Fetch initial dark mode and volume state from the sidecar and update the tray icon.
-fn fetch_initial_tray_state(app: &tauri::AppHandle, port: u16) {
-    let base = format!("http://127.0.0.1:{}", port);
-
-    // Check dark mode
-    if let Ok(resp) = reqwest::blocking::get(format!("{}/theme", base)) {
-        if let Ok(text) = resp.text() {
-            let is_dark = text.contains("dark");
-            tray_icon::set_dark_mode_state(app, is_dark);
-            log::info!("initial tray state: dark_mode={}", is_dark);
-        }
-    }
-
-    // Check volume (muted = 0)
-    if let Ok(resp) = reqwest::blocking::get(format!("{}/get_volume", base)) {
-        if let Ok(text) = resp.text() {
-            // Response is JSON like {"volume": 50}
-            let is_muted = text.contains("\"volume\":0") || text.contains("\"volume\": 0");
-            tray_icon::set_muted_state(app, is_muted);
-            log::info!("initial tray state: muted={}", is_muted);
-        }
+    if let Some(info) = core::volume::get_volume() {
+        let is_muted = info.muted || info.volume == 0;
+        tray_icon::set_muted_state(app, is_muted);
+        log::info!("initial tray state: muted={}", is_muted);
     }
 }
 
@@ -308,12 +205,11 @@ fn check_night_mode_schedule(app: &tauri::AppHandle) {
             tray::execute_command(app, cmd);
         }
     } else {
-        // Default behavior: brightness + dark/light mode via sidecar
-        let base = format!("http://127.0.0.1:{}", server_port());
-        let (brightness, dark_mode_route) = if is_night {
-            (schedule.night_brightness, "dark")
+        // Default behavior: brightness + dark/light mode via the in-process platform layer
+        let (brightness, is_dark) = if is_night {
+            (schedule.night_brightness, true)
         } else {
-            (schedule.day_brightness, "light")
+            (schedule.day_brightness, false)
         };
 
         let min_brightness = {
@@ -326,9 +222,8 @@ fn check_night_mode_schedule(app: &tauri::AppHandle) {
         };
 
         let brightness = brightness.clamp(min_brightness, 100);
-
-        let _ = reqwest::blocking::get(format!("{}/set_all/{}", base, brightness));
-        let _ = reqwest::blocking::get(format!("{}/{}", base, dark_mode_route));
+        let _ = core::display::set_all_brightness(brightness as u16, "force");
+        let _ = core::theme::set_dark_mode(is_dark);
 
         tray_icon::set_dark_mode_state(app, is_night);
     }
@@ -419,15 +314,16 @@ mod tests {
     }
 }
 
-/// Main entry point: builds the Tauri app, spawns the display-dj sidecar,
-/// sets up the system tray, registers shortcuts, and starts the event loop.
+/// Main entry point: builds the Tauri app, sets up the system tray, registers
+/// shortcuts, and starts the event loop. All display, theme, volume, and
+/// wallpaper operations are handled in-process via the vendored `core` module —
+/// no sidecar process is spawned.
 pub fn run() {
     env_logger::init();
 
     let preferences = config::load_preferences();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
@@ -437,7 +333,6 @@ pub fn run() {
         .manage(AppState {
             preferences: std::sync::Mutex::new(preferences.clone()),
             last_tray_rect: std::sync::Mutex::new(None),
-            sidecar_child: std::sync::Mutex::new(None),
             expect_focus_gain: std::sync::Mutex::new(false),
             keep_awake: std::sync::Mutex::new(None),
             is_dark_mode: std::sync::Mutex::new(false),
@@ -484,73 +379,28 @@ pub fn run() {
             tiling_stubs::open_accessibility_settings,
         ])
         .setup(move |app| {
-            // Kill any stale sidecar processes from a previous run
-            kill_stale_sidecars();
-
-            // Find an available port and store it
-            let port = find_available_port(51337);
-            SERVER_PORT.store(port, Ordering::Relaxed);
-
-            // Spawn display-dj HTTP server as a background sidecar
-            let (_rx, child) = app
-                .shell()
-                .sidecar("display-dj-server")
-                .expect("display-dj-server sidecar not found")
-                .args(["serve", &port.to_string()])
-                .spawn()
-                .expect("failed to start display-dj server");
-
-            // Store sidecar child so we can kill it on exit
-            let state = app.state::<AppState>();
-            *state.sidecar_child.lock().unwrap() = Some(child);
-
-            // Wait for the server to be ready, then fetch initial state and optionally dump debug info
-            let debug_enabled = state.preferences.lock().map(|p| p.debug_logging).unwrap_or(false);
+            // Pre-warm the cache and seed the tray icon state in a background
+            // thread so the main-thread tray setup isn't delayed by hardware probes.
             let startup_handle = app.handle().clone();
             std::thread::spawn(move || {
-                wait_for_server(port);
-                if debug_enabled {
-                    fetch_debug_on_startup(port);
+                fetch_initial_tray_state(&startup_handle);
+                // Pre-warm the cache so the first popup open is instant.
+                let state = startup_handle.state::<AppState>();
+                let displays = core::display::list_all();
+                let monitors: Vec<display::Monitor> = displays.into_iter().map(display::into_monitor).collect();
+                if let Ok(prefs) = state.preferences.lock() {
+                    let merged = display::merge_with_configs(monitors, &prefs.monitor_configs);
+                    state.sidecar_cache.set_monitors(merged);
                 }
-                // Fetch initial dark mode and volume state for tray icon indicators
-                fetch_initial_tray_state(&startup_handle, port);
-                // Pre-warm the sidecar cache so the first popup open is instant.
-                // Uses the same endpoints as fetch_all_state but blocking.
-                {
-                    let base = format!("http://127.0.0.1:{}", port);
-                    let state = startup_handle.state::<AppState>();
-
-                    // Cache monitors
-                    if let Ok(resp) = reqwest::blocking::get(format!("{}/get_all", base)) {
-                        if let Ok(displays) = resp.json::<Vec<display::DjDisplay>>() {
-                            let monitors: Vec<display::Monitor> = displays.into_iter().map(|d| d.into_monitor()).collect();
-                            let prefs = state.preferences.lock().unwrap();
-                            let merged = display::merge_with_configs(monitors, &prefs.monitor_configs);
-                            state.sidecar_cache.set_monitors(merged);
-                        }
-                    }
-                    // Cache dark mode
-                    if let Ok(resp) = reqwest::blocking::get(format!("{}/theme", base)) {
-                        if let Ok(text) = resp.text() {
-                            state.sidecar_cache.set_dark_mode(text.contains("dark"));
-                        }
-                    }
-                    // Cache volume
-                    if let Ok(resp) = reqwest::blocking::get(format!("{}/get_volume", base)) {
-                        if let Ok(text) = resp.text() {
-                            if let Some(v) = text.split("volume\":")
-                                .nth(1)
-                                .and_then(|s| s.trim().trim_end_matches('}').trim().parse::<u32>().ok())
-                            {
-                                state.sidecar_cache.set_volume(v);
-                            }
-                        }
-                    }
-                    log::info!("sidecar cache pre-warmed on startup");
+                if let Some(is_dark) = core::theme::get_dark_mode() {
+                    state.sidecar_cache.set_dark_mode(is_dark);
                 }
+                if let Some(info) = core::volume::get_volume() {
+                    state.sidecar_cache.set_volume(info.volume);
+                }
+                log::info!("startup probe + cache pre-warm complete");
                 // Resume wallpaper slideshow if it was enabled before shutdown
-                let wp_state = startup_handle.state::<AppState>();
-                wallpaper::resume_slideshow_if_enabled(&wp_state);
+                wallpaper::resume_slideshow_if_enabled(&state);
             });
 
             // Hide dock icon on macOS
@@ -666,17 +516,6 @@ pub fn run() {
 
             Ok(())
         })
-        .build(tauri::generate_context!())
-        .expect("error while building display-dj")
-        .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
-                let state = app_handle.state::<AppState>();
-                if let Ok(mut guard) = state.sidecar_child.lock() {
-                    if let Some(child) = guard.take() {
-                        log::info!("killing display-dj sidecar on exit");
-                        let _ = child.kill();
-                    }
-                };
-            }
-        });
+        .run(tauri::generate_context!())
+        .expect("error while running display-dj");
 }

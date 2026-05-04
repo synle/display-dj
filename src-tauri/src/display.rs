@@ -3,13 +3,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Monitor {
-    /// Raw API id from display-dj sidecar (e.g. "1", "builtin"). Used for brightness commands.
+    /// Raw API id (e.g. "1", "builtin"). Used for brightness commands.
     pub id: String,
     /// Composite unique key: "{api_id}::{api_name}". Used for config lookups.
     pub uid: String,
     /// Display label (custom label from config, or api_name if no custom label).
     pub name: String,
-    /// Original model name from the API (never changes).
+    /// Original model name from the platform (never changes).
     pub original_name: String,
     pub brightness: u32,
     /// Current contrast level (None for displays that don't support DDC contrast).
@@ -20,98 +20,85 @@ pub struct Monitor {
     pub hidden: bool,
 }
 
-/// Response from the display-dj HTTP server's /get_all and /list endpoints.
-#[derive(Deserialize, Debug)]
-pub struct DjDisplay {
-    id: String,
-    name: String,
-    display_type: String,
-    brightness: Option<u32>,
-    contrast: Option<u32>,
-}
-
-impl DjDisplay {
-    /// Converts a sidecar API response into the app's Monitor struct,
-    /// computing the composite UID and defaulting brightness to 50 if unknown.
-    pub fn into_monitor(self) -> Monitor {
-        let is_built_in = self.display_type == "builtin";
-        let uid = format!("{}::{}", self.id, self.name);
-        Monitor {
-            id: self.id,
-            uid,
-            name: self.name.clone(),
-            original_name: self.name,
-            brightness: self.brightness.unwrap_or(50),
-            contrast: self.contrast,
-            supports_brightness: true,
-            is_built_in,
-            hidden: false,
-        }
+/// Convert a `core::DisplayInfo` (from the in-process platform layer) into the
+/// app's `Monitor` struct, computing the composite UID and defaulting brightness
+/// to 50 when unknown.
+pub fn into_monitor(d: crate::core::DisplayInfo) -> Monitor {
+    let is_built_in = d.display_type == "builtin";
+    let uid = format!("{}::{}", d.id, d.name);
+    Monitor {
+        id: d.id,
+        uid,
+        name: d.name.clone(),
+        original_name: d.name,
+        brightness: d.brightness.unwrap_or(50),
+        contrast: d.contrast,
+        supports_brightness: true,
+        is_built_in,
+        hidden: false,
     }
 }
 
-/// Returns the base URL of the display-dj sidecar HTTP server.
-fn base_url() -> String {
-    let port = crate::server_port();
-    format!("http://127.0.0.1:{}", port)
-}
-
-/// Fetches all connected displays from the sidecar and converts them to Monitors.
+/// Enumerate all connected displays via the in-process platform layer.
+/// Runs the (potentially-blocking) hardware probe on a blocking thread so
+/// we don't stall the async runtime.
 async fn detect_monitors() -> Vec<Monitor> {
-    let url = format!("{}/get_all", base_url());
-    log::info!("detect_monitors: GET {}", url);
-    let displays: Vec<DjDisplay> = match reqwest::get(&url).await {
-        Ok(resp) => resp.json().await.unwrap_or_default(),
-        Err(e) => {
-            log::warn!("display-dj server request failed: {}", e);
-            Vec::new()
-        }
-    };
+    log::info!("detect_monitors: enumerating via core::display::list_all");
+    let displays = tauri::async_runtime::spawn_blocking(crate::core::display::list_all)
+        .await
+        .unwrap_or_default();
     log::info!("detect_monitors: found {} displays", displays.len());
-    displays.into_iter().map(|d| d.into_monitor()).collect()
+    displays.into_iter().map(into_monitor).collect()
 }
 
-/// Sets brightness for a single monitor via the sidecar, clamped to [min_brightness, 100].
+/// Set brightness on a single monitor via the in-process platform layer,
+/// clamped to `[min_brightness, 100]`.
 async fn set_monitor_brightness(monitor_id: &str, value: u32, min_brightness: u32) -> Result<(), String> {
     let clamped = value.clamp(min_brightness, 100);
-    let url = format!("{}/set_one/{}/{}", base_url(), monitor_id, clamped);
-    log::info!("set_monitor_brightness: monitor_id={} value={} clamped={} GET {}", monitor_id, value, clamped, url);
-    reqwest::get(&url).await
-        .map_err(|e| format!("Failed to set brightness: {}", e))?;
-    log::info!("set_monitor_brightness: done");
-    Ok(())
+    let id = monitor_id.to_string();
+    log::info!("set_monitor_brightness: id={} value={} clamped={}", id, value, clamped);
+    let ok = tauri::async_runtime::spawn_blocking(move || {
+        crate::core::display::set_one_brightness(&id, clamped as u16, "force")
+    })
+    .await
+    .map_err(|e| format!("brightness task join failed: {}", e))?;
+    if ok { Ok(()) } else { Err(format!("set_brightness failed for monitor {}", monitor_id)) }
 }
 
-/// Sets brightness for all monitors via the sidecar, clamped to [min_brightness, 100].
+/// Set brightness on all monitors via the in-process platform layer.
 async fn set_all_monitors_brightness(value: u32, min_brightness: u32) -> Result<(), String> {
     let clamped = value.clamp(min_brightness, 100);
-    let url = format!("{}/set_all/{}", base_url(), clamped);
-    log::info!("set_all_monitors_brightness: value={} clamped={} GET {}", value, clamped, url);
-    reqwest::get(&url).await
-        .map_err(|e| format!("Failed to set all brightness: {}", e))?;
-    log::info!("set_all_monitors_brightness: done");
+    log::info!("set_all_monitors_brightness: value={} clamped={}", value, clamped);
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = crate::core::display::set_all_brightness(clamped as u16, "force");
+    })
+    .await
+    .map_err(|e| format!("set_all_brightness task join failed: {}", e))?;
     Ok(())
 }
 
-/// Sets contrast for a single monitor via the sidecar (0-100).
+/// Set contrast on a single monitor via the in-process platform layer (0-100, DDC-only).
 async fn set_monitor_contrast(monitor_id: &str, value: u32) -> Result<(), String> {
     let clamped = value.min(100);
-    let url = format!("{}/set_contrast_one/{}/{}", base_url(), monitor_id, clamped);
-    log::info!("set_monitor_contrast: monitor_id={} value={} GET {}", monitor_id, clamped, url);
-    reqwest::get(&url).await
-        .map_err(|e| format!("Failed to set contrast: {}", e))?;
-    log::info!("set_monitor_contrast: done");
-    Ok(())
+    let id = monitor_id.to_string();
+    log::info!("set_monitor_contrast: id={} value={}", id, clamped);
+    let ok = tauri::async_runtime::spawn_blocking(move || {
+        crate::core::display::set_one_contrast(&id, clamped as u16)
+    })
+    .await
+    .map_err(|e| format!("contrast task join failed: {}", e))?;
+    if ok { Ok(()) } else { Err(format!("set_contrast failed for monitor {}", monitor_id)) }
 }
 
-/// Sets contrast for all monitors via the sidecar (0-100).
+/// Set contrast on all monitors via the in-process platform layer.
 async fn set_all_monitors_contrast(value: u32) -> Result<(), String> {
     let clamped = value.min(100);
-    let url = format!("{}/set_contrast_all/{}", base_url(), clamped);
-    log::info!("set_all_monitors_contrast: value={} GET {}", clamped, url);
-    reqwest::get(&url).await
-        .map_err(|e| format!("Failed to set all contrast: {}", e))?;
-    log::info!("set_all_monitors_contrast: done");
+    log::info!("set_all_monitors_contrast: value={}", clamped);
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = crate::core::display::set_all_contrast(clamped as u16);
+    })
+    .await
+    .map_err(|e| format!("set_all_contrast task join failed: {}", e))?;
     Ok(())
 }
 
@@ -196,7 +183,7 @@ fn ensure_metadata_for_monitors(
 // ===========================================================================
 
 /// Returns all connected monitors with saved metadata applied.
-/// Uses a 2-minute TTL cache to avoid hitting the sidecar on every poll.
+/// Uses a 5-minute TTL cache to avoid re-probing hardware on every poll.
 /// Reconciles migrated configs and ensures new monitors get metadata entries.
 #[tauri::command]
 pub async fn get_monitors(
@@ -214,12 +201,12 @@ pub async fn get_monitors(
         return Ok(cached);
     }
 
-    crate::config::write_debug_log(&state, "benchmark: get_monitors — calling sidecar...");
+    crate::config::write_debug_log(&state, "benchmark: get_monitors — probing hardware...");
     let monitors = detect_monitors().await;
-    let t_sidecar = t0.elapsed();
+    let t_probe = t0.elapsed();
     crate::config::write_debug_log(
         &state,
-        &format!("benchmark: get_monitors — sidecar returned in {:.1}ms ({} displays)", t_sidecar.as_secs_f64() * 1000.0, monitors.len()),
+        &format!("benchmark: get_monitors — probe returned in {:.1}ms ({} displays)", t_probe.as_secs_f64() * 1000.0, monitors.len()),
     );
 
     let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
@@ -236,9 +223,9 @@ pub async fn get_monitors(
     crate::config::write_debug_log(
         &state,
         &format!(
-            "benchmark: get_monitors — {:.1}ms total (sidecar={:.1}ms, {} monitors)",
+            "benchmark: get_monitors — {:.1}ms total (probe={:.1}ms, {} monitors)",
             t0.elapsed().as_secs_f64() * 1000.0,
-            t_sidecar.as_secs_f64() * 1000.0,
+            t_probe.as_secs_f64() * 1000.0,
             result.len(),
         ),
     );
@@ -543,61 +530,71 @@ mod tests {
         assert_eq!(result[0].name, "My Dell");
     }
 
+    /// Verifies the `into_monitor` helper preserves the original_name from the
+    /// platform layer's DisplayInfo.
     #[test]
-    fn test_dj_display_into_monitor_preserves_original_name() {
-        let dj = DjDisplay {
+    fn test_into_monitor_preserves_original_name() {
+        let info = crate::core::DisplayInfo {
             id: "1".into(),
             name: "Dell U2723QE".into(),
             display_type: "external".into(),
             brightness: Some(70),
             contrast: Some(60),
+            ddc_supported: true,
         };
-        let m = dj.into_monitor();
+        let m = into_monitor(info);
         assert_eq!(m.name, "Dell U2723QE");
         assert_eq!(m.original_name, "Dell U2723QE");
-        assert_eq!(m.name, m.original_name); // name and original_name start identical
+        assert_eq!(m.name, m.original_name);
     }
 
+    /// Verifies the `into_monitor` helper detects builtin displays.
     #[test]
-    fn test_dj_display_into_monitor_builtin() {
-        let dj = DjDisplay {
+    fn test_into_monitor_builtin() {
+        let info = crate::core::DisplayInfo {
             id: "builtin".into(),
             name: "Built-in Display".into(),
             display_type: "builtin".into(),
             brightness: Some(80),
             contrast: None,
+            ddc_supported: false,
         };
-        let m = dj.into_monitor();
+        let m = into_monitor(info);
         assert!(m.is_built_in);
         assert_eq!(m.brightness, 80);
         assert_eq!(m.uid, "builtin::Built-in Display");
     }
 
+    /// Verifies the `into_monitor` helper preserves contrast on DDC displays.
     #[test]
-    fn test_dj_display_into_monitor_external_ddc() {
-        let dj = DjDisplay {
+    fn test_into_monitor_external_ddc() {
+        let info = crate::core::DisplayInfo {
             id: "1".into(),
             name: "Dell U2723QE".into(),
             display_type: "external".into(),
             brightness: Some(50),
             contrast: Some(75),
+            ddc_supported: true,
         };
-        let m = dj.into_monitor();
+        let m = into_monitor(info);
         assert!(!m.is_built_in);
         assert_eq!(m.brightness, 50);
+        assert_eq!(m.contrast, Some(75));
         assert_eq!(m.uid, "1::Dell U2723QE");
     }
 
+    /// Verifies the `into_monitor` helper defaults brightness to 50 when None.
     #[test]
-    fn test_dj_display_into_monitor_null_brightness() {
-        let dj = DjDisplay {
+    fn test_into_monitor_null_brightness() {
+        let info = crate::core::DisplayInfo {
             id: "2".into(),
             name: "Unknown".into(),
             display_type: "external".into(),
             brightness: None,
             contrast: None,
+            ddc_supported: false,
         };
-        let m = dj.into_monitor();
+        let m = into_monitor(info);
         assert_eq!(m.brightness, 50);
         assert_eq!(m.uid, "2::Unknown");
     }
@@ -778,5 +775,12 @@ mod tests {
         assert!(result.is_some());
         let (idx, _) = result.unwrap();
         assert_eq!(idx, 0);
+    }
+
+    /// Smoke test: list_all should not panic. May return empty Vec on systems
+    /// without displays (e.g. CI), which is fine.
+    #[test]
+    fn test_core_list_all_does_not_panic() {
+        let _ = crate::core::display::list_all();
     }
 }

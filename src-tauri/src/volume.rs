@@ -1,19 +1,7 @@
-use serde::Deserialize;
 use tauri::Manager;
 
-#[derive(Deserialize)]
-struct VolumeResponse {
-    volume: u32,
-}
-
-/// Returns the base URL of the display-dj sidecar HTTP server.
-fn base_url() -> String {
-    let port = crate::server_port();
-    format!("http://127.0.0.1:{}", port)
-}
-
-/// Returns the current system volume (0-100) from the sidecar.
-/// Uses a 2-minute TTL cache to avoid hitting the sidecar on every poll.
+/// Returns the current system volume (0-100) via the in-process platform layer.
+/// Uses a 5-minute TTL cache to avoid re-probing on every poll.
 #[tauri::command]
 pub async fn get_volume(
     state: tauri::State<'_, crate::AppState>,
@@ -29,32 +17,37 @@ pub async fn get_volume(
         return Ok(cached);
     }
 
-    let url = format!("{}/get_volume", base_url());
-    let resp: VolumeResponse = reqwest::get(&url).await
-        .map_err(|e| format!("Failed to get volume: {}", e))?
-        .json().await
-        .map_err(|e| format!("Failed to parse volume response: {}", e))?;
-    state.sidecar_cache.set_volume(resp.volume);
+    let volume = tauri::async_runtime::spawn_blocking(crate::core::volume::get_volume)
+        .await
+        .map_err(|e| format!("get_volume task join failed: {}", e))?
+        .map(|info| info.volume)
+        .unwrap_or(0);
+    state.sidecar_cache.set_volume(volume);
 
     crate::config::write_debug_log(
         &state,
         &format!(
-            "benchmark: get_volume — {:.1}ms (sidecar, volume={})",
-            t0.elapsed().as_secs_f64() * 1000.0, resp.volume,
+            "benchmark: get_volume — {:.1}ms (probe, volume={})",
+            t0.elapsed().as_secs_f64() * 1000.0, volume,
         ),
     );
-    Ok(resp.volume)
+    Ok(volume)
 }
 
-/// Sets the system volume (clamped to 0-100) via the sidecar.
+/// Sets the system volume (clamped to 0-100) via the in-process platform layer.
 /// Updates the cached is_muted state and refreshes the tray icon.
 #[tauri::command]
 pub async fn set_volume(value: u32, app: tauri::AppHandle) -> Result<(), String> {
     let clamped = value.min(100);
-    let url = format!("{}/set_volume/{}", base_url(), clamped);
-    log::info!("set_volume: value={} GET {}", clamped, url);
-    reqwest::get(&url).await
-        .map_err(|e| format!("Failed to set volume: {}", e))?;
+    log::info!("set_volume: value={}", clamped);
+    let ok = tauri::async_runtime::spawn_blocking(move || {
+        crate::core::volume::set_volume(clamped as u16)
+    })
+    .await
+    .map_err(|e| format!("set_volume task join failed: {}", e))?;
+    if !ok {
+        log::warn!("set_volume: platform layer reported failure");
+    }
     log::info!("set_volume: done");
     // Invalidate cache since volume changed
     if let Some(state) = app.try_state::<crate::AppState>() {

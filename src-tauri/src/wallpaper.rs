@@ -213,43 +213,17 @@ pub(crate) fn clear_wallpaper_cache(state: &crate::AppState) {
     log::info!("wallpaper: cleared {} cached items from {}", removed, dir.display());
 }
 
-/// Returns the base URL of the display-dj sidecar HTTP server.
-fn base_url() -> String {
-    let port = crate::server_port();
-    format!("http://127.0.0.1:{}", port)
-}
-
-/// Sets the desktop wallpaper on a single monitor via the display-dj-cli sidecar.
-/// Calls `GET /set_wallpaper_one/{monitor_index}/{fit}/{path}`.
+/// Sets the desktop wallpaper on a single monitor via the in-process platform layer.
 fn set_wallpaper_single_on_os(monitor_index: usize, path: &str, fit: &str) -> Result<(), String> {
-    let url = format!(
-        "{}/set_wallpaper_one/{}/{}/{}",
-        base_url(),
-        monitor_index,
-        fit,
-        path
-    );
-    let resp = reqwest::blocking::get(&url)
-        .map_err(|e| format!("sidecar request failed: {}", e))?;
-    if resp.status().is_success() {
-        Ok(())
-    } else {
-        let body = resp.text().unwrap_or_default();
-        Err(format!("sidecar returned error: {}", body))
-    }
+    crate::core::wallpaper::set_wallpaper_one(monitor_index, path, fit)
 }
 
-/// Sets the desktop wallpaper on all monitors via the display-dj-cli sidecar.
-/// Calls `GET /set_wallpaper/{fit}/{path}`.
+/// Sets the desktop wallpaper on all monitors via the in-process platform layer.
 fn set_wallpaper_on_os(path: &str, fit: &str) -> Result<(), String> {
-    let url = format!("{}/set_wallpaper/{}/{}", base_url(), fit, path);
-    let resp = reqwest::blocking::get(&url)
-        .map_err(|e| format!("sidecar request failed: {}", e))?;
-    if resp.status().is_success() {
+    if crate::core::wallpaper::set_wallpaper(path, fit) {
         Ok(())
     } else {
-        let body = resp.text().unwrap_or_default();
-        Err(format!("sidecar returned error: {}", body))
+        Err("set_wallpaper failed".to_string())
     }
 }
 
@@ -315,14 +289,11 @@ pub(crate) fn change_wallpaper(
 /// Set wallpaper on a single monitor by matching a user-provided identifier.
 /// Called from `execute_command()` in `tray.rs` for `command/wallpaper/change_single`.
 pub(crate) fn change_wallpaper_single(
-    app: &tauri::AppHandle,
     state: &crate::AppState,
     monitor_query: &str,
     source_path: &str,
     explicit_fit: Option<&str>,
 ) {
-    use tauri::Manager;
-
     // Resolve fit mode
     let fit = match explicit_fit {
         Some(f) => f.to_string(),
@@ -341,19 +312,11 @@ pub(crate) fn change_wallpaper_single(
         ),
     );
 
-    // Fetch current monitors from sidecar to resolve the query
-    let base = format!("http://127.0.0.1:{}", crate::server_port());
-    let monitors: Vec<crate::display::Monitor> = match reqwest::blocking::get(format!("{}/get_all", base))
-        .and_then(|r| r.json())
-    {
-        Ok(m) => m,
-        Err(e) => {
-            let msg = format!("wallpaper: failed to fetch monitors: {}", e);
-            crate::config::write_debug_log(state, &msg);
-            log::warn!("{}", msg);
-            return;
-        }
-    };
+    // Enumerate current monitors via the in-process platform layer to resolve the query
+    let monitors: Vec<crate::display::Monitor> = crate::core::display::list_all()
+        .into_iter()
+        .map(crate::display::into_monitor)
+        .collect();
 
     // Resolve monitor query to index
     let (monitor_index, monitor) = match crate::display::resolve_monitor(&monitors, monitor_query) {
@@ -479,58 +442,39 @@ pub(crate) fn start_slideshow(
         ),
     );
 
-    let url = format!(
-        "{}/wallpaper_slideshow_start/{}/{}/{}/{}",
-        base_url(), interval, order, fit, folder
+    // Start the slideshow via the in-process platform layer.
+    // Returns a JSON status string; if it contains an "error" field we treat the call as failed.
+    let resp = crate::core::wallpaper::slideshow_start(
+        interval as u64,
+        order,
+        &fit,
+        folder,
     );
-
-    match reqwest::blocking::get(&url) {
-        Ok(resp) if resp.status().is_success() => {
-            crate::config::write_debug_log(state, "wallpaper: slideshow started successfully");
-
-            // Persist slideshow config so it resumes on app restart
-            if let Ok(mut prefs) = state.preferences.lock() {
-                prefs.wallpaper.slideshow_enabled = true;
-                prefs.wallpaper.slideshow_folder = Some(folder.to_string());
-                prefs.wallpaper.slideshow_interval_minutes = interval;
-                prefs.wallpaper.slideshow_order = order.to_string();
-                crate::config::save_preferences_to_disk(&prefs);
-            }
-        }
-        Ok(resp) => {
-            let body = resp.text().unwrap_or_default();
-            let msg = format!("wallpaper: slideshow start failed: {}", body);
-            crate::config::write_debug_log(state, &msg);
-            log::warn!("{}", msg);
-        }
-        Err(e) => {
-            let msg = format!("wallpaper: slideshow start request failed: {}", e);
-            crate::config::write_debug_log(state, &msg);
-            log::warn!("{}", msg);
+    if resp.contains("\"error\"") {
+        let msg = format!("wallpaper: slideshow start failed: {}", resp);
+        crate::config::write_debug_log(state, &msg);
+        log::warn!("{}", msg);
+    } else {
+        crate::config::write_debug_log(state, "wallpaper: slideshow started successfully");
+        // Persist slideshow config so it resumes on app restart
+        if let Ok(mut prefs) = state.preferences.lock() {
+            prefs.wallpaper.slideshow_enabled = true;
+            prefs.wallpaper.slideshow_folder = Some(folder.to_string());
+            prefs.wallpaper.slideshow_interval_minutes = interval;
+            prefs.wallpaper.slideshow_order = order.to_string();
+            crate::config::save_preferences_to_disk(&prefs);
         }
     }
 }
 
-/// Stops the active wallpaper slideshow via the display-dj-cli sidecar.
+/// Stops the active wallpaper slideshow via the in-process platform layer.
 pub(crate) fn stop_slideshow(state: &crate::AppState) {
     crate::config::write_debug_log(state, "wallpaper: stopping slideshow");
-
-    let url = format!("{}/wallpaper_slideshow_stop", base_url());
-    match reqwest::blocking::get(&url) {
-        Ok(resp) if resp.status().is_success() => {
-            crate::config::write_debug_log(state, "wallpaper: slideshow stopped");
-            if let Ok(mut prefs) = state.preferences.lock() {
-                prefs.wallpaper.slideshow_enabled = false;
-                crate::config::save_preferences_to_disk(&prefs);
-            }
-        }
-        Ok(resp) => {
-            let body = resp.text().unwrap_or_default();
-            log::warn!("wallpaper: slideshow stop failed: {}", body);
-        }
-        Err(e) => {
-            log::warn!("wallpaper: slideshow stop request failed: {}", e);
-        }
+    let _ = crate::core::wallpaper::slideshow_stop();
+    crate::config::write_debug_log(state, "wallpaper: slideshow stopped");
+    if let Ok(mut prefs) = state.preferences.lock() {
+        prefs.wallpaper.slideshow_enabled = false;
+        crate::config::save_preferences_to_disk(&prefs);
     }
 }
 
@@ -562,22 +506,16 @@ pub(crate) fn resume_slideshow_if_enabled(state: &crate::AppState) {
         &format!("wallpaper: resuming slideshow from preferences — folder={}", folder),
     );
 
-    let url = format!(
-        "{}/wallpaper_slideshow_start/{}/{}/{}/{}",
-        base_url(),
-        interval.max(5),
-        order,
-        fit,
-        folder
+    let resp = crate::core::wallpaper::slideshow_start(
+        interval.max(5) as u64,
+        &order,
+        &fit,
+        &folder,
     );
-
-    match reqwest::blocking::get(&url) {
-        Ok(resp) if resp.status().is_success() => {
-            crate::config::write_debug_log(state, "wallpaper: slideshow resumed successfully");
-        }
-        _ => {
-            log::warn!("wallpaper: failed to resume slideshow on startup");
-        }
+    if resp.contains("\"error\"") {
+        log::warn!("wallpaper: failed to resume slideshow on startup: {}", resp);
+    } else {
+        crate::config::write_debug_log(state, "wallpaper: slideshow resumed successfully");
     }
 }
 
