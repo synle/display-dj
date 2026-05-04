@@ -671,8 +671,12 @@ pub fn position_window_near_tray(
         tauri::Size::Logical(s) => (s.width * target_scale, s.height * target_scale),
     };
 
-    // Window size in target monitor's physical pixels
-    let win_w = 360.0 * target_scale;
+    // Window size in target monitor's physical pixels.
+    // Read actual width/height from outer_size (NOT hardcoded) so width changes
+    // in tauri.conf.json don't desync the placement clamp. outer_size returns
+    // physical pixels at the window's current scale, so divide by window_scale
+    // to get logical, then multiply by target_scale to get target-physical.
+    let win_w = window.outer_size()?.width as f64 * target_scale / window_scale;
     let win_h = window.outer_size()?.height as f64 * target_scale / window_scale;
     dbg(&format!(
         "tray x={} y={} w={} h={} | win_w={} win_h={}",
