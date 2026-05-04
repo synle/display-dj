@@ -1,4 +1,4 @@
-# Display DJ v5
+# Display DJ v7
 
 ## Project Overview
 
@@ -83,7 +83,7 @@ cd src-tauri && cargo test   # Backend tests (Rust)
 Inline `#[cfg(test)]` modules cover:
 
 - `config.rs`: serde roundtrips, defaults, camelCase, `CommandValue` enum, `MonitorMetadata`, effective min brightness, backward-compatible deserialization, layout presets, night-mode schedules, `WallpaperPreferences`.
-- `display.rs`: `DjDisplay` → `Monitor` conversion (incl. uid), `merge_with_configs`, `reconcile_migrated_configs`, `ensure_metadata_for_monitors`, `resolve_monitor` (id/uid/substring).
+- `display.rs`: `DjDisplay` → `Monitor` conversion (incl. uid). `DjDisplay` is the local conversion struct in `display.rs`; in v7 its fields are populated from `core::DisplayInfo` (no longer parsed from sidecar JSON). Also: `merge_with_configs`, `reconcile_migrated_configs`, `ensure_metadata_for_monitors`, `resolve_monitor` (id/uid/substring).
 - `keep_awake.rs`: `KeepAwake` guard creation, `Mutex<Option<KeepAwake>>` enable/disable cycle.
 - `tray_icon.rs`: %-to-px conversion, icon generation across all state combos (dark/light × keep-awake × muted), filled rect/thick line drawing.
 - `tray.rs`: `build_command_url()` for all command types now always returns `None` (every command dispatches in-process to `core::*`); brightness clamping; contrast capping.

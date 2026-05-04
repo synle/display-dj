@@ -1,6 +1,6 @@
 # Developer Guide
 
-Full architecture reference for Display DJ v4. Read this before making changes.
+Full architecture reference for Display DJ v7. Read this before making changes.
 
 ---
 
@@ -14,7 +14,7 @@ Full architecture reference for Display DJ v4. Read this before making changes.
   - [React Components](#1-react-components-src-components)
   - [Tauri IPC Bridge](#2-tauri-ipc-bridge)
   - [Rust Backend Commands](#3-rust-backend-commands-src-taurisrc)
-  - [HTTP Sidecar](#4-http-sidecar-display-dj-cli)
+  - [Vendored platform core (`core/`)](#4-vendored-platform-core-srctauri-srccore)
   - [Platform-Specific Code](#5-platform-specific-code-volumers)
 - [State Management](#state-management)
 - [Data Flow](#data-flow)
@@ -25,7 +25,6 @@ Full architecture reference for Display DJ v4. Read this before making changes.
 - [Monitor Identity (UID scheme)](#monitor-identity-uid-scheme)
 - [Configuration Files](#configuration-files)
 - [App Versioning](#app-versioning)
-- [display-dj CLI Sidecar](#display-dj-cli-sidecar)
 - [Known Limitations](#known-limitations)
 - [Troubleshooting](#troubleshooting)
 
@@ -48,7 +47,7 @@ The project includes a `.vscode/` directory with recommended settings, launch co
 git clone https://github.com/synle/display-dj.git
 cd display-dj
 npm install
-npx tauri dev    # Full app (frontend + backend + sidecar)
+npx tauri dev    # Full app (frontend + Rust backend; platform code is vendored in-process)
 ```
 
 ### Recommended VS Code Extensions
@@ -66,7 +65,7 @@ Open the **Run and Debug** panel (Cmd+Shift+D) to use these pre-configured launc
 
 | Configuration                  | What it does                                                                                  |
 | ------------------------------ | --------------------------------------------------------------------------------------------- |
-| **Tauri Dev (Full App)**       | Runs `npx tauri dev` -- starts Vite + Rust backend + sidecar. The main development workflow.  |
+| **Tauri Dev (Full App)**       | Runs `npx tauri dev` -- starts Vite + Rust backend. The main development workflow.            |
 | **Vite Dev (Frontend Only)**   | Runs `npm run dev` -- frontend only at `localhost:1420`. No backend. Useful for pure UI work. |
 | **Vitest (Run Tests)**         | Runs `npm test` -- all frontend tests once.                                                   |
 | **Vitest (Watch Mode)**        | Runs `npm run test:watch` -- re-runs tests on file change.                                    |
@@ -96,58 +95,61 @@ The `.vscode/settings.json` configures rust-analyzer to find the Cargo workspace
 
 ## Architecture Overview
 
-Display DJ is a system tray app built with [Tauri v2](https://v2.tauri.app/). A React frontend runs inside a WebView and communicates with a Rust backend over Tauri IPC. The Rust backend delegates all display and dark mode operations to a bundled HTTP server sidecar ([display-dj CLI](https://github.com/synle/display-dj-cli)). Volume is the only feature handled directly in Rust with platform-specific code.
+Display DJ is a system tray app built with [Tauri v2](https://v2.tauri.app/). A React frontend runs inside a WebView and communicates with a Rust backend over Tauri IPC. As of v7.0.0, **all platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, wallpaper, slideshow) is vendored in-process** under `src-tauri/src/core/`. There is no separate helper binary, no HTTP server, and no port discovery. Tauri commands call `core::*` functions directly via `tauri::async_runtime::spawn_blocking`.
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  React 18 + TypeScript + Vite 6                      │
+│  React 19 + TypeScript + Vite 6                      │
 │  (WebView: WebKit on macOS/Linux, WebView2 on Win)   │
 │                                                      │
 │  Components:  App.tsx (root state)                   │
-│               MonitorControl / AllMonitorsControl     │
-│               VolumeControl / DarkModeToggle          │
-│               SettingsPanel / ProfileButtons          │
+│               MonitorControl / AllMonitorsControl    │
+│               VolumeControl / DarkModeToggle         │
+│               SettingsPanel / ProfileButtons         │
 │                                                      │
 │  invoke("command_name", { params })   ──────────┐    │
 │  listen("event-name", callback)       ◄─────┐   │    │
-└──────────────────────────────────────────────┼───┼────┘
+└──────────────────────────────────────────────┼───┼───┘
                                                │   │
                               Tauri IPC bridge │   │
                                                │   │
-┌──────────────────────────────────────────────┼───┼────┐
-│  Rust Backend (Tauri v2)                     │   │    │
-│                                              │   │    │
-│  lib.rs   ── app setup, sidecar launch,      │   │    │
-│              port discovery, tray, shortcuts  │   │    │
-│  display.rs ── brightness/contrast (HTTP) ───┼───┼──┐ │
-│  dark_mode.rs ── theme toggle (HTTP) ────────┼───┼──┤ │
-│  volume.rs ── system volume (platform) ──────┘   │  │ │
-│  tiling/   ── window tiling (macOS + Windows,    │  │ │
-│               native OS APIs, no sidecar)        │  │ │
-│  config.rs ── preferences persistence            │  │ │
-│  tray.rs ── tray menu, window positioning,       │  │ │
-│             keyboard shortcut dispatch ──────────┘  │ │
-│                                                     │ │
-│  app.emit("monitors-changed")  (pushes to frontend) │ │
-└─────────────────────────────────────────────────────┼─┘
-                                                      │
-                              HTTP GET 127.0.0.1:port │
-                                                      │
-┌─────────────────────────────────────────────────────┼─┐
-│  display-dj CLI sidecar (HTTP server)               │ │
-│  https://github.com/synle/display-dj-cli            │ │
-│                                                     │ │
-│  /get_all ── list displays + brightness/contrast  ◄─┘ │
-│  /set_one/<id>/<level> ── set brightness               │
-│  /set_all/<level> ── set all brightness                │
-│  /set_contrast_one/<id>/<level>                        │
-│  /set_contrast_all/<level>                             │
-│  /dark  /light  /theme                                 │
-│  /health  /debug                                       │
-│                                                        │
-│  Handles: DDC/CI, gamma, DisplayServices, WMI,         │
-│           osascript, registry, gsettings               │
-└────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┼───┼───┐
+│  Rust Backend (Tauri v2)                     │   │   │
+│                                              │   │   │
+│  lib.rs   ── app setup, plugins, state,      │   │   │
+│              tray init, night mode scheduler │   │   │
+│  display.rs    ── Tauri-cmd wrappers around  │   │   │
+│  dark_mode.rs     core::* (spawn_blocking)   │   │   │
+│  volume.rs                                   │   │   │
+│  wallpaper.rs                                │   │   │
+│  config.rs ── preferences persistence        │   │   │
+│  tray.rs   ── tray menu, window positioning, │   │   │
+│               keyboard shortcut dispatch     │   │   │
+│  tiling/   ── window tiling (macOS+Win+X11,  │   │   │
+│               native OS APIs, in-process)    │   │   │
+│                                              │   │   │
+│  app.emit(...)  (pushes events to frontend)  │───┘   │
+│                                              │       │
+│           direct function calls (no HTTP)    │       │
+│                                              ▼       │
+│  ┌────────────────────────────────────────────────┐  │
+│  │  src-tauri/src/core/  (vendored platform)      │  │
+│  │                                                │  │
+│  │  core::PlatformImpl (cfg alias →               │  │
+│  │     core::macos / core::windows / core::linux) │  │
+│  │  core::display   ── set_all_brightness,        │  │
+│  │                     set_one_brightness, etc.   │  │
+│  │  core::theme     ── dark mode get/set          │  │
+│  │  core::volume    ── system volume get/set      │  │
+│  │  core::wallpaper ── set + slideshow timer/     │  │
+│  │                     state/cycling              │  │
+│  └────────────────────┬───────────────────────────┘  │
+└───────────────────────┼──────────────────────────────┘
+                        │  OS APIs
+                        ▼
+        IOKit / DisplayServices / NSWorkspace (macOS)
+        WMI / DDC/CI / IDesktopWallpaper        (Windows)
+        ddcutil / brightnessctl / gsettings     (Linux)
 ```
 
 ---
@@ -160,7 +162,7 @@ display-dj2/
 │   ├── launch.json               # Debug/run configurations (Tauri dev, tests, build)
 │   ├── settings.json             # Editor settings (formatter, rust-analyzer path)
 │   └── extensions.json           # Recommended extensions
-├── src/                          # Frontend (React 18 + TypeScript)
+├── src/                          # Frontend (React 19 + TypeScript)
 │   ├── main.tsx                  # Entry point: mounts React into <div id="root">
 │   ├── App.tsx                   # Root component: all state, data fetching, layout
 │   ├── App.css                   # All CSS (dark tray popup theme, sliders, toggles)
@@ -177,36 +179,46 @@ display-dj2/
 │       ├── VolumeControl.tsx     # Volume slider with mute/unmute icon
 │       ├── DarkModeToggle.tsx    # Dark / Light toggle buttons
 │       ├── SettingsPanel.tsx     # Settings: min brightness, contrast, night mode, etc.
-│       ├── AboutPanel.tsx       # About: version, update check, engine, build date, macOS troubleshooting
+│       ├── AboutPanel.tsx        # About: version, update check, engine, build date, macOS troubleshooting
 │       └── ProfileButtons.tsx    # Profile quick-action buttons with overflow menu
 │
 ├── src-tauri/                    # Backend (Rust + Tauri v2)
 │   ├── Cargo.toml                # Rust dependencies
-│   ├── build.rs                  # Downloads sidecar binary + sets APP_VERSION and BUILD_DATE
-│   ├── tauri.conf.json           # App config: window, tray icon, sidecar, bundling
-│   ├── binaries/                 # display-dj CLI sidecar (per-platform)
+│   ├── build.rs                  # tauri_build::build() + APP_VERSION/BUILD_DATE compile-time env vars
+│   ├── tauri.conf.json           # App config: window, tray icon, bundling
 │   ├── capabilities/default.json # Security permissions for frontend JS
 │   ├── icons/                    # App icons (.icns, .ico, .png)
 │   ├── tests/smoke.rs            # Integration smoke test
 │   └── src/
 │       ├── main.rs               # Binary entry point (calls lib::run)
-│       ├── lib.rs                # App setup, sidecar launch, port, plugins, state, tray
-│       ├── display.rs            # Monitor brightness/contrast via HTTP to sidecar
-│       ├── dark_mode.rs          # Dark mode read/write via HTTP to sidecar
-│       ├── volume.rs             # System volume (platform-specific: osascript/PowerShell/pactl)
+│       ├── lib.rs                # App setup, plugins, state, tray init, night mode scheduler
+│       ├── core/                 # Vendored platform code (in-process; no HTTP, no helper binary)
+│       │   ├── mod.rs            # Shared types: DisplayInfo, DisplayControl, Platform; PlatformImpl cfg alias
+│       │   ├── macos.rs          # macOS DDC/CI (ddc-macos) + DisplayServices for built-in
+│       │   ├── windows.rs        # Windows DDC/CI (ddc-winapi) + WMI for built-in
+│       │   ├── linux.rs          # Linux ddcutil + brightnessctl
+│       │   ├── theme.rs          # Cross-platform dark mode get/set
+│       │   ├── volume.rs         # Cross-platform volume get/set
+│       │   ├── wallpaper.rs      # Wallpaper set + slideshow timer/state/cycling
+│       │   └── display.rs        # set_all_brightness / set_one_brightness + contrast variants
+│       ├── display.rs            # Tauri-cmd wrappers around core::display (spawn_blocking)
+│       ├── dark_mode.rs          # Tauri-cmd wrappers around core::theme
+│       ├── volume.rs             # Tauri-cmd wrappers around core::volume
+│       ├── wallpaper.rs          # Tauri-cmd wrappers around core::wallpaper
 │       ├── config.rs             # Preferences + monitor metadata persistence
 │       ├── tray.rs               # System tray menu, window positioning, shortcuts
-│       └── tiling/               # Window tiling module (macOS + Windows)
+│       └── tiling/               # Window tiling module (macOS + Windows + Linux/X11)
 │           ├── mod.rs            # Shared types, layout math, TilingLayout enum
 │           ├── macos.rs          # macOS: Accessibility API (AXUIElement), Tile Snap
-│           └── windows.rs        # Windows: Win32 API (SetWindowPos, EnumWindows)
+│           ├── windows.rs        # Windows: Win32 API (SetWindowPos, EnumWindows)
+│           └── linux.rs          # Linux: x11rb + EWMH
 │
 ├── .github/workflows/
 │   ├── build.yml                 # CI: tests + build on PRs (macOS/Windows/Linux)
-│   └── release.yml               # CD: GitHub releases on v* tags
+│   └── release-official.yml      # CD: GitHub releases on v* tags
 │
 ├── index.html                    # HTML shell that loads src/main.tsx
-├── package.json                  # Node deps + displayDjCliVersion
+├── package.json                  # Node deps
 ├── vite.config.ts                # Vite config (dev server port 1420, test config)
 └── tsconfig.json                 # TypeScript config
 ```
@@ -260,24 +272,29 @@ pub async fn set_brightness(monitor_id: String, value: u32) -> Result<(), String
 let clamped = value.max(config::effective_min_brightness(&prefs));
 ```
 
-### 6. Rust sends HTTP GET to sidecar
+### 6. Rust calls into `core::*` on a blocking thread
+
+The Tauri command wraps the (potentially blocking) DDC/CI / WMI / DisplayServices call in `spawn_blocking`:
 
 ```rust
-let url = format!("{}/set_one/{}/{}", base_url(), monitor_id, clamped);
-reqwest::get(&url).await.map_err(|e| e.to_string())?;
+tauri::async_runtime::spawn_blocking(move || {
+    core::display::set_one_brightness(&monitor_id, clamped, "force")
+})
+.await
+.map_err(|e| e.to_string())??;
 ```
 
-### 7. Sidecar talks to hardware
+### 7. `core::*` talks to hardware
 
-The display-dj CLI uses DDC/CI (external monitors) or gamma tables / DisplayServices / WMI (built-in displays) to set the brightness.
+`core::display::set_one_brightness` resolves the monitor via `core::PlatformImpl::detect_displays()`, then calls DDC/CI (external monitors) or DisplayServices / WMI / brightnessctl (built-in displays) directly inside the Rust process.
 
 ### 8. Response flows back
 
-HTTP 200 -> Rust `Ok(())` -> Tauri IPC -> `invoke()` resolves -> component updates state.
+`core::*` returns `Ok(())` (or an error string) → the Tauri command resolves → `invoke()` resolves on the frontend → component updates state.
 
 ### 9. Backend-initiated changes
 
-When a keyboard shortcut changes brightness, the backend calls the sidecar directly and then pushes an event to the frontend:
+When a keyboard shortcut changes brightness, `tray.rs::execute_command()` calls `core::*` directly on a background thread and then pushes an event to the frontend:
 
 ```rust
 app.emit("monitors-changed", ())?;
@@ -295,7 +312,7 @@ listen('monitors-changed', () => fetchMonitors());
 
 ### 1. React Components (`src/components/`)
 
-Presentational components that render UI and call `invoke()` to talk to the backend. No direct HTTP calls, no platform code.
+Presentational components that render UI and call `invoke()` to talk to the backend. No direct OS calls, no platform code.
 
 | Component            | Responsibility                                                    |
 | -------------------- | ----------------------------------------------------------------- |
@@ -326,7 +343,7 @@ All registered commands:
 | `volume`    | `get_volume`, `set_volume`                                                                                                                                   |
 | `config`    | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `get_app_version`                                                          |
 | `tray`      | `apply_profile`                                                                                                                                              |
-| `tiling`    | `get_tiling_supported`, `get_accessibility_trusted` (macOS + Windows; stubs return `false` on Linux)                                                         |
+| `tiling`    | `get_tiling_supported`, `get_accessibility_trusted` (macOS + Windows; X11 supported on Linux when `$DISPLAY` is set)                                         |
 
 Events emitted by backend:
 
@@ -338,17 +355,18 @@ Events emitted by backend:
 
 ### 3. Rust Backend Commands (`src-tauri/src/`)
 
-Each `#[tauri::command]` function lives in its domain module. They validate input, read/write shared state (`AppState`), and delegate to the sidecar or platform APIs.
+Each `#[tauri::command]` function lives in its domain module. They validate input, read/write shared state (`AppState`), and delegate to `core::*` (in-process) or to `tiling/` (native OS APIs).
 
-| File           | Responsibility                                                                                                                                                                                           |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lib.rs`       | App bootstrap: sidecar launch, port discovery, plugins, state, tray init, night mode scheduler                                                                                                           |
-| `display.rs`   | Monitor CRUD via HTTP to sidecar. Converts `DjDisplay` -> `Monitor`. Merges with config metadata.                                                                                                        |
-| `dark_mode.rs` | Dark mode get/set via HTTP to sidecar (`/theme`, `/dark`, `/light`)                                                                                                                                      |
-| `volume.rs`    | System volume get/set (platform-specific, no sidecar)                                                                                                                                                    |
-| `config.rs`    | Preferences JSON persistence, defaults, migration, min brightness                                                                                                                                        |
-| `tray.rs`      | Tray menu, window positioning, keyboard shortcut registration/dispatch                                                                                                                                   |
-| `tiling/`      | Window tiling module. `mod.rs`: shared types + layout math. `macos.rs`: AXUIElement + Tile Snap. `windows.rs`: Win32 SetWindowPos + EnumWindows. 19 layouts, multi-monitor, platform-gated (Linux stubs) |
+| File           | Responsibility                                                                                                                                                                                        |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib.rs`       | App bootstrap: plugins, state, tray init, night mode scheduler                                                                                                                                        |
+| `display.rs`   | Tauri-cmd wrapper around `core::display::*`. Converts `core::DisplayInfo` -> `Monitor`. Merges with config metadata.                                                                                  |
+| `dark_mode.rs` | Tauri-cmd wrapper around `core::theme::{get_dark_mode, set_dark_mode}`                                                                                                                                |
+| `volume.rs`    | Tauri-cmd wrapper around `core::volume::{get_volume, set_volume}`                                                                                                                                     |
+| `wallpaper.rs` | Tauri-cmd wrapper around `core::wallpaper::*` plus image validation, MD5 caching, remote-pack zip download (via `reqwest::blocking`)                                                                  |
+| `config.rs`    | Preferences JSON persistence, defaults, migration, min brightness                                                                                                                                     |
+| `tray.rs`      | Tray menu, window positioning, keyboard shortcut registration/dispatch (in-process; calls `core::*` and `tiling::*` directly)                                                                         |
+| `tiling/`      | Window tiling module. `mod.rs`: shared types + layout math + plan helpers. `macos.rs`: AXUIElement + Tile Snap. `windows.rs`: Win32 SetWindowPos + EnumWindows. `linux.rs`: x11rb + EWMH. 19 layouts. |
 
 Shared state (`AppState` in `lib.rs`):
 
@@ -356,54 +374,41 @@ Shared state (`AppState` in `lib.rs`):
 pub struct AppState {
     pub preferences: Mutex<Preferences>,     // Thread-safe config access
     pub last_tray_rect: Mutex<Option<Rect>>, // For window positioning
-    pub sidecar_child: Mutex<Option<CommandChild>>, // Sidecar process handle
+    pub keep_awake: Mutex<Option<KeepAwake>>,// Sleep-prevention guard
+    // ... is_dark_mode, is_muted, tiling_state, etc.
 }
 ```
 
-The sidecar port is a global `AtomicU16` accessed via `crate::server_port()`.
+There is no `sidecar_child` field, no `SERVER_PORT`, and no `server_port()` accessor — all of that was removed in v7.0.0.
 
-### 4. HTTP Sidecar (display-dj CLI)
+### 4. Vendored platform core (`src-tauri/src/core/`)
 
-All display and dark mode operations go through the sidecar's HTTP API. The Rust backend makes simple `GET` requests -- no request bodies, no auth.
+All display, dark-mode, volume, and wallpaper operations live here. Pure platform code, no Tauri types — usable from any Rust caller (which is also why it can stay in sync with the standalone [display-dj-cli](https://github.com/synle/display-dj-cli) upstream).
 
-| Route                                | Purpose                                  |
-| ------------------------------------ | ---------------------------------------- |
-| `GET /health`                        | Server readiness check (startup)         |
-| `GET /get_all`                       | List displays + live brightness/contrast |
-| `GET /set_one/<id>/<level>`          | Set one display's brightness             |
-| `GET /set_all/<level>`               | Set all displays' brightness             |
-| `GET /set_contrast_one/<id>/<level>` | Set one display's contrast (DDC-only)    |
-| `GET /set_contrast_all/<level>`      | Set all displays' contrast (DDC-only)    |
-| `GET /theme`                         | Get current theme (dark/light)           |
-| `GET /dark`                          | Switch to dark mode                      |
-| `GET /light`                         | Switch to light mode                     |
-| `GET /debug`                         | Full diagnostics dump                    |
+| Module            | Responsibility                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| `core::mod`       | Shared types: `DisplayInfo`, `DisplayControl` trait, `Platform` trait. `core::PlatformImpl` cfg-gated alias |
+| `core::macos`     | macOS DDC/CI (via `ddc-macos`) + DisplayServices for built-in screens                                       |
+| `core::windows`   | Windows DDC/CI (via `ddc-winapi`) + WMI for built-in screens                                                |
+| `core::linux`     | Linux `ddcutil` for external + `brightnessctl` for built-in                                                 |
+| `core::theme`     | Dark mode get/set (osascript/`defaults` on macOS, registry on Windows, `gsettings` on Linux)                |
+| `core::volume`    | System volume get/set (osascript on macOS, PowerShell+WASAPI on Windows, `pactl` on Linux)                  |
+| `core::wallpaper` | Wallpaper set + slideshow timer/state/cycling (NSWorkspace, `IDesktopWallpaper`, gsettings/feh)             |
+| `core::display`   | High-level helpers (`set_all_brightness`, `set_one_brightness`, contrast variants) over `PlatformImpl`      |
 
-Sidecar lifecycle:
-
-1. `lib.rs` finds an available port (starting from 51337)
-2. Spawns `display-dj-server serve <port>` via Tauri shell plugin (stdin is piped automatically)
-3. Polls `/health` until ready (up to 5 seconds)
-4. On app exit: the sidecar detects stdin EOF (parent-death detection) and shuts itself down; `child.kill()` in `RunEvent::Exit` serves as backup
-5. On next startup: `kill_stale_sidecars()` cleans up any orphans that survived both (4) mechanisms
+`core::PlatformImpl` is a `cfg`-gated type alias resolved at compile time to `core::macos::Platform`, `core::windows::Platform`, or `core::linux::Platform`. Callers don't see the per-OS split.
 
 ### 5. Platform-Specific Code (`volume.rs`, `tiling/`)
 
-Two modules have `#[cfg(target_os)]` conditional compilation:
+The platform split is now done inside `core::*` (via `cfg`-gated `PlatformImpl`). The only modules in `src-tauri/src/` outside `core/` that have `#[cfg(target_os)]` blocks are `tiling/` (window tiling needs OS-specific window-server APIs, not display APIs).
 
-| Platform | Method                                                                      |
-| -------- | --------------------------------------------------------------------------- |
-| macOS    | `osascript` -- CoreAudio `get volume settings` / `set volume output volume` |
-| Windows  | PowerShell + inline C# `Add-Type` for WASAPI COM (`IAudioEndpointVolume`)   |
-| Linux    | `pactl get-sink-volume` / `pactl set-sink-volume`                           |
+**Window Tiling** (`tiling/` module) -- macOS + Windows + Linux/X11:
 
-**Window Tiling** (`tiling/` module) -- macOS + Windows, no sidecar involved:
-
-| Platform | Method                                                                                                              |
-| -------- | ------------------------------------------------------------------------------------------------------------------- |
-| macOS    | Accessibility API (`AXUIElement`) to move/resize windows, `NSScreen` for display bounds. Tile Snap via `CGEventTap` |
-| Windows  | Win32 API (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`) via `windows` crate v0.58   |
-| Linux    | Not yet implemented (planned: X11/EWMH, Wayland per-compositor IPC). Stub commands return `false`                   |
+| Platform | Method                                                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| macOS    | Accessibility API (`AXUIElement`) to move/resize windows, `NSScreen` for display bounds. Tile Snap via NSEvent global monitor  |
+| Windows  | Win32 API (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`) via `windows` crate v0.58              |
+| Linux    | `x11rb` + EWMH (`_NET_ACTIVE_WINDOW`, `_NET_MOVERESIZE_WINDOW`, `_NET_CLIENT_LIST`, XRandr). X11 only — Wayland not supported. |
 
 ---
 
@@ -435,8 +440,9 @@ There is no external state library. All state lives in `App.tsx` as `useState` h
 
 - `preferences: Mutex<Preferences>` -- shared across all Tauri commands
 - `last_tray_rect: Mutex<Option<Rect>>` -- used by window positioning
-- `sidecar_child: Mutex<Option<CommandChild>>` -- killed on app exit (backup; sidecar also self-terminates via stdin EOF)
-- `SERVER_PORT: AtomicU16` -- global, set once at startup
+- `keep_awake: Mutex<Option<KeepAwake>>` -- sleep-prevention guard
+- `is_dark_mode`, `is_muted` -- cached for tray-icon rendering
+- `tiling_state` -- per-window saved rects for restore
 
 ---
 
@@ -445,7 +451,7 @@ There is no external state library. All state lives in `App.tsx` as `useState` h
 ### User-initiated (slider drag)
 
 ```
-Component ──invoke()──► Tauri IPC ──► Rust command ──HTTP GET──► Sidecar ──► Hardware
+Component ──invoke()──► Tauri IPC ──► Rust command ──spawn_blocking──► core::* ──► OS API
     │                                      │
     └── optimistic state update            └── Ok(()) flows back through IPC
 ```
@@ -456,14 +462,14 @@ Component ──invoke()──► Tauri IPC ──► Rust command ──HTTP GE
 Keyboard shortcut
     │
     ▼
-tray.rs::execute_command()
+tray.rs::execute_command()  (background thread)
     │
-    ├── HTTP GET ──► Sidecar ──► Hardware
+    ├── core::display::set_all_brightness(value) ──► OS API
     │
     └── app.emit("monitors-changed")
               │
               ▼
-        Frontend listener ──invoke("get_monitors")──► Rust ──HTTP──► Sidecar
+        Frontend listener ──invoke("get_monitors")──► Rust ──spawn_blocking──► core::*
               │
               └── setMonitors(freshData)
 ```
@@ -478,8 +484,8 @@ lib.rs background thread (every 60s)
     │     ├── Read preferences (NightModeSchedule)
     │     ├── Compare current time vs nightStart / dayStart
     │     │
-    │     ├── HTTP GET /set_all/<brightness> ──► Sidecar
-    │     └── HTTP GET /dark or /light ──► Sidecar
+    │     ├── core::display::set_all_brightness(value)
+    │     └── core::theme::set_dark_mode(true | false)
     │
     └── app.emit("monitors-changed") + app.emit("dark-mode-changed")
 ```
@@ -488,7 +494,7 @@ lib.rs background thread (every 60s)
 
 ## Key Architectural Rules
 
-1. **No platform-specific display code in Rust.** All display and dark mode operations go through the HTTP sidecar. Only `volume.rs` and `tiling/` have `#[cfg(target_os)]` blocks. Tiling uses native OS APIs directly (no sidecar).
+1. **Platform code lives in `core::*`.** All display, dark-mode, volume, and wallpaper operations go through `core::*`. The per-OS split is done inside `core/` via `cfg`-gated `PlatformImpl`. `tiling/` is the other module with `#[cfg(target_os)]` (window tiling needs OS-specific window-server APIs).
 
 2. **snake_case commands, camelCase parameters.** Tauri commands are `snake_case` in Rust and called with `snake_case` strings from the frontend. Parameter objects use `camelCase` keys -- serde converts automatically via `#[serde(rename_all = "camelCase")]`.
 
@@ -502,7 +508,7 @@ lib.rs background thread (every 60s)
 
 7. **Errors are strings, not crashes.** Backend functions return `Result<T, String>`. Frontend `invoke()` calls are wrapped in try/catch -- the UI silently keeps the last known state on error.
 
-8. **The sidecar port is global.** Set once at startup in `AtomicU16`, accessed everywhere via `crate::server_port()`. All modules use `base_url()` to build HTTP URLs.
+8. **Blocking work runs on a blocking thread.** DDC/CI, WMI, registry, and `gsettings` calls can block. Every Tauri command that calls into `core::*` wraps the call in `tauri::async_runtime::spawn_blocking` so the async runtime stays responsive.
 
 9. **Tauri commands accessing AppState must be `async` on macOS.** Sync `#[tauri::command]` functions that take `State<'_, AppState>` block the macOS main-thread run-loop, preventing tray icon click events from firing. This was the root cause of a hard-to-diagnose bug where both left-click and right-click on the tray icon stopped working. See `config.rs` `save_preferences` for the documented warning.
 
@@ -514,21 +520,21 @@ lib.rs background thread (every 60s)
 
 Quick reference for common tasks:
 
-| Task                            | Files to change                                                                                                                                              |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| New brightness/contrast feature | `display.rs` (Rust), `MonitorControl.tsx` or `AllMonitorsControl.tsx` (UI)                                                                                   |
-| New dark mode behavior          | `dark_mode.rs` (Rust), `DarkModeToggle.tsx` (UI)                                                                                                             |
-| New volume behavior             | `volume.rs` (Rust, platform-specific), `VolumeControl.tsx` (UI)                                                                                              |
-| New preference field            | `config.rs` (add to `Preferences` struct + default), `types.ts` (TS interface), `SettingsPanel.tsx` (UI)                                                     |
-| New Tauri command               | Domain module (Rust), `lib.rs` (register in `invoke_handler`), frontend component                                                                            |
-| New keyboard shortcut command   | `tray.rs` (`execute_command` match arm), `config.rs` (default keybinding)                                                                                    |
-| New UI component                | `src/components/NewComponent.tsx` + `NewComponent.test.tsx`, wire into `App.tsx`                                                                             |
-| Tray menu change                | `tray.rs` (`build_tray_menu`)                                                                                                                                |
-| Window tiling (macOS + Windows) | `tiling/mod.rs` (shared layout math), `tiling/macos.rs` (AX API), `tiling/windows.rs` (Win32), `tray.rs` (Tiling submenu), `config.rs` (`TilingPreferences`) |
-| Window positioning              | `tray.rs` (`position_window_near_tray`) -- read the doc comment first!                                                                                       |
-| Night mode schedule logic       | `lib.rs` (`check_night_mode_schedule`, `is_night_time`)                                                                                                      |
-| Sidecar version bump            | `package.json` (`displayDjCliVersion`), review [upstream changes](https://github.com/synle/display-dj-cli)                                                   |
-| CI changes                      | `.github/workflows/build.yml` or `release.yml`                                                                                                               |
+| Task                            | Files to change                                                                                                                                                  |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New brightness/contrast feature | `core::display` and the relevant `core::{macos,windows,linux}::Platform` impl, then `display.rs` (Tauri cmd), `MonitorControl.tsx`/`AllMonitorsControl.tsx` (UI) |
+| New dark mode behavior          | `core::theme` (per-OS branches), `dark_mode.rs` (Tauri cmd), `DarkModeToggle.tsx` (UI)                                                                           |
+| New volume behavior             | `core::volume` (per-OS branches), `volume.rs` (Tauri cmd), `VolumeControl.tsx` (UI)                                                                              |
+| New wallpaper behavior          | `core::wallpaper` (per-OS branches), `wallpaper.rs` (Tauri cmd + caching), `SettingsPanel.tsx` if user-configurable                                              |
+| New preference field            | `config.rs` (add to `Preferences` struct + default), `types.ts` (TS interface), `SettingsPanel.tsx` (UI)                                                         |
+| New Tauri command               | Domain module (Rust), `lib.rs` (register in `invoke_handler`), frontend component                                                                                |
+| New keyboard shortcut command   | `tray.rs` (`execute_command` match arm), `config.rs` (default keybinding)                                                                                        |
+| New UI component                | `src/components/NewComponent.tsx` + `NewComponent.test.tsx`, wire into `App.tsx`                                                                                 |
+| Tray menu change                | `tray.rs` (`build_tray_menu`)                                                                                                                                    |
+| Window tiling                   | `tiling/mod.rs` (shared layout math), `tiling/{macos,windows,linux}.rs` (per-OS), `tray.rs` (Tiling submenu), `config.rs` (`TilingPreferences`)                  |
+| Window positioning              | `tray.rs` (`position_window_near_tray`) -- read the doc comment first!                                                                                           |
+| Night mode schedule logic       | `lib.rs` (`check_night_mode_schedule`, `is_night_time`)                                                                                                          |
+| CI changes                      | `.github/workflows/build.yml` or `release-official.yml`                                                                                                          |
 
 ---
 
@@ -545,6 +551,12 @@ pub async fn my_new_command(
     state: tauri::State<'_, crate::AppState>,
     some_param: String,
 ) -> Result<String, String> {
+    // For blocking platform calls, wrap in spawn_blocking:
+    tauri::async_runtime::spawn_blocking(move || {
+        core::display::set_all_brightness(50)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     Ok(format!("Hello {}", some_param))
 }
 ```
@@ -610,9 +622,9 @@ Enable via tray menu > "Debug" > "Enable Logging". Logs are written to `debug.lo
 
 ## Monitor Identity (UID scheme)
 
-Each monitor is identified by a composite UID: `{api_id}::{api_model_name}` (e.g. `"1::Dell U2723QE"`, `"builtin::Built-in Display"`). This is more stable than the raw integer ID from the sidecar API, which can collide when monitors are swapped.
+Each monitor is identified by a composite UID: `{api_id}::{api_model_name}` (e.g. `"1::Dell U2723QE"`, `"builtin::Built-in Display"`). This is more stable than the raw integer ID from `core::DisplayInfo`, which can collide when monitors are swapped.
 
-- `Monitor.id` -- raw API id, used for sidecar HTTP calls (`/set_one/{id}/{value}`)
+- `Monitor.id` -- raw `core::DisplayInfo.id`, used for `core::display::set_one_*` calls
 - `Monitor.uid` -- composite key, used for config lookups, React keys, rename/reorder operations
 - On startup, a one-time migration converts old `monitor-configs.json` entries into `MonitorMetadata` format within preferences
 
@@ -651,25 +663,25 @@ Config directory: `~/Library/Application Support/display-dj/` (macOS), `%APPDATA
 
 Format: `command/<action>/<value>`
 
-| Action             | Values                                               | Effect                                 |
-| ------------------ | ---------------------------------------------------- | -------------------------------------- |
-| `changeBrightness` | 0-100                                                | Sets all monitors' brightness          |
-| `changeContrast`   | 0-100                                                | Sets all monitors' contrast            |
-| `changeDarkMode`   | `toggle`, `dark`, `light`                            | Toggles or sets dark mode              |
-| `changeVolume`     | 0-100                                                | Sets system volume                     |
-| `changeProfile`    | Profile index (0, 1, 2, ...)                         | Applies a saved profile                |
-| `tile`             | Layout name (e.g. `leftHalf`, `maximize`, `restore`) | Tiles focused window (macOS + Windows) |
+| Action             | Values                                               | Effect                                             |
+| ------------------ | ---------------------------------------------------- | -------------------------------------------------- |
+| `changeBrightness` | 0-100                                                | Sets all monitors' brightness                      |
+| `changeContrast`   | 0-100                                                | Sets all monitors' contrast                        |
+| `changeDarkMode`   | `toggle`, `dark`, `light`                            | Toggles or sets dark mode                          |
+| `changeVolume`     | 0-100                                                | Sets system volume                                 |
+| `changeProfile`    | Profile index (0, 1, 2, ...)                         | Applies a saved profile                            |
+| `tile`             | Layout name (e.g. `leftHalf`, `maximize`, `restore`) | Tiles focused window (macOS + Windows + Linux/X11) |
 
 ### Monitor metadata (monitorConfigs)
 
-| Field       | Type   | Purpose                                       |
-| ----------- | ------ | --------------------------------------------- |
-| `uid`       | string | Composite key: `"{api_id}::{api_model_name}"` |
-| `apiId`     | string | Raw ID from sidecar (e.g. `"1"`, `"builtin"`) |
-| `apiName`   | string | Model name from sidecar API                   |
-| `label`     | string | User-set name (empty = use apiName)           |
-| `sortOrder` | number | Display order in UI (lower = higher)          |
-| `hidden`    | bool   | Whether the monitor is hidden from main UI    |
+| Field       | Type   | Purpose                                              |
+| ----------- | ------ | ---------------------------------------------------- |
+| `uid`       | string | Composite key: `"{api_id}::{api_model_name}"`        |
+| `apiId`     | string | Raw `core::DisplayInfo.id` (e.g. `"1"`, `"builtin"`) |
+| `apiName`   | string | Model name from `core::DisplayInfo`                  |
+| `label`     | string | User-set name (empty = use apiName)                  |
+| `sortOrder` | number | Display order in UI (lower = higher)                 |
+| `hidden`    | bool   | Whether the monitor is hidden from main UI           |
 
 ---
 
@@ -678,13 +690,13 @@ Format: `command/<action>/<value>`
 The app version flows from a single source through the build pipeline to the UI:
 
 ```
-tauri.conf.json ("version": "3.0.0")
+tauri.conf.json ("version": "7.0.0")
        │
        ▼
 build.rs reads it at compile time
        │
        ▼
-cargo:rustc-env=APP_VERSION=3.0.0
+cargo:rustc-env=APP_VERSION=7.0.0
        │
        ▼
 config.rs: get_app_version() → env!("APP_VERSION")
@@ -693,79 +705,39 @@ config.rs: get_app_version() → env!("APP_VERSION")
 App.tsx: invoke("get_app_version") → setVersion()
        │
        ▼
-Header.tsx: "Display DJ v3.0.0"
+Header.tsx: "Display DJ v7.0.0"
 ```
 
 - `tauri.conf.json` → `"version"`: The single source of truth. Controls both the UI header and installer/bundle metadata.
 - `package.json` → `"version"`: `0.0.0` — not used (not published to npm).
 - `Cargo.toml` → `version`: `0.0.0` — not used (crate not published).
-- Release versioning is driven by git tags (`v*` triggers `release.yml`).
-
----
-
-## display-dj CLI Sidecar
-
-The [display-dj CLI](https://github.com/synle/display-dj-cli) is bundled as a Tauri sidecar. The version is defined in `package.json` under `displayDjCliVersion`.
-
-Pre-built binaries for all 6 platforms are committed to the repo. The build script (`src-tauri/build.rs`) tries to download the latest from GitHub releases first (10s timeout), then falls back to the committed binary if the download fails. This enables offline builds and faster CI.
-
-### Sidecar binaries
-
-```
-src-tauri/binaries/
-  display-dj-server-aarch64-apple-darwin        # macOS ARM
-  display-dj-server-x86_64-apple-darwin         # macOS Intel
-  display-dj-server-x86_64-pc-windows-msvc.exe  # Windows x64
-  display-dj-server-aarch64-pc-windows-msvc.exe # Windows ARM
-  display-dj-server-x86_64-unknown-linux-gnu    # Linux x64
-  display-dj-server-aarch64-unknown-linux-gnu   # Linux ARM
-```
-
-### Building from source
-
-```bash
-git clone https://github.com/synle/display-dj-cli.git
-cd display-dj-cli
-cargo build --release
-cp target/release/display-dj ../display-dj2/src-tauri/binaries/display-dj-server-<target-triple>
-```
-
-### Verifying
-
-```bash
-./src-tauri/binaries/display-dj-server-aarch64-apple-darwin serve 51337 &
-curl http://127.0.0.1:51337/health    # {"status":"ok"}
-curl http://127.0.0.1:51337/get_all   # display JSON
-kill %1
-```
+- Release versioning is driven by git tags (`v*` triggers `release-official.yml`).
 
 ---
 
 ## Known Limitations
 
-| Limitation                    | Details                                                                                                                               |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| DDC/CI not universal          | Budget monitors and some HDMI connections may not support it                                                                          |
-| Built-in HDMI on base M1/M2   | No DDC/CI support. Use USB-C/DisplayPort                                                                                              |
-| Global shortcuts on Wayland   | Wayland restricts global hotkey capture. X11 works fine                                                                               |
-| Tray clicks dead on macOS     | Sync Tauri commands or `write_debug_log()` in hot sync commands starve the run-loop. See rules 9-10 above                             |
-| Tiling requires Accessibility | macOS tiling needs Accessibility permission. Without it, tile commands silently do nothing. Windows needs no special permissions      |
-| Tile Snap macOS-only          | Mouse edge snapping (Tile Snap) is only implemented for macOS. Keyboard shortcuts and tray menu tiling work on both macOS and Windows |
-| Tiling not on Linux           | Window tiling is not yet implemented on Linux. On Linux the tray submenu and Settings toggle are hidden                               |
-| Tray left-click on Linux      | AppIndicator doesn't always fire left-click                                                                                           |
-| Dark mode on non-GNOME        | `gsettings` is GNOME-specific. KDE, XFCE not supported                                                                                |
+| Limitation                    | Details                                                                                                                                      |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| DDC/CI not universal          | Budget monitors and some HDMI connections may not support it                                                                                 |
+| Built-in HDMI on base M1/M2   | No DDC/CI support. Use USB-C/DisplayPort                                                                                                     |
+| Global shortcuts on Wayland   | Wayland restricts global hotkey capture. X11 works fine                                                                                      |
+| Tray clicks dead on macOS     | Sync Tauri commands or `write_debug_log()` in hot sync commands starve the run-loop. See rules 9-10 above                                    |
+| Tiling requires Accessibility | macOS tiling needs Accessibility permission. Without it, tile commands silently do nothing. Windows needs no special permissions             |
+| Tile Snap macOS-only          | Mouse edge snapping (Tile Snap) is only implemented for macOS. Keyboard shortcuts and tray menu tiling work on macOS, Windows, and Linux/X11 |
+| Tiling Wayland-only sessions  | Window tiling on Linux requires X11 (`$DISPLAY` set). Wayland is not supported.                                                              |
+| Tray left-click on Linux      | AppIndicator doesn't always fire left-click                                                                                                  |
+| Dark mode on non-GNOME        | `gsettings` is GNOME-specific. KDE, XFCE not supported                                                                                       |
 
 ---
 
 ## Troubleshooting
 
-| Problem                                 | Fix                                                                                                                            |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `command not found: rustc`              | Run `source "$HOME/.cargo/env"` or reopen terminal                                                                             |
-| First build takes 5+ minutes            | Normal. Rust compiles from source. Subsequent runs are ~5-15s                                                                  |
-| App launched but can't find it          | System tray app. macOS: menu bar top-right. Windows: system tray bottom-right. Linux: top panel                                |
-| "sidecar not found"                     | Binary missing from `src-tauri/binaries/`. See [sidecar section](#display-dj-cli-sidecar)                                      |
-| "server did not become ready"           | Check binary is executable (`chmod +x`), port available (`lsof -i :51337`), test directly                                      |
-| "No displays found"                     | Run `./src-tauri/binaries/display-dj-server-* list` directly. Linux: check `ddcutil detect`                                    |
-| Dark mode toggle does nothing (Linux)   | Requires GNOME. Check `echo $XDG_CURRENT_DESKTOP`                                                                              |
-| macOS "System Events" permission prompt | Expected on first launch. Volume control uses `osascript` which requires System Events access. Click Allow — only prompts once |
+| Problem                                 | Fix                                                                                                                                                                                      |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `command not found: rustc`              | Run `source "$HOME/.cargo/env"` or reopen terminal                                                                                                                                       |
+| First build takes 5+ minutes            | Normal. Rust compiles from source. Subsequent runs are ~5-15s                                                                                                                            |
+| App launched but can't find it          | System tray app. macOS: menu bar top-right. Windows: system tray bottom-right. Linux: top panel                                                                                          |
+| "No displays found"                     | `core::PlatformImpl::detect_displays()` returned empty. macOS: check Accessibility for tiling. Windows: confirm DDC/CI in OSD. Linux: `ddcutil detect` and verify `i2c` group membership |
+| Dark mode toggle does nothing (Linux)   | Requires GNOME. Check `echo $XDG_CURRENT_DESKTOP`                                                                                                                                        |
+| macOS "System Events" permission prompt | Expected on first launch. Volume control uses `osascript` which requires System Events access. Click Allow — only prompts once                                                           |
