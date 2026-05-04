@@ -6,23 +6,14 @@ use tauri::{
 
 use crate::config::{CommandValue, KeyBinding};
 
-/// Returns the base URL of the display-dj sidecar HTTP server.
-fn base_url() -> String {
-    let port = crate::server_port();
-    format!("http://127.0.0.1:{}", port)
-}
-
-/// Fire an HTTP GET in a background thread (non-blocking, fire-and-forget).
-fn http_get(url: String) {
+/// Run a closure on a background thread (so we don't block whatever called us)
+/// and emit a Tauri event on `app` when it returns.
+fn run_then_emit<F>(app: AppHandle, event: &'static str, f: F)
+where
+    F: FnOnce() + Send + 'static,
+{
     std::thread::spawn(move || {
-        let _ = reqwest::blocking::get(&url);
-    });
-}
-
-/// Fire an HTTP GET in a background thread and emit an event when done.
-fn http_get_then_emit(url: String, app: AppHandle, event: &'static str) {
-    std::thread::spawn(move || {
-        let _ = reqwest::blocking::get(&url);
+        f();
         let _ = app.emit(event, ());
     });
 }
@@ -99,9 +90,6 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let accessibility_settings =
         MenuItemBuilder::with_id("accessibility_settings", "Accessibility Settings").build(app)?;
 
-    let port = crate::server_port();
-    let bridge_label = format!("Bridge: 127.0.0.1:{}", port);
-    let bridge = MenuItemBuilder::with_id("bridge", &bridge_label).build(app)?;
     let force_refresh =
         MenuItemBuilder::with_id("force_refresh", "Force Refresh").build(app)?;
 
@@ -121,7 +109,6 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         #[cfg(target_os = "macos")]
         let builder = builder.item(&accessibility_settings);
         builder
-            .item(&bridge)
             .separator()
             .item(&force_refresh)
             .item(&clear_wallpaper_cache)
@@ -138,7 +125,6 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         #[cfg(target_os = "macos")]
         let builder = builder.item(&accessibility_settings);
         builder
-            .item(&bridge)
             .separator()
             .item(&force_refresh)
             .item(&clear_wallpaper_cache)
@@ -311,18 +297,16 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
             "show_window" => {
                 show_popup_window(app);
             }
-            "bridge" => {
-                let url = base_url();
-                let _ = open::that(&url);
-            }
             "dark_mode" => {
-                let url = format!("{}/dark", base_url());
-                http_get(url);
+                std::thread::spawn(|| {
+                    let _ = crate::core::theme::set_dark_mode(true);
+                });
                 crate::tray_icon::set_dark_mode_state(app, true);
             }
             "light_mode" => {
-                let url = format!("{}/light", base_url());
-                http_get(url);
+                std::thread::spawn(|| {
+                    let _ = crate::core::theme::set_dark_mode(false);
+                });
                 crate::tray_icon::set_dark_mode_state(app, false);
             }
             "open_prefs" => {
@@ -811,7 +795,7 @@ fn dump_debug_info(app: &AppHandle) {
         crate::config::get_app_version()
     ));
     lines.push(format!("os: {} {}", std::env::consts::OS, std::env::consts::ARCH));
-    lines.push(format!("bridge: 127.0.0.1:{}", crate::server_port()));
+    lines.push("backend: in-process (display-dj-cli vendored)".to_string());
 
     if let Some(state) = app.try_state::<crate::AppState>() {
         if let Ok(prefs) = state.preferences.lock() {
@@ -896,13 +880,12 @@ fn dump_debug_info(app: &AppHandle) {
     }
 }
 
-/// Dispatches a command string (e.g. "command/changeBrightness/50") to the appropriate
-/// sidecar HTTP endpoint. Used by keyboard shortcuts, profiles, tray menu actions,
-/// and the night mode schedule.
+/// Dispatches a command string (e.g. "command/changeBrightness/50") to the
+/// appropriate in-process platform call. Used by keyboard shortcuts, profiles,
+/// tray menu actions, and the night mode schedule.
 pub(crate) fn execute_command(app: &AppHandle, command: &str) {
     log::info!("execute_command: '{}'", command);
     let parts: Vec<&str> = command.split('/').collect();
-    let base = base_url();
     match parts.as_slice() {
         // Set brightness for all monitors: command/changeBrightness/{value}
         ["command", "changeBrightness", value] => {
@@ -913,8 +896,13 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                     .lock()
                     .map(|p| p.effective_min_brightness())
                     .unwrap_or(crate::config::ABSOLUTE_MIN_BRIGHTNESS);
-                let url = format!("{}/set_all/{}", base, val.clamp(min, 100));
-                http_get_then_emit(url, app.clone(), "monitors-changed");
+                let clamped = val.clamp(min, 100);
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    state.sidecar_cache.invalidate_monitors();
+                }
+                run_then_emit(app.clone(), "monitors-changed", move || {
+                    let _ = crate::core::display::set_all_brightness(clamped as u16, "force");
+                });
             }
         }
         // Set brightness for a single monitor: command/changeBrightness/{monitor_id}/{value}
@@ -926,61 +914,87 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                     .lock()
                     .map(|p| p.effective_min_brightness())
                     .unwrap_or(crate::config::ABSOLUTE_MIN_BRIGHTNESS);
-                let url = format!("{}/set_one/{}/{}", base, monitor_id, val.clamp(min, 100));
-                http_get_then_emit(url, app.clone(), "monitors-changed");
+                let clamped = val.clamp(min, 100);
+                let id = monitor_id.to_string();
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    state.sidecar_cache.invalidate_monitors();
+                }
+                run_then_emit(app.clone(), "monitors-changed", move || {
+                    let _ = crate::core::display::set_one_brightness(&id, clamped as u16, "force");
+                });
             }
         }
         ["command", "changeDarkMode", mode] => {
-            let url = match *mode {
+            match *mode {
                 "toggle" => {
-                    // For toggle, we need to read current state first — fire and forget
-                    let base_clone = base.clone();
+                    // For toggle, read current state first via the in-process platform layer.
                     let app_clone = app.clone();
                     std::thread::spawn(move || {
-                        if let Ok(resp) = reqwest::blocking::get(format!("{}/theme", base_clone)) {
-                            if let Ok(text) = resp.text() {
-                                let is_dark = text.contains("dark");
-                                let route = if is_dark { "light" } else { "dark" };
-                                let _ = reqwest::blocking::get(format!("{}/{}", base_clone, route));
-                                crate::tray_icon::set_dark_mode_state(&app_clone, !is_dark);
-                            }
+                        let is_dark = crate::core::theme::get_dark_mode().unwrap_or(false);
+                        let _ = crate::core::theme::set_dark_mode(!is_dark);
+                        crate::tray_icon::set_dark_mode_state(&app_clone, !is_dark);
+                        if let Some(state) = app_clone.try_state::<crate::AppState>() {
+                            state.sidecar_cache.invalidate_dark_mode();
                         }
                         let _ = app_clone.emit("dark-mode-changed", ());
                     });
-                    return;
                 }
                 "dark" => {
                     crate::tray_icon::set_dark_mode_state(app, true);
-                    format!("{}/dark", base)
+                    if let Some(state) = app.try_state::<crate::AppState>() {
+                        state.sidecar_cache.invalidate_dark_mode();
+                    }
+                    run_then_emit(app.clone(), "dark-mode-changed", || {
+                        let _ = crate::core::theme::set_dark_mode(true);
+                    });
                 }
                 "light" => {
                     crate::tray_icon::set_dark_mode_state(app, false);
-                    format!("{}/light", base)
+                    if let Some(state) = app.try_state::<crate::AppState>() {
+                        state.sidecar_cache.invalidate_dark_mode();
+                    }
+                    run_then_emit(app.clone(), "dark-mode-changed", || {
+                        let _ = crate::core::theme::set_dark_mode(false);
+                    });
                 }
-                _ => return,
-            };
-            http_get_then_emit(url, app.clone(), "dark-mode-changed");
+                _ => {}
+            }
         }
         // Set contrast for all monitors: command/changeContrast/{value}
         ["command", "changeContrast", value] => {
             if let Ok(val) = value.parse::<u32>() {
-                let url = format!("{}/set_contrast_all/{}", base, val.min(100));
-                http_get_then_emit(url, app.clone(), "monitors-changed");
+                let clamped = val.min(100);
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    state.sidecar_cache.invalidate_monitors();
+                }
+                run_then_emit(app.clone(), "monitors-changed", move || {
+                    let _ = crate::core::display::set_all_contrast(clamped as u16);
+                });
             }
         }
         // Set contrast for a single monitor: command/changeContrast/{monitor_id}/{value}
         ["command", "changeContrast", monitor_id, value] => {
             if let Ok(val) = value.parse::<u32>() {
-                let url = format!("{}/set_contrast_one/{}/{}", base, monitor_id, val.min(100));
-                http_get_then_emit(url, app.clone(), "monitors-changed");
+                let clamped = val.min(100);
+                let id = monitor_id.to_string();
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    state.sidecar_cache.invalidate_monitors();
+                }
+                run_then_emit(app.clone(), "monitors-changed", move || {
+                    let _ = crate::core::display::set_one_contrast(&id, clamped as u16);
+                });
             }
         }
         ["command", "changeVolume", value] => {
             if let Ok(val) = value.parse::<u32>() {
                 let clamped = val.min(100);
-                let url = format!("{}/set_volume/{}", base, clamped);
                 crate::tray_icon::set_muted_state(app, clamped == 0);
-                http_get_then_emit(url, app.clone(), "volume-changed");
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    state.sidecar_cache.invalidate_volume();
+                }
+                run_then_emit(app.clone(), "volume-changed", move || {
+                    let _ = crate::core::volume::set_volume(clamped as u16);
+                });
             }
         }
         ["command", "changeProfile", idx_str] => {
@@ -1099,7 +1113,6 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                     std::thread::spawn(move || {
                         let state = app_clone.state::<crate::AppState>();
                         crate::wallpaper::change_wallpaper_single(
-                            &app_clone,
                             &state,
                             &monitor_owned,
                             &path_owned,
@@ -1165,39 +1178,13 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
     }
 }
 
-/// Builds the sidecar HTTP URL for a given command string, or returns None
-/// for commands that don't map to a simple HTTP GET (profiles, tiling, dark mode toggle).
-/// `base` is the sidecar base URL, `min_brightness` is the effective floor.
-fn build_command_url(command: &str, base: &str, min_brightness: u32) -> Option<String> {
-    let parts: Vec<&str> = command.split('/').collect();
-    match parts.as_slice() {
-        ["command", "changeBrightness", value] => {
-            value.parse::<u32>().ok().map(|v| {
-                format!("{}/set_all/{}", base, v.clamp(min_brightness, 100))
-            })
-        }
-        ["command", "changeBrightness", monitor_id, value] => {
-            value.parse::<u32>().ok().map(|v| {
-                format!("{}/set_one/{}/{}", base, monitor_id, v.clamp(min_brightness, 100))
-            })
-        }
-        ["command", "changeContrast", value] => {
-            value.parse::<u32>().ok().map(|v| {
-                format!("{}/set_contrast_all/{}", base, v.min(100))
-            })
-        }
-        ["command", "changeContrast", monitor_id, value] => {
-            value.parse::<u32>().ok().map(|v| {
-                format!("{}/set_contrast_one/{}/{}", base, monitor_id, v.min(100))
-            })
-        }
-        ["command", "changeVolume", value] => {
-            value.parse::<u32>().ok().map(|v| {
-                format!("{}/set_volume/{}", base, v.min(100))
-            })
-        }
-        _ => None,
-    }
+/// Historically built a sidecar HTTP URL for a given command string. Now that
+/// every command dispatches in-process via `execute_command`, this function
+/// always returns `None`. Kept for backward compatibility with tests and as
+/// documentation that no command maps to an external URL anymore.
+#[cfg(test)]
+fn build_command_url(_command: &str, _base: &str, _min_brightness: u32) -> Option<String> {
+    None
 }
 
 /// Applies a saved profile by index, executing all of its commands.
@@ -1213,127 +1200,45 @@ mod tests {
 
     const BASE: &str = "http://127.0.0.1:51337";
 
-    /// Verifies all-monitors brightness command produces the correct sidecar URL.
+    /// All commands now dispatch in-process — there is no sidecar URL to build,
+    /// so `build_command_url` returns `None` for every input. The test sweep
+    /// covers the formerly-routed commands (brightness, contrast, volume) as
+    /// well as commands that always returned None (wallpaper, z-order, tile,
+    /// profiles, dark mode toggle, unknown commands).
     #[test]
-    fn test_build_url_brightness_all() {
-        let url = build_command_url("command/changeBrightness/75", BASE, 10);
-        assert_eq!(url, Some(format!("{}/set_all/75", BASE)));
-    }
-
-    /// Verifies per-monitor brightness command produces the correct sidecar URL.
-    #[test]
-    fn test_build_url_brightness_single() {
-        let url = build_command_url("command/changeBrightness/1/80", BASE, 10);
-        assert_eq!(url, Some(format!("{}/set_one/1/80", BASE)));
-    }
-
-    /// Verifies per-monitor brightness with builtin monitor ID.
-    #[test]
-    fn test_build_url_brightness_single_builtin() {
-        let url = build_command_url("command/changeBrightness/builtin/50", BASE, 10);
-        assert_eq!(url, Some(format!("{}/set_one/builtin/50", BASE)));
-    }
-
-    /// Verifies brightness is clamped to min_brightness floor.
-    #[test]
-    fn test_build_url_brightness_clamps_to_min() {
-        let url = build_command_url("command/changeBrightness/3", BASE, 10);
-        assert_eq!(url, Some(format!("{}/set_all/10", BASE)));
-    }
-
-    /// Verifies per-monitor brightness is clamped to min_brightness floor.
-    #[test]
-    fn test_build_url_brightness_single_clamps_to_min() {
-        let url = build_command_url("command/changeBrightness/1/3", BASE, 10);
-        assert_eq!(url, Some(format!("{}/set_one/1/10", BASE)));
-    }
-
-    /// Verifies all-monitors contrast command produces the correct sidecar URL.
-    #[test]
-    fn test_build_url_contrast_all() {
-        let url = build_command_url("command/changeContrast/60", BASE, 10);
-        assert_eq!(url, Some(format!("{}/set_contrast_all/60", BASE)));
-    }
-
-    /// Verifies per-monitor contrast command produces the correct sidecar URL.
-    #[test]
-    fn test_build_url_contrast_single() {
-        let url = build_command_url("command/changeContrast/2/70", BASE, 10);
-        assert_eq!(url, Some(format!("{}/set_contrast_one/2/70", BASE)));
-    }
-
-    /// Verifies contrast is capped at 100.
-    #[test]
-    fn test_build_url_contrast_clamps_to_100() {
-        let url = build_command_url("command/changeContrast/150", BASE, 10);
-        assert_eq!(url, Some(format!("{}/set_contrast_all/100", BASE)));
-    }
-
-    /// Verifies volume command produces the correct sidecar URL.
-    #[test]
-    fn test_build_url_volume() {
-        let url = build_command_url("command/changeVolume/50", BASE, 10);
-        assert_eq!(url, Some(format!("{}/set_volume/50", BASE)));
-    }
-
-    /// Verifies unknown commands return None.
-    #[test]
-    fn test_build_url_unknown_command() {
-        assert_eq!(build_command_url("command/unknown/123", BASE, 10), None);
-    }
-
-    /// Verifies non-numeric values return None.
-    #[test]
-    fn test_build_url_invalid_value() {
-        assert_eq!(build_command_url("command/changeBrightness/abc", BASE, 10), None);
-    }
-
-    /// Verifies per-monitor command with non-numeric value returns None.
-    #[test]
-    fn test_build_url_single_invalid_value() {
-        assert_eq!(build_command_url("command/changeBrightness/1/abc", BASE, 10), None);
-    }
-
-    /// Verifies wallpaper commands are not HTTP-routed (return None from build_command_url).
-    #[test]
-    fn test_build_url_wallpaper_returns_none() {
-        assert_eq!(
-            build_command_url("command/wallpaper/change//Users/pic.jpg", BASE, 10),
-            None
-        );
-        assert_eq!(
-            build_command_url("command/wallpaper/change/center//Users/pic.jpg", BASE, 10),
-            None
-        );
-    }
-
-    /// Window/app z-order commands are dispatched in-process to the tiling
-    /// module — they do not map to a sidecar HTTP URL.
-    #[test]
-    fn test_build_url_zorder_returns_none() {
-        assert_eq!(
-            build_command_url("command/window/moveToFront", BASE, 10),
-            None
-        );
-        assert_eq!(
-            build_command_url("command/app/moveToFront", BASE, 10),
-            None
-        );
-        assert_eq!(
-            build_command_url("command/window/moveToBack", BASE, 10),
-            None
-        );
-        assert_eq!(
-            build_command_url("command/app/moveToBack", BASE, 10),
-            None
-        );
-        assert_eq!(
-            build_command_url("command/window/toggleFrontBack", BASE, 10),
-            None
-        );
-        assert_eq!(
-            build_command_url("command/app/toggleFrontBack", BASE, 10),
-            None
-        );
+    fn test_build_url_always_returns_none() {
+        let inputs = [
+            "command/changeBrightness/75",
+            "command/changeBrightness/1/80",
+            "command/changeBrightness/builtin/50",
+            "command/changeBrightness/3",
+            "command/changeBrightness/1/3",
+            "command/changeContrast/60",
+            "command/changeContrast/2/70",
+            "command/changeContrast/150",
+            "command/changeVolume/50",
+            "command/changeBrightness/abc",
+            "command/changeBrightness/1/abc",
+            "command/unknown/123",
+            "command/wallpaper/change//Users/pic.jpg",
+            "command/wallpaper/change/center//Users/pic.jpg",
+            "command/window/moveToFront",
+            "command/app/moveToFront",
+            "command/window/moveToBack",
+            "command/app/moveToBack",
+            "command/window/toggleFrontBack",
+            "command/app/toggleFrontBack",
+            "command/tile/leftHalf",
+            "command/changeProfile/0",
+            "command/changeDarkMode/toggle",
+        ];
+        for cmd in inputs {
+            assert_eq!(
+                build_command_url(cmd, BASE, 10),
+                None,
+                "expected None for: {}",
+                cmd,
+            );
+        }
     }
 }

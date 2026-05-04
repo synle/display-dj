@@ -50,7 +50,6 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Settings panel** -- tabbed UI (General + Tiling) with auto-save. Configure brightness, contrast, monitors, night mode, snap zones, exposé grid size, layout strategy, and launch at login
 - **About / Update check** -- "About Display DJ" in the tray menu shows current version, latest GitHub release, engine, platform, build date, and homepage. Green "Up to date" or orange "Update available" badge with download link. macOS section includes quarantine fix and Accessibility settings commands
 - **System tray app** -- lives in your menu bar / system tray with no dock or taskbar clutter
-- **Single-instance** -- only one copy of Display DJ runs at a time. If you accidentally launch it twice (e.g. autostart racing a manual launch), the duplicate exits silently so you never end up with multiple tray icons or competing sidecars
 
 ## Download & Install
 
@@ -329,9 +328,9 @@ This recursively clears the quarantine flag so macOS allows the app to run. You 
 
 ## Tech Stack
 
-[Tauri v2](https://v2.tauri.app/) (Rust) + React 19 + TypeScript + Vite 6 + [display-dj CLI](https://github.com/synle/display-dj-cli)
+[Tauri v2](https://v2.tauri.app/) (Rust) + React 19 + TypeScript + Vite 6.
 
-Display and dark mode operations are handled by the bundled [display-dj CLI](https://github.com/synle/display-dj-cli) sidecar -- no external tools need to be installed on macOS or Windows.
+All platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, wallpaper) lives in-process inside the Rust backend under `src-tauri/src/core/`. There is no external sidecar or helper binary -- macOS and Windows need no extra tools installed; Linux needs the system packages listed in the install section above.
 
 ## Contributing
 

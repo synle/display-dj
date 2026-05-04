@@ -17,7 +17,6 @@ serde_json = "1"
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
-tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "6"
@@ -30,10 +29,13 @@ keepawake = "0.6"
 tauri-plugin-dialog = "2"
 md5 = "0.7"
 zip = "2"
+ddc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
 block = "0.1"
+ddc-macos = "0.2"
+libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 x11rb = { version = "0.13", features = ["randr"] }
@@ -46,7 +48,10 @@ windows = { version = "0.58", features = [
     "Win32_UI_HiDpi",
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_Threading",
+    "Win32_Devices_Display",
 ] }
+ddc-winapi = "0.2"
+winapi = { version = "0.3", features = ["wingdi", "windef"] }
 
 [profile.release]
 panic = "abort"

@@ -21,7 +21,7 @@
   - [macOS](#macos-setup)
   - [Windows](#windows-setup)
   - [Linux](#linux-ubuntudebian-setup)
-- [display-dj CLI Sidecar](#display-dj-cli-sidecar)
+- [Vendored platform core](#vendored-platform-core-src-tauri-src-core)
 - [Known Limitations](#known-limitations)
 - [Troubleshooting](#troubleshooting)
 
@@ -29,7 +29,7 @@
 
 ## Quick Start
 
-**Prerequisites**: [Node.js](https://nodejs.org) 18+, [Rust](https://www.rust-lang.org/tools/install) 1.77+, plus the display-dj CLI sidecar binary (see [display-dj CLI Sidecar](#display-dj-cli-sidecar)).
+**Prerequisites**: [Node.js](https://nodejs.org) 18+, [Rust](https://www.rust-lang.org/tools/install) 1.77+. No external binaries — the platform code is compiled into the app.
 
 ```bash
 git clone <repo-url>
@@ -46,11 +46,11 @@ Display DJ is a **system tray app** -- it does NOT open a regular window. Look f
 
 ## Architecture Overview
 
-Display DJ is built with [Tauri v2](https://v2.tauri.app/), which pairs a **Rust** backend with a **web-based** frontend. Display and dark mode operations are delegated to the [display-dj CLI](https://github.com/synle/display-dj-cli), which runs as a bundled HTTP server sidecar.
+Display DJ is built with [Tauri v2](https://v2.tauri.app/), which pairs a **Rust** backend with a **web-based** frontend. As of v7.0.0, all platform code is vendored into the Rust backend at `src-tauri/src/core/` and runs in-process — there is no separate helper process or HTTP server.
 
 ```
 ┌──────────────────────────────────────────────┐
-│  Frontend (React 18 + TypeScript + Vite 6)   │
+│  Frontend (React 19 + TypeScript + Vite 6)   │
 │  Runs inside a WebView (WebKit on macOS/     │
 │  Linux, WebView2 on Windows)                 │
 │                                              │
@@ -60,28 +60,32 @@ Display DJ is built with [Tauri v2](https://v2.tauri.app/), which pairs a **Rust
 ┌──────────────────▼───────────────────────────┐
 │  Backend (Rust + Tauri v2)                   │
 │                                              │
-│  #[tauri::command] functions handle:         │
-│  - Monitor brightness & contrast (via HTTP)   │
-│  - System dark mode toggle (via HTTP)        │
-│  - System volume control (platform-specific) │
-│  - Preferences/config persistence            │
-│  - System tray + global keyboard shortcuts   │
+│  #[tauri::command] functions in              │
+│  display.rs / dark_mode.rs / volume.rs /     │
+│  wallpaper.rs are thin wrappers that call    │
+│  spawn_blocking → core::* in-process.        │
 │                                              │
-│  HTTP requests to display-dj server sidecar  │
+│  Also: preferences/config persistence,       │
+│  system tray, global keyboard shortcuts,     │
+│  night mode scheduler, window tiling.        │
 └──────────────────┬───────────────────────────┘
-                   │  HTTP (127.0.0.1:<port>)
+                   │  direct function calls
 ┌──────────────────▼───────────────────────────┐
-│  display-dj CLI sidecar (HTTP server)        │
-│  https://github.com/synle/display-dj-cli     │
+│  src-tauri/src/core/  (vendored platform)    │
 │                                              │
-│  Handles all display operations:             │
-│  - DDC/CI, gamma, DisplayServices, WMI       │
-│  - Dark mode (osascript, registry, gsettings)│
-│  - Cross-platform, single binary per OS      │
+│  - core::macos / core::windows / core::linux │
+│    DDC/CI, gamma, DisplayServices, WMI,      │
+│    brightnessctl/ddcutil. PlatformImpl is    │
+│    a cfg-gated alias to the right impl.      │
+│  - core::theme   — system dark mode          │
+│  - core::volume  — system volume             │
+│  - core::wallpaper — wallpaper + slideshow   │
+│  - core::display — high-level brightness/    │
+│    contrast helpers fanning out to displays  │
 └──────────────────────────────────────────────┘
 ```
 
-The frontend calls Rust functions using `invoke("command_name", { params })`. The Rust backend makes HTTP requests to the display-dj server for display and dark mode operations. The backend can push events to the frontend using `app.emit("event-name", payload)`.
+The frontend calls Rust functions using `invoke("command_name", { params })`. The Rust backend executes the work in-process by calling `core::*`. The backend can push events to the frontend using `app.emit("event-name", payload)`.
 
 ---
 
@@ -117,11 +121,9 @@ display-dj2/
 │       └── ProfileButtons.tsx   # Profile quick-action buttons with overflow menu
 │
 ├── src-tauri/                    # Backend (Rust + Tauri v2)
-│   ├── Cargo.toml                # Rust dependencies (tauri, reqwest, serde, etc.)
-│   ├── build.rs                  # Tauri build script (runs before compilation)
-│   ├── tauri.conf.json           # App config: window size, tray icon, sidecar, bundling options
-│   ├── binaries/                 # display-dj CLI sidecar (per-platform binaries)
-│   │   └── display-dj-server-<target-triple>
+│   ├── Cargo.toml                # Rust dependencies (tauri, ddc, ddc-macos/winapi, windows, x11rb, serde, etc.)
+│   ├── build.rs                  # tauri_build::build() + expose_app_version() for APP_VERSION/BUILD_DATE
+│   ├── tauri.conf.json           # App config: window size, tray icon, bundling options
 │   ├── capabilities/
 │   │   └── default.json          # Security permissions (what frontend JS can access)
 │   ├── icons/                    # App icons for all platforms (.icns, .ico, .png)
@@ -129,12 +131,22 @@ display-dj2/
 │   │   └── smoke.rs              # Integration smoke test: crate links, public API usable
 │   └── src/
 │       ├── main.rs               # Binary entry point (calls lib::run)
-│       ├── lib.rs                # Tauri app setup: sidecar launch, port discovery, plugins, state, tray, shortcuts, night mode schedule checker
-│       ├── display.rs            # Monitor detection + brightness/contrast via HTTP to display-dj server (+ unit tests)
-│       ├── dark_mode.rs          # Dark mode read/write via HTTP to display-dj server
-│       ├── volume.rs             # System volume get/set (platform-specific: osascript, PowerShell, pactl)
+│       ├── lib.rs                # Tauri app setup: plugins, state, tray, shortcuts, night mode schedule checker
+│       ├── core/                 # Vendored platform code (in-process; no HTTP, no sidecar)
+│       │   ├── mod.rs            # Shared types: DisplayInfo, DisplayControl, Platform; PlatformImpl alias
+│       │   ├── macos.rs          # macOS DDC/CI + DisplayServices (built-in)
+│       │   ├── windows.rs        # Windows WMI + DDC/CI
+│       │   ├── linux.rs          # Linux ddcutil + brightnessctl
+│       │   ├── theme.rs          # Cross-platform dark mode get/set
+│       │   ├── volume.rs         # Cross-platform volume get/set
+│       │   ├── wallpaper.rs      # Wallpaper set + slideshow timer/state/cycling
+│       │   └── display.rs        # set_all_brightness / set_one_brightness + contrast variants
+│       ├── display.rs            # Tauri-command wrappers around core::display (+ unit tests). Uses spawn_blocking
+│       ├── dark_mode.rs          # Tauri-command wrappers around core::theme
+│       ├── volume.rs             # Tauri-command wrappers around core::volume
+│       ├── wallpaper.rs          # Tauri-command wrappers around core::wallpaper (incl. remote-pack download via reqwest)
 │       ├── config.rs             # Preferences + monitor metadata persistence, NightModeSchedule, min brightness, reset to defaults (+ unit tests)
-│       ├── tray.rs               # System tray menu, window positioning, keyboard shortcut dispatch
+│       ├── tray.rs               # System tray menu, window positioning, keyboard shortcut dispatch (in-process command execution)
 │       └── tray_icon.rs          # Programmatic tray icon generation (128x128, percentage-based layout, state indicators)
 │
 ├── index.html                    # HTML shell that loads src/main.tsx
@@ -157,54 +169,53 @@ This section maps each user-facing feature to the exact files and functions that
 
 **Frontend flow**: `App.tsx` calls `invoke("get_monitors")` on mount and on `monitors-changed` events. Slider changes call `invoke("set_brightness", { monitorId, value })`. The `Slider.tsx` component debounces changes by 150ms to avoid flooding the backend. In collapsed view, `AllMonitorsControl.tsx` sets all monitors at once via `set_all_brightness`.
 
-**Backend** (`display.rs`): All display operations go through the display-dj HTTP server sidecar. No platform-specific code.
+**Backend** (`display.rs` → `core::display` → `core::PlatformImpl`): The Tauri command (`async fn`) wraps the call in `tauri::async_runtime::spawn_blocking` and invokes the in-process `core::*` function. The `core::PlatformImpl` type alias resolves to `core::macos::Platform`, `core::windows::Platform`, or `core::linux::Platform` at compile time.
 
-| Operation                   | HTTP Route                           | Response                                                      |
-| --------------------------- | ------------------------------------ | ------------------------------------------------------------- |
-| Detect monitors             | `GET /get_all`                       | JSON array of `DisplayInfo` with live brightness and contrast |
-| Set one monitor brightness  | `GET /set_one/<id>/<level>`          | Status                                                        |
-| Set all monitors brightness | `GET /set_all/<level>`               | Status per display                                            |
-| Set one monitor contrast    | `GET /set_contrast_one/<id>/<level>` | Status (DDC-only)                                             |
-| Set all monitors contrast   | `GET /set_contrast_all/<level>`      | Status per display (DDC-only)                                 |
+| Operation                   | In-process call                                | Returns                                              |
+| --------------------------- | ---------------------------------------------- | ---------------------------------------------------- |
+| Detect monitors             | `PlatformImpl::detect_displays()`              | `Vec<DisplayInfo>` with live brightness and contrast |
+| Set one monitor brightness  | `core::display::set_one_brightness(id, level)` | `Result<(), String>`                                 |
+| Set all monitors brightness | `core::display::set_all_brightness(level)`     | per-display result                                   |
+| Set one monitor contrast    | `core::display::set_one_contrast(id, level)`   | `Result<(), String>` (DDC-only)                      |
+| Set all monitors contrast   | `core::display::set_all_contrast(level)`       | per-display result (DDC-only)                        |
 
-The `DjDisplay` struct maps the server's JSON response (with `display_type`, nullable `brightness`, nullable `contrast`) into the app's `Monitor` struct (with `is_built_in`, `supports_brightness`, `contrast`).
+`core::DisplayInfo` (with `display_type`, nullable `brightness`, nullable `contrast`) is converted into the app's `Monitor` struct (with `is_built_in`, `supports_brightness`, `contrast`) inside `display.rs`.
 
 ### Monitor Contrast
 
 **Frontend flow**: Contrast sliders are shown alongside brightness sliders only when `showContrast` is enabled in preferences and the monitor supports DDC contrast (`contrast !== null`). Built-in displays never show contrast. The collapsed `AllMonitorsControl` shows an average contrast slider across all contrast-capable monitors.
 
-**Backend** (`display.rs`): Contrast uses the same pattern as brightness — HTTP GET to the sidecar. Contrast values are 0-100, not subject to `min_brightness` clamping.
+**Backend** (`display.rs` → `core::display`): Contrast uses the same in-process pattern as brightness. Contrast values are 0-100, not subject to `min_brightness` clamping.
 
-| Operation                 | HTTP Route                           |
-| ------------------------- | ------------------------------------ |
-| Set one monitor contrast  | `GET /set_contrast_one/<id>/<level>` |
-| Set all monitors contrast | `GET /set_contrast_all/<level>`      |
+| Operation                 | In-process call                              |
+| ------------------------- | -------------------------------------------- |
+| Set one monitor contrast  | `core::display::set_one_contrast(id, level)` |
+| Set all monitors contrast | `core::display::set_all_contrast(level)`     |
 
 **Key functions**: `set_monitor_contrast()`, `set_all_monitors_contrast()`, `set_contrast` (Tauri command), `set_all_contrast` (Tauri command).
 
 **Key functions to know**:
 
-- `detect_monitors()` -- HTTP GET to `/get_all`, converts `DjDisplay` -> `Monitor`
+- `detect_monitors()` -- calls `PlatformImpl::detect_displays()`, converts `core::DisplayInfo` -> `Monitor`
 - `merge_with_configs()` -- applies user-configured labels and sort orders from `preferences.monitorConfigs`
-- `base_url()` -- returns `http://127.0.0.1:<port>` using the port stored at startup
 
 ### Dark Mode
 
 **Frontend**: `App.tsx` calls `invoke("get_dark_mode")` and `invoke("set_dark_mode", { enabled })`. `DarkModeToggle.tsx` renders two buttons.
 
-**Backend** (`dark_mode.rs`): Delegates to the display-dj HTTP server.
+**Backend** (`dark_mode.rs` → `core::theme`): Calls in-process functions. Implementation under `core::theme` uses `defaults`/AppleScript on macOS, registry writes on Windows, and `gsettings` on Linux/GNOME.
 
-| Operation         | HTTP Route   | Response                                    |
-| ----------------- | ------------ | ------------------------------------------- |
-| Get current theme | `GET /theme` | `{"theme": "dark"}` or `{"theme": "light"}` |
-| Set dark mode     | `GET /dark`  | Status                                      |
-| Set light mode    | `GET /light` | Status                                      |
+| Operation         | In-process call                     |
+| ----------------- | ----------------------------------- |
+| Get current theme | `core::theme::get_dark_mode()`      |
+| Set dark mode     | `core::theme::set_dark_mode(true)`  |
+| Set light mode    | `core::theme::set_dark_mode(false)` |
 
 ### Volume
 
 **Frontend**: `App.tsx` calls `invoke("get_volume")` and `invoke("set_volume", { value })`. `VolumeControl.tsx` wraps `Slider.tsx` with muted/unmuted icon logic.
 
-**Backend** (`volume.rs`): Volume is the only module with platform-specific code, as the display-dj CLI does not handle volume.
+**Backend** (`volume.rs` → `core::volume`): Like all the other display ops, this is just an in-process call now. Per-OS implementations:
 
 | Platform | Method                                                                                           |
 | -------- | ------------------------------------------------------------------------------------------------ |
@@ -244,7 +255,7 @@ Loads preferences via `invoke("get_preferences")`, saves via `invoke("save_prefe
 - Left-click toggles main window visibility; `position_window_near_tray()` places it near the tray icon
 - Right-click opens the context menu
 - `register_shortcuts()` -- reads key bindings from `Preferences`, registers via `tauri-plugin-global-shortcut`
-- `execute_command()` -- dispatches command strings like `"command/changeBrightness/50"` to the display-dj HTTP server and emits events to the frontend so it can refresh
+- `execute_command()` -- dispatches command strings like `"command/changeBrightness/50"` in-process by calling the matching `core::*` function on a background thread, then emits events to the frontend so it can refresh
 
 ### Config Persistence
 
@@ -270,11 +281,13 @@ await invoke('set_brightness', { monitorId: 'external-1', value: 75 });
 - Command names are **snake_case** strings matching the Rust function name
 - Parameters are passed as a single object with **camelCase** keys (Serde converts them)
 
-**Backend -> display-dj server** (HTTP requests):
+**Backend -> platform code** (in-process function calls — no HTTP):
 
 ```rust
-let url = format!("http://127.0.0.1:{}/set_all/{}", port, value);
-reqwest::blocking::get(&url)?;
+// inside an async Tauri command:
+tauri::async_runtime::spawn_blocking(move || {
+    core::display::set_all_brightness(value)
+}).await.map_err(|e| e.to_string())??;
 ```
 
 **Backend -> Frontend** (pushing events):
@@ -390,14 +403,14 @@ Each key binding has a `key` (e.g. `"Shift+F1"`) and a `command` -- either a sin
 
 The `monitorConfigs` array in `preferences.json` stores per-monitor metadata. Each monitor is identified by a composite UID (`{api_id}::{api_model_name}`) that survives reconnections. Entries are never removed when a monitor is unplugged — labels and sort order persist across plug/unplug cycles.
 
-| Field       | Type   | Purpose                                                      |
-| ----------- | ------ | ------------------------------------------------------------ |
-| `uid`       | string | Composite unique key: `"{api_id}::{api_model_name}"`         |
-| `apiId`     | string | Raw ID from the display-dj sidecar (e.g. `"1"`, `"builtin"`) |
-| `apiName`   | string | Model name from the sidecar API (e.g. `"Dell U2723QE"`)      |
-| `label`     | string | User-set friendly name (empty string = use apiName)          |
-| `sortOrder` | number | Display order in the UI (lower = higher)                     |
-| `hidden`    | bool   | Whether the monitor is hidden from the main UI               |
+| Field       | Type   | Purpose                                                     |
+| ----------- | ------ | ----------------------------------------------------------- |
+| `uid`       | string | Composite unique key: `"{api_id}::{api_model_name}"`        |
+| `apiId`     | string | Raw ID from `core::DisplayInfo` (e.g. `"1"`, `"builtin"`)   |
+| `apiName`   | string | Model name from `core::DisplayInfo` (e.g. `"Dell U2723QE"`) |
+| `label`     | string | User-set friendly name (empty string = use apiName)         |
+| `sortOrder` | number | Display order in the UI (lower = higher)                    |
+| `hidden`    | bool   | Whether the monitor is hidden from the main UI              |
 
 ---
 
@@ -412,9 +425,8 @@ The `monitorConfigs` array in `preferences.json` stores per-monitor metadata. Ea
 
 ### Display operations
 
-- All display and dark mode operations go through the display-dj HTTP server sidecar -- there is **no platform-specific display code** in the Rust backend.
-- Volume is the only platform-specific module, using `#[cfg(target_os = "...")]` conditional compilation.
-- The sidecar port is discovered at startup and stored in a global `AtomicU16`. All modules access it via `crate::server_port()`.
+- All display, dark-mode, volume, and wallpaper operations live in `src-tauri/src/core/`. Each Tauri-command file (`display.rs`, `dark_mode.rs`, `volume.rs`, `wallpaper.rs`) is a thin async wrapper that calls into `core::*` via `spawn_blocking`.
+- Platform splits use `#[cfg(target_os = "...")]` and the `core::PlatformImpl` type alias resolves to the right implementation at compile time.
 - `Preferences` and `NightModeSchedule` use `#[serde(default)]` so old config files missing new fields gracefully fall back to defaults without breaking.
 - Brightness values are clamped to `effective_min_brightness()` (which enforces `ABSOLUTE_MIN_BRIGHTNESS = 5`) before being sent to displays.
 
@@ -468,7 +480,7 @@ Inline `#[cfg(test)]` modules plus an integration smoke test.
 | `tray_icon.rs`   | Percentage-to-pixel conversion, icon generation for all state combinations (dark/light, keep-awake, muted), filled rect and thick line drawing                                                                                                                                                      |
 | `tests/smoke.rs` | **Smoke test**: crate compiles and links, `AppState` is constructable, `run` function is exported                                                                                                                                                                                                   |
 
-Rust tests don't require external tools, hardware, or the display-dj server -- they test pure logic that works on all platforms.
+Rust tests don't require external tools or hardware -- they test pure logic that works on all platforms.
 
 ### Adding New Tests
 
@@ -561,7 +573,7 @@ npx tauri build
 
 ## Platform Setup Guides
 
-These guides walk through setting up a development environment from a fresh machine. If you already have Node.js 18+ and Rust 1.77+ installed, skip to the sidecar setup.
+These guides walk through setting up a development environment from a fresh machine. If you already have Node.js 18+ and Rust 1.77+ installed, skip ahead to "Clone and run" for your platform.
 
 ### Prerequisites (All Platforms)
 
@@ -608,11 +620,7 @@ source "$HOME/.cargo/env"
 
 Verify: `node --version` (18+), `rustc --version` (1.77+).
 
-#### Step 4: Set up the display-dj sidecar
-
-See [display-dj CLI Sidecar](#display-dj-cli-sidecar) below.
-
-#### Step 5: Clone and run
+#### Step 4: Clone and run
 
 ```bash
 git clone <repo-url>
@@ -649,11 +657,7 @@ Verify: `node --version` (18+), `rustc --version` (1.77+).
 
 Windows 11 includes it. On Windows 10, download from [developer.microsoft.com](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
 
-#### Step 5: Set up the display-dj sidecar
-
-See [display-dj CLI Sidecar](#display-dj-cli-sidecar) below.
-
-#### Step 6: Clone and run
+#### Step 5: Clone and run
 
 ```powershell
 git clone <repo-url>
@@ -698,13 +702,13 @@ sudo apt install -y \
 #### Step 3: Install display control dependencies
 
 ```bash
-# External monitors (DDC/CI) -- required by the display-dj CLI sidecar
+# External monitors (DDC/CI) -- called directly by core::linux
 sudo apt install -y ddcutil i2c-tools
 sudo modprobe i2c-dev
 echo "i2c-dev" | sudo tee /etc/modules-load.d/i2c-dev.conf
 sudo usermod -aG i2c $USER    # log out and back in after this
 
-# Built-in laptop display -- required by the display-dj CLI sidecar
+# Built-in laptop display -- called directly by core::linux
 sudo apt install -y brightnessctl
 ```
 
@@ -712,11 +716,7 @@ sudo apt install -y brightnessctl
 
 Volume (`pactl`) and dark mode (`gsettings`) are pre-installed on Ubuntu/GNOME.
 
-#### Step 4: Set up the display-dj sidecar
-
-See [display-dj CLI Sidecar](#display-dj-cli-sidecar) below.
-
-#### Step 5: Clone and run
+#### Step 4: Clone and run
 
 ```bash
 git clone <repo-url>
@@ -727,75 +727,30 @@ npx tauri dev
 
 ---
 
-## display-dj CLI Sidecar
+## Vendored platform core (`src-tauri/src/core/`)
 
-Display DJ delegates all display and dark mode operations to the [display-dj CLI](https://github.com/synle/display-dj-cli), which runs as a Tauri sidecar. The CLI is a single cross-platform binary (~556KB) that handles DDC/CI, gamma tables, DisplayServices, WMI, and more.
+As of v7.0.0, all platform code that used to live in the [display-dj CLI](https://github.com/synle/display-dj-cli) is vendored directly into Display DJ at `src-tauri/src/core/`. There is no helper binary, no HTTP server, no port discovery, and no runtime dependency on the upstream CLI repo or its releases.
 
-### How it works
+### Modules
 
-1. On app startup, `lib.rs` finds an available TCP port (starting from 51337)
-2. Spawns `display-dj-server serve <port>` as a background sidecar process
-3. Waits for the server's `/health` endpoint to respond (up to 5 seconds)
-4. All display/dark mode commands (`display.rs`, `dark_mode.rs`, `tray.rs`) make HTTP GET requests to `http://127.0.0.1:<port>/...`
+| Module            | Responsibility                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| `core::mod`       | Shared types: `DisplayInfo`, `DisplayControl` trait, `Platform` trait. `core::PlatformImpl` cfg-gated alias |
+| `core::macos`     | macOS DDC/CI (via `ddc-macos`) + DisplayServices for built-in screens                                       |
+| `core::windows`   | Windows DDC/CI (via `ddc-winapi`) + WMI for built-in screens                                                |
+| `core::linux`     | Linux `ddcutil` for external + `brightnessctl` for built-in                                                 |
+| `core::theme`     | System dark mode get/set (osascript/`defaults` on macOS, registry on Windows, `gsettings` on Linux)         |
+| `core::volume`    | System volume get/set (osascript on macOS, PowerShell+WASAPI on Windows, `pactl` on Linux)                  |
+| `core::wallpaper` | Wallpaper set + slideshow timer/state/cycling (NSWorkspace, `IDesktopWallpaper`, gsettings/feh)             |
+| `core::display`   | High-level helpers (`set_all_brightness`, `set_one_brightness`, contrast variants) over `PlatformImpl`      |
 
-### Getting the sidecar binary
+### How the wrappers call core
 
-**Option A: Download from releases**
+`display.rs`, `dark_mode.rs`, `volume.rs`, `wallpaper.rs` are thin Tauri-command modules. Every command that takes `State<'_, AppState>` is `async fn` (see CLAUDE.md "macOS Tray Icon Pitfall"); CPU-bound work runs inside `tauri::async_runtime::spawn_blocking` so the macOS main-thread run-loop stays responsive.
 
-Download the appropriate binary from [display-dj-cli releases](https://github.com/synle/display-dj-cli/releases) and place it in `src-tauri/binaries/` with the Tauri naming convention:
+### Relationship to display-dj-cli
 
-```
-src-tauri/binaries/
-  display-dj-server-aarch64-apple-darwin        # macOS ARM (M1/M2/M3/M4)
-  display-dj-server-x86_64-apple-darwin         # macOS Intel
-  display-dj-server-x86_64-pc-windows-msvc.exe  # Windows x64
-  display-dj-server-aarch64-pc-windows-msvc.exe # Windows ARM
-  display-dj-server-x86_64-unknown-linux-gnu    # Linux x64
-  display-dj-server-aarch64-unknown-linux-gnu   # Linux ARM
-```
-
-**Option B: Build from source**
-
-```bash
-git clone https://github.com/synle/display-dj-cli.git
-cd display-dj-cli
-cargo build --release
-
-# Copy to the sidecar directory with the correct name
-# Replace <target-triple> with your platform (e.g. aarch64-apple-darwin)
-cp target/release/display-dj ../display-dj2/src-tauri/binaries/display-dj-server-<target-triple>
-```
-
-You only need the binary for your current platform during development. The CI pipeline builds all platform variants for releases.
-
-### Verifying the sidecar
-
-```bash
-# Test the CLI directly
-./src-tauri/binaries/display-dj-server-aarch64-apple-darwin list
-
-# Test the HTTP server
-./src-tauri/binaries/display-dj-server-aarch64-apple-darwin serve 51337 &
-curl http://127.0.0.1:51337/health    # should return {"status":"ok"}
-curl http://127.0.0.1:51337/get_all   # should return display JSON
-kill %1
-```
-
-### HTTP API routes used by Display DJ
-
-| Route                                | Used by                   | Purpose                                             |
-| ------------------------------------ | ------------------------- | --------------------------------------------------- |
-| `GET /health`                        | `lib.rs`                  | Wait for server readiness on startup                |
-| `GET /get_all`                       | `display.rs`              | List all displays with live brightness and contrast |
-| `GET /set_one/<id>/<level>`          | `display.rs`              | Set one display's brightness                        |
-| `GET /set_all/<level>`               | `display.rs`, `tray.rs`   | Set all displays' brightness                        |
-| `GET /set_contrast_one/<id>/<level>` | `display.rs`              | Set one display's contrast (DDC-only)               |
-| `GET /set_contrast_all/<level>`      | `display.rs`, `tray.rs`   | Set all displays' contrast (DDC-only)               |
-| `GET /theme`                         | `dark_mode.rs`            | Get current system theme (dark/light)               |
-| `GET /dark`                          | `dark_mode.rs`, `tray.rs` | Switch to dark mode                                 |
-| `GET /light`                         | `dark_mode.rs`, `tray.rs` | Switch to light mode                                |
-
-For the full API reference, see the [display-dj CLI documentation](https://github.com/synle/display-dj-cli).
+The standalone [display-dj CLI](https://github.com/synle/display-dj-cli) (local checkout at `/Users/syle/git/display-dj-cli`) is the **upstream** of this code, not a runtime dependency. When fixing a bug in `core::*`, consider whether the same fix should be cross-applied upstream so the standalone CLI stays in sync. Display DJ releases do **not** download anything from that repo.
 
 ---
 
@@ -829,29 +784,13 @@ System tray app, not a regular window:
 - **Windows**: System tray, bottom-right (click `^` if hidden)
 - **Linux**: Top panel. May need [AppIndicator GNOME extension](https://extensions.gnome.org/extension/615/appindicator-support/).
 
-### "display-dj-server sidecar not found"
-
-The sidecar binary is missing from `src-tauri/binaries/`. See [Getting the sidecar binary](#getting-the-sidecar-binary).
-
-### "display-dj server did not become ready"
-
-The sidecar started but isn't responding. Check:
-
-1. Is the binary executable? `chmod +x src-tauri/binaries/display-dj-server-*`
-2. Is port 51337 (or nearby) available? `lsof -i :51337`
-3. Test the binary directly: `./src-tauri/binaries/display-dj-server-* serve 51337`
-
 ### "No displays found"
 
-The display-dj CLI can't detect monitors. Test directly:
+`core::PlatformImpl::detect_displays()` returned empty. Per platform:
 
-```bash
-./src-tauri/binaries/display-dj-server-* list
-```
-
-If this returns an empty array, see the [display-dj CLI troubleshooting](https://github.com/synle/display-dj-cli).
-
-On Linux, ensure `ddcutil` works: `sudo ddcutil detect`. If it works as root but not as user, check `groups` for `i2c` membership.
+- **macOS**: ensure the app/terminal has Accessibility permission for tiling (display detection itself doesn't require it, but useful to rule out). Try `cargo run` with logging on a known external monitor.
+- **Windows**: confirm DDC/CI is enabled in the monitor's OSD; some HDMI ports on certain GPUs strip DDC.
+- **Linux**: ensure `ddcutil` works as your user (not just root): `ddcutil detect`. If it works as root but not as user, check `groups` for `i2c` membership; you may need to log out and back in after `usermod -aG i2c $USER`.
 
 ### Dark mode toggle does nothing (Linux)
 

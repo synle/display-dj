@@ -1,19 +1,7 @@
-use serde::Deserialize;
 use tauri::Manager;
 
-#[derive(Deserialize)]
-struct ThemeResponse {
-    theme: String,
-}
-
-/// Returns the base URL of the display-dj sidecar HTTP server.
-fn base_url() -> String {
-    let port = crate::server_port();
-    format!("http://127.0.0.1:{}", port)
-}
-
-/// Queries the sidecar for the current OS theme and returns true if dark mode is active.
-/// Uses a 2-minute TTL cache to avoid hitting the sidecar on every poll.
+/// Returns the current OS theme (true = dark mode) via the in-process platform layer.
+/// Uses a 5-minute TTL cache to avoid re-probing on every poll.
 #[tauri::command]
 pub async fn get_dark_mode(
     state: tauri::State<'_, crate::AppState>,
@@ -29,36 +17,38 @@ pub async fn get_dark_mode(
         return Ok(cached);
     }
 
-    let url = format!("{}/theme", base_url());
-    let resp: ThemeResponse = reqwest::get(&url).await
-        .map_err(|e| format!("Failed to get theme: {}", e))?
-        .json().await
-        .map_err(|e| format!("Failed to parse theme response: {}", e))?;
-    let is_dark = resp.theme == "dark";
+    let is_dark = tauri::async_runtime::spawn_blocking(crate::core::theme::get_dark_mode)
+        .await
+        .map_err(|e| format!("get_dark_mode task join failed: {}", e))?
+        .unwrap_or(false);
     state.sidecar_cache.set_dark_mode(is_dark);
 
     crate::config::write_debug_log(
         &state,
         &format!(
-            "benchmark: get_dark_mode — {:.1}ms (sidecar, is_dark={})",
+            "benchmark: get_dark_mode — {:.1}ms (probe, is_dark={})",
             t0.elapsed().as_secs_f64() * 1000.0, is_dark,
         ),
     );
     Ok(is_dark)
 }
 
-/// Switches the OS theme to dark or light mode via the sidecar.
+/// Switches the OS theme to dark or light mode via the in-process platform layer.
 /// Updates the cached is_dark_mode state and refreshes the tray icon.
 #[tauri::command]
 pub async fn set_dark_mode(
     enabled: bool,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    let route = if enabled { "dark" } else { "light" };
-    let url = format!("{}/{}", base_url(), route);
-    log::info!("set_dark_mode: enabled={} GET {}", enabled, url);
-    reqwest::get(&url).await
-        .map_err(|e| format!("Failed to set dark mode: {}", e))?;
+    log::info!("set_dark_mode: enabled={}", enabled);
+    let ok = tauri::async_runtime::spawn_blocking(move || {
+        crate::core::theme::set_dark_mode(enabled)
+    })
+    .await
+    .map_err(|e| format!("set_dark_mode task join failed: {}", e))?;
+    if !ok {
+        log::warn!("set_dark_mode: platform layer reported failure");
+    }
     log::info!("set_dark_mode: done");
     // Invalidate cache since dark mode changed
     if let Some(state) = app.try_state::<crate::AppState>() {
