@@ -544,7 +544,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <div style={{ marginTop: '4px' }}>
                       <label className='settings-label'>Side Edge</label>
                       <Slider
-                        value={tiling?.sideEdgeTrigger ?? 10}
+                        value={tiling?.sideEdgeTrigger ?? 18}
                         min={5}
                         max={50}
                         unit='px'
@@ -554,7 +554,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <div style={{ marginTop: '4px' }}>
                       <label className='settings-label'>Top Edge</label>
                       <Slider
-                        value={tiling?.topEdgeTrigger ?? 10}
+                        value={tiling?.topEdgeTrigger ?? 18}
                         min={10}
                         max={50}
                         unit='px'
@@ -564,7 +564,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <div style={{ marginTop: '4px' }}>
                       <label className='settings-label'>Corner</label>
                       <Slider
-                        value={tiling?.cornerTrigger ?? 50}
+                        value={tiling?.cornerTrigger ?? 30}
                         min={25}
                         max={150}
                         unit='px'
