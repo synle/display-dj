@@ -424,6 +424,26 @@ pub fn run() {
                 let _ = autostart.disable();
             }
 
+            // First-launch accessibility nudge on macOS: if tiling is enabled
+            // but Accessibility permission has not been granted, open the
+            // Privacy & Security → Accessibility pane so the user can flip
+            // the toggle for Display DJ. Without this permission, every
+            // tile keybinding silently no-ops, which is confusing on a
+            // fresh install. We only check (and potentially prompt) when
+            // tiling is enabled — otherwise the user opted out of tiling
+            // and shouldn't be nagged.
+            #[cfg(target_os = "macos")]
+            {
+                if preferences.tiling.enabled && !tiling::is_accessibility_trusted_now() {
+                    log::warn!(
+                        "accessibility: not granted on launch — opening Privacy & Security pane"
+                    );
+                    let _ = open::that(
+                        "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                    );
+                }
+            }
+
             // Start tile snap (mouse edge snapping) on macOS — requires both
             // tiling.enabled and tiling.tile_snap_enabled to be true
             #[cfg(target_os = "macos")]
