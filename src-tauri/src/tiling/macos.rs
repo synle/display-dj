@@ -2079,7 +2079,7 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
                 // Colors: green=top (maximize), orange=sides (halves), purple=corners
                 struct ZoneRect {
                     x: f64, y: f64, w: f64, h: f64,
-                    /// 0=top(green), 1=side(orange), 2=corner(purple)
+                    /// 0=top(green), 1=side(orange), 2=corner(purple), 3=bottom-third(teal)
                     kind: u8,
                 }
                 let mut zones: Vec<ZoneRect> = Vec::new();
@@ -2131,6 +2131,23 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
                         w: corner, h: corner,
                         kind: 2,
                     });
+
+                    // Bottom-third zones (teal) — small rectangles at 25%, 50%,
+                    // 75% horizontal offsets on the bottom edge. Match the
+                    // hit-test rects in `build_snap_zones`: width=corner,
+                    // height=top_edge × 4/3 (a third taller for an easier
+                    // hit target), centered on each offset.
+                    let third_w = corner;
+                    let third_h = top_edge * 4.0 / 3.0;
+                    let bottom_y = d.y + d.height - third_h;
+                    for offset in &[0.25, 0.50, 0.75] {
+                        let cx = d.x + d.width * offset;
+                        zones.push(ZoneRect {
+                            x: cx - third_w / 2.0, y: bottom_y,
+                            w: third_w, h: third_h,
+                            kind: 3,
+                        });
+                    }
                 }
 
                 // Ensure we have enough zone windows, creating new ones as needed
@@ -2148,7 +2165,8 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
                         let (r, g, b) = match zone.kind {
                             0 => (0.2, 0.8, 0.3), // green for top/maximize
                             1 => (1.0, 0.6, 0.1), // orange for sides
-                            _ => (0.6, 0.3, 0.9), // purple for corners
+                            2 => (0.6, 0.3, 0.9), // purple for corners
+                            _ => (0.0, 0.75, 0.7), // teal for bottom thirds
                         };
                         ptrs[i] = create_colored_overlay(r, g, b, 0.25) as usize;
                     }
@@ -2220,6 +2238,28 @@ fn build_snap_zones(
         // Right edge (full height)
         zones.push((Rect { x: d.x + d.width - side_edge, y: d.y, width: side_edge, height: d.height },
             TilingLayout::RightHalf, i));
+        // Bottom-third zones — small rectangles at 25%, 50%, 75% horizontal
+        // offsets along the bottom edge. Each is `corner` wide × (top_edge × 4/3)
+        // tall (33% taller than the top strip so the bottom drop targets are
+        // easier to hit), centered on its offset. They don't overlap bottom
+        // corners (offsets > corner+corner/2 for any reasonable display), but
+        // corners are listed first anyway so they win priority.
+        let third_w = corner;
+        let third_h = top_edge * 4.0 / 3.0;
+        let bottom_y = d.y + d.height - third_h;
+        for &(offset, layout) in &[
+            (0.25, TilingLayout::LeftThird),
+            (0.50, TilingLayout::CenterThird),
+            (0.75, TilingLayout::RightThird),
+        ] {
+            let cx = d.x + d.width * offset;
+            zones.push((Rect {
+                x: cx - third_w / 2.0,
+                y: bottom_y,
+                width: third_w,
+                height: third_h,
+            }, layout, i));
+        }
     }
     zones
 }
@@ -2733,7 +2773,7 @@ pub fn start_tile_snap(app: AppHandle) {
             gap: 0,
             side_edge_trigger: 18.0,
             top_edge_trigger: 18.0,
-            corner_trigger: 50.0,
+            corner_trigger: 30.0,
             drag_window_title: String::new(),
             last_log_cursor: None,
         }),
@@ -3055,8 +3095,8 @@ mod tests {
     fn test_build_snap_zones_single_display() {
         let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
         let zones = build_snap_zones(&displays, 18.0, 18.0, 50.0);
-        // 4 corners + 3 edges = 7 zones per display
-        assert_eq!(zones.len(), 7);
+        // 4 corners + 3 edges + 3 bottom thirds = 10 zones per display
+        assert_eq!(zones.len(), 10);
         // First 4 are corners
         assert_eq!(zones[0].1, TilingLayout::TopLeftQuarter);
         assert_eq!(zones[1].1, TilingLayout::TopRightQuarter);
@@ -3066,14 +3106,89 @@ mod tests {
         assert_eq!(zones[4].1, TilingLayout::Maximize);
         assert_eq!(zones[5].1, TilingLayout::LeftHalf);
         assert_eq!(zones[6].1, TilingLayout::RightHalf);
+        // Then bottom thirds (25%, 50%, 75%)
+        assert_eq!(zones[7].1, TilingLayout::LeftThird);
+        assert_eq!(zones[8].1, TilingLayout::CenterThird);
+        assert_eq!(zones[9].1, TilingLayout::RightThird);
     }
 
-    /// Three monitors produce 21 zones (7 per display).
+    /// Three monitors produce 30 zones (10 per display).
     #[test]
     fn test_build_snap_zones_three_displays() {
         let displays = three_monitors();
         let zones = build_snap_zones(&displays, 18.0, 18.0, 50.0);
-        assert_eq!(zones.len(), 21);
+        assert_eq!(zones.len(), 30);
+    }
+
+    /// Bottom-third zones are positioned at 25%, 50%, 75% horizontal offsets,
+    /// `corner` wide, (top_edge × 4/3) tall, anchored to the bottom edge.
+    #[test]
+    fn test_build_snap_zones_bottom_thirds() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        let zones = build_snap_zones(&displays, 18.0, 18.0, 50.0);
+        let expected_h = 18.0 * 4.0 / 3.0;
+        // LeftThird at 25%
+        let (r, layout, _) = &zones[7];
+        assert_eq!(*layout, TilingLayout::LeftThird);
+        assert!((r.x - (1920.0 * 0.25 - 25.0)).abs() < 0.01);
+        assert!((r.y - (1080.0 - expected_h)).abs() < 0.01);
+        assert!((r.width - 50.0).abs() < 0.01);
+        assert!((r.height - expected_h).abs() < 0.01);
+        // CenterThird at 50%
+        let (r, layout, _) = &zones[8];
+        assert_eq!(*layout, TilingLayout::CenterThird);
+        assert!((r.x - (1920.0 * 0.50 - 25.0)).abs() < 0.01);
+        // RightThird at 75%
+        let (r, layout, _) = &zones[9];
+        assert_eq!(*layout, TilingLayout::RightThird);
+        assert!((r.x - (1920.0 * 0.75 - 25.0)).abs() < 0.01);
+    }
+
+    /// Cursor near 25% of bottom edge → LeftThird snap.
+    #[test]
+    fn test_snap_zone_bottom_left_third() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        // 25% of 1920 = 480, bottom y = 1080 - 18 = 1062..1080
+        let result = detect_snap_zone_macos(480.0, 1070.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::LeftThird, 0)));
+    }
+
+    /// Cursor near 50% of bottom edge → CenterThird snap.
+    #[test]
+    fn test_snap_zone_bottom_center_third() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        let result = detect_snap_zone_macos(960.0, 1070.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::CenterThird, 0)));
+    }
+
+    /// Cursor near 75% of bottom edge → RightThird snap.
+    #[test]
+    fn test_snap_zone_bottom_right_third() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        let result = detect_snap_zone_macos(1440.0, 1070.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::RightThird, 0)));
+    }
+
+    /// Cursor at the bottom-left corner → BottomLeftQuarter, not LeftThird.
+    /// Corners are listed first in `build_snap_zones` so they win priority
+    /// even though the bottom-third zone shares the same bottom-edge band.
+    #[test]
+    fn test_snap_zone_corner_beats_bottom_third() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        // Inside the bottom-left 50×50 corner (0..50, 1030..1080)
+        let result = detect_snap_zone_macos(10.0, 1070.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::BottomLeftQuarter, 0)));
+    }
+
+    /// Cursor above the bottom-third strip (in the empty middle) → no zone.
+    /// Verifies the bottom-third zones are anchored to the bottom edge and
+    /// don't reach up into the display body.
+    #[test]
+    fn test_snap_zone_above_bottom_third_no_zone() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        // 50% horizontally (would hit CenterThird) but well above the bottom strip
+        let result = detect_snap_zone_macos(960.0, 800.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, None);
     }
 
     /// Top-right corner rect of D0 has correct position and size.
