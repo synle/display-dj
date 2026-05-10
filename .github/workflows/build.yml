@@ -106,6 +106,122 @@ jobs:
           compression-level: 9
           if-no-files-found: ignore
 
+  coverage:
+    # Coverage runs on a single OS (Linux is cheapest) — the numbers
+    # don't vary meaningfully across platforms because the test suite
+    # is platform-agnostic. Thresholds are pinned to the v7.0.2 baseline
+    # minus a ~1pt safety margin against coincidental flakes. Real
+    # regressions below the floor fail the build; raise these as
+    # coverage improves.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev \
+            libssl-dev
+
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      # Vitest coverage thresholds live in vite.config.ts under
+      # `test.coverage.thresholds`. The `--coverage` flag fails the
+      # run when any of statements / branches / functions / lines
+      # falls below its configured floor. `tee` keeps the full
+      # output for the step-summary block below.
+      - name: Frontend coverage (Vitest)
+        id: frontend_cov
+        run: |
+          set -o pipefail
+          npm run test:coverage 2>&1 | tee /tmp/frontend-cov.txt
+
+      - name: Rust coverage (cargo-llvm-cov)
+        id: rust_cov
+        working-directory: src-tauri
+        # Floors mirror the v7.0.2 baseline (Regions 46.13%,
+        # Functions 50.13%, Lines 44.11%) minus a ~1pt safety margin.
+        # Raise these as coverage improves.
+        run: |
+          set -o pipefail
+          cargo llvm-cov --lib --summary-only \
+            --fail-under-lines 43 \
+            --fail-under-functions 49 \
+            --fail-under-regions 45 \
+            2>&1 | tee /tmp/rust-cov.txt
+
+      # Upload the full HTML / lcov reports as an artifact so reviewers
+      # can drill into per-file line-level coverage when the run-page
+      # summary's totals aren't enough. Vitest writes to `coverage/`;
+      # cargo-llvm-cov to `src-tauri/target/llvm-cov-target/`.
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage/
+            src-tauri/target/llvm-cov-target/html/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      # Surface both reports on the workflow's run page. `if: always()`
+      # ensures the summary still posts when the threshold check fails
+      # — that's exactly when a human wants to see the numbers.
+      - name: Post coverage to step summary
+        if: always()
+        run: |
+          {
+            echo "## Test coverage — \`$GITHUB_SHA\`"
+            echo
+            echo "### Frontend (Vitest, v8 provider)"
+            echo
+            echo '```text'
+            if [ -f /tmp/frontend-cov.txt ]; then
+              awk '/^=+ Coverage summary =+$/,/^=+$/' /tmp/frontend-cov.txt \
+                || tail -n 8 /tmp/frontend-cov.txt
+            else
+              echo "(frontend coverage did not run)"
+            fi
+            echo '```'
+            echo
+            echo "Thresholds (from \`vite.config.ts → test.coverage.thresholds\`):"
+            echo "lines ≥ 36, statements ≥ 35, branches ≥ 24, functions ≥ 32."
+            echo
+            echo "### Rust (cargo-llvm-cov)"
+            echo
+            echo '```text'
+            if [ -f /tmp/rust-cov.txt ]; then
+              awk '/^Filename/,/^TOTAL/' /tmp/rust-cov.txt \
+                || tail -n 30 /tmp/rust-cov.txt
+            else
+              echo "(rust coverage did not run)"
+            fi
+            echo '```'
+            echo
+            echo "Thresholds (from \`build.yml\` cargo-llvm-cov flags):"
+            echo "lines ≥ 43, functions ≥ 49, regions ≥ 45."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Post a comment on PRs with download links for each platform's build artifacts
   pr_comment:
     if: github.event_name == 'pull_request'
