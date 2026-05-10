@@ -1003,6 +1003,21 @@ pub fn get_tiling_supported() -> bool {
     }
 }
 
+/// Non-Tauri helper: returns whether the OS-level Accessibility permission is
+/// granted. On Windows and Linux (X11), there is no analogous permission, so
+/// this is always `true`. Used at startup (before `AppState` exists) and
+/// elsewhere outside of command handlers.
+pub fn is_accessibility_trusted_now() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::is_accessibility_trusted()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        true
+    }
+}
+
 /// Tauri command: check if accessibility/permissions are granted for tiling.
 /// On Windows and Linux (X11), no special permission is needed — always returns true.
 /// Uses a 2-minute TTL cache to avoid repeated system calls.
