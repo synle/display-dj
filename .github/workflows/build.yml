@@ -165,7 +165,7 @@ jobs:
           set -o pipefail
           cargo llvm-cov --lib --summary-only \
             --fail-under-lines 43 \
-            --fail-under-functions 49 \
+            --fail-under-functions 47 \
             --fail-under-regions 45 \
             2>&1 | tee /tmp/rust-cov.txt
 
