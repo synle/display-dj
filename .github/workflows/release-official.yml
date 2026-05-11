@@ -33,12 +33,51 @@ jobs:
       tag: ${{ steps.pre.outputs.tag }}
       sha: ${{ steps.pre.outputs.sha }}
     steps:
+      - uses: actions/checkout@v4
+
+      # Guard against shipping a bogus tag. Resolve in the same
+      # priority order as begin-release (input → tag-ref → file)
+      # and require strict semver. Aborts BEFORE the draft is
+      # created so no cleanup is needed.
+      #
+      # Why this exists (2026-05-10): the old expression
+      # `inputs.tag || github.ref_name` resolved to "main" on a
+      # workflow_dispatch from the default branch and produced a
+      # `vmain` release on display-dj. This guard + the safer
+      # `version:` expression below close that bug for good.
+      - name: Validate resolved tag (fail fast)
+        run: |
+          set -euo pipefail
+          INPUT_TAG="${{ inputs.tag }}"
+          if [ -n "$INPUT_TAG" ]; then
+            CANDIDATE="${INPUT_TAG#v}"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            CANDIDATE="${GITHUB_REF#refs/tags/v}"
+          else
+            CANDIDATE=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf-8')).version)")
+          fi
+          if [[ ! "$CANDIDATE" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.]+)?$ ]]; then
+            {
+              echo "::error::Resolved tag 'v${CANDIDATE}' is not strict semver."
+              echo "::error::Source priority: inputs.tag → refs/tags/v* → src-tauri/tauri.conf.json#version."
+              echo "::error::Fix one of those before re-running."
+              echo "::error::Guard added 2026-05-10 after a 'vmain' release was produced by an unguarded fallback to github.ref_name."
+            } >&2
+            exit 1
+          fi
+          echo "Tag candidate valid: v${CANDIDATE}"
+
       - uses: synle/workflows/actions/release/begin-release@main
         id: pre
         with:
           mode: official
           project_name: Display DJ
-          version: ${{ inputs.tag || github.ref_name }}
+          # Resolution order: explicit input → tag-ref push → version_file.
+          # We DO NOT fall back to github.ref_name unconditionally.
+          # On a workflow_dispatch from main (no tag input) that
+          # resolved to "main" and produced a `vmain` release on
+          # 2026-05-10. The guard step above enforces this too.
+          version: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || '') }}
           version_file: src-tauri/tauri.conf.json
 
   build:
