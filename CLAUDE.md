@@ -4,7 +4,7 @@
 
 Cross-platform desktop system tray application for controlling monitor brightness, contrast, dark mode, volume, keep-awake (sleep prevention), and **window tiling** (macOS + Windows + Linux/X11). Built with **Tauri v2** (Rust backend) + **React 19** (TypeScript frontend) + **Vite 6**.
 
-As of v7.0.0, all platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, wallpaper, slideshow) is **vendored in-process** under `src-tauri/src/core/`. There is no separate sidecar process and no runtime dependency on the display-dj-cli repo or its releases — Tauri commands call `core::*` functions directly.
+As of v7.0.0, all platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, wallpaper, slideshow) is **vendored in-process** under `src-tauri/src/core/`. There is no separate sidecar process and no runtime dependency on the display-dj-cli repo or its releases — Tauri commands call `core::*` functions directly. See [`VENDORING.md`](VENDORING.md) for the upstream→vendored file map and `./scripts/check-vendor-drift.sh` for drift detection.
 
 For full architecture details, request lifecycle, layer-by-layer breakdown, data flow diagrams, and "where to edit" reference, see **[DEV.md](DEV.md)**.
 
@@ -310,7 +310,7 @@ Monitor IDs are the `id` field on `core::DisplayInfo` (e.g. `"1"`, `"2"`, `"buil
 
 ## Related Projects
 
-- **[display-dj-cli](https://github.com/synle/display-dj-cli)** — the **upstream** of the platform code now vendored at `src-tauri/src/core/`. Local checkout at `/Users/syle/git/display-dj-cli`. Display DJ has **no runtime dependency** on this repo: builds and releases do not download or bundle anything from it. It remains useful as a standalone CLI and as a place to land platform-code changes that should be cross-applied; when fixing display/wallpaper/theme bugs, consider whether the fix belongs in both repos.
+- **[display-dj-cli](https://github.com/synle/display-dj-cli)** — the **upstream** of the platform code now vendored at `src-tauri/src/core/`. Local checkout at `/Users/syle/git/display-dj-cli`. Display DJ has **no runtime dependency** on this repo: builds and releases do not download or bundle anything from it. It remains useful as a standalone CLI and as a place to land platform-code changes that should be cross-applied; when fixing display/wallpaper/theme bugs, consider whether the fix belongs in both repos. See [`VENDORING.md`](VENDORING.md) for per-file provenance (upstream path + last-synced SHA) and run `./scripts/check-vendor-drift.sh` to detect upstream drift.
 
 ## Dependencies
 
