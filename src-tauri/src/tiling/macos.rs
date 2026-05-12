@@ -2243,7 +2243,8 @@ fn build_snap_zones(
         // tall (33% taller than the top strip so the bottom drop targets are
         // easier to hit), centered on its offset. They don't overlap bottom
         // corners (offsets > corner+corner/2 for any reasonable display), but
-        // corners are listed first anyway so they win priority.
+        // corners are listed first anyway so they win priority. The 2/3
+        // markers added below share this same row and height.
         let third_w = corner;
         let third_h = top_edge * 4.0 / 3.0;
         let bottom_y = d.y + d.height - third_h;
@@ -2257,6 +2258,24 @@ fn build_snap_zones(
                 x: cx - third_w / 2.0,
                 y: bottom_y,
                 width: third_w,
+                height: third_h,
+            }, layout, i));
+        }
+        // Bottom 2/3 zones — wider markers (`corner * 2` wide) sharing the
+        // same bottom row as the 1/3 markers, centered at 12.5% (LeftTwoThirds)
+        // and 87.5% (RightTwoThirds). Double width visually distinguishes
+        // them from the 1/3 markers without overlapping the bottom-corner
+        // quarter zones (which are listed first and win priority anyway).
+        let two_third_w = corner * 2.0;
+        for &(offset, layout) in &[
+            (0.125, TilingLayout::LeftTwoThirds),
+            (0.875, TilingLayout::RightTwoThirds),
+        ] {
+            let cx = d.x + d.width * offset;
+            zones.push((Rect {
+                x: cx - two_third_w / 2.0,
+                y: bottom_y,
+                width: two_third_w,
                 height: third_h,
             }, layout, i));
         }
@@ -3095,8 +3114,8 @@ mod tests {
     fn test_build_snap_zones_single_display() {
         let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
         let zones = build_snap_zones(&displays, 18.0, 18.0, 50.0);
-        // 4 corners + 3 edges + 3 bottom thirds = 10 zones per display
-        assert_eq!(zones.len(), 10);
+        // 4 corners + 3 edges + 3 bottom thirds + 2 bottom two-thirds = 12 zones per display
+        assert_eq!(zones.len(), 12);
         // First 4 are corners
         assert_eq!(zones[0].1, TilingLayout::TopLeftQuarter);
         assert_eq!(zones[1].1, TilingLayout::TopRightQuarter);
@@ -3110,14 +3129,17 @@ mod tests {
         assert_eq!(zones[7].1, TilingLayout::LeftThird);
         assert_eq!(zones[8].1, TilingLayout::CenterThird);
         assert_eq!(zones[9].1, TilingLayout::RightThird);
+        // Then bottom two-thirds (12.5%, 87.5%)
+        assert_eq!(zones[10].1, TilingLayout::LeftTwoThirds);
+        assert_eq!(zones[11].1, TilingLayout::RightTwoThirds);
     }
 
-    /// Three monitors produce 30 zones (10 per display).
+    /// Three monitors produce 36 zones (12 per display).
     #[test]
     fn test_build_snap_zones_three_displays() {
         let displays = three_monitors();
         let zones = build_snap_zones(&displays, 18.0, 18.0, 50.0);
-        assert_eq!(zones.len(), 30);
+        assert_eq!(zones.len(), 36);
     }
 
     /// Bottom-third zones are positioned at 25%, 50%, 75% horizontal offsets,
@@ -3189,6 +3211,71 @@ mod tests {
         // 50% horizontally (would hit CenterThird) but well above the bottom strip
         let result = detect_snap_zone_macos(960.0, 800.0, &displays, 18.0, 18.0, 50.0);
         assert_eq!(result, None);
+    }
+
+    /// Bottom 2/3 zones are positioned at 12.5% and 87.5% horizontal offsets,
+    /// `corner * 2` wide, sharing the bottom-third row's height.
+    #[test]
+    fn test_build_snap_zones_bottom_two_thirds() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        let zones = build_snap_zones(&displays, 18.0, 18.0, 50.0);
+        let expected_h = 18.0 * 4.0 / 3.0;
+        // LeftTwoThirds at 12.5% (centered), width = 100
+        let (r, layout, _) = &zones[10];
+        assert_eq!(*layout, TilingLayout::LeftTwoThirds);
+        assert!((r.x - (1920.0 * 0.125 - 50.0)).abs() < 0.01);
+        assert!((r.y - (1080.0 - expected_h)).abs() < 0.01);
+        assert!((r.width - 100.0).abs() < 0.01);
+        assert!((r.height - expected_h).abs() < 0.01);
+        // RightTwoThirds at 87.5% (centered), width = 100
+        let (r, layout, _) = &zones[11];
+        assert_eq!(*layout, TilingLayout::RightTwoThirds);
+        assert!((r.x - (1920.0 * 0.875 - 50.0)).abs() < 0.01);
+        assert!((r.width - 100.0).abs() < 0.01);
+    }
+
+    /// Cursor near 12.5% of bottom edge → LeftTwoThirds snap.
+    #[test]
+    fn test_snap_zone_bottom_left_two_thirds() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        // 12.5% of 1920 = 240, bottom strip
+        let result = detect_snap_zone_macos(240.0, 1070.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::LeftTwoThirds, 0)));
+    }
+
+    /// Cursor near 87.5% of bottom edge → RightTwoThirds snap.
+    #[test]
+    fn test_snap_zone_bottom_right_two_thirds() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        // 87.5% of 1920 = 1680
+        let result = detect_snap_zone_macos(1680.0, 1070.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::RightTwoThirds, 0)));
+    }
+
+    /// 2/3 markers don't overlap the 1/3 markers — cursor between them
+    /// (around 18.75% = 360px) hits no zone, and the 1/3 marker at 25%
+    /// still resolves to LeftThird.
+    #[test]
+    fn test_snap_zone_two_thirds_and_thirds_no_overlap() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        // 12.5% LeftTwoThirds spans x=190..290; 25% LeftThird spans x=455..505.
+        // Halfway between (x=360) should land in the gap and return None.
+        let gap = detect_snap_zone_macos(360.0, 1070.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(gap, None);
+        // LeftThird at 480 (25%) still resolves.
+        let third = detect_snap_zone_macos(480.0, 1070.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(third, Some((TilingLayout::LeftThird, 0)));
+    }
+
+    /// The 2/3 markers don't overlap the bottom corners. With corner=50
+    /// and width=1920, LeftTwoThirds spans x=190..290 — outside the
+    /// bottom-left corner (0..50). A cursor at the very edge of the
+    /// 2/3 marker (x=190) resolves to LeftTwoThirds, not the corner.
+    #[test]
+    fn test_snap_zone_two_thirds_does_not_overlap_corner() {
+        let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+        let result = detect_snap_zone_macos(200.0, 1070.0, &displays, 18.0, 18.0, 50.0);
+        assert_eq!(result, Some((TilingLayout::LeftTwoThirds, 0)));
     }
 
     /// Top-right corner rect of D0 has correct position and size.
