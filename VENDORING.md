@@ -26,22 +26,25 @@ commit on `main` that each vendored snapshot corresponds to. Run
 
 | Vendored path                     | Upstream path    | Last-synced SHA | Notes                                                                                                                                                                  |
 | --------------------------------- | ---------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src-tauri/src/core/mod.rs`       | `src/main.rs`    | `92bbadb`       | Extracted shared types (`DisplayInfo`, `DisplayControl`, `Platform`, VCP consts, `matches_display`) + added `PlatformImpl` cfg-alias.                                  |
-| `src-tauri/src/core/macos.rs`     | `src/macos.rs`   | `92bbadb`       | Copied 1:1; only adjustment is `crate::` → `super::`.                                                                                                                  |
-| `src-tauri/src/core/windows.rs`   | `src/windows.rs` | `92bbadb`       | Copied 1:1; only adjustment is `crate::` → `super::`.                                                                                                                  |
-| `src-tauri/src/core/linux.rs`     | `src/linux.rs`   | `92bbadb`       | Copied 1:1; only adjustment is `crate::` → `super::`.                                                                                                                  |
-| `src-tauri/src/core/theme.rs`     | `src/main.rs`    | `92bbadb`       | Extracted `get_dark_mode` / `set_dark_mode` per-OS impls (macOS AppleScript, Windows registry, Linux gsettings/dconf).                                                 |
-| `src-tauri/src/core/volume.rs`    | `src/main.rs`    | `92bbadb`       | Extracted `get_volume` / `set_volume` / `set_mute` per-OS impls + `VolumeInfo`.                                                                                        |
-| `src-tauri/src/core/wallpaper.rs` | `src/main.rs`    | `92bbadb`       | Extracted `set_wallpaper` / `set_wallpaper_one` per-OS impls + `SlideshowState` and `slideshow_*` helpers.                                                             |
-| `src-tauri/src/core/display.rs`   | `src/main.rs`    | `92bbadb`       | Distilled high-level fan-out helpers (`list_all`, `set_all_brightness`, `set_one_brightness`, contrast variants) from CLI's `cmd_get` / `cmd_set_all` / `cmd_set_one`. |
+| `src-tauri/src/core/mod.rs`       | `src/main.rs`    | `3b9306d`       | Extracted shared types (`DisplayInfo`, `DisplayControl`, `Platform`, VCP consts, `matches_display`) + added `PlatformImpl` cfg-alias.                                  |
+| `src-tauri/src/core/macos.rs`     | `src/macos.rs`   | `3b9306d`       | Copied 1:1; only adjustment is `crate::` → `super::`.                                                                                                                  |
+| `src-tauri/src/core/windows.rs`   | `src/windows.rs` | `3b9306d`       | Copied 1:1; only adjustment is `crate::` → `super::`.                                                                                                                  |
+| `src-tauri/src/core/linux.rs`     | `src/linux.rs`   | `3b9306d`       | Copied 1:1; only adjustment is `crate::` → `super::`.                                                                                                                  |
+| `src-tauri/src/core/theme.rs`     | `src/main.rs`    | `3b9306d`       | Extracted `get_dark_mode` / `set_dark_mode` per-OS impls (macOS AppleScript, Windows registry, Linux gsettings/dconf).                                                 |
+| `src-tauri/src/core/volume.rs`    | `src/main.rs`    | `3b9306d`       | Extracted `get_volume` / `set_volume` / `set_mute` per-OS impls + `VolumeInfo`.                                                                                        |
+| `src-tauri/src/core/wallpaper.rs` | `src/main.rs`    | `3b9306d`       | Extracted `set_wallpaper` / `set_wallpaper_one` per-OS impls + `SlideshowState` and `slideshow_*` helpers.                                                             |
+| `src-tauri/src/core/display.rs`   | `src/main.rs`    | `3b9306d`       | Distilled high-level fan-out helpers (`list_all`, `set_all_brightness`, `set_one_brightness`, contrast variants) from CLI's `cmd_get` / `cmd_set_all` / `cmd_set_one`. |
 
 The recorded SHAs above reflect the latest upstream commit at which
 the vendored snapshots are byte-identical (modulo the
 `crate::` → `super::` namespace tweak on the platform files). The
 original vendor pass at display-dj `7b1bc23` (2026-05-03) corresponds
-to upstream `a4fc5c4`; `src/` on cli `main` has not changed since,
-so the recorded baseline has been rolled forward to current upstream
-HEAD via `./scripts/check-vendor-drift.sh --update`.
+to upstream `a4fc5c4`; through display-dj-cli `v2.2.4` (`3b9306d`,
+2026-05-12) the upstream `src/` tree has not changed — that release
+added only `tests/cli.rs` (CLI-only integration tests, not in the
+vendoring scope), CI workflow bumps, and a Cargo version bump — so
+the recorded baseline has been rolled forward to that upstream HEAD
+via `./scripts/check-vendor-drift.sh --update`.
 
 ## How to refresh
 
