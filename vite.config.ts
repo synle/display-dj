@@ -28,18 +28,34 @@ export default defineConfig(async () => ({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'json', 'html'],
+      // Explicit source globs (CLAUDE.md rule 41 — never `**/*` or `.`).
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.{test,spec}.{ts,tsx}', 'src/test/**', 'src/main.tsx', 'src/**/*.d.ts'],
-      // Thresholds pinned to the v7.0.2 baseline (Statements 36.93%,
-      // Branches 25.32%, Functions 33.33%, Lines 37.8%) minus a ~1pt
-      // safety margin against coincidental flakes. A real regression
-      // past the floor fails the build. Raise these as coverage
-      // improves; never lower them.
+      exclude: [
+        'src/**/*.{test,spec}.{ts,tsx}',
+        'src/test/**',
+        'src/main.tsx',
+        'src/**/*.d.ts',
+        // Defensive exclusions (rule 41) — keep credentials, keys, and
+        // binary assets out of coverage even if they ever appear under src/.
+        '.env*',
+        '**/secret*',
+        '**/credential*',
+        '**/*.pem',
+        '**/*.key',
+        '**/*.p12',
+        'assets/binaries/**',
+        'secrets/**',
+      ],
+      // Thresholds at the v7.0.3 baseline (Statements 75.59%, Branches
+      // 73.35%, Functions 71.92%, Lines 77.56%) — held at the ≥60/60 floor
+      // the user requested for this raise. A real regression past the
+      // floor fails the build. Raise these as coverage improves; never
+      // lower them.
       thresholds: {
-        lines: 36,
-        statements: 35,
-        branches: 24,
-        functions: 32,
+        lines: 60,
+        statements: 60,
+        branches: 60,
+        functions: 60,
       },
     },
   },

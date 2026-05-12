@@ -301,6 +301,92 @@ describe('App smoke test', () => {
     });
   });
 
+  it('calls set_dark_mode when DARK button clicked', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Display DJ')).toBeInTheDocument());
+    await user.click(screen.getByText('DARK').closest('button')!);
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_dark_mode', { enabled: true });
+    });
+  });
+
+  it('calls set_dark_mode false when LIGHT button clicked', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Display DJ')).toBeInTheDocument());
+    await user.click(screen.getByText('LIGHT').closest('button')!);
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_dark_mode', { enabled: false });
+    });
+  });
+
+  it('calls set_keep_awake when Keep Awake button is clicked', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Keep Awake: Off')).toBeInTheDocument());
+    await user.click(screen.getByText('Keep Awake: Off'));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_keep_awake', { enabled: true });
+    });
+  });
+
+  it('calls apply_profile when a profile button is clicked', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Presentation')).toBeInTheDocument());
+    await user.click(screen.getByText('Focus'));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('apply_profile', { index: 1 });
+    });
+  });
+
+  it('opens settings panel when settings button is clicked', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Display DJ')).toBeInTheDocument());
+    await user.click(screen.getByTitle('Settings'));
+    await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
+  });
+
+  it('handles backend rejection on dark-mode toggle without crashing', async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'set_dark_mode') return Promise.reject(new Error('nope'));
+      if (cmd === 'fetch_all_state') {
+        return Promise.resolve({ monitors: [], isDark: false, volume: 50 });
+      }
+      if (cmd === 'get_app_version') return Promise.resolve('2.0.0');
+      if (cmd === 'get_preferences') {
+        return Promise.resolve({
+          showIndividualDisplays: false,
+          minBrightness: 10,
+          keyBindings: [],
+          profiles: [],
+          nightModeSchedule: {
+            enabled: false,
+            nightStart: '21:00',
+            nightBrightness: 20,
+            dayStart: '07:00',
+            dayBrightness: 100,
+          },
+          debugLogging: false,
+          launchAtLogin: false,
+          monitorConfigs: [],
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('DARK', { exact: false })).toBeInTheDocument());
+    await user.click(screen.getByText('DARK').closest('button')!);
+    await waitFor(() => {
+      expect(errSpy).toHaveBeenCalledWith('Failed to set dark mode:', expect.any(Error));
+    });
+    errSpy.mockRestore();
+  });
+
   it('calls set_brightness with API id (not uid)', async () => {
     const singleMonitor = [
       {
