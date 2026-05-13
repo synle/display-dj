@@ -12,8 +12,59 @@ mod volume;
 mod wallpaper;
 
 use chrono::Timelike;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
+
+/// Tracks whether we've already written the one-time startup dump to the debug log.
+/// Set on the first successful `fetch_all_state` call so subsequent calls are quiet.
+static STARTUP_DUMP_WRITTEN: AtomicBool = AtomicBool::new(false);
+
+/// Writes a comprehensive snapshot to the debug log the first time the frontend
+/// fetches state after launch. Anchors every subsequent debug-log line to a known
+/// baseline: app version, OS+arch, monitor enumeration with DDC support per panel,
+/// and the platform-layer `debug_info` JSON (HMONITOR list, raw VCP brightness/
+/// contrast reads, DDC enumerate error, WMI brightness). Critical for diagnosing
+/// "slider moves but hardware doesn't" symptoms: the JSON shows whether DDC reads
+/// even succeeded for each panel before we tried any writes.
+fn write_startup_dump(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    if STARTUP_DUMP_WRITTEN.swap(true, Ordering::Relaxed) {
+        return; // already wrote it
+    }
+    let state = match app.try_state::<AppState>() {
+        Some(s) => s,
+        None => return,
+    };
+
+    let mut lines: Vec<String> = Vec::new();
+    lines.push("=== STARTUP DUMP (first fetch_all_state) ===".into());
+    lines.push(format!("version: {}", config::get_app_version()));
+    lines.push(format!("os: {} {}", std::env::consts::OS, std::env::consts::ARCH));
+    lines.push(format!("backend: in-process (display-dj-cli vendored)"));
+
+    // Live enumerate — same code path the brightness slider hits.
+    let displays = crate::core::display::list_all();
+    lines.push(format!("--- core::display::list_all ({} displays) ---", displays.len()));
+    for d in &displays {
+        lines.push(format!(
+            "  id={} type={} ddc_supported={} brightness={:?} contrast={:?} name={:?}",
+            d.id, d.display_type, d.ddc_supported, d.brightness, d.contrast, d.name,
+        ));
+    }
+
+    // Raw platform diagnostics — HMONITOR mapping, DDC enumerate result,
+    // per-monitor VCP brightness/contrast (current+max), WMI brightness.
+    lines.push("--- platform debug_info ---".into());
+    let platform_dbg = <crate::core::PlatformImpl as crate::core::Platform>::debug_info();
+    match serde_json::to_string_pretty(&platform_dbg) {
+        Ok(s) => lines.push(s),
+        Err(e) => lines.push(format!("(serialize failed: {})", e)),
+    }
+    lines.push("=== END STARTUP DUMP ===".into());
+
+    config::write_debug_log(&state, &lines.join("\n"));
+}
 
 /// Stub tiling commands for platforms without tiling support (e.g. FreeBSD).
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -53,6 +104,10 @@ async fn fetch_all_state(
 ) -> Result<AllState, String> {
     use tauri::Manager;
     let t0 = std::time::Instant::now();
+    // One-time per-launch dump: version, OS, full live monitor enumeration,
+    // platform debug_info JSON. Anchors every later debug-log line to a known
+    // baseline so we don't have to ask "what does the hardware look like".
+    write_startup_dump(&app);
     if let Some(s) = app.try_state::<AppState>() {
         config::write_debug_log(&s, "benchmark: fetch_all_state — START");
     }

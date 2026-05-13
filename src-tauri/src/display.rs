@@ -52,33 +52,34 @@ async fn detect_monitors() -> Vec<Monitor> {
 }
 
 /// Set brightness on a single monitor via the in-process platform layer,
-/// clamped to `[min_brightness, 100]`.
-async fn set_monitor_brightness(monitor_id: &str, value: u32, min_brightness: u32) -> Result<(), String> {
+/// clamped to `[min_brightness, 100]`. Returns whether the platform call succeeded.
+async fn set_monitor_brightness(monitor_id: &str, value: u32, min_brightness: u32) -> Result<bool, String> {
     let clamped = value.clamp(min_brightness, 100);
     let id = monitor_id.to_string();
-    log::info!("set_monitor_brightness: id={} value={} clamped={}", id, value, clamped);
+    log::info!("set_monitor_brightness: id={} value={} clamped={} min={}", id, value, clamped, min_brightness);
     let ok = tauri::async_runtime::spawn_blocking(move || {
         crate::core::display::set_one_brightness(&id, clamped as u16, "force")
     })
     .await
     .map_err(|e| format!("brightness task join failed: {}", e))?;
-    if ok { Ok(()) } else { Err(format!("set_brightness failed for monitor {}", monitor_id)) }
+    Ok(ok)
 }
 
 /// Set brightness on all monitors via the in-process platform layer.
-async fn set_all_monitors_brightness(value: u32, min_brightness: u32) -> Result<(), String> {
+/// Returns the per-monitor (id, success) results so the caller can log them.
+async fn set_all_monitors_brightness(value: u32, min_brightness: u32) -> Result<Vec<(String, bool)>, String> {
     let clamped = value.clamp(min_brightness, 100);
-    log::info!("set_all_monitors_brightness: value={} clamped={}", value, clamped);
-    tauri::async_runtime::spawn_blocking(move || {
-        let _ = crate::core::display::set_all_brightness(clamped as u16, "force");
+    log::info!("set_all_monitors_brightness: value={} clamped={} min={}", value, clamped, min_brightness);
+    let results = tauri::async_runtime::spawn_blocking(move || {
+        crate::core::display::set_all_brightness(clamped as u16, "force")
     })
     .await
     .map_err(|e| format!("set_all_brightness task join failed: {}", e))?;
-    Ok(())
+    Ok(results)
 }
 
 /// Set contrast on a single monitor via the in-process platform layer (0-100, DDC-only).
-async fn set_monitor_contrast(monitor_id: &str, value: u32) -> Result<(), String> {
+async fn set_monitor_contrast(monitor_id: &str, value: u32) -> Result<bool, String> {
     let clamped = value.min(100);
     let id = monitor_id.to_string();
     log::info!("set_monitor_contrast: id={} value={}", id, clamped);
@@ -87,19 +88,20 @@ async fn set_monitor_contrast(monitor_id: &str, value: u32) -> Result<(), String
     })
     .await
     .map_err(|e| format!("contrast task join failed: {}", e))?;
-    if ok { Ok(()) } else { Err(format!("set_contrast failed for monitor {}", monitor_id)) }
+    Ok(ok)
 }
 
 /// Set contrast on all monitors via the in-process platform layer.
-async fn set_all_monitors_contrast(value: u32) -> Result<(), String> {
+/// Returns the per-monitor (id, success) results so the caller can log them.
+async fn set_all_monitors_contrast(value: u32) -> Result<Vec<(String, bool)>, String> {
     let clamped = value.min(100);
     log::info!("set_all_monitors_contrast: value={}", clamped);
-    tauri::async_runtime::spawn_blocking(move || {
-        let _ = crate::core::display::set_all_contrast(clamped as u16);
+    let results = tauri::async_runtime::spawn_blocking(move || {
+        crate::core::display::set_all_contrast(clamped as u16)
     })
     .await
     .map_err(|e| format!("set_all_contrast task join failed: {}", e))?;
-    Ok(())
+    Ok(results)
 }
 
 // ===========================================================================
@@ -239,9 +241,29 @@ pub async fn set_brightness(
     monitor_id: String,
     value: u32,
 ) -> Result<(), String> {
+    let t0 = std::time::Instant::now();
     let min = state.preferences.lock().map_err(|e| e.to_string())?.effective_min_brightness();
+    crate::config::write_debug_log(
+        &state,
+        &format!("set_brightness: id={} value={} min={} — START", monitor_id, value, min),
+    );
     state.sidecar_cache.invalidate_monitors();
-    set_monitor_brightness(&monitor_id, value, min).await
+    let result = set_monitor_brightness(&monitor_id, value, min).await;
+    let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+    match &result {
+        Ok(ok) => crate::config::write_debug_log(
+            &state,
+            &format!("set_brightness: id={} platform_ok={} — {:.1}ms", monitor_id, ok, elapsed),
+        ),
+        Err(e) => crate::config::write_debug_log(
+            &state,
+            &format!("set_brightness: id={} ERROR={} — {:.1}ms", monitor_id, e, elapsed),
+        ),
+    }
+    match result? {
+        true => Ok(()),
+        false => Err(format!("set_brightness failed for monitor {}", monitor_id)),
+    }
 }
 
 /// Sets brightness for all monitors, enforcing the minimum brightness floor.
@@ -250,26 +272,97 @@ pub async fn set_all_brightness(
     state: tauri::State<'_, crate::AppState>,
     value: u32,
 ) -> Result<(), String> {
+    let t0 = std::time::Instant::now();
     let min = state.preferences.lock().map_err(|e| e.to_string())?.effective_min_brightness();
+    crate::config::write_debug_log(
+        &state,
+        &format!("set_all_brightness: value={} min={} — START", value, min),
+    );
     state.sidecar_cache.invalidate_monitors();
-    set_all_monitors_brightness(value, min).await
+    let result = set_all_monitors_brightness(value, min).await;
+    let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+    match &result {
+        Ok(per_monitor) => {
+            let summary = per_monitor.iter()
+                .map(|(id, ok)| format!("{}={}", id, ok))
+                .collect::<Vec<_>>()
+                .join(", ");
+            crate::config::write_debug_log(
+                &state,
+                &format!(
+                    "set_all_brightness: value={} per_monitor=[{}] — {:.1}ms",
+                    value, summary, elapsed,
+                ),
+            );
+        }
+        Err(e) => crate::config::write_debug_log(
+            &state,
+            &format!("set_all_brightness: value={} ERROR={} — {:.1}ms", value, e, elapsed),
+        ),
+    }
+    result.map(|_| ())
 }
 
 /// Sets contrast for a single monitor (0-100, DDC-only).
 #[tauri::command]
 pub async fn set_contrast(
+    state: tauri::State<'_, crate::AppState>,
     monitor_id: String,
     value: u32,
 ) -> Result<(), String> {
-    set_monitor_contrast(&monitor_id, value).await
+    let t0 = std::time::Instant::now();
+    crate::config::write_debug_log(
+        &state,
+        &format!("set_contrast: id={} value={} — START", monitor_id, value),
+    );
+    let result = set_monitor_contrast(&monitor_id, value).await;
+    let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+    match &result {
+        Ok(ok) => crate::config::write_debug_log(
+            &state,
+            &format!("set_contrast: id={} platform_ok={} — {:.1}ms", monitor_id, ok, elapsed),
+        ),
+        Err(e) => crate::config::write_debug_log(
+            &state,
+            &format!("set_contrast: id={} ERROR={} — {:.1}ms", monitor_id, e, elapsed),
+        ),
+    }
+    match result? {
+        true => Ok(()),
+        false => Err(format!("set_contrast failed for monitor {}", monitor_id)),
+    }
 }
 
 /// Sets contrast for all monitors (0-100, DDC-only).
 #[tauri::command]
 pub async fn set_all_contrast(
+    state: tauri::State<'_, crate::AppState>,
     value: u32,
 ) -> Result<(), String> {
-    set_all_monitors_contrast(value).await
+    let t0 = std::time::Instant::now();
+    crate::config::write_debug_log(
+        &state,
+        &format!("set_all_contrast: value={} — START", value),
+    );
+    let result = set_all_monitors_contrast(value).await;
+    let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+    match &result {
+        Ok(per_monitor) => {
+            let summary = per_monitor.iter()
+                .map(|(id, ok)| format!("{}={}", id, ok))
+                .collect::<Vec<_>>()
+                .join(", ");
+            crate::config::write_debug_log(
+                &state,
+                &format!("set_all_contrast: value={} per_monitor=[{}] — {:.1}ms", value, summary, elapsed),
+            );
+        }
+        Err(e) => crate::config::write_debug_log(
+            &state,
+            &format!("set_all_contrast: value={} ERROR={} — {:.1}ms", value, e, elapsed),
+        ),
+    }
+    result.map(|_| ())
 }
 
 /// Updates a monitor's custom label in preferences. Creates a new metadata entry

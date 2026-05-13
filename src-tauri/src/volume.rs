@@ -38,8 +38,15 @@ pub async fn get_volume(
 /// Updates the cached is_muted state and refreshes the tray icon.
 #[tauri::command]
 pub async fn set_volume(value: u32, app: tauri::AppHandle) -> Result<(), String> {
+    let t0 = std::time::Instant::now();
     let clamped = value.min(100);
-    log::info!("set_volume: value={}", clamped);
+    log::info!("set_volume: value={} clamped={}", value, clamped);
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        crate::config::write_debug_log(
+            &state,
+            &format!("set_volume: value={} clamped={} — START", value, clamped),
+        );
+    }
     let ok = tauri::async_runtime::spawn_blocking(move || {
         crate::core::volume::set_volume(clamped as u16)
     })
@@ -48,10 +55,15 @@ pub async fn set_volume(value: u32, app: tauri::AppHandle) -> Result<(), String>
     if !ok {
         log::warn!("set_volume: platform layer reported failure");
     }
-    log::info!("set_volume: done");
+    let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+    log::info!("set_volume: done platform_ok={} elapsed={:.1}ms", ok, elapsed);
     // Invalidate cache since volume changed
     if let Some(state) = app.try_state::<crate::AppState>() {
         state.sidecar_cache.invalidate_volume();
+        crate::config::write_debug_log(
+            &state,
+            &format!("set_volume: value={} platform_ok={} — {:.1}ms", clamped, ok, elapsed),
+        );
     }
     crate::tray_icon::set_muted_state(&app, clamped == 0);
     Ok(())

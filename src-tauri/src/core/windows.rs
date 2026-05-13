@@ -44,11 +44,16 @@ impl BuiltinControl {
             "(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, {})",
             value
         );
-        hidden_command("powershell")
+        let out = hidden_command("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+            .output();
+        let ok = out.as_ref().map(|o| o.status.success()).unwrap_or(false);
+        let stderr = out.as_ref().map(|o| String::from_utf8_lossy(&o.stderr).trim().to_string()).unwrap_or_default();
+        log::info!(
+            "set_brightness[builtin/wmi]: value={} return_ok={} stderr={:?}",
+            value, ok, stderr,
+        );
+        ok
     }
 }
 
@@ -103,12 +108,21 @@ impl DisplayControl for ExternalControl {
     fn set_brightness(&mut self, value: u16, mode: &str) -> bool {
         let use_ddc = mode == "ddc" || mode == "force" || (mode == "auto" && self.ddc_supported);
         let use_gamma = mode == "gamma" || mode == "force" || (mode == "auto" && !self.ddc_supported);
+        let mut ddc_attempted = false;
+        let mut ddc_ok = true;
+        let mut ddc_err: Option<String> = None;
         let mut ok = true;
 
         if use_ddc && self.ddc_supported {
+            ddc_attempted = true;
             let ddc_val = if value == 0 { 1 } else { value }; // clamp to 1 to avoid standby
-            if self.ddc_monitor.set_vcp_feature(VCP_BRIGHTNESS, ddc_val).is_err() {
-                ok = false;
+            match self.ddc_monitor.set_vcp_feature(VCP_BRIGHTNESS, ddc_val) {
+                Ok(()) => {}
+                Err(e) => {
+                    ddc_ok = false;
+                    ddc_err = Some(format!("{}", e));
+                    ok = false;
+                }
             }
             thread::sleep(Duration::from_millis(100)); // DDC processing delay
         }
@@ -117,12 +131,29 @@ impl DisplayControl for ExternalControl {
             set_gamma_for_hmonitor(self.hmonitor, value as u32);
         }
 
+        // Per-call diagnostic — surfaces in stderr / env_logger output. Shows which
+        // path(s) ran, whether DDC actually accepted the write, and the raw error
+        // when SetVCPFeature failed. Critical for diagnosing displays that look
+        // "controllable" (ddc_supported=true at enumerate time) but silently reject
+        // brightness writes (common on USB-C panels and some Samsung models).
+        log::info!(
+            "set_brightness[external]: value={} mode={} ddc_supported={} use_ddc={} use_gamma={} ddc_attempted={} ddc_ok={} ddc_err={:?} return_ok={}",
+            value, mode, self.ddc_supported, use_ddc, use_gamma, ddc_attempted, ddc_ok, ddc_err, ok,
+        );
+
         ok
     }
 
     fn set_contrast(&mut self, value: u16) -> bool {
-        if !self.ddc_supported { return false; } // early return
-        self.ddc_monitor.set_vcp_feature(VCP_CONTRAST, value).is_ok()
+        if !self.ddc_supported {
+            log::info!("set_contrast[external]: skipped (ddc_supported=false) value={}", value);
+            return false;
+        }
+        let res = self.ddc_monitor.set_vcp_feature(VCP_CONTRAST, value);
+        let ok = res.is_ok();
+        let err = res.err().map(|e| format!("{}", e));
+        log::info!("set_contrast[external]: value={} return_ok={} err={:?}", value, ok, err);
+        ok
     }
 
     fn reset_gamma(&self) {
