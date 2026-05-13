@@ -437,19 +437,8 @@ impl Default for Preferences {
 const MAX_DEBUG_LOG_SIZE: u64 = 1024 * 1024; // 1 MB
 
 /// Returns the path to the debug log file in the app's config directory.
-///
-/// flexi_logger is configured (in `lib.rs::run()`) without rotation so the
-/// active file stays at this stable path — `dump_debug_info` and
-/// `open_debug_log` can rely on it without asking the logger handle.
-/// Rotation was attempted in v7.0.16 but flexi_logger renames the live
-/// file to `<basename>_rCURRENT.<suffix>` whenever `.rotate(...)` is
-/// configured, which broke the dump button (it read a non-existent
-/// `debug.log` while writes went to `debug_rCURRENT.log`). The size cap
-/// is now enforced once at startup via `truncate_oversized_log` —
-/// cheaper and matches the dump-button contract.
-///
-/// Dev builds use `debug-dev.log`, production builds use `debug.log` so
-/// local testing and installed app logs don't intermix.
+/// Dev builds use `debug-dev.log`, production builds use `debug.log`
+/// so local testing and installed app logs don't intermix.
 pub fn debug_log_path() -> PathBuf {
     let filename = if env!("IS_DEV_BUILD") == "true" {
         "debug-dev.log"
@@ -457,40 +446,6 @@ pub fn debug_log_path() -> PathBuf {
         "debug.log"
     };
     config_dir().join(filename)
-}
-
-/// Truncate the debug log file at startup if it exceeds `MAX_DEBUG_LOG_SIZE`.
-/// Keeps the last ~80% of the file (trimmed at a newline boundary so we
-/// don't split a log line). Called from `lib.rs::run()` BEFORE
-/// flexi_logger initializes, since flexi_logger opens the file in
-/// append-mode and holds it for the process lifetime — we need to do this
-/// while the file is closed.
-///
-/// This replaces the per-write trim that the old `write_debug_log` did
-/// (file was read+rewritten on every call past the cap, expensive and
-/// racy). Once-at-startup is enough because the per-process log volume
-/// is bounded by user-facing slider interactions and won't blow past 1
-/// MiB in a single session.
-pub fn truncate_oversized_log() {
-    let path = debug_log_path();
-    let meta = match std::fs::metadata(&path) {
-        Ok(m) => m,
-        Err(_) => return, // file doesn't exist yet — nothing to do
-    };
-    if meta.len() <= MAX_DEBUG_LOG_SIZE {
-        return;
-    }
-    let content = match std::fs::read_to_string(&path) {
-        Ok(s) => s,
-        Err(_) => return,
-    };
-    let keep = content.len() * 80 / 100;
-    let trim_at = content.len() - keep;
-    let start = content[trim_at..]
-        .find('\n')
-        .map(|i| trim_at + i + 1)
-        .unwrap_or(trim_at);
-    let _ = std::fs::write(&path, &content[start..]);
 }
 
 /// Global "is debug logging on" flag for context-free callers (the `log::Log`
