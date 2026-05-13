@@ -33,7 +33,9 @@ function AboutPanel({ onClose }: AboutPanelProps) {
       .then((r) => r.json())
       .then((r) => {
         const tag = r.tag_name || 'unknown';
-        setLatestVersion(tag);
+        // Strip the leading 'v' so "Latest" aligns with "Version" (which has no prefix).
+        const displayTag = tag === 'unknown' ? tag : tag.replace(/^v/, '');
+        setLatestVersion(displayTag);
         return tag;
       })
       .then((tag) => {
