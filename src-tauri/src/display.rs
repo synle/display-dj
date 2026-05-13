@@ -60,6 +60,39 @@ async fn detect_monitors() -> Vec<Monitor> {
     displays.into_iter().map(into_monitor).collect()
 }
 
+/// Resolve a monitor's screen rect with a cache-then-fresh fallback.
+///
+/// First checks the supplied cached `Monitor` (if any). If the cache entry
+/// is missing or its `monitor_rect` is `None`, runs a fresh
+/// `core::display::list_all()` on a blocking thread and tries again. v7.0.19
+/// shipped overlay code that bailed out with "no monitor_rect" because the
+/// cached `Monitor.monitor_rect` could be `None` even though the underlying
+/// `core::DisplayInfo.monitor_rect` was populated on Windows — this helper
+/// closes that gap so the overlay path always sees the right rect (at the
+/// cost of one extra enumerate on the slow path).
+pub async fn resolve_monitor_rect(
+    monitor_id: &str,
+    cached: &[Monitor],
+) -> Option<(i32, i32, i32, i32)> {
+    if let Some(rect) = cached
+        .iter()
+        .find(|m| m.id == monitor_id)
+        .and_then(|m| m.monitor_rect)
+    {
+        return Some(rect);
+    }
+    let id = monitor_id.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::core::display::list_all()
+            .into_iter()
+            .find(|d| d.id == id)
+            .and_then(|d| d.monitor_rect)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
 /// Set brightness on a single monitor via the in-process platform layer with
 /// the requested platform mode (`"ddc"`, `"gamma"`, or `"force"` for auto),
 /// clamped to `[min_brightness, 100]`. Returns whether the platform call
@@ -354,29 +387,27 @@ pub async fn set_brightness(
     let t0 = std::time::Instant::now();
     // Snapshot the preference fields we need *before* awaiting anything so we
     // don't hold the mutex across `.await` (CLAUDE.md tray-icon pitfall).
-    let (min, mode, monitor_rect) = {
+    let (min, mode) = {
         let prefs = state.preferences.lock().map_err(|e| e.to_string())?;
         let mode = resolve_brightness_mode(&prefs.monitor_configs, &monitor_id);
-        // Pull the monitor rect from the cache when available — avoids a fresh
-        // hardware enumerate on every slider drag. The cache is invalidated
-        // below, so the very next read will refresh; for the overlay path that
-        // happens lazily on the next get_monitors call.
-        let monitor_rect = state
-            .sidecar_cache
-            .get_monitors()
-            .and_then(|monitors| {
-                monitors
-                    .into_iter()
-                    .find(|m| m.id == monitor_id)
-                    .and_then(|m| m.monitor_rect)
-            });
-        (prefs.effective_min_brightness(), mode, monitor_rect)
+        (prefs.effective_min_brightness(), mode)
     };
+    // Resolve the monitor rect with a cache-first, fresh-enumerate fallback.
+    // v7.0.19 shipped an overlay path that bailed with "no monitor_rect"
+    // because the cache could miss the rect even when the underlying core
+    // `DisplayInfo` had it populated; the helper now falls back to a fresh
+    // enumerate when that happens.
+    let cached_monitors = state.sidecar_cache.get_monitors().unwrap_or_default();
+    let monitor_rect = resolve_monitor_rect(&monitor_id, &cached_monitors).await;
+    log::info!(
+        "set_brightness: id={} mode={} cache_size={} rect={:?}",
+        monitor_id, mode, cached_monitors.len(), monitor_rect,
+    );
     crate::config::write_debug_log(
         &state,
         &format!(
-            "set_brightness: id={} value={} min={} mode={} has_rect={} — START",
-            monitor_id, value, min, mode, monitor_rect.is_some(),
+            "set_brightness: id={} value={} min={} mode={} has_rect={} cache_size={} — START",
+            monitor_id, value, min, mode, monitor_rect.is_some(), cached_monitors.len(),
         ),
     );
     state.sidecar_cache.invalidate_monitors();
@@ -489,12 +520,16 @@ pub async fn set_all_brightness(
                         let _ = crate::overlay::destroy_overlay(&app, id);
                     } else if let Some(m) = cached_monitors.iter().find(|m| &m.id == id) {
                         if !m.is_built_in {
+                            // Resolve the rect via the cache-then-fresh helper so
+                            // we don't bail when the cache happens to be missing
+                            // monitor_rect on an external panel.
+                            let rect = resolve_monitor_rect(id, &cached_monitors).await;
                             log::info!(
-                                "set_all_brightness: id={} hardware failed, falling back to overlay",
-                                id,
+                                "set_all_brightness: id={} hardware failed, falling back to overlay (rect={:?})",
+                                id, rect,
                             );
                             let _ = crate::overlay::set_overlay_brightness(
-                                &app, id, m.monitor_rect, value,
+                                &app, id, rect, value,
                             );
                         }
                     }
@@ -554,7 +589,8 @@ pub async fn set_all_brightness(
                 set_monitor_brightness(&m.id, value, min, "gamma").await
             }
             BrightnessRoute::OverlayOnly => {
-                crate::overlay::set_overlay_brightness(&app, &m.id, m.monitor_rect, value)
+                let rect = resolve_monitor_rect(&m.id, &cached_monitors).await;
+                crate::overlay::set_overlay_brightness(&app, &m.id, rect, value)
                     .map(|_| true)
             }
             BrightnessRoute::AutoWithOverlayFallback => {
@@ -563,7 +599,8 @@ pub async fn set_all_brightness(
                     let _ = crate::overlay::destroy_overlay(&app, &m.id);
                     Ok(true)
                 } else {
-                    crate::overlay::set_overlay_brightness(&app, &m.id, m.monitor_rect, value)
+                    let rect = resolve_monitor_rect(&m.id, &cached_monitors).await;
+                    crate::overlay::set_overlay_brightness(&app, &m.id, rect, value)
                         .map(|_| true)
                 }
             }
