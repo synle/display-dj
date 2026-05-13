@@ -70,6 +70,26 @@ describe('AboutPanel', () => {
     });
   });
 
+  it('strips the leading "v" from the latest release tag for display', async () => {
+    setupMocks({
+      info: { version: '3.1.4', os: 'Linux', arch: 'x64' },
+      currentVersion: '3.1.4',
+      latestTag: 'v3.1.4',
+    });
+    render(<AboutPanel onClose={() => {}} />);
+
+    // Wait for the async fetch to resolve and the badge to appear.
+    await waitFor(() => {
+      expect(screen.getByText('Up to date')).toBeInTheDocument();
+    });
+
+    // The Latest row should render the version without the leading "v" so it
+    // aligns with the Version row ("3.1.4", not "v3.1.4"). Both Version and
+    // Latest cells render the same text — use getAllByText and require ≥ 2 matches.
+    expect(screen.getAllByText('3.1.4').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('v3.1.4')).not.toBeInTheDocument();
+  });
+
   it('shows "Update available" badge and download link when latest > current', async () => {
     setupMocks({
       info: { version: '1.0.0', os: 'Linux', arch: 'x64' },
@@ -80,7 +100,7 @@ describe('AboutPanel', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Update available')).toBeInTheDocument();
-      expect(screen.getByText('Download v2.0.0')).toBeInTheDocument();
+      expect(screen.getByText('Download 2.0.0')).toBeInTheDocument();
     });
   });
 
