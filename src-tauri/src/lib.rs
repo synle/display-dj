@@ -179,6 +179,44 @@ pub struct AppState {
     pub sidecar_cache: sidecar_cache::SidecarCache,
 }
 
+/// `log::Log` implementation that tees every record to `env_logger` (stderr)
+/// AND to the user's `debug.log` file via `config::write_debug_log_unbound`.
+/// The tee is necessary because GUI builds have no console attached — stderr
+/// alone produces no observable output for the user. Gated on
+/// `config::DEBUG_LOG_ENABLED` so users with debug logging off don't pay the
+/// disk-write cost.
+struct TeeLogger {
+    inner: env_logger::Logger,
+}
+
+impl log::Log for TeeLogger {
+    /// Defer to env_logger's level/target filtering.
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        self.inner.enabled(metadata)
+    }
+
+    /// Forward to env_logger (stderr) and append a formatted line to
+    /// `debug.log`. The debug-log line includes the module path + level
+    /// prefix so a single dump shows where each line came from
+    /// (`core::windows`, `display`, `tray`, …).
+    fn log(&self, record: &log::Record) {
+        self.inner.log(record);
+        if self.inner.enabled(record.metadata()) {
+            let line = format!(
+                "[{}] {}: {}",
+                record.level(),
+                record.module_path().unwrap_or("?"),
+                record.args(),
+            );
+            config::write_debug_log_unbound(&line);
+        }
+    }
+
+    fn flush(&self) {
+        self.inner.flush();
+    }
+}
+
 /// Fetch initial dark mode and volume state via the in-process platform layer
 /// and update the tray icon. Called on startup to seed the icon state.
 fn fetch_initial_tray_state(app: &tauri::AppHandle) {
@@ -423,12 +461,30 @@ pub fn run() {
     // was rejected by the GPU driver — without that, "slider moves but
     // nothing happens" looks identical to "slider moves and the panel dims"
     // from the outside. `RUST_LOG` still wins when explicitly set.
-    env_logger::Builder::from_env(
+    //
+    // We then wrap env_logger in a tee that ALSO appends to `debug.log` —
+    // GUI builds have no console attached, so stderr is invisible. Without
+    // the tee, every `log::info!()` in `core/*` (the entire DDC/gamma write
+    // audit trail) was being dropped on the floor. The tee gates on the
+    // `DEBUG_LOG_ENABLED` atomic so users who haven't enabled debug logging
+    // don't accumulate disk writes for nothing.
+    let env = env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or("info"),
     )
-    .init();
+    .build();
+    let max_level = env.filter();
+    let logger: Box<dyn log::Log> = Box::new(TeeLogger { inner: env });
+    let _ = log::set_boxed_logger(logger);
+    log::set_max_level(max_level);
 
     let preferences = config::load_preferences();
+    // Sync the AppState-less debug-log gate now that preferences are loaded.
+    // `save_preferences` re-syncs it on each save so the user can toggle it
+    // live from the Settings panel.
+    config::DEBUG_LOG_ENABLED.store(
+        preferences.debug_logging,
+        std::sync::atomic::Ordering::Relaxed,
+    );
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

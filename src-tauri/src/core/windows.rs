@@ -169,6 +169,7 @@ impl DisplayControl for ExternalControl {
         let mut ddc_attempted = false;
         let mut ddc_ok = true;
         let mut ddc_err: Option<String> = None;
+        let mut ddc_verify: Option<u32> = None; // read-back after write
         let mut gamma_ok = true;
         let mut ok = true;
 
@@ -188,6 +189,20 @@ impl DisplayControl for ExternalControl {
                 if !use_gamma {
                     ok = false;
                 }
+            } else {
+                // Write succeeded at the API level — try a verify-read to confirm
+                // the monitor actually accepted the value (not just acknowledged
+                // the I2C transaction). Samsung Smart Monitors are known to ACK
+                // VCP writes while silently ignoring the value; this read tells
+                // us whether the firmware actually updated the register. A
+                // 100 ms settle delay matches the upstream cli's empirical
+                // baseline for "monitor has processed the write."
+                thread::sleep(Duration::from_millis(100));
+                ddc_verify = self.ddc_monitor.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|val| {
+                    let max = val.maximum() as f64;
+                    let cur = val.value() as f64;
+                    if max > 0.0 { (cur / max * 100.0).round() as u32 } else { 0 }
+                });
             }
         }
 
@@ -203,14 +218,19 @@ impl DisplayControl for ExternalControl {
             }
         }
 
-        // Per-call diagnostic — surfaces in stderr / env_logger output. Shows which
-        // path(s) ran, whether DDC actually accepted the write, and the raw error
-        // when SetVCPFeature failed. Critical for diagnosing displays that look
-        // "controllable" (ddc_supported=true at enumerate time) but silently reject
-        // brightness writes (common on USB-C panels and some Samsung models).
+        // Per-call diagnostic — surfaces in stderr / env_logger output AND
+        // (via the `TeeLogger` installed in `lib.rs::run()`) in the debug log
+        // file that `Dump Debug Info` exports. Shows which path(s) ran,
+        // whether DDC actually accepted the write, the verify-read value
+        // (panel-side confirmation that the firmware honored the write,
+        // distinct from the I2C transaction returning OK), whether gamma was
+        // applied, and the raw SetVCPFeature error string when present.
+        // Critical for diagnosing displays that look "controllable" at
+        // enumerate time but silently reject brightness writes (common on
+        // USB-C panels and several Samsung models).
         log::info!(
-            "set_brightness[external]: value={} mode={} ddc_supported={} use_ddc={} try_ddc={} use_gamma={} ddc_attempted={} ddc_ok={} ddc_err={:?} gamma_ok={} return_ok={}",
-            value, mode, self.ddc_supported, use_ddc, try_ddc, use_gamma, ddc_attempted, ddc_ok, ddc_err, gamma_ok, ok,
+            "set_brightness[external]: value={} mode={} ddc_supported={} use_ddc={} try_ddc={} use_gamma={} ddc_attempted={} ddc_ok={} ddc_err={:?} ddc_verify={:?} gamma_ok={} return_ok={}",
+            value, mode, self.ddc_supported, use_ddc, try_ddc, use_gamma, ddc_attempted, ddc_ok, ddc_err, ddc_verify, gamma_ok, ok,
         );
 
         ok

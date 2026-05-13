@@ -448,6 +448,40 @@ pub fn debug_log_path() -> PathBuf {
     config_dir().join(filename)
 }
 
+/// Global "is debug logging on" flag for context-free callers (the `log::Log`
+/// fanout in `lib.rs`, modules under `core/*`, etc. — anywhere we can't reach
+/// `AppState`). `lib.rs::run()` sets this from `preferences.debug_logging`
+/// after loading prefs, and `save_preferences` re-syncs it on every save.
+///
+/// We keep `write_debug_log(state, …)` as the canonical entry point for code
+/// that already holds an `AppState`, and `write_debug_log_unbound(…)` for
+/// everything else. Both honor this flag and append to the same file, so the
+/// resulting log is interleaved in chronological order regardless of which
+/// helper produced each line.
+pub static DEBUG_LOG_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Append a line to the debug log without an `AppState`. Honors
+/// `DEBUG_LOG_ENABLED`; no-op when disabled. Used by the `log::Log` tee
+/// installed in `lib.rs::run()` and by direct callers in `core::*` that
+/// can't take `AppState` because they live below the Tauri layer.
+pub fn write_debug_log_unbound(message: &str) {
+    if !DEBUG_LOG_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let path = debug_log_path();
+    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+    let line = format!("[{}] {}\n", timestamp, message);
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
 /// Appends a timestamped message to the debug log (no-op if debug logging is disabled).
 /// Auto-truncates the log file when it exceeds 1 MB, keeping the last 80%.
 /// Uses try_lock to avoid blocking callers on high-frequency paths (e.g., CGEventTap
@@ -675,6 +709,14 @@ pub async fn save_preferences(
             preferences.profiles.len(),
             preferences.night_mode_schedule.enabled,
         ),
+    );
+
+    // Keep the AppState-less tee gate in lock-step with the saved preference
+    // so toggling debug logging in Settings takes effect immediately for
+    // `log::info!` calls in `core/*` (which can't see `AppState`).
+    DEBUG_LOG_ENABLED.store(
+        preferences.debug_logging,
+        std::sync::atomic::Ordering::Relaxed,
     );
 
     // Save to disk and update in-memory state first so the UI isn't blocked
