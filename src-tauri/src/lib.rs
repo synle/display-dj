@@ -413,7 +413,20 @@ mod tests {
 /// wallpaper operations are handled in-process via the vendored `core` module —
 /// no sidecar process is spawned.
 pub fn run() {
-    env_logger::init();
+    // Default to `info` level when `RUST_LOG` isn't set, so the per-call
+    // `log::info!("set_brightness[external]: …")` diagnostics in
+    // `core::windows` (and equivalents in the other platforms) actually
+    // surface in stderr / the bundled log capture instead of being dropped
+    // at the default `error` level. Users (and especially log dumps shared
+    // for support) get a real audit trail of which write path was attempted,
+    // whether DDC accepted the I2C write, and whether `SetDeviceGammaRamp`
+    // was rejected by the GPU driver — without that, "slider moves but
+    // nothing happens" looks identical to "slider moves and the panel dims"
+    // from the outside. `RUST_LOG` still wins when explicitly set.
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("info"),
+    )
+    .init();
 
     let preferences = config::load_preferences();
 
