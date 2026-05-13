@@ -69,6 +69,15 @@ impl Default for TilingPreferences {
     }
 }
 
+/// Returns the default `brightness_mode` value for `MonitorMetadata`.
+///
+/// Used by `#[serde(default = "...")]` so old `preferences.json` files (written
+/// before the `brightnessMode` field existed) deserialize without error and end
+/// up with the auto-discovery path enabled.
+pub fn default_brightness_mode() -> String {
+    "auto".into()
+}
+
 /// Per-monitor metadata stored in preferences. Acts as a persistent registry —
 /// entries are added when a monitor is first detected and never removed on unplug,
 /// so labels and sort order survive across plug/unplug cycles.
@@ -88,6 +97,21 @@ pub struct MonitorMetadata {
     /// Whether the monitor is hidden from the default UI view.
     #[serde(default)]
     pub hidden: bool,
+    /// Brightness control strategy for this monitor. One of:
+    /// - `"auto"` (default) — try DDC, then gamma, then fall back to the
+    ///   soft-overlay window when both hardware paths fail.
+    /// - `"ddc"` — DDC/CI only, no overlay (use for panels that work fine over
+    ///   I2C; useful to disable the overlay fallback if you have a flicker).
+    /// - `"gamma"` — GDI `SetDeviceGammaRamp` only, no overlay.
+    /// - `"overlay"` — skip the hardware paths entirely and dim with the
+    ///   transparent overlay window. The only mode that works on USB-C
+    ///   Samsung Smart Monitors on Intel Iris Xe (no DDC response, gamma
+    ///   silently rejected by the driver).
+    ///
+    /// Defaults to `"auto"` so existing configs and new monitors keep working
+    /// without user intervention.
+    #[serde(default = "default_brightness_mode")]
+    pub brightness_mode: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -604,6 +628,7 @@ fn migrate_monitor_configs_if_needed(prefs: &mut Preferences) {
             label: old.name,
             sort_order: old.sort_order,
             hidden: false,
+            brightness_mode: default_brightness_mode(),
         });
     }
 
@@ -979,13 +1004,16 @@ mod tests {
             label: "Main Monitor".into(),
             sort_order: 0,
             hidden: false,
+            brightness_mode: default_brightness_mode(),
         };
         let json = serde_json::to_string(&meta).unwrap();
         assert!(json.contains("sortOrder"));
         assert!(json.contains("apiId"));
         assert!(json.contains("apiName"));
+        assert!(json.contains("brightnessMode"));
         assert!(!json.contains("sort_order"));
         assert!(!json.contains("api_id"));
+        assert!(!json.contains("brightness_mode"));
     }
 
     #[test]
@@ -997,6 +1025,7 @@ mod tests {
             label: "MacBook Screen".into(),
             sort_order: 0,
             hidden: false,
+            brightness_mode: default_brightness_mode(),
         };
         let json = serde_json::to_string(&meta).unwrap();
         let restored: MonitorMetadata = serde_json::from_str(&json).unwrap();
@@ -1014,6 +1043,7 @@ mod tests {
                 label: "Left".into(),
                 sort_order: 0,
                 hidden: false,
+                brightness_mode: default_brightness_mode(),
             },
             MonitorMetadata {
                 uid: "2::LG".into(),
@@ -1022,6 +1052,7 @@ mod tests {
                 label: "".into(),
                 sort_order: 1,
                 hidden: false,
+                brightness_mode: "overlay".into(),
             },
         ];
         let json = serde_json::to_string_pretty(&prefs).unwrap();
@@ -1046,6 +1077,54 @@ mod tests {
         assert_eq!(meta.api_name, "Dell U2723QE");
         assert_eq!(meta.label, "Main Monitor");
         assert_eq!(meta.sort_order, 3);
+        // Missing brightnessMode in old configs must default to "auto"
+        // (the soft-overlay fallback feature is opt-in via Settings, but the
+        // auto-discovery path is the safe default for everyone).
+        assert_eq!(meta.brightness_mode, "auto");
+    }
+
+    /// Verifies all four valid brightness_mode values serde-roundtrip cleanly.
+    /// Acts as a guard against accidental enum renames — the four strings are
+    /// the contract between the Rust backend, the TS frontend, and the
+    /// preferences.json on disk.
+    #[test]
+    fn test_monitor_metadata_brightness_mode_all_modes_roundtrip() {
+        for mode in &["auto", "ddc", "gamma", "overlay"] {
+            let meta = MonitorMetadata {
+                uid: "1::Test".into(),
+                api_id: "1".into(),
+                api_name: "Test".into(),
+                label: "".into(),
+                sort_order: 0,
+                hidden: false,
+                brightness_mode: (*mode).into(),
+            };
+            let json = serde_json::to_string(&meta).unwrap();
+            assert!(
+                json.contains(&format!("\"brightnessMode\":\"{}\"", mode)),
+                "expected camelCase brightnessMode={} in JSON: {}",
+                mode,
+                json,
+            );
+            let restored: MonitorMetadata = serde_json::from_str(&json).unwrap();
+            assert_eq!(restored.brightness_mode, *mode);
+        }
+    }
+
+    /// Verifies an explicit brightnessMode value deserializes from camelCase JSON.
+    #[test]
+    fn test_monitor_metadata_brightness_mode_deserializes_explicit() {
+        let json = r#"{
+            "uid": "1::Samsung",
+            "apiId": "1",
+            "apiName": "Samsung Smart Monitor",
+            "label": "",
+            "sortOrder": 0,
+            "hidden": false,
+            "brightnessMode": "overlay"
+        }"#;
+        let meta: MonitorMetadata = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.brightness_mode, "overlay");
     }
 
     #[test]
@@ -1096,6 +1175,7 @@ mod tests {
             label: "MacBook".into(),
             sort_order: 0,
             hidden: false,
+            brightness_mode: default_brightness_mode(),
         }];
         let json = serde_json::to_string_pretty(&prefs).unwrap();
         std::fs::write(&path, &json).unwrap();

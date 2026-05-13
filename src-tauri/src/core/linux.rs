@@ -303,6 +303,13 @@ fn push_monitor(
         brightness,
         contrast,
         ddc_supported,
+        // TODO(overlay-linux): populate the physical screen rect so the
+        // soft-overlay brightness fallback can run on Linux/X11. Read via
+        // `x11rb` (RandR `get_crtc_info` for each CRTC) and convert to
+        // (left, top, width, height) in global physical pixels. Until this
+        // is filled in, `brightnessMode = "overlay"` is a no-op on Linux
+        // even though the dropdown is selectable.
+        monitor_rect: None,
     };
     let ctrl = ExternalControl { display_num, output_name, display_server, ddc_supported };
     monitors.push((info, ctrl));
@@ -461,6 +468,9 @@ impl Platform for LinuxPlatform {
                 brightness,
                 contrast: None,
                 ddc_supported: false,
+                // Built-in panels dim natively via sysfs backlight — the
+                // overlay fallback never runs on them.
+                monitor_rect: None,
             };
             result.push((info, Box::new(ctrl)));
         }

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Display DJ Overlay</title>
+    <style>
+      /*
+       * Soft-overlay brightness fallback (see src-tauri/src/overlay.rs).
+       *
+       * The window itself is created transparent + always-on-top +
+       * click-through by the Tauri backend. This page is a single full-
+       * viewport black div whose opacity is driven by the
+       * `set-overlay-alpha` event payload.
+       *
+       * All `user-select: none` / `cursor: default` / `pointer-events:
+       * none` defenses are redundant given `set_ignore_cursor_events(true)`
+       * at the OS level, but kept as belt-and-suspenders in case a future
+       * Tauri version regresses the click-through flag.
+       */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        user-select: none;
+        cursor: default;
+        pointer-events: none;
+      }
+      #dim {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: #000;
+        opacity: 0;
+        pointer-events: none;
+        /* Smooth transitions when the user drags the brightness slider.
+         * Match the 150ms slider debounce so visual updates stay tight. */
+        transition: opacity 150ms linear;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="dim"></div>
+    <script>
+      // Soft-overlay brightness controller.
+      //
+      // Listens for `set-overlay-alpha` events emitted by the Rust backend
+      // (`overlay::emit_alpha` -> `app.emit_to(label, ...)`), and updates
+      // the `#dim` div's opacity. Alpha is already clamped to [0.0, 0.9]
+      // server-side so the panel can never go fully black.
+      (function () {
+        var dim = document.getElementById('dim');
+
+        // The global Tauri object is exposed because `withGlobalTauri: true`
+        // is set in tauri.conf.json. Guard anyway so the page renders
+        // statically in a regular browser (useful for visual debugging).
+        var tauri = window.__TAURI__;
+        if (!tauri || !tauri.event || !tauri.event.listen) {
+          return;
+        }
+
+        tauri.event.listen('set-overlay-alpha', function (event) {
+          var alpha = Number(event && event.payload);
+          if (!isFinite(alpha)) return;
+          // Defensive client-side clamp — server already clamps to [0, 0.9].
+          if (alpha < 0) alpha = 0;
+          if (alpha > 0.9) alpha = 0.9;
+          dim.style.opacity = String(alpha);
+        });
+      })();
+    </script>
+  </body>
+</html>
