@@ -462,31 +462,30 @@ pub static DEBUG_LOG_ENABLED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 /// Append a line to the debug log without an `AppState`. Honors
-/// `DEBUG_LOG_ENABLED`; no-op when disabled. Used by direct callers in
-/// `core::*` and other modules that can't take `AppState` because they
-/// live below the Tauri layer.
-///
-/// Backed by `flexi_logger` (configured in `lib.rs::run()`): writes are
-/// buffered in memory and flushed every 5 s (or on drop / panic / Tauri
-/// `RunEvent::Exit`). Multiple threads can call this concurrently without
-/// interleaving partial lines — flexi_logger serializes writes through a
-/// single drain thread.
+/// `DEBUG_LOG_ENABLED`; no-op when disabled. Used by the `log::Log` tee
+/// installed in `lib.rs::run()` and by direct callers in `core::*` that
+/// can't take `AppState` because they live below the Tauri layer.
 pub fn write_debug_log_unbound(message: &str) {
     if !DEBUG_LOG_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
         return;
     }
-    log::info!("{}", message);
+    let path = debug_log_path();
+    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+    let line = format!("[{}] {}\n", timestamp, message);
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = file.write_all(line.as_bytes());
+    }
 }
 
-/// Appends a message to the debug log (no-op if debug logging is disabled).
-/// Same backing store as `write_debug_log_unbound`; this overload takes an
-/// `AppState` so callers that already hold one don't have to keep the
-/// duplicate `DEBUG_LOG_ENABLED` atomic in sync (the preference flag is
-/// authoritative; the atomic is a fast-path mirror).
-///
-/// Uses `try_lock` to avoid blocking callers on high-frequency paths (e.g.,
-/// CGEventTap callback) — if the preferences mutex is contended, the log
-/// message is silently dropped.
+/// Appends a timestamped message to the debug log (no-op if debug logging is disabled).
+/// Auto-truncates the log file when it exceeds 1 MB, keeping the last 80%.
+/// Uses try_lock to avoid blocking callers on high-frequency paths (e.g., CGEventTap
+/// callback) — if the preferences mutex is contended, the log message is silently dropped.
 pub fn write_debug_log(state: &crate::AppState, message: &str) {
     let enabled = state
         .preferences
@@ -496,7 +495,33 @@ pub fn write_debug_log(state: &crate::AppState, message: &str) {
     if !enabled {
         return;
     }
-    log::info!("{}", message);
+
+    let path = debug_log_path();
+
+    // When over the size limit, trim the beginning and keep the last 80%
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > MAX_DEBUG_LOG_SIZE {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let keep = content.len() * 80 / 100;
+                let trim_at = content.len() - keep;
+                // Find the next newline after the trim point to avoid splitting a line
+                let start = content[trim_at..].find('\n').map(|i| trim_at + i + 1).unwrap_or(trim_at);
+                std::fs::write(&path, &content[start..]).ok();
+            }
+        }
+    }
+
+    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+    let line = format!("[{}] {}\n", timestamp, message);
+
+    use std::io::Write;
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = file.write_all(line.as_bytes());
+    }
 }
 
 /// Returns the app's config directory (creates it if it doesn't exist).
@@ -686,16 +711,13 @@ pub async fn save_preferences(
         ),
     );
 
-    // Keep the AppState-less gate in lock-step with the saved preference so
-    // toggling debug logging in Settings takes effect immediately for the
-    // `write_debug_log_unbound`-style callers in `core/*`. Also re-applies
-    // the flexi_logger spec live (info ↔ off) so `log::info!` calls in
-    // `core/*` start/stop hitting the file without restarting the app.
+    // Keep the AppState-less tee gate in lock-step with the saved preference
+    // so toggling debug logging in Settings takes effect immediately for
+    // `log::info!` calls in `core/*` (which can't see `AppState`).
     DEBUG_LOG_ENABLED.store(
         preferences.debug_logging,
         std::sync::atomic::Ordering::Relaxed,
     );
-    crate::set_debug_logging_spec(preferences.debug_logging);
 
     // Save to disk and update in-memory state first so the UI isn't blocked
     // even if autostart hangs
