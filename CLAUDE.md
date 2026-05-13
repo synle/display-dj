@@ -110,6 +110,40 @@ After modifying frontend code (`src/`), config, or docs, always run `npx prettie
 3. **Documentation**: Update `CLAUDE.md`, `README.md`, and `CONTRIBUTING.md` for new commands, preferences, UI components, architecture changes.
 4. **Method comments**: `///` for Rust, `/** */` JSDoc for TS/React. Every public function, Tauri command, React component, non-trivial helper, and test must have one.
 
+## Windows Console-Flash Pitfall (Critical, Windows-only)
+
+**Every Windows child spawn from a `#[cfg(target_os = "windows")]` code path
+must go through `core::win_cmd::hidden_command(...)`.** That helper returns a
+`std::process::Command` with the Win32 `CREATE_NO_WINDOW` (`0x08000000`)
+creation flag pre-applied, so the short-lived `powershell` / `reg` child does
+not allocate and immediately tear down a console window of its own — which
+otherwise reads as a visible black flash on every brightness change, volume
+change, theme toggle, and wallpaper write (the GUI parent has
+`windows_subsystem = "windows"` and therefore no console to share).
+
+- **Where this matters**: `core/{windows,volume,theme,wallpaper}.rs`. Every
+  `Command::new("powershell")` and `Command::new("reg")` call in those files
+  is routed through `hidden_command(...)`. A regression test in `lib.rs`
+  (`no_bare_powershell_or_reg_spawns_in_core`) fails the build if a bare spawn
+  drifts back in. See the v7.0.9 fix.
+- **Where this does NOT matter**: macOS (osascript) and Linux (gsettings /
+  feh / xfconf-query / plasma-apply-colorscheme / xrandr / etc.) — neither OS
+  has a "Win32 PE subsystem" concept, and neither auto-allocates a terminal
+  for a child process. A GUI parent launched from `.desktop` / Finder has no
+  controlling terminal; child stdio inherits null fds and no window appears.
+  `CREATE_NO_WINDOW` and `windows_subsystem` are Win32-only abstractions.
+- **The `windows_subsystem` attribute itself**: must live on the binary root
+  (`src-tauri/src/main.rs`), never on `lib.rs`. The inner attribute is
+  silently ignored on `lib.rs` and the release `.exe` then ships as a
+  console-subsystem program — pops a console for the *parent* process, which
+  `CREATE_NO_WINDOW` on children cannot fix. (`main.rs:1` has it correctly.)
+  This burned `sqlui-native` at v3.1.9 — same trap, same fix.
+- **Cross-apply to upstream**: `core/*` is vendored from `display-dj-cli`,
+  which is itself a CLI (console app) and does not need any of this. The
+  `hidden_command(...)` substitution is a display-dj-local patch. On the next
+  vendor refresh, re-apply it (or run the substitution and let the test
+  enforce the rule).
+
 ## macOS Tray Icon Pitfall (Critical)
 
 Two patterns in Tauri command handlers break the system tray icon (left- and right-click stop working):

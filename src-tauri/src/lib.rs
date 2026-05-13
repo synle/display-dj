@@ -312,6 +312,45 @@ mod tests {
         assert!(!is_night_time(420, 420, 420));
         assert!(!is_night_time(420, 420, 1000));
     }
+
+    // -- Windows console-flash regression test --
+
+    /// Regression test for the v7.0.9 Windows console-flash bug.
+    ///
+    /// The GUI parent runs without a console (`windows_subsystem = "windows"`).
+    /// A bare `Command::new("powershell")` / `Command::new("reg")` from a
+    /// `#[cfg(target_os = "windows")]` code path allocates a console for the
+    /// child by default and pops a visible black flash on every brightness,
+    /// volume, theme, or wallpaper change. Use `core::win_cmd::hidden_command`
+    /// instead — it pre-applies the `CREATE_NO_WINDOW` (`0x08000000`) creation
+    /// flag.
+    ///
+    /// This test fails the build if a bare spawn drifts back into the vendored
+    /// `core/{windows,volume,theme,wallpaper}.rs` files.
+    #[test]
+    fn no_bare_powershell_or_reg_spawns_in_core() {
+        let files: &[(&str, &str)] = &[
+            ("core/windows.rs", include_str!("core/windows.rs")),
+            ("core/volume.rs", include_str!("core/volume.rs")),
+            ("core/theme.rs", include_str!("core/theme.rs")),
+            ("core/wallpaper.rs", include_str!("core/wallpaper.rs")),
+        ];
+        let banned = [
+            r#"Command::new("powershell")"#,
+            r#"Command::new("reg")"#,
+        ];
+        for (path, src) in files {
+            for pattern in &banned {
+                assert!(
+                    !src.contains(pattern),
+                    "{}: found bare `{}` — use `super::win_cmd::hidden_command(...)` \
+                     instead to avoid the Windows console flash. See the v7.0.9 fix.",
+                    path,
+                    pattern
+                );
+            }
+        }
+    }
 }
 
 /// Main entry point: builds the Tauri app, sets up the system tray, registers
