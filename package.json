@@ -2,7 +2,7 @@
   "name": "display-dj",
   "version": "0.0.0",
   "description": "Cross-platform desktop app for monitor brightness, contrast, and dark mode control",
-  "displayDjCliVersion": "v2.2.2",
+  "displayDjCliVersion": "v2.2.5",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
