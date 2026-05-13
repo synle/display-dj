@@ -17,6 +17,12 @@ use std::sync::OnceLock;
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
 
+/// Max size (bytes) before flexi_logger rotates the active log file. Matches
+/// the threshold the old `write_debug_log` used for its manual trim; the
+/// rotated archive (`debug_rNNN.log`) is retained alongside `debug.log`
+/// while older archives are pruned (`Cleanup::KeepLogFiles(1)`).
+const MAX_DEBUG_LOG_SIZE: u64 = 1024 * 1024; // 1 MiB
+
 /// Global handle to the flexi_logger instance. Set once during `run()`;
 /// used by the panic hook and the Tauri `RunEvent::Exit` handler to flush
 /// pending buffered log lines on shutdown. Wrapped in `Mutex` so the flush
@@ -34,7 +40,6 @@ pub fn flush_logger() {
         }
     }
 }
-
 
 /// Re-apply the active flexi_logger spec from a `debug_logging` boolean.
 /// Called by `save_preferences` so toggling the Settings checkbox takes
@@ -460,13 +465,9 @@ pub fn run() {
     //     coalesce small appends from different processes/threads.
     //   - **Duplicate::Stderr** keeps the stderr stream lit for `tauri dev`
     //     and CI logs.
-    //   - **No rotation**: flexi_logger renames the live file to
-    //     `<basename>_rCURRENT.<suffix>` whenever `.rotate(...)` is
-    //     configured, which broke the dump button in v7.0.16 (it read
-    //     `debug.log` while writes went to `debug_rCURRENT.log`).
-    //     Size cap is enforced once at startup via
-    //     `config::truncate_oversized_log()` — cheap and keeps the
-    //     filename stable for `dump_debug_info` / `open_debug_log`.
+    //   - **Criterion::Size(1 MiB) + KeepLogFiles(1)** replaces the manual
+    //     trim-on-write we used to do in `write_debug_log` (one rotated
+    //     archive, latest active log file fixed at `debug.log`).
     //   - **LoggerHandle** flushes pending lines on drop AND we wire it
     //     into a panic hook + Tauri RunEvent::Exit so an abrupt crash
     //     loses at most the in-buffer lines since the last 5 s tick.
@@ -475,10 +476,6 @@ pub fn run() {
     // and `off` otherwise. `save_preferences` flips it live via
     // `handle.set_new_spec(...)`. RUST_LOG still wins when explicitly set.
     let preferences = config::load_preferences();
-    // Truncate the on-disk log before flexi_logger opens it (the appender
-    // holds the file open for the process lifetime, so we'd be unable to
-    // safely truncate later without coordinating with the drain thread).
-    config::truncate_oversized_log();
     let initial_spec = if preferences.debug_logging {
         flexi_logger::LogSpecification::info()
     } else {
@@ -502,7 +499,11 @@ pub fn run() {
             8192,
             std::time::Duration::from_secs(5),
         ))
-        .append() // append to existing file rather than overwriting on startup
+        .rotate(
+            flexi_logger::Criterion::Size(MAX_DEBUG_LOG_SIZE),
+            flexi_logger::Naming::Numbers,
+            flexi_logger::Cleanup::KeepLogFiles(1),
+        )
         .start();
     let logger_handle = match logger_handle {
         Ok(h) => Some(h),
