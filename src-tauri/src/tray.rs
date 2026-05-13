@@ -870,6 +870,27 @@ fn dump_debug_info(app: &AppHandle) {
         }
     }
 
+    // Live hardware probe — exercises the same code path the brightness slider
+    // uses, so we can tell whether DDC enumerate/get/set succeed for each panel.
+    // Mirrors the rich diagnostics the standalone display-dj-cli used to print.
+    lines.push("--- live displays (core::display::list_all) ---".into());
+    for d in crate::core::display::list_all() {
+        lines.push(format!(
+            "  id={} type={} ddc_supported={} brightness={:?} contrast={:?} name={:?}",
+            d.id, d.display_type, d.ddc_supported, d.brightness, d.contrast, d.name
+        ));
+    }
+
+    // Raw platform diagnostics — HMONITOR mapping, DDC enumerate result,
+    // per-monitor VCP brightness/contrast (current+max), WMI brightness.
+    // This is what lets us diagnose silent DDC failures on a specific panel.
+    lines.push("--- platform debug_info ---".into());
+    let platform_dbg = <crate::core::PlatformImpl as crate::core::Platform>::debug_info();
+    match serde_json::to_string_pretty(&platform_dbg) {
+        Ok(s) => lines.push(s),
+        Err(e) => lines.push(format!("(serialize failed: {})", e)),
+    }
+
     lines.push("=== END DEBUG INFO ===".into());
     let output = lines.join("\n");
     log::info!("{}", output);

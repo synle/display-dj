@@ -40,7 +40,14 @@ pub async fn set_dark_mode(
     enabled: bool,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    let t0 = std::time::Instant::now();
     log::info!("set_dark_mode: enabled={}", enabled);
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        crate::config::write_debug_log(
+            &state,
+            &format!("set_dark_mode: enabled={} — START", enabled),
+        );
+    }
     let ok = tauri::async_runtime::spawn_blocking(move || {
         crate::core::theme::set_dark_mode(enabled)
     })
@@ -49,10 +56,15 @@ pub async fn set_dark_mode(
     if !ok {
         log::warn!("set_dark_mode: platform layer reported failure");
     }
-    log::info!("set_dark_mode: done");
+    let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+    log::info!("set_dark_mode: done platform_ok={} elapsed={:.1}ms", ok, elapsed);
     // Invalidate cache since dark mode changed
     if let Some(state) = app.try_state::<crate::AppState>() {
         state.sidecar_cache.invalidate_dark_mode();
+        crate::config::write_debug_log(
+            &state,
+            &format!("set_dark_mode: enabled={} platform_ok={} — {:.1}ms", enabled, ok, elapsed),
+        );
     }
     crate::tray_icon::set_dark_mode_state(&app, enabled);
     Ok(())
