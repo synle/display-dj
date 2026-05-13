@@ -21,14 +21,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "6"
 log = "0.4"
-# flexi_logger replaces env_logger + our custom TeeLogger + manual log
-# rotation. Why this combo: BufferAndFlushWith(interval) batches disk
-# writes (avoids open/append/close-per-log-line + interleaved writes
-# from multiple threads), duplicate_to_stderr keeps stderr output for
-# `tauri dev`, rotate handles the 1 MB cap that used to be manual,
-# and the returned LoggerHandle flushes on drop — bound into AppState
-# so a clean exit flushes pending lines.
-flexi_logger = "0.31"
+env_logger = "0.11"
 open = "5"
 reqwest = { version = "0.12", features = ["json", "blocking"] }
 chrono = "0.4"
