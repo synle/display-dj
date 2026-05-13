@@ -13,8 +13,49 @@ mod wallpaper;
 
 use chrono::Timelike;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
+
+/// Max size (bytes) before flexi_logger rotates the active log file. Matches
+/// the threshold the old `write_debug_log` used for its manual trim; the
+/// rotated archive (`debug_rNNN.log`) is retained alongside `debug.log`
+/// while older archives are pruned (`Cleanup::KeepLogFiles(1)`).
+const MAX_DEBUG_LOG_SIZE: u64 = 1024 * 1024; // 1 MiB
+
+/// Global handle to the flexi_logger instance. Set once during `run()`;
+/// used by the panic hook and the Tauri `RunEvent::Exit` handler to flush
+/// pending buffered log lines on shutdown. Wrapped in `Mutex` so the flush
+/// calls don't race; the underlying `LoggerHandle::flush()` is cheap.
+static LOGGER_HANDLE: OnceLock<std::sync::Mutex<flexi_logger::LoggerHandle>> = OnceLock::new();
+
+/// Flush the global flexi_logger if installed. No-op if the logger wasn't
+/// started (e.g. flexi_logger init failed). Safe to call from the panic
+/// hook, Tauri's `RunEvent::Exit` handler, or anywhere a deterministic
+/// flush is desired (e.g. before raising a critical error).
+pub fn flush_logger() {
+    if let Some(h) = LOGGER_HANDLE.get() {
+        if let Ok(handle) = h.lock() {
+            handle.flush();
+        }
+    }
+}
+
+/// Re-apply the active flexi_logger spec from a `debug_logging` boolean.
+/// Called by `save_preferences` so toggling the Settings checkbox takes
+/// effect immediately without restarting the app.
+pub fn set_debug_logging_spec(enabled: bool) {
+    let new_spec = if enabled {
+        flexi_logger::LogSpecification::info()
+    } else {
+        flexi_logger::LogSpecification::off()
+    };
+    if let Some(h) = LOGGER_HANDLE.get() {
+        if let Ok(handle) = h.lock() {
+            handle.set_new_spec(new_spec);
+        }
+    }
+}
 
 /// Tracks whether we've already written the one-time startup dump to the debug log.
 /// Set on the first successful `fetch_all_state` call so subsequent calls are quiet.
@@ -177,44 +218,6 @@ pub struct AppState {
     pub tiling_state: std::sync::Mutex<tiling::TilingState>,
     /// TTL-based cache for monitor / dark mode / volume probes.
     pub sidecar_cache: sidecar_cache::SidecarCache,
-}
-
-/// `log::Log` implementation that tees every record to `env_logger` (stderr)
-/// AND to the user's `debug.log` file via `config::write_debug_log_unbound`.
-/// The tee is necessary because GUI builds have no console attached — stderr
-/// alone produces no observable output for the user. Gated on
-/// `config::DEBUG_LOG_ENABLED` so users with debug logging off don't pay the
-/// disk-write cost.
-struct TeeLogger {
-    inner: env_logger::Logger,
-}
-
-impl log::Log for TeeLogger {
-    /// Defer to env_logger's level/target filtering.
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
-        self.inner.enabled(metadata)
-    }
-
-    /// Forward to env_logger (stderr) and append a formatted line to
-    /// `debug.log`. The debug-log line includes the module path + level
-    /// prefix so a single dump shows where each line came from
-    /// (`core::windows`, `display`, `tray`, …).
-    fn log(&self, record: &log::Record) {
-        self.inner.log(record);
-        if self.inner.enabled(record.metadata()) {
-            let line = format!(
-                "[{}] {}: {}",
-                record.level(),
-                record.module_path().unwrap_or("?"),
-                record.args(),
-            );
-            config::write_debug_log_unbound(&line);
-        }
-    }
-
-    fn flush(&self) {
-        self.inner.flush();
-    }
 }
 
 /// Fetch initial dark mode and volume state via the in-process platform layer
@@ -451,36 +454,88 @@ mod tests {
 /// wallpaper operations are handled in-process via the vendored `core` module —
 /// no sidecar process is spawned.
 pub fn run() {
-    // Default to `info` level when `RUST_LOG` isn't set, so the per-call
-    // `log::info!("set_brightness[external]: …")` diagnostics in
-    // `core::windows` (and equivalents in the other platforms) actually
-    // surface in stderr / the bundled log capture instead of being dropped
-    // at the default `error` level. Users (and especially log dumps shared
-    // for support) get a real audit trail of which write path was attempted,
-    // whether DDC accepted the I2C write, and whether `SetDeviceGammaRamp`
-    // was rejected by the GPU driver — without that, "slider moves but
-    // nothing happens" looks identical to "slider moves and the panel dims"
-    // from the outside. `RUST_LOG` still wins when explicitly set.
+    // Logging stack — `flexi_logger`. Picked over rolling our own buffer
+    // (the obvious DIY approach) because flexi_logger is one well-tested
+    // crate that already does everything we need:
+    //   - **BufferAndFlushWith(8 KiB, 5 s)** batches writes through an
+    //     in-memory buffer and flushes on a background timer. Single drain
+    //     thread serializes all writers, so we no longer get interleaved
+    //     partial lines from concurrent `open(append).write_all(close)`
+    //     calls — a real race on Windows where the OS doesn't atomically
+    //     coalesce small appends from different processes/threads.
+    //   - **Duplicate::Stderr** keeps the stderr stream lit for `tauri dev`
+    //     and CI logs.
+    //   - **Criterion::Size(1 MiB) + KeepLogFiles(1)** replaces the manual
+    //     trim-on-write we used to do in `write_debug_log` (one rotated
+    //     archive, latest active log file fixed at `debug.log`).
+    //   - **LoggerHandle** flushes pending lines on drop AND we wire it
+    //     into a panic hook + Tauri RunEvent::Exit so an abrupt crash
+    //     loses at most the in-buffer lines since the last 5 s tick.
     //
-    // We then wrap env_logger in a tee that ALSO appends to `debug.log` —
-    // GUI builds have no console attached, so stderr is invisible. Without
-    // the tee, every `log::info!()` in `core/*` (the entire DDC/gamma write
-    // audit trail) was being dropped on the floor. The tee gates on the
-    // `DEBUG_LOG_ENABLED` atomic so users who haven't enabled debug logging
-    // don't accumulate disk writes for nothing.
-    let env = env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info"),
-    )
-    .build();
-    let max_level = env.filter();
-    let logger: Box<dyn log::Log> = Box::new(TeeLogger { inner: env });
-    let _ = log::set_boxed_logger(logger);
-    log::set_max_level(max_level);
-
+    // The log spec starts at `info` when `preferences.debug_logging` is on
+    // and `off` otherwise. `save_preferences` flips it live via
+    // `handle.set_new_spec(...)`. RUST_LOG still wins when explicitly set.
     let preferences = config::load_preferences();
-    // Sync the AppState-less debug-log gate now that preferences are loaded.
-    // `save_preferences` re-syncs it on each save so the user can toggle it
-    // live from the Settings panel.
+    let initial_spec = if preferences.debug_logging {
+        flexi_logger::LogSpecification::info()
+    } else {
+        flexi_logger::LogSpecification::off()
+    };
+    let file_basename = if env!("IS_DEV_BUILD") == "true" {
+        "debug-dev"
+    } else {
+        "debug"
+    };
+    let file_spec = flexi_logger::FileSpec::default()
+        .directory(config::config_dir())
+        .basename(file_basename)
+        .suffix("log")
+        .suppress_timestamp();
+    let logger_handle = flexi_logger::Logger::with(initial_spec)
+        .log_to_file(file_spec)
+        .duplicate_to_stderr(flexi_logger::Duplicate::All)
+        .format(flexi_logger::detailed_format)
+        .write_mode(flexi_logger::WriteMode::BufferAndFlushWith(
+            8192,
+            std::time::Duration::from_secs(5),
+        ))
+        .rotate(
+            flexi_logger::Criterion::Size(MAX_DEBUG_LOG_SIZE),
+            flexi_logger::Naming::Numbers,
+            flexi_logger::Cleanup::KeepLogFiles(1),
+        )
+        .start();
+    let logger_handle = match logger_handle {
+        Ok(h) => Some(h),
+        Err(e) => {
+            eprintln!("flexi_logger init failed: {e} — running without file logging");
+            None
+        }
+    };
+    // Stash the handle in the static used by panic hook + exit handler so
+    // they can call `.flush()` without re-plumbing it through AppState.
+    if let Some(h) = logger_handle {
+        let _ = LOGGER_HANDLE.set(std::sync::Mutex::new(h));
+    }
+
+    // Panic hook: flush buffered logs before the process unwinds. Without
+    // this, a panic during a brightness-write retry loop would lose the
+    // last 0–5 s of `set_brightness[external]: …` lines that explain
+    // exactly what was being attempted when things went sideways.
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if let Some(h) = LOGGER_HANDLE.get() {
+            if let Ok(handle) = h.lock() {
+                handle.flush();
+            }
+        }
+        prev_hook(info);
+    }));
+
+    // Sync the AppState-less debug-log gate now that preferences are
+    // loaded. Even with flexi_logger handling levels, several call sites
+    // still check this atomic before formatting expensive messages —
+    // cheaper than letting the log macros evaluate args.
     config::DEBUG_LOG_ENABLED.store(
         preferences.debug_logging,
         std::sync::atomic::Ordering::Relaxed,
@@ -699,6 +754,16 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running display-dj");
+        .build(tauri::generate_context!())
+        .expect("error while building display-dj")
+        .run(|_handle, event| {
+            // Flush any buffered log lines before the process tears down.
+            // flexi_logger's `BufferAndFlushWith` interval is 5 s; without
+            // this hook a clean exit can drop the last 0–5 s of logs
+            // (including the final `set_brightness[external]: …` line
+            // that may explain the user's last action).
+            if matches!(event, tauri::RunEvent::Exit) {
+                flush_logger();
+            }
+        });
 }
