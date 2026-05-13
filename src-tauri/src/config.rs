@@ -800,7 +800,8 @@ pub fn get_about_info() -> std::collections::HashMap<String, String> {
     };
     let mut info = std::collections::HashMap::new();
     info.insert("version".into(), env!("APP_VERSION").to_string());
-    info.insert("engine".into(), "Tauri + Rust Sidecar".to_string());
+    // v7.0.0+ has no sidecar — platform code is vendored in-process under src/core/.
+    info.insert("engine".into(), "Tauri + Rust (in-process)".to_string());
     info.insert("arch".into(), arch.to_string());
     info.insert("os".into(), os.to_string());
     info.insert("buildDate".into(), env!("BUILD_DATE").to_string());

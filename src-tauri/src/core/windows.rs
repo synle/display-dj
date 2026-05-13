@@ -10,6 +10,15 @@ use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
 use winapi::um::wingdi::SetDeviceGammaRamp;
 
+/// Cast a `windows::Win32::Graphics::Gdi::HMONITOR` (raw pointer wrapped in a
+/// tuple struct) to the `winapi::shared::windef::HMONITOR` type expected by
+/// `ddc-winapi` v0.2. Both are opaque-pointer aliases over the same Win32
+/// handle — only the surrounding Rust wrapper type differs. Pulled out as a
+/// helper so the unsafe-looking pointer cast is named and documented.
+fn hmonitor_to_winapi(hm: HMONITOR) -> winapi::shared::windef::HMONITOR {
+    hm.0 as winapi::shared::windef::HMONITOR
+}
+
 // =========================================================================
 // Built-in display — WMI (Windows Management Instrumentation) via PowerShell.
 // Laptops expose brightness through the WmiMonitorBrightness WMI class.
@@ -300,38 +309,70 @@ impl Platform for WinPlatform {
 
         // --- External displays ---
         // We need both DDC handles (for brightness) and HMONITOR handles (for gamma).
-        // These come from different APIs so we zip them together by index:
-        //   - ddc_winapi::Monitor::enumerate() → DDC physical monitor handles (Dxva2)
-        //   - enum_hmonitors() → GDI HMONITOR handles (for gamma ramp)
-        // Both use EnumDisplayMonitors internally, so indices align.
+        // Previously, we called `ddc_winapi::Monitor::enumerate()` and then `zip`'d
+        // the resulting Vec with `enum_hmonitors()` by index — both internally call
+        // `EnumDisplayMonitors`, and the assumption was "callback order is the same".
+        // That assumption was fragile: `EnumDisplayMonitors` is not documented to
+        // return a deterministic order, and a single mismatched index assigns the
+        // wrong DDC handle to a monitor (e.g. SetVCPFeature targets the laptop panel
+        // when the user pulls the slider on the external one, while the GDI gamma
+        // call writes to the correct external HMONITOR — yielding a visible no-op
+        // because the panel that DDC actually accepted the write for is a different
+        // physical screen entirely).
         //
-        // DEDUP: On laptops, the built-in panel appears in both WMI and DDC enumeration.
-        // We track has_builtin to skip the primary HMONITOR from DDC when WMI already
-        // covered it. See "Windows display dedup" in CLAUDE.md for full explanation.
+        // Fix: enumerate HMONITORs once via `enum_hmonitors()`, then for each
+        // HMONITOR call `ddc_winapi::get_physical_monitors_from_hmonitor(hm)` to
+        // get the physical monitor(s) attached to that specific HMONITOR. Wrap
+        // each `PHYSICAL_MONITOR` in `Monitor::new(pm)`. The (DDC handle, HMONITOR)
+        // pairing is now explicit and per-HMONITOR — order can't drift.
+        //
+        // DEDUP: On laptops, the built-in panel appears in both WMI and DDC
+        // enumeration. We track has_builtin to skip the primary HMONITOR from DDC
+        // when WMI already covered it. See "Windows display dedup" in CLAUDE.md.
         let has_builtin = !result.is_empty();
         let hmonitors = enum_hmonitors();
-        // Pre-compute details for each HMONITOR (PnP device ID + primary flag)
         let hmonitor_details: Vec<(String, bool)> = hmonitors.iter()
             .map(|&hm| get_hmonitor_details(hm))
             .collect();
 
-        if let Ok(monitors) = ddc_winapi::Monitor::enumerate() {
-            let mut ext_id = 1usize;
-            for (idx, mut mon) in monitors.into_iter().enumerate() {
-                let hmonitor = hmonitors.get(idx).copied().unwrap_or(HMONITOR::default());
-                let (device_id, is_primary) = hmonitor_details.get(idx)
-                    .cloned()
-                    .unwrap_or((String::new(), false));
+        let mut ext_id = 1usize;
+        for (idx, &hmonitor) in hmonitors.iter().enumerate() {
+            let (device_id, is_primary) = hmonitor_details.get(idx)
+                .cloned()
+                .unwrap_or((String::new(), false));
 
-                // DEDUP: Skip the primary (built-in) monitor if we already added it via WMI.
-                // On laptops, the built-in panel appears in both WMI and DDC enumeration.
-                // Without this check, you'd get a duplicate: the WMI "Built-in Display"
-                // plus a DDC "Generic PnP Monitor" with null brightness (laptop panels
-                // don't respond to DDC commands). The primary HMONITOR flag reliably
-                // identifies the built-in panel across all Windows laptop configurations.
-                if has_builtin && is_primary {
+            // DEDUP: Skip the primary (built-in) monitor if we already added it via WMI.
+            // On laptops, the built-in panel appears in both WMI and DDC enumeration.
+            // Without this check, you'd get a duplicate: the WMI "Built-in Display"
+            // plus a DDC "Generic PnP Monitor" with null brightness (laptop panels
+            // don't respond to DDC commands). The primary HMONITOR flag reliably
+            // identifies the built-in panel across all Windows laptop configurations.
+            if has_builtin && is_primary {
+                continue;
+            }
+
+            // Resolve physical monitors for *this* HMONITOR — explicit pairing,
+            // no implicit index alignment with a separate enumeration call.
+            let physical_monitors = match ddc_winapi::get_physical_monitors_from_hmonitor(
+                hmonitor_to_winapi(hmonitor),
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::warn!(
+                        "GetPhysicalMonitorsFromHMONITOR failed for hmonitor[{}] device_id={:?}: {}",
+                        idx, device_id, e,
+                    );
                     continue;
                 }
+            };
+
+            for pm in physical_monitors {
+                // SAFETY: `pm` came from GetPhysicalMonitorsFromHMONITOR; ddc-winapi
+                // takes ownership of the handle and calls DestroyPhysicalMonitor on
+                // drop. The constructor is unsafe only because the crate cannot
+                // verify the handle is valid; we obtained it from the OS API one
+                // statement ago.
+                let mut mon = unsafe { ddc_winapi::Monitor::new(pm) };
 
                 let brightness = mon.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|val| {
                     let max = val.maximum() as f64;
@@ -395,31 +436,49 @@ impl Platform for WinPlatform {
         }
 
         // --- DDC monitors with raw VCP data ---
+        // Enumerate per-HMONITOR (same pairing strategy as `enumerate()`) so the
+        // `hmonitor_index` field anchors each DDC entry to a specific physical
+        // display in the `hmonitors` array above. Previous code called
+        // `Monitor::enumerate()` and reported a flat index, which made it
+        // impossible to tell which HMONITOR a DDC entry belonged to when
+        // ordering between the two calls drifted.
         let mut ddc_list = Vec::new();
-        let ddc_error: Option<String>;
-        match ddc_winapi::Monitor::enumerate() {
-            Ok(monitors) => {
-                ddc_error = None;
-                for (idx, mut mon) in monitors.into_iter().enumerate() {
-                    let desc = mon.description();
-                    let brightness_raw = mon.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|v| {
-                        serde_json::json!({"current": v.value(), "max": v.maximum()})
-                    });
-                    let contrast_raw = mon.get_vcp_feature(VCP_CONTRAST).ok().map(|v| {
-                        serde_json::json!({"current": v.value(), "max": v.maximum()})
-                    });
-                    ddc_list.push(serde_json::json!({
-                        "index": idx,
-                        "description": desc,
-                        "vcp_brightness": brightness_raw,
-                        "vcp_contrast": contrast_raw,
-                    }));
+        let mut ddc_errors: Vec<String> = Vec::new();
+        let mut ddc_seq = 0usize;
+        for (hm_idx, &hmonitor) in hmonitors.iter().enumerate() {
+            match ddc_winapi::get_physical_monitors_from_hmonitor(hmonitor_to_winapi(hmonitor)) {
+                Ok(physicals) => {
+                    for pm in physicals {
+                        // SAFETY: handle obtained from the OS one line above; ddc-winapi
+                        // takes ownership and calls DestroyPhysicalMonitor on drop.
+                        let mut mon = unsafe { ddc_winapi::Monitor::new(pm) };
+                        let desc = mon.description();
+                        let brightness_raw = mon.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|v| {
+                            serde_json::json!({"current": v.value(), "max": v.maximum()})
+                        });
+                        let contrast_raw = mon.get_vcp_feature(VCP_CONTRAST).ok().map(|v| {
+                            serde_json::json!({"current": v.value(), "max": v.maximum()})
+                        });
+                        ddc_list.push(serde_json::json!({
+                            "index": ddc_seq,
+                            "hmonitor_index": hm_idx,
+                            "description": desc,
+                            "vcp_brightness": brightness_raw,
+                            "vcp_contrast": contrast_raw,
+                        }));
+                        ddc_seq += 1;
+                    }
+                }
+                Err(e) => {
+                    ddc_errors.push(format!("hmonitor[{}]: {}", hm_idx, e));
                 }
             }
-            Err(e) => {
-                ddc_error = Some(format!("{}", e));
-            }
         }
+        let ddc_error: Option<String> = if ddc_errors.is_empty() {
+            None
+        } else {
+            Some(ddc_errors.join("; "))
+        };
 
         serde_json::json!({
             "wmi_brightness": wmi_brightness,
