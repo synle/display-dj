@@ -135,7 +135,7 @@ change, theme toggle, and wallpaper write (the GUI parent has
 - **The `windows_subsystem` attribute itself**: must live on the binary root
   (`src-tauri/src/main.rs`), never on `lib.rs`. The inner attribute is
   silently ignored on `lib.rs` and the release `.exe` then ships as a
-  console-subsystem program — pops a console for the *parent* process, which
+  console-subsystem program — pops a console for the _parent_ process, which
   `CREATE_NO_WINDOW` on children cannot fix. (`main.rs:1` has it correctly.)
   This burned `sqlui-native` at v3.1.9 — same trap, same fix.
 - **Cross-apply to upstream**: `core/*` is vendored from `display-dj-cli`,
@@ -171,6 +171,48 @@ Tile Snap uses `NSEvent.addGlobalMonitorForEvents(matching:handler:)` to observe
 4. Use raw `objc_msgSend` with `Sel::register("type")` for `[event type]` — `type` is a Rust keyword; `msg_send![event, r#type]` raises an ObjC exception.
 5. Convert `[NSEvent mouseLocation]` (Cocoa: Y up from bottom-left) → CG coords (Y down from top-left): `primary_h - cocoa_y`.
 6. Use the `block` crate (v0.1) for ObjC blocks. The block must stay alive (`.copy()` to heap) for the monitor's lifetime.
+
+## Soft-Overlay Brightness Fallback (v7.0.19+)
+
+Some panels — most prominently the Samsung Smart Monitor M7/M8 family over USB-C on Intel Iris Xe — ignore DDC/CI writes and have their `SetDeviceGammaRamp` calls silently rejected by the Intel iGPU driver. There is no hardware path that can dim them. The industry workaround (Twinkle Tray, Lunar, Win10_BrightnessSlider) is a software overlay: a transparent, always-on-top, click-through window per monitor whose opacity rises as brightness falls. The OS compositor blends it with everything underneath, so it works on any GPU/driver.
+
+### Per-monitor `brightnessMode` preference
+
+Stored on `MonitorMetadata` in `preferences.monitor_configs`. Four values:
+
+- **`"auto"`** (default) — try DDC, then gamma, then fall back to the overlay if both hardware paths failed.
+- **`"ddc"`** — DDC/CI only, no overlay fallback.
+- **`"gamma"`** — `SetDeviceGammaRamp` only, no overlay fallback.
+- **`"overlay"`** — skip hardware entirely; dim with the overlay window. The only mode that works on the failing-panel scenario above.
+
+The dropdown is rendered next to the existing "Hide" button in Settings (`SettingsPanel.tsx`); built-in displays don't get the dropdown (they dim natively via DisplayServices / WMI / sysfs backlight).
+
+### Overlay module (`src-tauri/src/overlay.rs`)
+
+One Tauri `WebviewWindow` per external monitor, labeled `overlay-{monitor_id}`. Created lazily on the first overlay request, positioned to the monitor's `DisplayInfo.monitor_rect`, made click-through with `set_ignore_cursor_events(true)`. The content is `public/overlay.html` — a single full-viewport black div listening for `set-overlay-alpha` events. Alpha is `1.0 - brightness/100`, clamped to `[0.0, 0.9]` so the user can never make the panel fully opaque (which would prevent recovery via the slider).
+
+Public API:
+
+- `overlay::set_overlay_brightness(app, monitor_id, monitor_rect, brightness_pct)` — ensure window, show, emit alpha. Hides instead of showing when `brightness_pct >= 100`.
+- `overlay::destroy_overlay(app, monitor_id)` — close the overlay (called on unplug or when switching back to a hardware-only mode).
+
+### Routing (`display::set_brightness` / `display::set_all_brightness`)
+
+Each Tauri brightness command snapshots `min_brightness`, the per-monitor `brightnessMode`, and the cached `monitor_rect` _before_ awaiting (so the preferences mutex isn't held across `.await` — see CLAUDE.md macOS Tray Icon Pitfall). It then dispatches through `display::route_for_mode(...)`:
+
+- `BrightnessRoute::DdcOnly` → `core::display::set_one_brightness(id, value, "ddc")`; `destroy_overlay` first.
+- `BrightnessRoute::GammaOnly` → `core::display::set_one_brightness(id, value, "gamma")`; `destroy_overlay` first.
+- `BrightnessRoute::OverlayOnly` → `overlay::set_overlay_brightness(...)`; no hardware call.
+- `BrightnessRoute::AutoWithOverlayFallback` → `core::display::set_one_brightness(id, value, "force")`; on success `destroy_overlay`; on failure `set_overlay_brightness`.
+
+`set_all_brightness` keeps a fast path for the common "every monitor in auto" case (single bulk `set_all_brightness("force")` call + per-monitor overlay touch-up). When any monitor has a non-auto mode it iterates per monitor.
+
+The same routing is used by `tray::execute_command` for the `command/changeBrightness/{value}` and `command/changeBrightness/{monitor_id}/{value}` keyboard-shortcut paths via `dispatch_brightness_for_one` / `dispatch_brightness_for_all` helpers.
+
+### Platform status
+
+- **Windows**: fully functional. `DisplayInfo.monitor_rect` is populated from `MONITORINFOEXW.rcMonitor` for external displays.
+- **macOS / Linux**: the Tauri overlay window itself spawns, but `monitor_rect` is currently `None` on both platforms (see TODOs in `core::macos` and `core::linux`). `brightnessMode = "overlay"` is selectable in the UI but no-ops on those platforms until the rect is filled in. The auto path keeps working on macOS/Linux because DDC and DisplayServices/ddcutil paths are unaffected.
 
 ## Key Conventions
 

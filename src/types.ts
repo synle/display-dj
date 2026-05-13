@@ -10,6 +10,18 @@ export interface Monitor {
   hidden: boolean;
 }
 
+/**
+ * Per-monitor brightness control strategy. One of:
+ *  - `"auto"` (default) — DDC -> gamma -> soft-overlay fallback.
+ *  - `"ddc"` — DDC/CI only, no overlay fallback.
+ *  - `"gamma"` — `SetDeviceGammaRamp` only, no overlay fallback.
+ *  - `"overlay"` — skip hardware paths entirely, dim with a transparent
+ *    click-through window. Required for panels (e.g. some USB-C Samsung
+ *    Smart Monitors on Intel Iris Xe) where both DDC and gamma are
+ *    silently rejected by the driver.
+ */
+export type BrightnessMode = 'auto' | 'ddc' | 'gamma' | 'overlay';
+
 export interface MonitorMetadata {
   uid: string;
   apiId: string;
@@ -17,6 +29,8 @@ export interface MonitorMetadata {
   label: string;
   sortOrder: number;
   hidden: boolean;
+  /** Per-monitor brightness control strategy. Defaults to "auto". */
+  brightnessMode: BrightnessMode;
 }
 
 export interface NightModeSchedule {
