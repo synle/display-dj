@@ -9,6 +9,11 @@ pub mod windows;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
+// Windows-only helper for spawning powershell/reg without flashing a console
+// window. Local to display-dj — not present in the display-dj-cli upstream.
+#[cfg(target_os = "windows")]
+pub mod win_cmd;
+
 pub mod theme;
 pub mod volume;
 pub mod wallpaper;

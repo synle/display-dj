@@ -6,6 +6,9 @@
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(target_os = "windows")]
+use super::win_cmd::hidden_command;
+
 /// System audio volume state.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct VolumeInfo {
@@ -62,7 +65,7 @@ pub fn set_mute(mute: bool) -> bool {
 /// Reads both playback volume and mute state in a single PowerShell invocation.
 #[cfg(target_os = "windows")]
 pub fn get_volume() -> Option<VolumeInfo> {
-    let output = std::process::Command::new("powershell")
+    let output = hidden_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command",
             "Import-Module AudioDeviceCmdlets; $v = Get-AudioDevice -PlaybackVolume; $m = Get-AudioDevice -PlaybackMute; Write-Output \"$v,$m\""])
         .output().ok()?;
@@ -77,7 +80,7 @@ pub fn get_volume() -> Option<VolumeInfo> {
 /// Set system volume on Windows via AudioDeviceCmdlets. Level is 0-100.
 #[cfg(target_os = "windows")]
 pub fn set_volume(level: u16) -> bool {
-    std::process::Command::new("powershell")
+    hidden_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command",
             &format!("Import-Module AudioDeviceCmdlets; Set-AudioDevice -PlaybackVolume {}", level)])
         .output()
@@ -89,7 +92,7 @@ pub fn set_volume(level: u16) -> bool {
 #[cfg(target_os = "windows")]
 pub fn set_mute(mute: bool) -> bool {
     let val = if mute { "1" } else { "0" };
-    std::process::Command::new("powershell")
+    hidden_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command",
             &format!("Import-Module AudioDeviceCmdlets; Set-AudioDevice -PlaybackMute {}", val)])
         .output()
