@@ -18,6 +18,14 @@ pub struct Monitor {
     pub is_built_in: bool,
     #[serde(default)]
     pub hidden: bool,
+    /// Physical screen rect for this monitor as `(left, top, width, height)`
+    /// in global physical pixels. Used by the soft-overlay brightness fallback
+    /// to size and position a per-monitor dimming window. `None` for built-in
+    /// displays (which dim natively) and for monitors on platforms that don't
+    /// yet populate the rect (macOS, Linux — see TODOs in `core::macos` and
+    /// `core::linux`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitor_rect: Option<(i32, i32, i32, i32)>,
 }
 
 /// Convert a `core::DisplayInfo` (from the in-process platform layer) into the
@@ -36,6 +44,7 @@ pub fn into_monitor(d: crate::core::DisplayInfo) -> Monitor {
         supports_brightness: true,
         is_built_in,
         hidden: false,
+        monitor_rect: d.monitor_rect,
     }
 }
 
@@ -51,22 +60,40 @@ async fn detect_monitors() -> Vec<Monitor> {
     displays.into_iter().map(into_monitor).collect()
 }
 
-/// Set brightness on a single monitor via the in-process platform layer,
-/// clamped to `[min_brightness, 100]`. Returns whether the platform call succeeded.
-async fn set_monitor_brightness(monitor_id: &str, value: u32, min_brightness: u32) -> Result<bool, String> {
+/// Set brightness on a single monitor via the in-process platform layer with
+/// the requested platform mode (`"ddc"`, `"gamma"`, or `"force"` for auto),
+/// clamped to `[min_brightness, 100]`. Returns whether the platform call
+/// succeeded — `false` is the trigger for the soft-overlay fallback in
+/// "auto" mode.
+async fn set_monitor_brightness(
+    monitor_id: &str,
+    value: u32,
+    min_brightness: u32,
+    mode: &str,
+) -> Result<bool, String> {
     let clamped = value.clamp(min_brightness, 100);
     let id = monitor_id.to_string();
-    log::info!("set_monitor_brightness: id={} value={} clamped={} min={}", id, value, clamped, min_brightness);
+    let mode_owned = mode.to_string();
+    log::info!(
+        "set_monitor_brightness: id={} value={} clamped={} min={} mode={}",
+        id, value, clamped, min_brightness, mode_owned,
+    );
     let ok = tauri::async_runtime::spawn_blocking(move || {
-        crate::core::display::set_one_brightness(&id, clamped as u16, "force")
+        crate::core::display::set_one_brightness(&id, clamped as u16, &mode_owned)
     })
     .await
     .map_err(|e| format!("brightness task join failed: {}", e))?;
     Ok(ok)
 }
 
-/// Set brightness on all monitors via the in-process platform layer.
-/// Returns the per-monitor (id, success) results so the caller can log them.
+/// Set brightness on all monitors via the in-process platform layer using
+/// `"force"` mode (DDC -> gamma fallback per monitor). Used by the legacy
+/// all-at-once path; for per-monitor mode dispatch (DDC-only, gamma-only,
+/// overlay-only) callers should iterate `monitor_configs` and call
+/// [`set_monitor_brightness`] per monitor instead.
+///
+/// Returns the per-monitor `(id, success)` results so the caller can log them
+/// and surface partial failures.
 async fn set_all_monitors_brightness(value: u32, min_brightness: u32) -> Result<Vec<(String, bool)>, String> {
     let clamped = value.clamp(min_brightness, 100);
     log::info!("set_all_monitors_brightness: value={} clamped={} min={}", value, clamped, min_brightness);
@@ -102,6 +129,77 @@ async fn set_all_monitors_contrast(value: u32) -> Result<Vec<(String, bool)>, St
     .await
     .map_err(|e| format!("set_all_contrast task join failed: {}", e))?;
     Ok(results)
+}
+
+// ===========================================================================
+// Brightness mode routing
+// ===========================================================================
+
+/// Resolve the brightness mode for a monitor identified by its raw API id.
+///
+/// Looks up the matching `MonitorMetadata` entry by `api_id`. Falls back to
+/// `"auto"` when the monitor has no metadata yet (first sighting) or when the
+/// stored mode is something the routing logic doesn't recognise — i.e. the
+/// auto-discovery path is the safe default for unknown inputs.
+///
+/// # Arguments
+/// * `configs` - Slice of saved per-monitor metadata from preferences.
+/// * `api_id` - Raw `core::DisplayInfo.id` (e.g. `"1"`, `"builtin"`).
+///
+/// # Returns
+/// One of `"auto"`, `"ddc"`, `"gamma"`, `"overlay"`.
+pub fn resolve_brightness_mode(
+    configs: &[crate::config::MonitorMetadata],
+    api_id: &str,
+) -> String {
+    let stored = configs
+        .iter()
+        .find(|m| m.api_id == api_id)
+        .map(|m| m.brightness_mode.as_str())
+        .unwrap_or("auto");
+    match stored {
+        "auto" | "ddc" | "gamma" | "overlay" => stored.into(),
+        // Unknown mode -> safe default rather than silently doing nothing.
+        _ => "auto".into(),
+    }
+}
+
+/// Route decision for the brightness dispatcher.
+///
+/// Encodes "which platform code path, and should we also touch the soft-
+/// overlay window?" as a tiny enum so the routing logic is unit-testable
+/// independently of any Tauri / hardware context.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum BrightnessRoute {
+    /// Try DDC then gamma (`"force"` mode in `core::display`); fall back to
+    /// the overlay only if **both** hardware paths fail (`auto` mode).
+    AutoWithOverlayFallback,
+    /// DDC only. No overlay. Tear down any existing overlay so old state
+    /// doesn't double-dim.
+    DdcOnly,
+    /// Gamma only. No overlay. Tear down any existing overlay.
+    GammaOnly,
+    /// Overlay only. Skip the hardware paths entirely.
+    OverlayOnly,
+}
+
+/// Pure routing decision: given the user's brightness mode string, pick the
+/// dispatcher path. Extracted for unit-testing; the Tauri commands just call
+/// this and then act on the result.
+///
+/// # Arguments
+/// * `mode` - One of `"auto"`, `"ddc"`, `"gamma"`, `"overlay"`. Anything else
+///   collapses to [`BrightnessRoute::AutoWithOverlayFallback`].
+///
+/// # Returns
+/// The corresponding [`BrightnessRoute`].
+pub fn route_for_mode(mode: &str) -> BrightnessRoute {
+    match mode {
+        "ddc" => BrightnessRoute::DdcOnly,
+        "gamma" => BrightnessRoute::GammaOnly,
+        "overlay" => BrightnessRoute::OverlayOnly,
+        _ => BrightnessRoute::AutoWithOverlayFallback,
+    }
 }
 
 // ===========================================================================
@@ -173,6 +271,7 @@ fn ensure_metadata_for_monitors(
                 label: String::new(),
                 sort_order: next_order + i as i32,
                 hidden: false,
+                brightness_mode: crate::config::default_brightness_mode(),
             });
             changed = true;
         }
@@ -234,30 +333,100 @@ pub async fn get_monitors(
     Ok(result)
 }
 
-/// Sets brightness for a single monitor, enforcing the minimum brightness floor.
+/// Sets brightness for a single monitor, enforcing the minimum brightness
+/// floor and routing through the per-monitor `brightnessMode` preference.
+///
+/// Dispatch rules (see [`BrightnessRoute`]):
+/// - `"auto"` — try DDC then gamma (`core::display` "force" mode). If both
+///   hardware paths fail, show the soft-overlay dimmer. On success, tear
+///   down any existing overlay so a previous overlay state doesn't keep
+///   double-dimming the panel.
+/// - `"ddc"` / `"gamma"` — call the matching platform path only; never show
+///   an overlay; tear down any existing overlay first.
+/// - `"overlay"` — skip hardware entirely; show / update the overlay.
 #[tauri::command]
 pub async fn set_brightness(
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
     monitor_id: String,
     value: u32,
 ) -> Result<(), String> {
     let t0 = std::time::Instant::now();
-    let min = state.preferences.lock().map_err(|e| e.to_string())?.effective_min_brightness();
+    // Snapshot the preference fields we need *before* awaiting anything so we
+    // don't hold the mutex across `.await` (CLAUDE.md tray-icon pitfall).
+    let (min, mode, monitor_rect) = {
+        let prefs = state.preferences.lock().map_err(|e| e.to_string())?;
+        let mode = resolve_brightness_mode(&prefs.monitor_configs, &monitor_id);
+        // Pull the monitor rect from the cache when available — avoids a fresh
+        // hardware enumerate on every slider drag. The cache is invalidated
+        // below, so the very next read will refresh; for the overlay path that
+        // happens lazily on the next get_monitors call.
+        let monitor_rect = state
+            .sidecar_cache
+            .get_monitors()
+            .and_then(|monitors| {
+                monitors
+                    .into_iter()
+                    .find(|m| m.id == monitor_id)
+                    .and_then(|m| m.monitor_rect)
+            });
+        (prefs.effective_min_brightness(), mode, monitor_rect)
+    };
     crate::config::write_debug_log(
         &state,
-        &format!("set_brightness: id={} value={} min={} — START", monitor_id, value, min),
+        &format!(
+            "set_brightness: id={} value={} min={} mode={} has_rect={} — START",
+            monitor_id, value, min, mode, monitor_rect.is_some(),
+        ),
     );
     state.sidecar_cache.invalidate_monitors();
-    let result = set_monitor_brightness(&monitor_id, value, min).await;
+
+    let route = route_for_mode(&mode);
+    let result: Result<bool, String> = match route {
+        BrightnessRoute::DdcOnly => {
+            let _ = crate::overlay::destroy_overlay(&app, &monitor_id);
+            set_monitor_brightness(&monitor_id, value, min, "ddc").await
+        }
+        BrightnessRoute::GammaOnly => {
+            let _ = crate::overlay::destroy_overlay(&app, &monitor_id);
+            set_monitor_brightness(&monitor_id, value, min, "gamma").await
+        }
+        BrightnessRoute::OverlayOnly => {
+            // Pure overlay mode: skip hardware entirely.
+            crate::overlay::set_overlay_brightness(&app, &monitor_id, monitor_rect, value)
+                .map(|_| true)
+        }
+        BrightnessRoute::AutoWithOverlayFallback => {
+            // Try the hardware path first; fall through to overlay on failure.
+            let hw_ok = set_monitor_brightness(&monitor_id, value, min, "force").await?;
+            if hw_ok {
+                let _ = crate::overlay::destroy_overlay(&app, &monitor_id);
+                Ok(true)
+            } else {
+                log::info!(
+                    "set_brightness: id={} hardware path failed, falling back to overlay",
+                    monitor_id,
+                );
+                crate::overlay::set_overlay_brightness(&app, &monitor_id, monitor_rect, value)
+                    .map(|_| true)
+            }
+        }
+    };
     let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
     match &result {
         Ok(ok) => crate::config::write_debug_log(
             &state,
-            &format!("set_brightness: id={} platform_ok={} — {:.1}ms", monitor_id, ok, elapsed),
+            &format!(
+                "set_brightness: id={} mode={} platform_ok={} — {:.1}ms",
+                monitor_id, mode, ok, elapsed,
+            ),
         ),
         Err(e) => crate::config::write_debug_log(
             &state,
-            &format!("set_brightness: id={} ERROR={} — {:.1}ms", monitor_id, e, elapsed),
+            &format!(
+                "set_brightness: id={} mode={} ERROR={} — {:.1}ms",
+                monitor_id, mode, e, elapsed,
+            ),
         ),
     }
     match result? {
@@ -266,41 +435,153 @@ pub async fn set_brightness(
     }
 }
 
-/// Sets brightness for all monitors, enforcing the minimum brightness floor.
+/// Sets brightness for all monitors, enforcing the minimum brightness floor
+/// and routing each monitor through its individual `brightnessMode`.
+///
+/// Fast path: if **every** monitor in the cached list is in `"auto"` mode
+/// (or the cache is empty), this falls back to the legacy bulk
+/// `core::display::set_all_brightness("force")` call which is one platform
+/// round-trip total. Slow path: when any monitor has a non-auto mode (or any
+/// monitor has an overlay set), each monitor is dispatched individually so
+/// per-monitor mode is honored. The slow path is `O(n)` blocking-thread
+/// hops; n is typically 1-3 monitors so this is fine.
 #[tauri::command]
 pub async fn set_all_brightness(
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
     value: u32,
 ) -> Result<(), String> {
     let t0 = std::time::Instant::now();
-    let min = state.preferences.lock().map_err(|e| e.to_string())?.effective_min_brightness();
+    let (min, configs, cached_monitors) = {
+        let prefs = state.preferences.lock().map_err(|e| e.to_string())?;
+        (
+            prefs.effective_min_brightness(),
+            prefs.monitor_configs.clone(),
+            state.sidecar_cache.get_monitors().unwrap_or_default(),
+        )
+    };
     crate::config::write_debug_log(
         &state,
         &format!("set_all_brightness: value={} min={} — START", value, min),
     );
     state.sidecar_cache.invalidate_monitors();
-    let result = set_all_monitors_brightness(value, min).await;
-    let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
-    match &result {
-        Ok(per_monitor) => {
-            let summary = per_monitor.iter()
-                .map(|(id, ok)| format!("{}={}", id, ok))
-                .collect::<Vec<_>>()
-                .join(", ");
-            crate::config::write_debug_log(
+
+    // Decide whether we can take the fast path. The fast path is fine when
+    // every monitor is in "auto" mode AND no monitor currently has an overlay
+    // window (otherwise the bulk call would leave the overlay state stale).
+    let all_auto = cached_monitors.iter().all(|m| {
+        m.is_built_in
+            || resolve_brightness_mode(&configs, &m.id) == "auto"
+    });
+
+    if all_auto && !cached_monitors.is_empty() {
+        // Fast path: one bulk hardware call covers all monitors. Any monitor
+        // that fails will get an overlay fallback by running through the slow
+        // loop below; here we just check the aggregate result.
+        let result = set_all_monitors_brightness(value, min).await;
+        let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+        match &result {
+            Ok(per_monitor) => {
+                // Tear down stale overlays on monitors that succeeded;
+                // fall back to overlay for any monitor that failed.
+                for (id, ok) in per_monitor {
+                    if *ok {
+                        let _ = crate::overlay::destroy_overlay(&app, id);
+                    } else if let Some(m) = cached_monitors.iter().find(|m| &m.id == id) {
+                        if !m.is_built_in {
+                            log::info!(
+                                "set_all_brightness: id={} hardware failed, falling back to overlay",
+                                id,
+                            );
+                            let _ = crate::overlay::set_overlay_brightness(
+                                &app, id, m.monitor_rect, value,
+                            );
+                        }
+                    }
+                }
+                let summary = per_monitor.iter()
+                    .map(|(id, ok)| format!("{}={}", id, ok))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                crate::config::write_debug_log(
+                    &state,
+                    &format!(
+                        "set_all_brightness: value={} per_monitor=[{}] — {:.1}ms (fast)",
+                        value, summary, elapsed,
+                    ),
+                );
+            }
+            Err(e) => crate::config::write_debug_log(
                 &state,
                 &format!(
-                    "set_all_brightness: value={} per_monitor=[{}] — {:.1}ms",
-                    value, summary, elapsed,
+                    "set_all_brightness: value={} ERROR={} — {:.1}ms (fast)",
+                    value, e, elapsed,
                 ),
-            );
+            ),
         }
-        Err(e) => crate::config::write_debug_log(
-            &state,
-            &format!("set_all_brightness: value={} ERROR={} — {:.1}ms", value, e, elapsed),
-        ),
+        return result.map(|_| ());
     }
-    result.map(|_| ())
+
+    // Slow path: dispatch per-monitor so each monitor's `brightnessMode` is
+    // honored. We can't iterate `configs` directly because those are stored
+    // metadata (which can include unplugged monitors). Iterate the cached
+    // live monitor list instead. If the cache is empty, fall back to the
+    // legacy bulk call so we don't silently no-op.
+    if cached_monitors.is_empty() {
+        let result = set_all_monitors_brightness(value, min).await;
+        let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+        crate::config::write_debug_log(
+            &state,
+            &format!(
+                "set_all_brightness: value={} cache_empty fallback — {:.1}ms",
+                value, elapsed,
+            ),
+        );
+        return result.map(|_| ());
+    }
+
+    let mut summary_lines: Vec<String> = Vec::with_capacity(cached_monitors.len());
+    for m in &cached_monitors {
+        let mode = resolve_brightness_mode(&configs, &m.id);
+        let route = route_for_mode(&mode);
+        let res: Result<bool, String> = match route {
+            BrightnessRoute::DdcOnly => {
+                let _ = crate::overlay::destroy_overlay(&app, &m.id);
+                set_monitor_brightness(&m.id, value, min, "ddc").await
+            }
+            BrightnessRoute::GammaOnly => {
+                let _ = crate::overlay::destroy_overlay(&app, &m.id);
+                set_monitor_brightness(&m.id, value, min, "gamma").await
+            }
+            BrightnessRoute::OverlayOnly => {
+                crate::overlay::set_overlay_brightness(&app, &m.id, m.monitor_rect, value)
+                    .map(|_| true)
+            }
+            BrightnessRoute::AutoWithOverlayFallback => {
+                let hw_ok = set_monitor_brightness(&m.id, value, min, "force").await?;
+                if hw_ok {
+                    let _ = crate::overlay::destroy_overlay(&app, &m.id);
+                    Ok(true)
+                } else {
+                    crate::overlay::set_overlay_brightness(&app, &m.id, m.monitor_rect, value)
+                        .map(|_| true)
+                }
+            }
+        };
+        match res {
+            Ok(ok) => summary_lines.push(format!("{}(mode={})={}", m.id, mode, ok)),
+            Err(e) => summary_lines.push(format!("{}(mode={})=ERR:{}", m.id, mode, e)),
+        }
+    }
+    let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+    crate::config::write_debug_log(
+        &state,
+        &format!(
+            "set_all_brightness: value={} per_monitor=[{}] — {:.1}ms (slow/per-mode)",
+            value, summary_lines.join(", "), elapsed,
+        ),
+    );
+    Ok(())
 }
 
 /// Sets contrast for a single monitor (0-100, DDC-only).
@@ -390,6 +671,7 @@ pub fn rename_monitor(
             label: name,
             sort_order: 0,
             hidden: false,
+            brightness_mode: crate::config::default_brightness_mode(),
         });
     }
     crate::config::save_preferences_to_disk(&prefs);
@@ -420,6 +702,7 @@ pub fn save_monitor_order(
                 label: String::new(),
                 sort_order,
                 hidden: false,
+                brightness_mode: crate::config::default_brightness_mode(),
             });
         }
     }
@@ -479,6 +762,7 @@ mod tests {
             supports_brightness: true,
             is_built_in,
             hidden: false,
+            monitor_rect: None,
         }
     }
 
@@ -491,6 +775,7 @@ mod tests {
             label: label.into(),
             sort_order,
             hidden: false,
+            brightness_mode: crate::config::default_brightness_mode(),
         }
     }
 
@@ -634,6 +919,7 @@ mod tests {
             brightness: Some(70),
             contrast: Some(60),
             ddc_supported: true,
+            monitor_rect: None,
         };
         let m = into_monitor(info);
         assert_eq!(m.name, "Dell U2723QE");
@@ -651,6 +937,7 @@ mod tests {
             brightness: Some(80),
             contrast: None,
             ddc_supported: false,
+            monitor_rect: None,
         };
         let m = into_monitor(info);
         assert!(m.is_built_in);
@@ -668,6 +955,7 @@ mod tests {
             brightness: Some(50),
             contrast: Some(75),
             ddc_supported: true,
+            monitor_rect: None,
         };
         let m = into_monitor(info);
         assert!(!m.is_built_in);
@@ -686,6 +974,7 @@ mod tests {
             brightness: None,
             contrast: None,
             ddc_supported: false,
+            monitor_rect: None,
         };
         let m = into_monitor(info);
         assert_eq!(m.brightness, 50);
@@ -702,6 +991,7 @@ mod tests {
             label: "My Dell".into(),
             sort_order: 0,
             hidden: false,
+            brightness_mode: crate::config::default_brightness_mode(),
         }];
         let changed = reconcile_migrated_configs(&monitors, &mut configs);
         assert!(changed);
@@ -767,6 +1057,7 @@ mod tests {
                 label: "Left Monitor".into(),
                 sort_order: 0,
                 hidden: false,
+                brightness_mode: crate::config::default_brightness_mode(),
             },
             crate::config::MonitorMetadata {
                 uid: "2::unknown".into(),
@@ -775,6 +1066,7 @@ mod tests {
                 label: "Right Monitor".into(),
                 sort_order: 1,
                 hidden: false,
+                brightness_mode: crate::config::default_brightness_mode(),
             },
             // One already-known entry (not migrated)
             crate::config::MonitorMetadata {
@@ -784,6 +1076,7 @@ mod tests {
                 label: "MacBook".into(),
                 sort_order: 2,
                 hidden: false,
+                brightness_mode: crate::config::default_brightness_mode(),
             },
         ];
         let changed = reconcile_migrated_configs(&monitors, &mut configs);
@@ -875,5 +1168,70 @@ mod tests {
     #[test]
     fn test_core_list_all_does_not_panic() {
         let _ = crate::core::display::list_all();
+    }
+
+    /// Verifies the brightness_mode resolver picks up the stored mode by
+    /// matching on `api_id` (not `uid`), so monitor renames or display
+    /// reorderings don't break dispatch.
+    #[test]
+    fn test_resolve_brightness_mode_by_api_id() {
+        let configs = vec![
+            crate::config::MonitorMetadata {
+                uid: "1::Dell".into(),
+                api_id: "1".into(),
+                api_name: "Dell".into(),
+                label: "".into(),
+                sort_order: 0,
+                hidden: false,
+                brightness_mode: "overlay".into(),
+            },
+            crate::config::MonitorMetadata {
+                uid: "2::LG".into(),
+                api_id: "2".into(),
+                api_name: "LG".into(),
+                label: "".into(),
+                sort_order: 1,
+                hidden: false,
+                brightness_mode: "ddc".into(),
+            },
+        ];
+        assert_eq!(resolve_brightness_mode(&configs, "1"), "overlay");
+        assert_eq!(resolve_brightness_mode(&configs, "2"), "ddc");
+    }
+
+    /// Verifies the resolver returns "auto" when the monitor has no config
+    /// entry yet (first sighting on a new install).
+    #[test]
+    fn test_resolve_brightness_mode_defaults_to_auto() {
+        let configs: Vec<crate::config::MonitorMetadata> = Vec::new();
+        assert_eq!(resolve_brightness_mode(&configs, "1"), "auto");
+    }
+
+    /// Verifies the resolver safely collapses an unknown stored mode to
+    /// "auto" rather than letting a typo silently disable brightness.
+    #[test]
+    fn test_resolve_brightness_mode_unknown_collapses_to_auto() {
+        let configs = vec![crate::config::MonitorMetadata {
+            uid: "1::Dell".into(),
+            api_id: "1".into(),
+            api_name: "Dell".into(),
+            label: "".into(),
+            sort_order: 0,
+            hidden: false,
+            brightness_mode: "moonbeam".into(),
+        }];
+        assert_eq!(resolve_brightness_mode(&configs, "1"), "auto");
+    }
+
+    /// Verifies each mode string maps to the expected route variant.
+    #[test]
+    fn test_route_for_mode_all_modes() {
+        assert_eq!(route_for_mode("auto"), BrightnessRoute::AutoWithOverlayFallback);
+        assert_eq!(route_for_mode("ddc"), BrightnessRoute::DdcOnly);
+        assert_eq!(route_for_mode("gamma"), BrightnessRoute::GammaOnly);
+        assert_eq!(route_for_mode("overlay"), BrightnessRoute::OverlayOnly);
+        // Unknown -> auto (safe default).
+        assert_eq!(route_for_mode("whatever"), BrightnessRoute::AutoWithOverlayFallback);
+        assert_eq!(route_for_mode(""), BrightnessRoute::AutoWithOverlayFallback);
     }
 }

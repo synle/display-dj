@@ -323,6 +323,28 @@ fn enum_hmonitors() -> Vec<HMONITOR> {
     hmonitors
 }
 
+/// Read the physical screen rect for an `HMONITOR` as
+/// `(left, top, width, height)` in global physical pixels.
+///
+/// Reads `MONITORINFOEXW.rcMonitor` — the same rect the WM uses for window
+/// placement. Returns `None` if `GetMonitorInfoW` fails for any reason
+/// (transient handle, monitor unplugged between enumerate and read, etc.).
+///
+/// # Returns
+/// `Some((left, top, width, height))` on success, `None` if the Win32 call
+/// failed.
+fn get_hmonitor_rect(hmonitor: HMONITOR) -> Option<(i32, i32, i32, i32)> {
+    unsafe {
+        let mut info = MONITORINFOEXW::default();
+        info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+        if !GetMonitorInfoW(hmonitor, &mut info.monitorInfo as *mut _).as_bool() {
+            return None;
+        }
+        let rc = info.monitorInfo.rcMonitor;
+        Some((rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top))
+    }
+}
+
 /// Get the PnP device identifier and primary flag for an HMONITOR.
 /// Returns (device_identifier, is_primary).
 ///
@@ -401,6 +423,9 @@ impl Platform for WinPlatform {
                 brightness: Some(brightness),
                 contrast: None,
                 ddc_supported: false,
+                // Built-in panels can dim natively via WMI — the overlay
+                // fallback is never used for them, so the rect is irrelevant.
+                monitor_rect: None,
             };
             // BuiltinControl is a unit struct — no fields to initialize
             result.push((info, Box::new(BuiltinControl)));
@@ -501,6 +526,10 @@ impl Platform for WinPlatform {
                     brightness,
                     contrast,
                     ddc_supported,
+                    // Populated so the soft-overlay brightness fallback can
+                    // size and position a click-through dimming window over
+                    // this specific external display.
+                    monitor_rect: get_hmonitor_rect(hmonitor),
                 };
                 result.push((info, Box::new(ExternalControl { ddc_monitor: mon, hmonitor, ddc_supported })));
                 ext_id += 1;

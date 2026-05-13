@@ -281,12 +281,38 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         )}
                       </div>
                       {meta.apiId !== 'builtin' && (
-                        <button
-                          className='monitor-visibility-btn'
-                          onClick={() => updateMonitorConfig(meta.uid, { hidden: !meta.hidden })}
-                          title={meta.hidden ? 'Show monitor' : 'Hide monitor'}>
-                          {meta.hidden ? 'Show' : 'Hide'}
-                        </button>
+                        <>
+                          <select
+                            className='monitor-brightness-mode'
+                            value={meta.brightnessMode || 'auto'}
+                            onChange={(e) =>
+                              updateMonitorConfig(meta.uid, {
+                                brightnessMode: e.target.value as
+                                  | 'auto'
+                                  | 'ddc'
+                                  | 'gamma'
+                                  | 'overlay',
+                              })
+                            }
+                            title={
+                              'Brightness control strategy.\n' +
+                              'auto: DDC -> gamma -> soft-overlay fallback.\n' +
+                              'ddc: DDC/CI only (no overlay).\n' +
+                              'gamma: SetDeviceGammaRamp only (no overlay).\n' +
+                              'overlay: software dimming window (works on any monitor).'
+                            }>
+                            <option value='auto'>Auto</option>
+                            <option value='ddc'>DDC only</option>
+                            <option value='gamma'>Gamma only</option>
+                            <option value='overlay'>Overlay only</option>
+                          </select>
+                          <button
+                            className='monitor-visibility-btn'
+                            onClick={() => updateMonitorConfig(meta.uid, { hidden: !meta.hidden })}
+                            title={meta.hidden ? 'Show monitor' : 'Hide monitor'}>
+                            {meta.hidden ? 'Show' : 'Hide'}
+                          </button>
+                        </>
                       )}
                     </div>
                   );

@@ -3,6 +3,7 @@ pub mod core;
 mod dark_mode;
 mod display;
 mod keep_awake;
+mod overlay;
 pub mod sidecar_cache;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod tiling;
