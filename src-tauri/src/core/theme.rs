@@ -3,6 +3,9 @@
 // Vendored from display-dj-cli main.rs.
 // =========================================================================
 
+#[cfg(target_os = "windows")]
+use super::win_cmd::hidden_command;
+
 // --- macOS dark mode: AppleScript via osascript ---
 
 /// Set dark/light mode on macOS via System Events AppleScript.
@@ -45,13 +48,13 @@ pub fn set_dark_mode(dark: bool) -> bool {
     // Windows uses 0=dark, 1=light (inverted from what you'd expect)
     let val = if dark { "0" } else { "1" };
     // Must set both keys — AppsUseLightTheme for app chrome, SystemUsesLightTheme for taskbar
-    let app = std::process::Command::new("reg")
+    let app = hidden_command("reg")
         .args(["add", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
                "/v", "AppsUseLightTheme", "/t", "REG_DWORD", "/d", val, "/f"])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
-    let sys = std::process::Command::new("reg")
+    let sys = hidden_command("reg")
         .args(["add", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
                "/v", "SystemUsesLightTheme", "/t", "REG_DWORD", "/d", val, "/f"])
         .output()
@@ -59,7 +62,7 @@ pub fn set_dark_mode(dark: bool) -> bool {
         .unwrap_or(false);
     if app && sys {
         // Broadcast WM_SETTINGCHANGE so existing windows refresh their title bars
-        let _ = std::process::Command::new("powershell")
+        let _ = hidden_command("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command", r#"
                 Add-Type -TypeDefinition @'
                 using System;
@@ -89,7 +92,7 @@ pub fn set_dark_mode(dark: bool) -> bool {
 /// AppsUseLightTheme: 0 = dark mode ON, 1 = light mode (note: inverted naming).
 #[cfg(target_os = "windows")]
 pub fn get_dark_mode() -> Option<bool> {
-    let output = std::process::Command::new("reg")
+    let output = hidden_command("reg")
         .args(["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
                "/v", "AppsUseLightTheme"])
         .output()

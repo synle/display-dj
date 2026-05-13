@@ -34,6 +34,17 @@ commit on `main` that each vendored snapshot corresponds to. Run
 | `src-tauri/src/core/volume.rs`    | `src/main.rs`    | `3b9306d`       | Extracted `get_volume` / `set_volume` / `set_mute` per-OS impls + `VolumeInfo`.                                                                                        |
 | `src-tauri/src/core/wallpaper.rs` | `src/main.rs`    | `3b9306d`       | Extracted `set_wallpaper` / `set_wallpaper_one` per-OS impls + `SlideshowState` and `slideshow_*` helpers.                                                             |
 | `src-tauri/src/core/display.rs`   | `src/main.rs`    | `3b9306d`       | Distilled high-level fan-out helpers (`list_all`, `set_all_brightness`, `set_one_brightness`, contrast variants) from CLI's `cmd_get` / `cmd_set_all` / `cmd_set_one`. |
+| `src-tauri/src/core/win_cmd.rs`   | _(local)_        | _n/a_           | display-dj-only helper. Wraps `Command::new(...)` with the Win32 `CREATE_NO_WINDOW` (`0x08000000`) creation flag so `powershell` / `reg` spawns don't flash a console window on every brightness/volume/theme/wallpaper change. Has no upstream counterpart — the CLI is itself a console app, so it never needed it. |
+
+In addition to the table above, the following vendored files carry a
+display-dj-local Windows patch on top of their upstream snapshot:
+`windows.rs`, `volume.rs`, `theme.rs`, `wallpaper.rs` — every
+`std::process::Command::new("powershell"|"reg")` site under a
+`#[cfg(target_os = "windows")]` gate is routed through
+`super::win_cmd::hidden_command(...)` so the parent (GUI-subsystem)
+binary does not pop a console window for each child spawn. When
+re-syncing from upstream, re-apply these substitutions or run a
+follow-up `s/std::process::Command::new("\(powershell\|reg\)")/hidden_command("\1")/g` pass.
 
 The recorded SHAs above reflect the latest upstream commit at which
 the vendored snapshots are byte-identical (modulo the

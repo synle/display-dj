@@ -1,3 +1,4 @@
+use super::win_cmd::hidden_command;
 use super::{DisplayControl, DisplayInfo, Platform, BUILTIN_ID, VCP_BRIGHTNESS, VCP_CONTRAST};
 use ddc::Ddc; // trait providing get_vcp_feature / set_vcp_feature
 use std::thread;
@@ -25,7 +26,7 @@ impl BuiltinControl {
     /// Queries WmiMonitorBrightness.CurrentBrightness — only available on laptops with
     /// an internal panel. Desktops return None here.
     fn wmi_get() -> Option<u32> {
-        let output = std::process::Command::new("powershell")
+        let output = hidden_command("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command",
                 "(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue).CurrentBrightness"])
             .output().ok()?; // .ok()? = convert Result->Option, return None on error
@@ -43,7 +44,7 @@ impl BuiltinControl {
             "(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, {})",
             value
         );
-        std::process::Command::new("powershell")
+        hidden_command("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
             .output()
             .map(|o| o.status.success())
