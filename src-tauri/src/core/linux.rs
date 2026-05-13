@@ -140,6 +140,21 @@ impl DisplayControl for ExternalControl {
         let use_gamma = mode == "gamma" || mode == "force" || (mode == "auto" && !self.ddc_supported);
         let mut ok = true;
 
+        // TODO(linux-force-write-parity): Verify on real Linux/X11 hardware
+        // whether this branch suffers the same asymmetry that was fixed on
+        // macOS and Windows in v7.0.13 — namely, in `mode == "force"`, the
+        // DDC write should be attempted *even when `ddc_supported == false`*,
+        // because some panels (notably Samsung Smart Monitors) silently
+        // reject the VCP_BRIGHTNESS *read* but accept the *write*. The macOS
+        // path uses `let try_ddc = use_ddc || mode == "force";` then
+        // `if try_ddc { ddc_write_with_retry(...) }`. The Windows path now
+        // mirrors that exactly. Linux still gates on `self.ddc_supported`,
+        // which means a Samsung-style "read-fails-write-works" panel falls
+        // straight through to gamma. If you can reproduce the symptom on
+        // Linux + ddcutil (run with `--mode force` from the CLI; check the
+        // resulting `ddc_supported` flag and whether `ddcutil setvcp` still
+        // succeeds when `ddcutil getvcp` failed), apply the same fix here
+        // and add the `ddc_write_with_retry` helper.
         if use_ddc && self.ddc_supported {
             let ddc_val = if value == 0 { 1 } else { value };
             if !set_ddcutil_vcp(self.display_num, VCP_BRIGHTNESS, ddc_val) {

@@ -19,6 +19,34 @@ fn hmonitor_to_winapi(hm: HMONITOR) -> winapi::shared::windef::HMONITOR {
     hm.0 as winapi::shared::windef::HMONITOR
 }
 
+// DDC write retry parameters — mirrored from `core::macos` so that the two
+// platforms behave identically. Some panels (Acer XZ322QU V3 family, several
+// Samsung models) need repeated I2C writes before the hardware actually
+// processes the command. Five attempts at 50 ms spacing was the empirically
+// chosen baseline upstream — keeping the numbers in sync prevents one
+// platform from regressing while the other stays correct.
+const DDC_WRITE_RETRIES: u32 = 5;
+const DDC_RETRY_DELAY_MS: u64 = 50;
+
+/// Try writing a VCP feature with multiple attempts and delays.
+/// Returns true on first successful write, false after `DDC_WRITE_RETRIES`
+/// consecutive failures. Each successful write is followed by an extra
+/// `DDC_RETRY_DELAY_MS` so the monitor's MCU has time to process before any
+/// follow-up call (read-back, contrast, etc.). Direct port of the same-named
+/// helper in `core::macos`.
+fn ddc_write_with_retry(mon: &mut ddc_winapi::Monitor, vcp: u8, value: u16) -> bool {
+    for attempt in 0..DDC_WRITE_RETRIES {
+        if attempt > 0 {
+            thread::sleep(Duration::from_millis(DDC_RETRY_DELAY_MS));
+        }
+        if mon.set_vcp_feature(vcp, value).is_ok() {
+            thread::sleep(Duration::from_millis(DDC_RETRY_DELAY_MS));
+            return true;
+        }
+    }
+    false
+}
+
 // =========================================================================
 // Built-in display — WMI (Windows Management Instrumentation) via PowerShell.
 // Laptops expose brightness through the WmiMonitorBrightness WMI class.
@@ -80,6 +108,18 @@ impl DisplayControl for BuiltinControl {
 // =========================================================================
 // External monitor — DDC/CI via ddc-winapi + gamma ramp via GDI32.
 // ddc-winapi uses the Dxva2.dll API to send I2C commands to monitors.
+//
+// TODO(soft-overlay-fallback): when **both** DDC and GDI gamma fail (Samsung
+// Smart Monitors on Intel Iris Xe are the canonical case — the panel rejects
+// VCP_BRIGHTNESS and the Intel driver silently rejects `SetDeviceGammaRamp`
+// for external displays), there is no third hardware path that can dim the
+// physical backlight. The remaining option is a *software dimming overlay*:
+// spawn a per-monitor borderless, click-through, always-on-top transparent
+// Tauri window sized to the monitor's full work area and modulate its black
+// alpha to match `100 - brightness`. The OS compositor handles the blending
+// at no measurable cost. This is what Twinkle Tray / Win10_BrightnessSlider
+// / Lunar do for non-DDC monitors. Not in scope for v7.0.13 — file is the
+// design note; implement when we revisit.
 // =========================================================================
 
 /// External monitor controller.
@@ -115,29 +155,52 @@ impl DisplayControl for ExternalControl {
     }
 
     fn set_brightness(&mut self, value: u16, mode: &str) -> bool {
+        // Parity with macOS (`core::macos::set_brightness`): in force mode, attempt
+        // the DDC write **even when the initial VCP read failed** (`ddc_supported
+        // == false`). Some panels — notably Samsung Smart Monitors — silently
+        // reject the VCP_BRIGHTNESS read but accept the write. Without this, an
+        // entire class of monitors falls back to gamma-only and never gets a real
+        // hardware-level write attempt.
         let use_ddc = mode == "ddc" || mode == "force" || (mode == "auto" && self.ddc_supported);
+        // `try_ddc` — actually attempt the DDC write, even if read suggested no support.
+        // In force mode we always try (write may succeed where read failed).
+        let try_ddc = use_ddc || mode == "force";
         let use_gamma = mode == "gamma" || mode == "force" || (mode == "auto" && !self.ddc_supported);
         let mut ddc_attempted = false;
         let mut ddc_ok = true;
         let mut ddc_err: Option<String> = None;
+        let mut gamma_ok = true;
         let mut ok = true;
 
-        if use_ddc && self.ddc_supported {
+        if try_ddc {
             ddc_attempted = true;
             let ddc_val = if value == 0 { 1 } else { value }; // clamp to 1 to avoid standby
-            match self.ddc_monitor.set_vcp_feature(VCP_BRIGHTNESS, ddc_val) {
-                Ok(()) => {}
-                Err(e) => {
-                    ddc_ok = false;
-                    ddc_err = Some(format!("{}", e));
+            // Retry the write — some monitors (Acer XZ322QU V3 family, several
+            // Samsung models) need repeated I2C writes before the hardware
+            // actually processes the command. Same retry/delay constants as
+            // macOS for consistency.
+            if !ddc_write_with_retry(&mut self.ddc_monitor, VCP_BRIGHTNESS, ddc_val) {
+                ddc_ok = false;
+                ddc_err = Some("set_vcp_feature failed after retries".to_string());
+                // Only flag the overall write as failed if gamma is not going
+                // to be applied — otherwise gamma can still dim the panel via
+                // the compositor and the user-visible operation succeeds.
+                if !use_gamma {
                     ok = false;
                 }
             }
-            thread::sleep(Duration::from_millis(100)); // DDC processing delay
         }
 
         if use_gamma {
-            set_gamma_for_hmonitor(self.hmonitor, value as u32);
+            gamma_ok = set_gamma_for_hmonitor(self.hmonitor, value as u32);
+            if !gamma_ok && !ddc_ok {
+                // Both paths failed — surface a hard failure so the frontend
+                // shows the brightness slider as not-honored. Previously we
+                // silently returned `true` (because `SetDeviceGammaRamp`'s
+                // BOOL return was discarded), which produced the "slider moves
+                // but nothing dims" symptom Samsung+Intel users were hitting.
+                ok = false;
+            }
         }
 
         // Per-call diagnostic — surfaces in stderr / env_logger output. Shows which
@@ -146,8 +209,8 @@ impl DisplayControl for ExternalControl {
         // "controllable" (ddc_supported=true at enumerate time) but silently reject
         // brightness writes (common on USB-C panels and some Samsung models).
         log::info!(
-            "set_brightness[external]: value={} mode={} ddc_supported={} use_ddc={} use_gamma={} ddc_attempted={} ddc_ok={} ddc_err={:?} return_ok={}",
-            value, mode, self.ddc_supported, use_ddc, use_gamma, ddc_attempted, ddc_ok, ddc_err, ok,
+            "set_brightness[external]: value={} mode={} ddc_supported={} use_ddc={} try_ddc={} use_gamma={} ddc_attempted={} ddc_ok={} ddc_err={:?} gamma_ok={} return_ok={}",
+            value, mode, self.ddc_supported, use_ddc, try_ddc, use_gamma, ddc_attempted, ddc_ok, ddc_err, gamma_ok, ok,
         );
 
         ok
@@ -166,7 +229,7 @@ impl DisplayControl for ExternalControl {
     }
 
     fn reset_gamma(&self) {
-        set_gamma_for_hmonitor(self.hmonitor, 100);
+        let _ = set_gamma_for_hmonitor(self.hmonitor, 100);
     }
 }
 
@@ -175,30 +238,46 @@ impl DisplayControl for ExternalControl {
 ///
 /// The gamma ramp is a 768-element u16 array: [256 red, 256 green, 256 blue].
 /// Each entry maps an input intensity (0-255) to an output intensity (0-65535).
-fn set_gamma_for_hmonitor(hmonitor: HMONITOR, brightness: u32) {
+///
+/// Returns `true` only when **every** step succeeded:
+/// `GetMonitorInfoW` → `CreateDCW` → `SetDeviceGammaRamp`. On Intel Iris Xe
+/// + external display setups, `SetDeviceGammaRamp` routinely returns `FALSE`
+/// without effect — previously the return value was discarded with `let _`
+/// and callers assumed success, producing the "slider moves but nothing dims"
+/// symptom. Callers now surface a hard failure when both DDC and gamma fail.
+fn set_gamma_for_hmonitor(hmonitor: HMONITOR, brightness: u32) -> bool {
     let factor = (brightness.min(100) as f64) / 100.0;
     unsafe {
         // Get the monitor's device name so we can create a DC (device context) for it
         let mut info = MONITORINFOEXW::default();
         info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
-        if GetMonitorInfoW(hmonitor, &mut info.monitorInfo as *mut _).as_bool() {
-            let hdc = CreateDCW(
-                windows::core::PCWSTR(info.szDevice.as_ptr()),
-                None, None, None,
-            );
-            if !hdc.is_invalid() {
-                // Build the gamma ramp — linear from 0 to (factor * 65535) for each channel
-                let mut ramp = [0u16; 768];
-                for i in 0..256 {
-                    let val = ((i as f64 / 255.0 * factor) * 65535.0) as u16;
-                    ramp[i] = val;       // red
-                    ramp[256 + i] = val; // green
-                    ramp[512 + i] = val; // blue
-                }
-                let _ = SetDeviceGammaRamp(hdc.0 as winapi::shared::windef::HDC, ramp.as_ptr() as *mut _);
-                let _ = DeleteDC(hdc); // clean up the device context
-            }
+        if !GetMonitorInfoW(hmonitor, &mut info.monitorInfo as *mut _).as_bool() {
+            return false;
         }
+        let hdc = CreateDCW(
+            windows::core::PCWSTR(info.szDevice.as_ptr()),
+            None, None, None,
+        );
+        if hdc.is_invalid() {
+            return false;
+        }
+        // Build the gamma ramp — linear from 0 to (factor * 65535) for each channel
+        let mut ramp = [0u16; 768];
+        for i in 0..256 {
+            let val = ((i as f64 / 255.0 * factor) * 65535.0) as u16;
+            ramp[i] = val;       // red
+            ramp[256 + i] = val; // green
+            ramp[512 + i] = val; // blue
+        }
+        // SetDeviceGammaRamp returns `BOOL` — non-zero on success. Intel iGPUs
+        // commonly return 0 for external displays on multi-monitor configs;
+        // capture the result so the caller can surface a hard failure.
+        let ok = SetDeviceGammaRamp(
+            hdc.0 as winapi::shared::windef::HDC,
+            ramp.as_ptr() as *mut _,
+        ) != 0;
+        let _ = DeleteDC(hdc); // clean up the device context
+        ok
     }
 }
 
@@ -416,7 +495,7 @@ impl Platform for WinPlatform {
     /// a 100% linear ramp, undoing any software dimming.
     fn reset_all_gamma() {
         for hmonitor in enum_hmonitors() {
-            set_gamma_for_hmonitor(hmonitor, 100);
+            let _ = set_gamma_for_hmonitor(hmonitor, 100);
         }
     }
 
