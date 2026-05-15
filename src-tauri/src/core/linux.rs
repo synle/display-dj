@@ -137,13 +137,33 @@ impl DisplayControl for ExternalControl {
 
     fn set_brightness(&mut self, value: u16, mode: &str) -> bool {
         let use_ddc = mode == "ddc" || mode == "force" || (mode == "auto" && self.ddc_supported);
+        // Parity with `core::macos::set_brightness` and `core::windows::set_brightness`:
+        // in force mode, attempt the DDC write **even when the initial VCP_BRIGHTNESS
+        // read failed** (`ddc_supported == false`). Some panels — notably Samsung
+        // Smart Monitors — silently reject the VCP_BRIGHTNESS *read* but accept the
+        // *write*. Without this, those panels fell through to gamma-only and never
+        // got a real hardware-level write attempt. Note: ddcutil already retries
+        // internally, so we don't wrap with `ddc_write_with_retry` here — a single
+        // shell-out to `ddcutil setvcp` covers retries via the tool's own logic,
+        // and our own retry loop would compound process-spawn latency to seconds.
+        let try_ddc = use_ddc || mode == "force";
         let use_gamma = mode == "gamma" || mode == "force" || (mode == "auto" && !self.ddc_supported);
+        let mut ddc_attempted = false;
+        let mut ddc_ok = true;
+        let mut gamma_ok = true;
         let mut ok = true;
 
-        if use_ddc && self.ddc_supported {
+        if try_ddc {
+            ddc_attempted = true;
             let ddc_val = if value == 0 { 1 } else { value };
             if !set_ddcutil_vcp(self.display_num, VCP_BRIGHTNESS, ddc_val) {
-                ok = false;
+                ddc_ok = false;
+                // Only flag the overall write as failed if gamma is not going to be
+                // applied — otherwise gamma can still dim the panel via xrandr /
+                // wlroots gamma LUT and the user-visible operation succeeds.
+                if !use_gamma {
+                    ok = false;
+                }
             }
         }
 
@@ -151,11 +171,24 @@ impl DisplayControl for ExternalControl {
             // `ref` borrows the String inside Option without moving it out of self.
             // Without ref, the String would be moved and self.output_name would be invalid.
             if let Some(ref output) = self.output_name {
-                if !set_gamma(output, value as u32, self.display_server) {
+                gamma_ok = set_gamma(output, value as u32, self.display_server);
+                if !gamma_ok && !ddc_ok {
+                    // Both paths failed — surface a hard failure so the frontend
+                    // shows the brightness slider as not-honored.
                     ok = false;
                 }
             }
         }
+
+        // Per-call diagnostic — mirrors the `set_brightness[external]:` line in
+        // `core::windows` for cross-platform-consistent log dumps. Shows whether
+        // the write was attempted, whether ddcutil accepted it, and whether the
+        // gamma path also failed. Surfaces only at `info` log level — controlled
+        // by `RUST_LOG` (defaults to `info` in `lib.rs::run`).
+        log::info!(
+            "set_brightness[external/linux]: value={} mode={} ddc_supported={} use_ddc={} try_ddc={} use_gamma={} ddc_attempted={} ddc_ok={} gamma_ok={} return_ok={}",
+            value, mode, self.ddc_supported, use_ddc, try_ddc, use_gamma, ddc_attempted, ddc_ok, gamma_ok, ok,
+        );
 
         ok
     }
@@ -270,6 +303,13 @@ fn push_monitor(
         brightness,
         contrast,
         ddc_supported,
+        // TODO(overlay-linux): populate the physical screen rect so the
+        // soft-overlay brightness fallback can run on Linux/X11. Read via
+        // `x11rb` (RandR `get_crtc_info` for each CRTC) and convert to
+        // (left, top, width, height) in global physical pixels. Until this
+        // is filled in, `brightnessMode = "overlay"` is a no-op on Linux
+        // even though the dropdown is selectable.
+        monitor_rect: None,
     };
     let ctrl = ExternalControl { display_num, output_name, display_server, ddc_supported };
     monitors.push((info, ctrl));
@@ -428,6 +468,9 @@ impl Platform for LinuxPlatform {
                 brightness,
                 contrast: None,
                 ddc_supported: false,
+                // Built-in panels dim natively via sysfs backlight — the
+                // overlay fallback never runs on them.
+                monitor_rect: None,
             };
             result.push((info, Box::new(ctrl)));
         }

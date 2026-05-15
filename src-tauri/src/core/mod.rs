@@ -9,6 +9,11 @@ pub mod windows;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
+// Windows-only helper for spawning powershell/reg without flashing a console
+// window. Local to display-dj — not present in the display-dj-cli upstream.
+#[cfg(target_os = "windows")]
+pub mod win_cmd;
+
 pub mod theme;
 pub mod volume;
 pub mod wallpaper;
@@ -35,6 +40,17 @@ pub struct DisplayInfo {
     pub brightness: Option<u32>, // Option = nullable — Some(75) or None
     pub contrast: Option<u32>,
     pub ddc_supported: bool,
+    /// Physical screen rect for this monitor as `(left, top, width, height)` in
+    /// **global physical pixels** (the coordinate space Win32 / NSScreen use for
+    /// multi-monitor layouts). Used by the soft-overlay brightness fallback to
+    /// size and position a per-monitor click-through dimming window.
+    ///
+    /// Populated on Windows (from `MONITORINFOEXW.rcMonitor`). On macOS and
+    /// Linux this is currently always `None` — see the TODOs in `core::macos`
+    /// and `core::linux`. The overlay fallback works on Windows out of the
+    /// box; cross-platform support requires filling this in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitor_rect: Option<(i32, i32, i32, i32)>,
 }
 
 // Trait = interface. Each platform module implements this for its display types.

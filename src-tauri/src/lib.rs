@@ -3,6 +3,7 @@ pub mod core;
 mod dark_mode;
 mod display;
 mod keep_awake;
+mod overlay;
 pub mod sidecar_cache;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 mod tiling;
@@ -12,8 +13,59 @@ mod volume;
 mod wallpaper;
 
 use chrono::Timelike;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
+
+/// Tracks whether we've already written the one-time startup dump to the debug log.
+/// Set on the first successful `fetch_all_state` call so subsequent calls are quiet.
+static STARTUP_DUMP_WRITTEN: AtomicBool = AtomicBool::new(false);
+
+/// Writes a comprehensive snapshot to the debug log the first time the frontend
+/// fetches state after launch. Anchors every subsequent debug-log line to a known
+/// baseline: app version, OS+arch, monitor enumeration with DDC support per panel,
+/// and the platform-layer `debug_info` JSON (HMONITOR list, raw VCP brightness/
+/// contrast reads, DDC enumerate error, WMI brightness). Critical for diagnosing
+/// "slider moves but hardware doesn't" symptoms: the JSON shows whether DDC reads
+/// even succeeded for each panel before we tried any writes.
+fn write_startup_dump(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    if STARTUP_DUMP_WRITTEN.swap(true, Ordering::Relaxed) {
+        return; // already wrote it
+    }
+    let state = match app.try_state::<AppState>() {
+        Some(s) => s,
+        None => return,
+    };
+
+    let mut lines: Vec<String> = Vec::new();
+    lines.push("=== STARTUP DUMP (first fetch_all_state) ===".into());
+    lines.push(format!("version: {}", config::get_app_version()));
+    lines.push(format!("os: {} {}", std::env::consts::OS, std::env::consts::ARCH));
+    lines.push(format!("backend: in-process (display-dj-cli vendored)"));
+
+    // Live enumerate — same code path the brightness slider hits.
+    let displays = crate::core::display::list_all();
+    lines.push(format!("--- core::display::list_all ({} displays) ---", displays.len()));
+    for d in &displays {
+        lines.push(format!(
+            "  id={} type={} ddc_supported={} brightness={:?} contrast={:?} name={:?}",
+            d.id, d.display_type, d.ddc_supported, d.brightness, d.contrast, d.name,
+        ));
+    }
+
+    // Raw platform diagnostics — HMONITOR mapping, DDC enumerate result,
+    // per-monitor VCP brightness/contrast (current+max), WMI brightness.
+    lines.push("--- platform debug_info ---".into());
+    let platform_dbg = <crate::core::PlatformImpl as crate::core::Platform>::debug_info();
+    match serde_json::to_string_pretty(&platform_dbg) {
+        Ok(s) => lines.push(s),
+        Err(e) => lines.push(format!("(serialize failed: {})", e)),
+    }
+    lines.push("=== END STARTUP DUMP ===".into());
+
+    config::write_debug_log(&state, &lines.join("\n"));
+}
 
 /// Stub tiling commands for platforms without tiling support (e.g. FreeBSD).
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -53,6 +105,10 @@ async fn fetch_all_state(
 ) -> Result<AllState, String> {
     use tauri::Manager;
     let t0 = std::time::Instant::now();
+    // One-time per-launch dump: version, OS, full live monitor enumeration,
+    // platform debug_info JSON. Anchors every later debug-log line to a known
+    // baseline so we don't have to ask "what does the hardware look like".
+    write_startup_dump(&app);
     if let Some(s) = app.try_state::<AppState>() {
         config::write_debug_log(&s, "benchmark: fetch_all_state — START");
     }
@@ -122,6 +178,44 @@ pub struct AppState {
     pub tiling_state: std::sync::Mutex<tiling::TilingState>,
     /// TTL-based cache for monitor / dark mode / volume probes.
     pub sidecar_cache: sidecar_cache::SidecarCache,
+}
+
+/// `log::Log` implementation that tees every record to `env_logger` (stderr)
+/// AND to the user's `debug.log` file via `config::write_debug_log_unbound`.
+/// The tee is necessary because GUI builds have no console attached — stderr
+/// alone produces no observable output for the user. Gated on
+/// `config::DEBUG_LOG_ENABLED` so users with debug logging off don't pay the
+/// disk-write cost.
+struct TeeLogger {
+    inner: env_logger::Logger,
+}
+
+impl log::Log for TeeLogger {
+    /// Defer to env_logger's level/target filtering.
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        self.inner.enabled(metadata)
+    }
+
+    /// Forward to env_logger (stderr) and append a formatted line to
+    /// `debug.log`. The debug-log line includes the module path + level
+    /// prefix so a single dump shows where each line came from
+    /// (`core::windows`, `display`, `tray`, …).
+    fn log(&self, record: &log::Record) {
+        self.inner.log(record);
+        if self.inner.enabled(record.metadata()) {
+            let line = format!(
+                "[{}] {}: {}",
+                record.level(),
+                record.module_path().unwrap_or("?"),
+                record.args(),
+            );
+            config::write_debug_log_unbound(&line);
+        }
+    }
+
+    fn flush(&self) {
+        self.inner.flush();
+    }
 }
 
 /// Fetch initial dark mode and volume state via the in-process platform layer
@@ -312,6 +406,45 @@ mod tests {
         assert!(!is_night_time(420, 420, 420));
         assert!(!is_night_time(420, 420, 1000));
     }
+
+    // -- Windows console-flash regression test --
+
+    /// Regression test for the v7.0.9 Windows console-flash bug.
+    ///
+    /// The GUI parent runs without a console (`windows_subsystem = "windows"`).
+    /// A bare `Command::new("powershell")` / `Command::new("reg")` from a
+    /// `#[cfg(target_os = "windows")]` code path allocates a console for the
+    /// child by default and pops a visible black flash on every brightness,
+    /// volume, theme, or wallpaper change. Use `core::win_cmd::hidden_command`
+    /// instead — it pre-applies the `CREATE_NO_WINDOW` (`0x08000000`) creation
+    /// flag.
+    ///
+    /// This test fails the build if a bare spawn drifts back into the vendored
+    /// `core/{windows,volume,theme,wallpaper}.rs` files.
+    #[test]
+    fn no_bare_powershell_or_reg_spawns_in_core() {
+        let files: &[(&str, &str)] = &[
+            ("core/windows.rs", include_str!("core/windows.rs")),
+            ("core/volume.rs", include_str!("core/volume.rs")),
+            ("core/theme.rs", include_str!("core/theme.rs")),
+            ("core/wallpaper.rs", include_str!("core/wallpaper.rs")),
+        ];
+        let banned = [
+            r#"Command::new("powershell")"#,
+            r#"Command::new("reg")"#,
+        ];
+        for (path, src) in files {
+            for pattern in &banned {
+                assert!(
+                    !src.contains(pattern),
+                    "{}: found bare `{}` — use `super::win_cmd::hidden_command(...)` \
+                     instead to avoid the Windows console flash. See the v7.0.9 fix.",
+                    path,
+                    pattern
+                );
+            }
+        }
+    }
 }
 
 /// Main entry point: builds the Tauri app, sets up the system tray, registers
@@ -319,9 +452,40 @@ mod tests {
 /// wallpaper operations are handled in-process via the vendored `core` module —
 /// no sidecar process is spawned.
 pub fn run() {
-    env_logger::init();
+    // Default to `info` level when `RUST_LOG` isn't set, so the per-call
+    // `log::info!("set_brightness[external]: …")` diagnostics in
+    // `core::windows` (and equivalents in the other platforms) actually
+    // surface in stderr / the bundled log capture instead of being dropped
+    // at the default `error` level. Users (and especially log dumps shared
+    // for support) get a real audit trail of which write path was attempted,
+    // whether DDC accepted the I2C write, and whether `SetDeviceGammaRamp`
+    // was rejected by the GPU driver — without that, "slider moves but
+    // nothing happens" looks identical to "slider moves and the panel dims"
+    // from the outside. `RUST_LOG` still wins when explicitly set.
+    //
+    // We then wrap env_logger in a tee that ALSO appends to `debug.log` —
+    // GUI builds have no console attached, so stderr is invisible. Without
+    // the tee, every `log::info!()` in `core/*` (the entire DDC/gamma write
+    // audit trail) was being dropped on the floor. The tee gates on the
+    // `DEBUG_LOG_ENABLED` atomic so users who haven't enabled debug logging
+    // don't accumulate disk writes for nothing.
+    let env = env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("info"),
+    )
+    .build();
+    let max_level = env.filter();
+    let logger: Box<dyn log::Log> = Box::new(TeeLogger { inner: env });
+    let _ = log::set_boxed_logger(logger);
+    log::set_max_level(max_level);
 
     let preferences = config::load_preferences();
+    // Sync the AppState-less debug-log gate now that preferences are loaded.
+    // `save_preferences` re-syncs it on each save so the user can toggle it
+    // live from the Settings panel.
+    config::DEBUG_LOG_ENABLED.store(
+        preferences.debug_logging,
+        std::sync::atomic::Ordering::Relaxed,
+    );
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

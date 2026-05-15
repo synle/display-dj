@@ -1,3 +1,4 @@
+use super::win_cmd::hidden_command;
 use super::{DisplayControl, DisplayInfo, Platform, BUILTIN_ID, VCP_BRIGHTNESS, VCP_CONTRAST};
 use ddc::Ddc; // trait providing get_vcp_feature / set_vcp_feature
 use std::thread;
@@ -8,6 +9,43 @@ use std::time::Duration;
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
 use winapi::um::wingdi::SetDeviceGammaRamp;
+
+/// Cast a `windows::Win32::Graphics::Gdi::HMONITOR` (raw pointer wrapped in a
+/// tuple struct) to the `winapi::shared::windef::HMONITOR` type expected by
+/// `ddc-winapi` v0.2. Both are opaque-pointer aliases over the same Win32
+/// handle — only the surrounding Rust wrapper type differs. Pulled out as a
+/// helper so the unsafe-looking pointer cast is named and documented.
+fn hmonitor_to_winapi(hm: HMONITOR) -> winapi::shared::windef::HMONITOR {
+    hm.0 as winapi::shared::windef::HMONITOR
+}
+
+// DDC write retry parameters — mirrored from `core::macos` so that the two
+// platforms behave identically. Some panels (Acer XZ322QU V3 family, several
+// Samsung models) need repeated I2C writes before the hardware actually
+// processes the command. Five attempts at 50 ms spacing was the empirically
+// chosen baseline upstream — keeping the numbers in sync prevents one
+// platform from regressing while the other stays correct.
+const DDC_WRITE_RETRIES: u32 = 5;
+const DDC_RETRY_DELAY_MS: u64 = 50;
+
+/// Try writing a VCP feature with multiple attempts and delays.
+/// Returns true on first successful write, false after `DDC_WRITE_RETRIES`
+/// consecutive failures. Each successful write is followed by an extra
+/// `DDC_RETRY_DELAY_MS` so the monitor's MCU has time to process before any
+/// follow-up call (read-back, contrast, etc.). Direct port of the same-named
+/// helper in `core::macos`.
+fn ddc_write_with_retry(mon: &mut ddc_winapi::Monitor, vcp: u8, value: u16) -> bool {
+    for attempt in 0..DDC_WRITE_RETRIES {
+        if attempt > 0 {
+            thread::sleep(Duration::from_millis(DDC_RETRY_DELAY_MS));
+        }
+        if mon.set_vcp_feature(vcp, value).is_ok() {
+            thread::sleep(Duration::from_millis(DDC_RETRY_DELAY_MS));
+            return true;
+        }
+    }
+    false
+}
 
 // =========================================================================
 // Built-in display — WMI (Windows Management Instrumentation) via PowerShell.
@@ -25,7 +63,7 @@ impl BuiltinControl {
     /// Queries WmiMonitorBrightness.CurrentBrightness — only available on laptops with
     /// an internal panel. Desktops return None here.
     fn wmi_get() -> Option<u32> {
-        let output = std::process::Command::new("powershell")
+        let output = hidden_command("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command",
                 "(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue).CurrentBrightness"])
             .output().ok()?; // .ok()? = convert Result->Option, return None on error
@@ -43,11 +81,16 @@ impl BuiltinControl {
             "(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, {})",
             value
         );
-        std::process::Command::new("powershell")
+        let out = hidden_command("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+            .output();
+        let ok = out.as_ref().map(|o| o.status.success()).unwrap_or(false);
+        let stderr = out.as_ref().map(|o| String::from_utf8_lossy(&o.stderr).trim().to_string()).unwrap_or_default();
+        log::info!(
+            "set_brightness[builtin/wmi]: value={} return_ok={} stderr={:?}",
+            value, ok, stderr,
+        );
+        ok
     }
 }
 
@@ -65,6 +108,18 @@ impl DisplayControl for BuiltinControl {
 // =========================================================================
 // External monitor — DDC/CI via ddc-winapi + gamma ramp via GDI32.
 // ddc-winapi uses the Dxva2.dll API to send I2C commands to monitors.
+//
+// TODO(soft-overlay-fallback): when **both** DDC and GDI gamma fail (Samsung
+// Smart Monitors on Intel Iris Xe are the canonical case — the panel rejects
+// VCP_BRIGHTNESS and the Intel driver silently rejects `SetDeviceGammaRamp`
+// for external displays), there is no third hardware path that can dim the
+// physical backlight. The remaining option is a *software dimming overlay*:
+// spawn a per-monitor borderless, click-through, always-on-top transparent
+// Tauri window sized to the monitor's full work area and modulate its black
+// alpha to match `100 - brightness`. The OS compositor handles the blending
+// at no measurable cost. This is what Twinkle Tray / Win10_BrightnessSlider
+// / Lunar do for non-DDC monitors. Not in scope for v7.0.13 — file is the
+// design note; implement when we revisit.
 // =========================================================================
 
 /// External monitor controller.
@@ -100,32 +155,101 @@ impl DisplayControl for ExternalControl {
     }
 
     fn set_brightness(&mut self, value: u16, mode: &str) -> bool {
+        // Parity with macOS (`core::macos::set_brightness`): in force mode, attempt
+        // the DDC write **even when the initial VCP read failed** (`ddc_supported
+        // == false`). Some panels — notably Samsung Smart Monitors — silently
+        // reject the VCP_BRIGHTNESS read but accept the write. Without this, an
+        // entire class of monitors falls back to gamma-only and never gets a real
+        // hardware-level write attempt.
         let use_ddc = mode == "ddc" || mode == "force" || (mode == "auto" && self.ddc_supported);
+        // `try_ddc` — actually attempt the DDC write, even if read suggested no support.
+        // In force mode we always try (write may succeed where read failed).
+        let try_ddc = use_ddc || mode == "force";
         let use_gamma = mode == "gamma" || mode == "force" || (mode == "auto" && !self.ddc_supported);
+        let mut ddc_attempted = false;
+        let mut ddc_ok = true;
+        let mut ddc_err: Option<String> = None;
+        let mut ddc_verify: Option<u32> = None; // read-back after write
+        let mut gamma_ok = true;
         let mut ok = true;
 
-        if use_ddc && self.ddc_supported {
+        if try_ddc {
+            ddc_attempted = true;
             let ddc_val = if value == 0 { 1 } else { value }; // clamp to 1 to avoid standby
-            if self.ddc_monitor.set_vcp_feature(VCP_BRIGHTNESS, ddc_val).is_err() {
-                ok = false;
+            // Retry the write — some monitors (Acer XZ322QU V3 family, several
+            // Samsung models) need repeated I2C writes before the hardware
+            // actually processes the command. Same retry/delay constants as
+            // macOS for consistency.
+            if !ddc_write_with_retry(&mut self.ddc_monitor, VCP_BRIGHTNESS, ddc_val) {
+                ddc_ok = false;
+                ddc_err = Some("set_vcp_feature failed after retries".to_string());
+                // Only flag the overall write as failed if gamma is not going
+                // to be applied — otherwise gamma can still dim the panel via
+                // the compositor and the user-visible operation succeeds.
+                if !use_gamma {
+                    ok = false;
+                }
+            } else {
+                // Write succeeded at the API level — try a verify-read to confirm
+                // the monitor actually accepted the value (not just acknowledged
+                // the I2C transaction). Samsung Smart Monitors are known to ACK
+                // VCP writes while silently ignoring the value; this read tells
+                // us whether the firmware actually updated the register. A
+                // 100 ms settle delay matches the upstream cli's empirical
+                // baseline for "monitor has processed the write."
+                thread::sleep(Duration::from_millis(100));
+                ddc_verify = self.ddc_monitor.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|val| {
+                    let max = val.maximum() as f64;
+                    let cur = val.value() as f64;
+                    if max > 0.0 { (cur / max * 100.0).round() as u32 } else { 0 }
+                });
             }
-            thread::sleep(Duration::from_millis(100)); // DDC processing delay
         }
 
         if use_gamma {
-            set_gamma_for_hmonitor(self.hmonitor, value as u32);
+            gamma_ok = set_gamma_for_hmonitor(self.hmonitor, value as u32);
+            if !gamma_ok && !ddc_ok {
+                // Both paths failed — surface a hard failure so the frontend
+                // shows the brightness slider as not-honored. Previously we
+                // silently returned `true` (because `SetDeviceGammaRamp`'s
+                // BOOL return was discarded), which produced the "slider moves
+                // but nothing dims" symptom Samsung+Intel users were hitting.
+                ok = false;
+            }
         }
+
+        // Per-call diagnostic — surfaces in stderr / env_logger output AND
+        // (via the `TeeLogger` installed in `lib.rs::run()`) in the debug log
+        // file that `Dump Debug Info` exports. Shows which path(s) ran,
+        // whether DDC actually accepted the write, the verify-read value
+        // (panel-side confirmation that the firmware honored the write,
+        // distinct from the I2C transaction returning OK), whether gamma was
+        // applied, and the raw SetVCPFeature error string when present.
+        // Critical for diagnosing displays that look "controllable" at
+        // enumerate time but silently reject brightness writes (common on
+        // USB-C panels and several Samsung models).
+        log::info!(
+            "set_brightness[external]: value={} mode={} ddc_supported={} use_ddc={} try_ddc={} use_gamma={} ddc_attempted={} ddc_ok={} ddc_err={:?} ddc_verify={:?} gamma_ok={} return_ok={}",
+            value, mode, self.ddc_supported, use_ddc, try_ddc, use_gamma, ddc_attempted, ddc_ok, ddc_err, ddc_verify, gamma_ok, ok,
+        );
 
         ok
     }
 
     fn set_contrast(&mut self, value: u16) -> bool {
-        if !self.ddc_supported { return false; } // early return
-        self.ddc_monitor.set_vcp_feature(VCP_CONTRAST, value).is_ok()
+        if !self.ddc_supported {
+            log::info!("set_contrast[external]: skipped (ddc_supported=false) value={}", value);
+            return false;
+        }
+        let res = self.ddc_monitor.set_vcp_feature(VCP_CONTRAST, value);
+        let ok = res.is_ok();
+        let err = res.err().map(|e| format!("{}", e));
+        log::info!("set_contrast[external]: value={} return_ok={} err={:?}", value, ok, err);
+        ok
     }
 
     fn reset_gamma(&self) {
-        set_gamma_for_hmonitor(self.hmonitor, 100);
+        let _ = set_gamma_for_hmonitor(self.hmonitor, 100);
     }
 }
 
@@ -134,30 +258,46 @@ impl DisplayControl for ExternalControl {
 ///
 /// The gamma ramp is a 768-element u16 array: [256 red, 256 green, 256 blue].
 /// Each entry maps an input intensity (0-255) to an output intensity (0-65535).
-fn set_gamma_for_hmonitor(hmonitor: HMONITOR, brightness: u32) {
+///
+/// Returns `true` only when **every** step succeeded:
+/// `GetMonitorInfoW` → `CreateDCW` → `SetDeviceGammaRamp`. On Intel Iris Xe
+/// + external display setups, `SetDeviceGammaRamp` routinely returns `FALSE`
+/// without effect — previously the return value was discarded with `let _`
+/// and callers assumed success, producing the "slider moves but nothing dims"
+/// symptom. Callers now surface a hard failure when both DDC and gamma fail.
+fn set_gamma_for_hmonitor(hmonitor: HMONITOR, brightness: u32) -> bool {
     let factor = (brightness.min(100) as f64) / 100.0;
     unsafe {
         // Get the monitor's device name so we can create a DC (device context) for it
         let mut info = MONITORINFOEXW::default();
         info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
-        if GetMonitorInfoW(hmonitor, &mut info.monitorInfo as *mut _).as_bool() {
-            let hdc = CreateDCW(
-                windows::core::PCWSTR(info.szDevice.as_ptr()),
-                None, None, None,
-            );
-            if !hdc.is_invalid() {
-                // Build the gamma ramp — linear from 0 to (factor * 65535) for each channel
-                let mut ramp = [0u16; 768];
-                for i in 0..256 {
-                    let val = ((i as f64 / 255.0 * factor) * 65535.0) as u16;
-                    ramp[i] = val;       // red
-                    ramp[256 + i] = val; // green
-                    ramp[512 + i] = val; // blue
-                }
-                let _ = SetDeviceGammaRamp(hdc.0 as winapi::shared::windef::HDC, ramp.as_ptr() as *mut _);
-                let _ = DeleteDC(hdc); // clean up the device context
-            }
+        if !GetMonitorInfoW(hmonitor, &mut info.monitorInfo as *mut _).as_bool() {
+            return false;
         }
+        let hdc = CreateDCW(
+            windows::core::PCWSTR(info.szDevice.as_ptr()),
+            None, None, None,
+        );
+        if hdc.is_invalid() {
+            return false;
+        }
+        // Build the gamma ramp — linear from 0 to (factor * 65535) for each channel
+        let mut ramp = [0u16; 768];
+        for i in 0..256 {
+            let val = ((i as f64 / 255.0 * factor) * 65535.0) as u16;
+            ramp[i] = val;       // red
+            ramp[256 + i] = val; // green
+            ramp[512 + i] = val; // blue
+        }
+        // SetDeviceGammaRamp returns `BOOL` — non-zero on success. Intel iGPUs
+        // commonly return 0 for external displays on multi-monitor configs;
+        // capture the result so the caller can surface a hard failure.
+        let ok = SetDeviceGammaRamp(
+            hdc.0 as winapi::shared::windef::HDC,
+            ramp.as_ptr() as *mut _,
+        ) != 0;
+        let _ = DeleteDC(hdc); // clean up the device context
+        ok
     }
 }
 
@@ -181,6 +321,28 @@ fn enum_hmonitors() -> Vec<HMONITOR> {
         );
     }
     hmonitors
+}
+
+/// Read the physical screen rect for an `HMONITOR` as
+/// `(left, top, width, height)` in global physical pixels.
+///
+/// Reads `MONITORINFOEXW.rcMonitor` — the same rect the WM uses for window
+/// placement. Returns `None` if `GetMonitorInfoW` fails for any reason
+/// (transient handle, monitor unplugged between enumerate and read, etc.).
+///
+/// # Returns
+/// `Some((left, top, width, height))` on success, `None` if the Win32 call
+/// failed.
+fn get_hmonitor_rect(hmonitor: HMONITOR) -> Option<(i32, i32, i32, i32)> {
+    unsafe {
+        let mut info = MONITORINFOEXW::default();
+        info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+        if !GetMonitorInfoW(hmonitor, &mut info.monitorInfo as *mut _).as_bool() {
+            return None;
+        }
+        let rc = info.monitorInfo.rcMonitor;
+        Some((rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top))
+    }
 }
 
 /// Get the PnP device identifier and primary flag for an HMONITOR.
@@ -261,6 +423,9 @@ impl Platform for WinPlatform {
                 brightness: Some(brightness),
                 contrast: None,
                 ddc_supported: false,
+                // Built-in panels can dim natively via WMI — the overlay
+                // fallback is never used for them, so the rect is irrelevant.
+                monitor_rect: None,
             };
             // BuiltinControl is a unit struct — no fields to initialize
             result.push((info, Box::new(BuiltinControl)));
@@ -268,38 +433,70 @@ impl Platform for WinPlatform {
 
         // --- External displays ---
         // We need both DDC handles (for brightness) and HMONITOR handles (for gamma).
-        // These come from different APIs so we zip them together by index:
-        //   - ddc_winapi::Monitor::enumerate() → DDC physical monitor handles (Dxva2)
-        //   - enum_hmonitors() → GDI HMONITOR handles (for gamma ramp)
-        // Both use EnumDisplayMonitors internally, so indices align.
+        // Previously, we called `ddc_winapi::Monitor::enumerate()` and then `zip`'d
+        // the resulting Vec with `enum_hmonitors()` by index — both internally call
+        // `EnumDisplayMonitors`, and the assumption was "callback order is the same".
+        // That assumption was fragile: `EnumDisplayMonitors` is not documented to
+        // return a deterministic order, and a single mismatched index assigns the
+        // wrong DDC handle to a monitor (e.g. SetVCPFeature targets the laptop panel
+        // when the user pulls the slider on the external one, while the GDI gamma
+        // call writes to the correct external HMONITOR — yielding a visible no-op
+        // because the panel that DDC actually accepted the write for is a different
+        // physical screen entirely).
         //
-        // DEDUP: On laptops, the built-in panel appears in both WMI and DDC enumeration.
-        // We track has_builtin to skip the primary HMONITOR from DDC when WMI already
-        // covered it. See "Windows display dedup" in CLAUDE.md for full explanation.
+        // Fix: enumerate HMONITORs once via `enum_hmonitors()`, then for each
+        // HMONITOR call `ddc_winapi::get_physical_monitors_from_hmonitor(hm)` to
+        // get the physical monitor(s) attached to that specific HMONITOR. Wrap
+        // each `PHYSICAL_MONITOR` in `Monitor::new(pm)`. The (DDC handle, HMONITOR)
+        // pairing is now explicit and per-HMONITOR — order can't drift.
+        //
+        // DEDUP: On laptops, the built-in panel appears in both WMI and DDC
+        // enumeration. We track has_builtin to skip the primary HMONITOR from DDC
+        // when WMI already covered it. See "Windows display dedup" in CLAUDE.md.
         let has_builtin = !result.is_empty();
         let hmonitors = enum_hmonitors();
-        // Pre-compute details for each HMONITOR (PnP device ID + primary flag)
         let hmonitor_details: Vec<(String, bool)> = hmonitors.iter()
             .map(|&hm| get_hmonitor_details(hm))
             .collect();
 
-        if let Ok(monitors) = ddc_winapi::Monitor::enumerate() {
-            let mut ext_id = 1usize;
-            for (idx, mut mon) in monitors.into_iter().enumerate() {
-                let hmonitor = hmonitors.get(idx).copied().unwrap_or(HMONITOR::default());
-                let (device_id, is_primary) = hmonitor_details.get(idx)
-                    .cloned()
-                    .unwrap_or((String::new(), false));
+        let mut ext_id = 1usize;
+        for (idx, &hmonitor) in hmonitors.iter().enumerate() {
+            let (device_id, is_primary) = hmonitor_details.get(idx)
+                .cloned()
+                .unwrap_or((String::new(), false));
 
-                // DEDUP: Skip the primary (built-in) monitor if we already added it via WMI.
-                // On laptops, the built-in panel appears in both WMI and DDC enumeration.
-                // Without this check, you'd get a duplicate: the WMI "Built-in Display"
-                // plus a DDC "Generic PnP Monitor" with null brightness (laptop panels
-                // don't respond to DDC commands). The primary HMONITOR flag reliably
-                // identifies the built-in panel across all Windows laptop configurations.
-                if has_builtin && is_primary {
+            // DEDUP: Skip the primary (built-in) monitor if we already added it via WMI.
+            // On laptops, the built-in panel appears in both WMI and DDC enumeration.
+            // Without this check, you'd get a duplicate: the WMI "Built-in Display"
+            // plus a DDC "Generic PnP Monitor" with null brightness (laptop panels
+            // don't respond to DDC commands). The primary HMONITOR flag reliably
+            // identifies the built-in panel across all Windows laptop configurations.
+            if has_builtin && is_primary {
+                continue;
+            }
+
+            // Resolve physical monitors for *this* HMONITOR — explicit pairing,
+            // no implicit index alignment with a separate enumeration call.
+            let physical_monitors = match ddc_winapi::get_physical_monitors_from_hmonitor(
+                hmonitor_to_winapi(hmonitor),
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::warn!(
+                        "GetPhysicalMonitorsFromHMONITOR failed for hmonitor[{}] device_id={:?}: {}",
+                        idx, device_id, e,
+                    );
                     continue;
                 }
+            };
+
+            for pm in physical_monitors {
+                // SAFETY: `pm` came from GetPhysicalMonitorsFromHMONITOR; ddc-winapi
+                // takes ownership of the handle and calls DestroyPhysicalMonitor on
+                // drop. The constructor is unsafe only because the crate cannot
+                // verify the handle is valid; we obtained it from the OS API one
+                // statement ago.
+                let mut mon = unsafe { ddc_winapi::Monitor::new(pm) };
 
                 let brightness = mon.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|val| {
                     let max = val.maximum() as f64;
@@ -329,6 +526,10 @@ impl Platform for WinPlatform {
                     brightness,
                     contrast,
                     ddc_supported,
+                    // Populated so the soft-overlay brightness fallback can
+                    // size and position a click-through dimming window over
+                    // this specific external display.
+                    monitor_rect: get_hmonitor_rect(hmonitor),
                 };
                 result.push((info, Box::new(ExternalControl { ddc_monitor: mon, hmonitor, ddc_supported })));
                 ext_id += 1;
@@ -343,7 +544,7 @@ impl Platform for WinPlatform {
     /// a 100% linear ramp, undoing any software dimming.
     fn reset_all_gamma() {
         for hmonitor in enum_hmonitors() {
-            set_gamma_for_hmonitor(hmonitor, 100);
+            let _ = set_gamma_for_hmonitor(hmonitor, 100);
         }
     }
 
@@ -363,31 +564,49 @@ impl Platform for WinPlatform {
         }
 
         // --- DDC monitors with raw VCP data ---
+        // Enumerate per-HMONITOR (same pairing strategy as `enumerate()`) so the
+        // `hmonitor_index` field anchors each DDC entry to a specific physical
+        // display in the `hmonitors` array above. Previous code called
+        // `Monitor::enumerate()` and reported a flat index, which made it
+        // impossible to tell which HMONITOR a DDC entry belonged to when
+        // ordering between the two calls drifted.
         let mut ddc_list = Vec::new();
-        let ddc_error: Option<String>;
-        match ddc_winapi::Monitor::enumerate() {
-            Ok(monitors) => {
-                ddc_error = None;
-                for (idx, mut mon) in monitors.into_iter().enumerate() {
-                    let desc = mon.description();
-                    let brightness_raw = mon.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|v| {
-                        serde_json::json!({"current": v.value(), "max": v.maximum()})
-                    });
-                    let contrast_raw = mon.get_vcp_feature(VCP_CONTRAST).ok().map(|v| {
-                        serde_json::json!({"current": v.value(), "max": v.maximum()})
-                    });
-                    ddc_list.push(serde_json::json!({
-                        "index": idx,
-                        "description": desc,
-                        "vcp_brightness": brightness_raw,
-                        "vcp_contrast": contrast_raw,
-                    }));
+        let mut ddc_errors: Vec<String> = Vec::new();
+        let mut ddc_seq = 0usize;
+        for (hm_idx, &hmonitor) in hmonitors.iter().enumerate() {
+            match ddc_winapi::get_physical_monitors_from_hmonitor(hmonitor_to_winapi(hmonitor)) {
+                Ok(physicals) => {
+                    for pm in physicals {
+                        // SAFETY: handle obtained from the OS one line above; ddc-winapi
+                        // takes ownership and calls DestroyPhysicalMonitor on drop.
+                        let mut mon = unsafe { ddc_winapi::Monitor::new(pm) };
+                        let desc = mon.description();
+                        let brightness_raw = mon.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|v| {
+                            serde_json::json!({"current": v.value(), "max": v.maximum()})
+                        });
+                        let contrast_raw = mon.get_vcp_feature(VCP_CONTRAST).ok().map(|v| {
+                            serde_json::json!({"current": v.value(), "max": v.maximum()})
+                        });
+                        ddc_list.push(serde_json::json!({
+                            "index": ddc_seq,
+                            "hmonitor_index": hm_idx,
+                            "description": desc,
+                            "vcp_brightness": brightness_raw,
+                            "vcp_contrast": contrast_raw,
+                        }));
+                        ddc_seq += 1;
+                    }
+                }
+                Err(e) => {
+                    ddc_errors.push(format!("hmonitor[{}]: {}", hm_idx, e));
                 }
             }
-            Err(e) => {
-                ddc_error = Some(format!("{}", e));
-            }
         }
+        let ddc_error: Option<String> = if ddc_errors.is_empty() {
+            None
+        } else {
+            Some(ddc_errors.join("; "))
+        };
 
         serde_json::json!({
             "wmi_brightness": wmi_brightness,

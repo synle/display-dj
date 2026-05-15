@@ -18,6 +18,78 @@ where
     });
 }
 
+/// Dispatch a brightness change for a single monitor through the
+/// per-monitor mode routing. Mirrors the dispatcher in
+/// `display::set_brightness` but synchronous (called from the background
+/// thread spawned by `run_then_emit`).
+///
+/// # Arguments
+/// * `app` - Tauri `AppHandle` used by the overlay path to create / move /
+///   hide its window.
+/// * `monitor_id` - Raw `core::DisplayInfo.id`.
+/// * `value` - Brightness 0..=100 (already clamped by the caller).
+/// * `mode` - Resolved brightness mode (`"auto"`, `"ddc"`, `"gamma"`, `"overlay"`).
+/// * `monitor_rect` - Physical rect for the overlay path; `None` is acceptable
+///   on platforms where it's not populated (the overlay call no-ops).
+fn dispatch_brightness_for_one(
+    app: &AppHandle,
+    monitor_id: &str,
+    value: u32,
+    mode: &str,
+    monitor_rect: Option<(i32, i32, i32, i32)>,
+) {
+    let route = crate::display::route_for_mode(mode);
+    match route {
+        crate::display::BrightnessRoute::DdcOnly => {
+            let _ = crate::overlay::destroy_overlay(app, monitor_id);
+            let _ = crate::core::display::set_one_brightness(monitor_id, value as u16, "ddc");
+        }
+        crate::display::BrightnessRoute::GammaOnly => {
+            let _ = crate::overlay::destroy_overlay(app, monitor_id);
+            let _ = crate::core::display::set_one_brightness(monitor_id, value as u16, "gamma");
+        }
+        crate::display::BrightnessRoute::OverlayOnly => {
+            let _ = crate::overlay::set_overlay_brightness(app, monitor_id, monitor_rect, value);
+        }
+        crate::display::BrightnessRoute::AutoWithOverlayFallback => {
+            let ok = crate::core::display::set_one_brightness(monitor_id, value as u16, "force");
+            if ok {
+                let _ = crate::overlay::destroy_overlay(app, monitor_id);
+            } else {
+                let _ = crate::overlay::set_overlay_brightness(
+                    app, monitor_id, monitor_rect, value,
+                );
+            }
+        }
+    }
+}
+
+/// Dispatch a brightness change for all monitors through per-monitor mode
+/// routing. Iterates the cached monitor list; falls back to a single bulk
+/// `core::display::set_all_brightness("force")` call when the cache is empty
+/// (so first-run keyboard shortcuts still work).
+///
+/// # Arguments
+/// * `app` - Tauri `AppHandle`, threaded into the overlay helpers.
+/// * `value` - Brightness 0..=100 (already clamped by the caller).
+/// * `configs` - Snapshot of preferences.monitor_configs for mode lookup.
+/// * `cached` - Snapshot of the cached `Monitor` list (with `monitor_rect`).
+fn dispatch_brightness_for_all(
+    app: &AppHandle,
+    value: u32,
+    configs: &[crate::config::MonitorMetadata],
+    cached: &[crate::display::Monitor],
+) {
+    if cached.is_empty() {
+        let _ = crate::core::display::set_all_brightness(value as u16, "force");
+        return;
+    }
+    for m in cached {
+        let mode = crate::display::resolve_brightness_mode(configs, &m.id);
+        dispatch_brightness_for_one(app, &m.id, value, &mode, m.monitor_rect);
+    }
+}
+
 /// Shows the popup window, emits refresh events, and sets focus.
 /// Used by both the tray left-click handler and the "Show Window" menu item.
 /// Sets `expect_focus_gain` so the focus-loss handler won't hide us until
@@ -870,6 +942,27 @@ fn dump_debug_info(app: &AppHandle) {
         }
     }
 
+    // Live hardware probe — exercises the same code path the brightness slider
+    // uses, so we can tell whether DDC enumerate/get/set succeed for each panel.
+    // Mirrors the rich diagnostics the standalone display-dj-cli used to print.
+    lines.push("--- live displays (core::display::list_all) ---".into());
+    for d in crate::core::display::list_all() {
+        lines.push(format!(
+            "  id={} type={} ddc_supported={} brightness={:?} contrast={:?} name={:?}",
+            d.id, d.display_type, d.ddc_supported, d.brightness, d.contrast, d.name
+        ));
+    }
+
+    // Raw platform diagnostics — HMONITOR mapping, DDC enumerate result,
+    // per-monitor VCP brightness/contrast (current+max), WMI brightness.
+    // This is what lets us diagnose silent DDC failures on a specific panel.
+    lines.push("--- platform debug_info ---".into());
+    let platform_dbg = <crate::core::PlatformImpl as crate::core::Platform>::debug_info();
+    match serde_json::to_string_pretty(&platform_dbg) {
+        Ok(s) => lines.push(s),
+        Err(e) => lines.push(format!("(serialize failed: {})", e)),
+    }
+
     lines.push("=== END DEBUG INFO ===".into());
     let output = lines.join("\n");
     log::info!("{}", output);
@@ -888,39 +981,74 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
     let parts: Vec<&str> = command.split('/').collect();
     match parts.as_slice() {
         // Set brightness for all monitors: command/changeBrightness/{value}
+        //
+        // Honors the per-monitor `brightnessMode` preference: monitors set to
+        // "overlay" go through the soft-overlay path; "ddc"/"gamma" use that
+        // single hardware path; "auto" tries hardware then falls back to the
+        // overlay. See `display::set_all_brightness` for the full dispatcher.
         ["command", "changeBrightness", value] => {
             if let Ok(val) = value.parse::<u32>() {
-                let min = app
-                    .state::<crate::AppState>()
-                    .preferences
-                    .lock()
-                    .map(|p| p.effective_min_brightness())
-                    .unwrap_or(crate::config::ABSOLUTE_MIN_BRIGHTNESS);
+                let (min, configs, cached) = {
+                    let state = app.state::<crate::AppState>();
+                    let prefs = state.preferences.lock();
+                    let min = prefs
+                        .as_ref()
+                        .map(|p| p.effective_min_brightness())
+                        .unwrap_or(crate::config::ABSOLUTE_MIN_BRIGHTNESS);
+                    let configs = prefs
+                        .as_ref()
+                        .map(|p| p.monitor_configs.clone())
+                        .unwrap_or_default();
+                    let cached = state.sidecar_cache.get_monitors().unwrap_or_default();
+                    (min, configs, cached)
+                };
                 let clamped = val.clamp(min, 100);
                 if let Some(state) = app.try_state::<crate::AppState>() {
                     state.sidecar_cache.invalidate_monitors();
                 }
+                let app_clone = app.clone();
                 run_then_emit(app.clone(), "monitors-changed", move || {
-                    let _ = crate::core::display::set_all_brightness(clamped as u16, "force");
+                    dispatch_brightness_for_all(&app_clone, clamped, &configs, &cached);
                 });
             }
         }
         // Set brightness for a single monitor: command/changeBrightness/{monitor_id}/{value}
         ["command", "changeBrightness", monitor_id, value] => {
             if let Ok(val) = value.parse::<u32>() {
-                let min = app
-                    .state::<crate::AppState>()
-                    .preferences
-                    .lock()
-                    .map(|p| p.effective_min_brightness())
-                    .unwrap_or(crate::config::ABSOLUTE_MIN_BRIGHTNESS);
+                let (min, mode, monitor_rect) = {
+                    let state = app.state::<crate::AppState>();
+                    let prefs = state.preferences.lock();
+                    let min = prefs
+                        .as_ref()
+                        .map(|p| p.effective_min_brightness())
+                        .unwrap_or(crate::config::ABSOLUTE_MIN_BRIGHTNESS);
+                    let mode = prefs
+                        .as_ref()
+                        .map(|p| {
+                            crate::display::resolve_brightness_mode(
+                                &p.monitor_configs, monitor_id,
+                            )
+                        })
+                        .unwrap_or_else(|_| "auto".into());
+                    let monitor_rect = state
+                        .sidecar_cache
+                        .get_monitors()
+                        .and_then(|monitors| {
+                            monitors
+                                .into_iter()
+                                .find(|m| m.id == *monitor_id)
+                                .and_then(|m| m.monitor_rect)
+                        });
+                    (min, mode, monitor_rect)
+                };
                 let clamped = val.clamp(min, 100);
                 let id = monitor_id.to_string();
                 if let Some(state) = app.try_state::<crate::AppState>() {
                     state.sidecar_cache.invalidate_monitors();
                 }
+                let app_clone = app.clone();
                 run_then_emit(app.clone(), "monitors-changed", move || {
-                    let _ = crate::core::display::set_one_brightness(&id, clamped as u16, "force");
+                    dispatch_brightness_for_one(&app_clone, &id, clamped, &mode, monitor_rect);
                 });
             }
         }

@@ -244,6 +244,7 @@ describe('SettingsPanel', () => {
             label: '',
             sortOrder: 0,
             hidden: false,
+            brightnessMode: 'auto',
           },
           {
             uid: '2::LG',
@@ -252,6 +253,7 @@ describe('SettingsPanel', () => {
             label: 'My LG',
             sortOrder: 1,
             hidden: false,
+            brightnessMode: 'auto',
           },
           {
             uid: '0::Built',
@@ -260,6 +262,7 @@ describe('SettingsPanel', () => {
             label: '',
             sortOrder: 2,
             hidden: false,
+            brightnessMode: 'auto',
           },
         ],
       }),
@@ -287,6 +290,71 @@ describe('SettingsPanel', () => {
     );
   });
 
+  it('changes a monitor brightnessMode via the dropdown and persists it', async () => {
+    setupInvoke({
+      prefs: buildPrefs({
+        monitorConfigs: [
+          {
+            uid: '1::Samsung',
+            apiId: '1',
+            apiName: 'Samsung Smart Monitor',
+            label: '',
+            sortOrder: 0,
+            hidden: false,
+            brightnessMode: 'auto',
+          },
+        ],
+      }),
+    });
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Samsung Smart Monitor')).toBeInTheDocument());
+
+    // The dropdown defaults to "Auto" for an external monitor in auto mode.
+    const modeSelect = screen.getByDisplayValue('Auto') as HTMLSelectElement;
+    expect(modeSelect).toBeInTheDocument();
+
+    await user.selectOptions(modeSelect, 'overlay');
+    await waitForSave();
+
+    expect(mockInvoke).toHaveBeenCalledWith(
+      'save_preferences',
+      expect.objectContaining({
+        preferences: expect.objectContaining({
+          monitorConfigs: expect.arrayContaining([
+            expect.objectContaining({
+              uid: '1::Samsung',
+              brightnessMode: 'overlay',
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it('does not render the brightnessMode dropdown for built-in monitors', async () => {
+    setupInvoke({
+      prefs: buildPrefs({
+        monitorConfigs: [
+          {
+            uid: '0::Built',
+            apiId: 'builtin',
+            apiName: 'Built-in Display',
+            label: '',
+            sortOrder: 0,
+            hidden: false,
+            brightnessMode: 'auto',
+          },
+        ],
+      }),
+    });
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Built-in Display')).toBeInTheDocument());
+
+    // No dropdown for built-in (it has its own native brightness path).
+    expect(screen.queryByDisplayValue('Auto')).not.toBeInTheDocument();
+  });
+
   it('swaps monitors via up/down buttons', async () => {
     setupInvoke({
       prefs: buildPrefs({
@@ -298,6 +366,7 @@ describe('SettingsPanel', () => {
             label: '',
             sortOrder: 0,
             hidden: false,
+            brightnessMode: 'auto',
           },
           {
             uid: '2::LG',
@@ -306,6 +375,7 @@ describe('SettingsPanel', () => {
             label: '',
             sortOrder: 1,
             hidden: false,
+            brightnessMode: 'auto',
           },
         ],
       }),
@@ -334,6 +404,7 @@ describe('SettingsPanel', () => {
             label: '',
             sortOrder: 0,
             hidden: false,
+            brightnessMode: 'auto',
           },
         ],
       }),
@@ -370,6 +441,7 @@ describe('SettingsPanel', () => {
             label: '',
             sortOrder: 0,
             hidden: false,
+            brightnessMode: 'auto',
           },
         ],
       }),

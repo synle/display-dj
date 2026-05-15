@@ -8,6 +8,9 @@ use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::thread;
 use std::time::Duration;
 
+#[cfg(target_os = "windows")]
+use super::win_cmd::hidden_command;
+
 const VALID_FITS: &[&str] = &["fill", "fit", "stretch", "center", "tile"];
 
 /// Returns true if `fit` is one of fill/fit/stretch/center/tile.
@@ -70,7 +73,7 @@ $wp.SetPosition({pos})
 "#,
         idx = index, path = escaped_path, pos = position
     );
-    let output = std::process::Command::new("powershell")
+    let output = hidden_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
         .output()
         .map_err(|e| format!("failed to run powershell: {}", e))?;
@@ -139,10 +142,10 @@ pub fn set_wallpaper(path: &str, fit: &str) -> bool {
         "tile" => ("0", "1"),
         _ => ("10", "0"), // default to fill
     };
-    let _ = std::process::Command::new("reg")
+    let _ = hidden_command("reg")
         .args(["add", r"HKCU\Control Panel\Desktop", "/v", "WallpaperStyle", "/t", "REG_SZ", "/d", style, "/f"])
         .output();
-    let _ = std::process::Command::new("reg")
+    let _ = hidden_command("reg")
         .args(["add", r"HKCU\Control Panel\Desktop", "/v", "TileWallpaper", "/t", "REG_SZ", "/d", tile, "/f"])
         .output();
 
@@ -160,7 +163,7 @@ public class Wallpaper {{
 "#,
         escaped_path
     );
-    std::process::Command::new("powershell")
+    hidden_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
         .output()
         .map(|o| o.status.success())
@@ -170,7 +173,7 @@ public class Wallpaper {{
 /// Get current wallpaper on Windows by reading registry keys.
 #[cfg(target_os = "windows")]
 pub fn get_wallpaper() -> Option<WallpaperInfo> {
-    let output = std::process::Command::new("reg")
+    let output = hidden_command("reg")
         .args(["query", r"HKCU\Control Panel\Desktop", "/v", "Wallpaper"])
         .output().ok()?;
     if !output.status.success() { return None; }
@@ -182,7 +185,7 @@ pub fn get_wallpaper() -> Option<WallpaperInfo> {
     if path.is_empty() { return None; }
 
     // Read fit mode from WallpaperStyle + TileWallpaper
-    let style_val = std::process::Command::new("reg")
+    let style_val = hidden_command("reg")
         .args(["query", r"HKCU\Control Panel\Desktop", "/v", "WallpaperStyle"])
         .output().ok()
         .filter(|o| o.status.success())
@@ -193,7 +196,7 @@ pub fn get_wallpaper() -> Option<WallpaperInfo> {
                 .map(|s| s.trim().to_string())
         })
         .unwrap_or_default();
-    let tile_val = std::process::Command::new("reg")
+    let tile_val = hidden_command("reg")
         .args(["query", r"HKCU\Control Panel\Desktop", "/v", "TileWallpaper"])
         .output().ok()
         .filter(|o| o.status.success())

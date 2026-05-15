@@ -270,6 +270,9 @@ impl Platform for MacPlatform {
                     brightness,                  // field shorthand (like JS { brightness })
                     contrast: None,
                     ddc_supported: false,
+                    // Built-in Apple displays dim natively via DisplayServices,
+                    // so the soft-overlay fallback never runs on them.
+                    monitor_rect: None,
                 };
                 // Box::new() allocates on the heap — required because trait objects have
                 // unknown size at compile time (different structs can impl DisplayControl).
@@ -307,6 +310,14 @@ impl Platform for MacPlatform {
                     brightness,
                     contrast,
                     ddc_supported,
+                    // TODO(overlay-macos): populate the physical screen rect
+                    // so the soft-overlay brightness fallback can run on
+                    // macOS too. Read via `CGDisplayBounds(cg_display_id)`
+                    // and convert to (left, top, width, height) in global
+                    // physical pixels. Until this is filled in, `brightnessMode
+                    // = "overlay"` is a no-op on macOS even though the
+                    // dropdown is selectable.
+                    monitor_rect: None,
                 };
 
                 let ctrl = ExternalControl { ddc_monitor: mon, cg_display_id, ddc_supported };

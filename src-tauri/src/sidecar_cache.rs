@@ -1,10 +1,15 @@
-//! TTL-based cache for sidecar HTTP responses.
+//! TTL-based cache for platform reads.
 //!
-//! Caches the results of `/get_all` (monitors), `/theme` (dark mode), and
-//! `/get_volume` (volume) so that rapid frontend polls don't hit the sidecar
-//! on every call. The TTL is 2 minutes — stale entries trigger a fresh HTTP
-//! call. Writes (set_brightness, set_volume, set_dark_mode, etc.) and Force
-//! Refresh invalidate the relevant cache entries.
+//! Caches the results of `core::PlatformImpl::enumerate()` (monitors),
+//! `core::theme::get_dark_mode()`, and `core::volume::get_volume()` so that
+//! rapid frontend polls don't re-hit the OS APIs on every call. The TTL is
+//! 5 minutes — stale entries trigger a fresh in-process read. Writes
+//! (set_brightness, set_volume, set_dark_mode, etc.) and Force Refresh
+//! invalidate the relevant cache entries.
+//!
+//! Name retained from v6.x (when the cache wrapped HTTP responses from the
+//! sidecar process). v7+ has no sidecar — this is now a pure in-process
+//! cache. See CLAUDE.md "Architecture".
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -25,13 +30,13 @@ impl<T> CacheEntry<T> {
     }
 }
 
-/// Thread-safe cache for sidecar HTTP responses and system state.
+/// Thread-safe cache for platform reads and system state.
 pub struct SidecarCache {
-    /// Cached monitor list (from sidecar /get_all + metadata merge).
+    /// Cached monitor list (from `core::PlatformImpl::enumerate()` + metadata merge).
     monitors: Mutex<Option<CacheEntry<Vec<crate::display::Monitor>>>>,
-    /// Cached dark mode state (from sidecar /theme).
+    /// Cached dark mode state (from `core::theme::get_dark_mode()`).
     dark_mode: Mutex<Option<CacheEntry<bool>>>,
-    /// Cached volume level (from sidecar /get_volume).
+    /// Cached volume level (from `core::volume::get_volume()`).
     volume: Mutex<Option<CacheEntry<u32>>>,
     /// Cached macOS Accessibility permission status (AXIsProcessTrusted).
     accessibility: Mutex<Option<CacheEntry<bool>>>,
