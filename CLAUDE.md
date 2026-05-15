@@ -4,7 +4,7 @@
 
 Cross-platform desktop system tray application for controlling monitor brightness, contrast, dark mode, volume, keep-awake (sleep prevention), and **window tiling** (macOS + Windows + Linux/X11). Built with **Tauri v2** (Rust backend) + **React 19** (TypeScript frontend) + **Vite 6**.
 
-As of v7.0.0, all platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, wallpaper, slideshow) is **vendored in-process** under `src-tauri/src/core/`. There is no separate sidecar process and no runtime dependency on the display-dj-cli repo or its releases — Tauri commands call `core::*` functions directly. See [`VENDORING.md`](VENDORING.md) for the upstream→vendored file map and `./scripts/check-vendor-drift.sh` for drift detection.
+All platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, wallpaper, slideshow) is **vendored in-process** under `src-tauri/src/core/`. There is no sidecar process and no runtime dependency on the display-dj-cli repo — Tauri commands call `core::*` functions directly. See [`VENDORING.md`](VENDORING.md) for the upstream→vendored file map and `./scripts/check-vendor-drift.sh` for drift detection.
 
 For full architecture details, request lifecycle, layer-by-layer breakdown, data flow diagrams, and "where to edit" reference, see **[DEV.md](DEV.md)**.
 
@@ -20,8 +20,6 @@ The Rust backend is split into two layers:
   - `core::wallpaper` — wallpaper set + slideshow timer/state/cycling (all in-process).
   - `core::display` — high-level helpers (`set_all_brightness`, `set_one_brightness`, contrast variants) that fan out to `PlatformImpl`.
 - **`src-tauri/src/{display,dark_mode,volume,wallpaper}.rs`** — thin Tauri-command wrappers around `core::*`. CPU-bound work is wrapped in `tauri::async_runtime::spawn_blocking` because every Tauri command taking `State<'_, AppState>` must be `async fn` (see "macOS Tray Icon Pitfall" below).
-
-There is no HTTP, no port discovery, no sidecar child process, no `tauri-plugin-shell`, no `externalBin`, no `src-tauri/binaries/`.
 
 ## Build Commands
 
@@ -62,7 +60,7 @@ The **single source of truth** is `src-tauri/tauri.conf.json` → `"version"`. T
 
 Other version fields (`package.json`, `Cargo.toml`) are pinned at `0.0.0` and unused — the npm package and crate are not published. Release versioning is driven by git tags (`v*` triggers `release-official.yml`).
 
-`build.rs` is now just `tauri_build::build()` plus the existing `expose_app_version()` helper that emits `APP_VERSION` and `BUILD_DATE` env vars. No binary downloads, no sidecar bundling.
+`build.rs` is `tauri_build::build()` plus the `expose_app_version()` helper that emits `APP_VERSION` and `BUILD_DATE` env vars.
 
 ## Testing
 
@@ -83,10 +81,10 @@ cd src-tauri && cargo test   # Backend tests (Rust)
 Inline `#[cfg(test)]` modules cover:
 
 - `config.rs`: serde roundtrips, defaults, camelCase, `CommandValue` enum, `MonitorMetadata`, effective min brightness, backward-compatible deserialization, layout presets, night-mode schedules, `WallpaperPreferences`.
-- `display.rs`: `DjDisplay` → `Monitor` conversion (incl. uid). `DjDisplay` is the local conversion struct in `display.rs`; in v7 its fields are populated from `core::DisplayInfo` (no longer parsed from sidecar JSON). Also: `merge_with_configs`, `reconcile_migrated_configs`, `ensure_metadata_for_monitors`, `resolve_monitor` (id/uid/substring).
+- `display.rs`: `DjDisplay` → `Monitor` conversion (incl. uid). `DjDisplay` is the local conversion struct in `display.rs`; its fields are populated from `core::DisplayInfo`. Also: `merge_with_configs`, `reconcile_migrated_configs`, `ensure_metadata_for_monitors`, `resolve_monitor` (id/uid/substring).
 - `keep_awake.rs`: `KeepAwake` guard creation, `Mutex<Option<KeepAwake>>` enable/disable cycle.
 - `tray_icon.rs`: %-to-px conversion, icon generation across all state combos (dark/light × keep-awake × muted), filled rect/thick line drawing.
-- `tray.rs`: `build_command_url()` for all command types now always returns `None` (every command dispatches in-process to `core::*`); brightness clamping; contrast capping.
+- `tray.rs`: `build_command_url()` always returns `None` (every command dispatches in-process to `core::*`); brightness clamping; contrast capping.
 - `tiling/mod.rs` (shared): `TilingLayout` parsing, all 17 layouts, gap/padding math, `layout_across_displays` overflow + min cell size + DPI scaling, layout preset resolution + rule matching, `plan_expose` / `plan_expose_app` / `plan_layout_preset`, smart-restore helpers (`is_rect_oversized`, `calculate_smart_restore_rect`, `calculate_smart_restore_rect_at_cursor`), grid-aligned oversized placement (`find_free_cell`, `find_free_block`, `mark_block`), `parse_zorder_command` (all 6 variants), `is_window_at_front` pure helper.
 - `tiling/macos.rs` (macOS only): `is_window_move`, `build_snap_zones` / `detect_snap_zone_macos`, `get_display_full_frames`, `is_pseudo_fullscreen` / `send_escape_key`, `get_all_gui_app_pids`, `move_all_windows_to_current_space`.
 - `tiling/windows.rs` (Windows only): `should_skip_system_window`, DPI border correction, `dbg_log`, expose debounce.
@@ -294,7 +292,7 @@ Lives in the `tiling/` module — shares focused-window resolution and AX/Win32/
 
 **Self-test (debug aid)**: Set `DISPLAY_DJ_ZORDER_SELFTEST=1` before launching. Five seconds after startup, `tiling::run_zorder_selftest()` runs all 6 z-order commands on whatever window is currently focused, with state snapshots between steps. Logs everything with a `[zorder-selftest]` prefix. Off by default — running on every launch would manipulate the user's focused window.
 
-Parsing centralized in `tiling::parse_zorder_command()`; dispatch in `tiling::execute_zorder()` which forwards to platform impls. Dispatched in-process from `tray.rs::execute_command()` on a background thread (like all other commands now), so `build_command_url()` returns `None`.
+Parsing centralized in `tiling::parse_zorder_command()`; dispatch in `tiling::execute_zorder()` which forwards to platform impls. Dispatched in-process from `tray.rs::execute_command()` on a background thread, so `build_command_url()` returns `None`.
 
 ### Front
 
@@ -337,7 +335,7 @@ Images are validated (existing path, valid extension, > 1 KB), then copied to `{
 
 Managed in-process by `core::wallpaper` (timer thread, state, cycling). GUI starts/stops via `core::wallpaper::start_slideshow(interval, order, fit, folder)` / `core::wallpaper::stop_slideshow()`. On startup, `resume_slideshow_if_enabled()` resumes if `slideshowEnabled`. Manual `command/wallpaper/change` auto-stops the running slideshow.
 
-**Remote packs**: `command/wallpaper/slideshow_remote/{url}` downloads a `.zip` (via `reqwest::blocking::get` — user-driven HTTP, unrelated to the old sidecar), extracts valid images to `wallpapers/remote-{md5(url)}/`, then starts a slideshow there. Only `.zip`; max 500 MB; idempotent (skips download if folder exists with images). Uses the `zip` crate.
+**Remote packs**: `command/wallpaper/slideshow_remote/{url}` downloads a `.zip` via `reqwest::blocking::get`, extracts valid images to `wallpapers/remote-{md5(url)}/`, then starts a slideshow there. Only `.zip`; max 500 MB; idempotent (skips download if folder exists with images). Uses the `zip` crate.
 
 ### Preferences
 
@@ -347,7 +345,7 @@ Settings UI: Wallpaper Fit dropdown, Enable Slideshow checkbox, folder path, int
 
 ## Command Reference
 
-Commands are strings dispatched by `execute_command()` in `tray.rs`. Bindable to keyboard shortcuts in `keyBindings`, usable in profiles, and selectable from the tray menu. Every command dispatches in-process to a `core::*` function or a tiling/wallpaper helper — there is no HTTP. `build_command_url()` always returns `None` (covered by unit tests; kept as a typed signal that no command currently maps to an external URL).
+Commands are strings dispatched by `execute_command()` in `tray.rs`. Bindable to keyboard shortcuts in `keyBindings`, usable in profiles, and selectable from the tray menu. Every command dispatches in-process to a `core::*` function or a tiling/wallpaper helper. `build_command_url()` always returns `None` (covered by unit tests; kept as a typed signal that no command currently maps to an external URL).
 
 | Command                                                   | In-process dispatch                                         | Description                                    |
 | --------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
@@ -403,8 +401,6 @@ The vendored `core::*` modules call OS APIs directly. Cargo deps:
 - `windows` v0.58 (Windows-only) — Win32 window tiling APIs + display/wallpaper APIs.
 - `x11rb` v0.13 (Linux-only) — pure Rust X11/EWMH window tiling.
 
-`tauri-plugin-shell` was removed in v7.0.0 — no external processes are spawned.
-
 ### Linux (additional system packages)
 
 ```bash
@@ -413,14 +409,10 @@ sudo modprobe i2c-dev
 sudo usermod -aG i2c $USER
 ```
 
-## Process Lifecycle
-
-The platform code runs in-process inside the Tauri binary; there is no separate process to spawn, supervise, or kill. Earlier versions (≤ v6.x) bundled a `display-dj-server` sidecar with stdin-EOF parent-death detection, `RunEvent::Exit` kill, and stale-process cleanup — all of that machinery (`kill_stale_sidecars`, `find_available_port`, `wait_for_server`, `SERVER_PORT`, `sidecar_child`, `tauri-plugin-shell`, `externalBin`, `src-tauri/binaries/`) was removed in v7.0.0.
-
 ## CI Workflows
 
 - **`build.yml`** — tests + builds on all platforms for every push/PR. PR comment with artifact download links.
-- **`release-official.yml`** — triggered by `v*` tags or manual `workflow_dispatch`. Uses `synle/workflows/actions/release/` shared actions (`begin-release` → Tauri matrix build → `end-release`). `begin-release` resolves the tag, cleans existing release, creates a draft. Build uploads assets. `end-release` generates changelog (top 10 commits since last tag, diff link, platform support from `.github/release-body-static.md`) and finalizes flags. Custom notes via `release_notes` input. Sets `TAURI_RELEASE=true` (clean version). Use `/release-official` for interactive triggering. No CLI sidecar version override is needed anymore — the platform code is vendored.
+- **`release-official.yml`** — triggered by `v*` tags or manual `workflow_dispatch`. Uses `synle/workflows/actions/release/` shared actions (`begin-release` → Tauri matrix build → `end-release`). `begin-release` resolves the tag, cleans existing release, creates a draft. Build uploads assets. `end-release` generates changelog (top 10 commits since last tag, diff link, platform support from `.github/release-body-static.md`) and finalizes flags. Custom notes via `release_notes` input. Sets `TAURI_RELEASE=true` (clean version). Use `/release-official` for interactive triggering.
 - **`release-beta.yml`** — manual `workflow_dispatch` only. Same flow with `mode: beta`. Optional `sha` (defaults to HEAD) and `notes` inputs. Creates a draft prerelease tagged `release-beta-<date>-<sha>`. Does not set `TAURI_RELEASE`, so builds show the `[beta - <sha>]` suffix. Use `/release-beta` for interactive triggering.
 
 ## GitHub Raw File URLs
