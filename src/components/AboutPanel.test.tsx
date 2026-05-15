@@ -176,6 +176,46 @@ describe('AboutPanel', () => {
     });
   });
 
+  it('appends the published_at timestamp to Version and Latest rows', async () => {
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_about_info')
+        return Promise.resolve({ version: '7.0.21', os: 'macOS', arch: 'arm64' });
+      if (cmd === 'get_app_version') return Promise.resolve('7.0.21');
+      return Promise.resolve(undefined);
+    });
+    global.fetch = vi.fn(() =>
+      Promise.resolve({
+        json: () => Promise.resolve({ tag_name: 'v7.0.21', published_at: '2026-05-15T19:23:39Z' }),
+      }),
+    ) as unknown as typeof fetch;
+
+    render(<AboutPanel onClose={() => {}} />);
+
+    // Both rows should render "7.0.21 (yyyy-mm-dd HH:mm)" — local time, so
+    // assert against the date portion + a HH:mm regex to stay TZ-independent.
+    await waitFor(() => {
+      const matches = screen.getAllByText(/^7\.0\.21 \(2026-05-1[45] \d{2}:\d{2}\)$/);
+      expect(matches.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('omits the timestamp suffix when the GitHub payload has no published_at', async () => {
+    setupMocks({
+      info: { version: '2.0.0', os: 'Linux', arch: 'x64' },
+      currentVersion: '2.0.0',
+      latestTag: 'v2.0.0',
+    });
+    render(<AboutPanel onClose={() => {}} />);
+
+    // No published_at in the mock payload → cells render the bare version.
+    await waitFor(() => {
+      expect(screen.getAllByText('2.0.0').length).toBeGreaterThanOrEqual(2);
+    });
+    // No "(" should appear in the version/latest cells when date is missing.
+    expect(screen.queryByText(/2\.0\.0 \(/)).not.toBeInTheDocument();
+  });
+
   it('renders platform and homepage rows from info', async () => {
     setupMocks({
       info: {
