@@ -500,6 +500,8 @@ Triggers on pushes and PRs to `main` and `v2` branches. Runs on four matrix targ
 
 Steps: checkout -> Node 20 -> Rust stable -> Linux deps (Ubuntu only) -> `npm install` -> `npm test` -> `npm run build` -> `cargo test` -> `cargo check`
 
+A final aggregator job named **`Main Build`** (job id `main_build`) depends on the 4-platform `build` matrix + the `coverage` job, runs `if: always()`, and fails iff any required upstream did not succeed. This is the single check that appears as `Build / Main Build` on the commit and is the recommended status to require in branch protection rules (instead of enumerating every matrix permutation).
+
 ### release.yml (production releases)
 
 Triggers on `v*` tags or manual `workflow_dispatch`. Deletes any existing release/tag first, then builds platform installers (`.dmg`, `.exe`, `.deb`, `.AppImage` — no `.tar.gz`/`.msi`/`.rpm`). Release notes are auto-generated from commit history (top 10 commits since last tag with full diff link). Sets `TAURI_RELEASE=true` so the version header shows clean version without `[beta]` suffix.

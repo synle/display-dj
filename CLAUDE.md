@@ -95,7 +95,7 @@ Inline `#[cfg(test)]` modules cover:
 
 ### CI
 
-GitHub Actions (`build.yml`) runs `npm test` and `cargo test` on macOS ARM/Intel, Windows, and Linux for every push and PR. PRs get a comment with per-platform build artifact links.
+GitHub Actions (`build.yml`) runs `npm test` and `cargo test` on macOS ARM/Intel, Windows, and Linux for every push and PR. PRs get a comment with per-platform build artifact links. A single rolled-up check named **`Main Build`** (job id `main_build`) aggregates the 4-platform matrix + coverage into one green/red status on the commit — require this name in branch protection instead of every matrix permutation.
 
 ## Formatting
 
@@ -411,7 +411,7 @@ sudo usermod -aG i2c $USER
 
 ## CI Workflows
 
-- **`build.yml`** — tests + builds on all platforms for every push/PR. PR comment with artifact download links.
+- **`build.yml`** — tests + builds on all platforms for every push/PR. PR comment with artifact download links. A rolled-up `Main Build` check (job `main_build`, `needs: [build, coverage]`, `if: always()`) collapses the 4-platform matrix + coverage into one green/red commit status — use this name in branch protection.
 - **`release-official.yml`** — triggered by `v*` tags or manual `workflow_dispatch`. Uses `synle/workflows/actions/release/` shared actions (`begin-release` → Tauri matrix build → `end-release`). `begin-release` resolves the tag, cleans existing release, creates a draft. Build uploads assets. `end-release` generates changelog (top 10 commits since last tag, diff link, platform support from `.github/release-body-static.md`) and finalizes flags. Custom notes via `release_notes` input. Sets `TAURI_RELEASE=true` (clean version). Use `/release-official` for interactive triggering.
 - **`release-beta.yml`** — manual `workflow_dispatch` only. Same flow with `mode: beta`. Optional `sha` (defaults to HEAD) and `notes` inputs. Creates a draft prerelease tagged `release-beta-<date>-<sha>`. Does not set `TAURI_RELEASE`, so builds show the `[beta - <sha>]` suffix. Use `/release-beta` for interactive triggering.
 
