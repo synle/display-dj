@@ -222,6 +222,42 @@ jobs:
             echo "lines ≥ 43, functions ≥ 49, regions ≥ 45."
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Single rolled-up status check for the whole workflow. The 4-platform
+  # `build` matrix and the `coverage` job each produce their own check on
+  # the commit, which makes branch protection awkward (you'd have to list
+  # every matrix permutation by name) and clutters the PR/commit UI. This
+  # job depends on all of them, runs `if: always()` so it executes even
+  # when an upstream job fails or is cancelled, and fails itself iff any
+  # required upstream did not succeed. The resulting check is named
+  # "Build / Main Build" on the commit and is the single status to require
+  # in branch protection.
+  main_build:
+    name: Main Build
+    needs: [build, coverage]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate matrix + coverage results
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+        run: |
+          {
+            echo "## Main Build rollup"
+            echo
+            echo "| Required job | Result |"
+            echo "|--------------|--------|"
+            echo "| build (4-platform matrix) | \`${BUILD_RESULT}\` |"
+            echo "| coverage | \`${COVERAGE_RESULT}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$BUILD_RESULT" == "success" && "$COVERAGE_RESULT" == "success" ]]; then
+            echo "All required jobs succeeded."
+            exit 0
+          fi
+          echo "::error::Main Build failed — build=${BUILD_RESULT} coverage=${COVERAGE_RESULT}"
+          exit 1
+
   # Post a comment on PRs with download links for each platform's build artifacts
   pr_comment:
     if: github.event_name == 'pull_request'
