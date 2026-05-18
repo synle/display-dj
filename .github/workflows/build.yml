@@ -158,26 +158,31 @@ jobs:
       - name: Rust coverage (cargo-llvm-cov)
         id: rust_cov
         working-directory: src-tauri
-        # Floors trail the current main-branch measurement by ~1pt to
-        # absorb coincidental flakes. Raise these as coverage improves.
+        # Floors trail the current main-branch measurement by ~10pp to
+        # absorb coincidental drops without breaking main. Raise these
+        # as coverage improves; never lower without keeping the same
+        # ~10pp gap.
         #
         # History:
         #   v7.0.2 baseline (Regions 46.13 / Functions 50.13 / Lines 44.11),
         #     floors set to 45 / 49 / 43.
         #   PR #6 (2026-05-10): functions drifted to 47.76; lowered 49→47.
-        #   2026-05-17 (this change): post v7.0.19-22 the surface gained
-        #     soft-overlay (overlay.rs), 2/3 tile-snap zones (tiling/macos),
-        #     and About panel date formatting — all hard to unit-test from
-        #     a Linux CI runner with no display server. Measurement on SHA
-        #     7158ca1: Regions 44.57 / Functions 47.02 / Lines 45.21.
-        #     Lowered regions 45→43 and functions 47→46; lines unchanged
-        #     (already comfortable). New ~1-2pt safety margin on each axis.
+        #   2026-05-17: post v7.0.19-22 the surface gained soft-overlay
+        #     (overlay.rs), 2/3 tile-snap zones (tiling/macos), and About
+        #     panel date formatting — all hard to unit-test from a Linux CI
+        #     runner with no display server. SHA 7158ca1 measured Regions
+        #     44.57 / Functions 47.02 / Lines 45.21. Lowered regions 45→43
+        #     and functions 47→46; lines unchanged.
+        #   2026-05-17 (this change): SHA 1833f2f measured Regions 59.19 /
+        #     Functions 64.91 / Lines 60.18 after the latest test additions.
+        #     Floors lowered to 49 / 54 / 50 to maintain the ~10pp safety
+        #     margin requested by the maintainer.
         run: |
           set -o pipefail
           cargo llvm-cov --lib --summary-only \
-            --fail-under-lines 43 \
-            --fail-under-functions 46 \
-            --fail-under-regions 43 \
+            --fail-under-lines 50 \
+            --fail-under-functions 54 \
+            --fail-under-regions 49 \
             2>&1 | tee /tmp/rust-cov.txt
 
       # Upload the full HTML / lcov reports as an artifact so reviewers
@@ -216,7 +221,7 @@ jobs:
             echo '```'
             echo
             echo "Thresholds (from \`vite.config.ts → test.coverage.thresholds\`):"
-            echo "lines ≥ 36, statements ≥ 35, branches ≥ 24, functions ≥ 32."
+            echo "lines ≥ 50, statements ≥ 50, branches ≥ 50, functions ≥ 50."
             echo
             echo "### Rust (cargo-llvm-cov)"
             echo
@@ -230,7 +235,7 @@ jobs:
             echo '```'
             echo
             echo "Thresholds (from \`build.yml\` cargo-llvm-cov flags):"
-            echo "lines ≥ 43, functions ≥ 46, regions ≥ 43."
+            echo "lines ≥ 50, functions ≥ 54, regions ≥ 49."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Single rolled-up status check for the whole workflow. The 4-platform
