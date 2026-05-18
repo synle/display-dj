@@ -196,3 +196,29 @@ pub fn get_dark_mode() -> Option<bool> {
 
     None // couldn't detect theme on any DE
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Smoke test: get_dark_mode must not panic; returns Some(bool) on supported
+    /// systems, None if detection fails. Both outcomes are acceptable in tests.
+    #[test]
+    fn test_get_dark_mode_does_not_panic() {
+        let _ = get_dark_mode();
+    }
+
+    /// Smoke test: set_dark_mode must not panic for either value. Whether it
+    /// actually flips the system theme depends on permissions and DE; we just
+    /// verify the function returns without crashing. Restores the original
+    /// state at the end so we don't leave the dev's system flipped.
+    #[test]
+    fn test_set_dark_mode_restores_state() {
+        let original = get_dark_mode();
+        let _ = set_dark_mode(true);
+        let _ = set_dark_mode(false);
+        if let Some(was_dark) = original {
+            let _ = set_dark_mode(was_dark);
+        }
+    }
+}

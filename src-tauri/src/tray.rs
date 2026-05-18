@@ -8,7 +8,7 @@ use crate::config::{CommandValue, KeyBinding};
 
 /// Run a closure on a background thread (so we don't block whatever called us)
 /// and emit a Tauri event on `app` when it returns.
-fn run_then_emit<F>(app: AppHandle, event: &'static str, f: F)
+fn run_then_emit<R: tauri::Runtime, F>(app: AppHandle<R>, event: &'static str, f: F)
 where
     F: FnOnce() + Send + 'static,
 {
@@ -31,8 +31,8 @@ where
 /// * `mode` - Resolved brightness mode (`"auto"`, `"ddc"`, `"gamma"`, `"overlay"`).
 /// * `monitor_rect` - Physical rect for the overlay path; `None` is acceptable
 ///   on platforms where it's not populated (the overlay call no-ops).
-fn dispatch_brightness_for_one(
-    app: &AppHandle,
+fn dispatch_brightness_for_one<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     monitor_id: &str,
     value: u32,
     mode: &str,
@@ -74,8 +74,8 @@ fn dispatch_brightness_for_one(
 /// * `value` - Brightness 0..=100 (already clamped by the caller).
 /// * `configs` - Snapshot of preferences.monitor_configs for mode lookup.
 /// * `cached` - Snapshot of the cached `Monitor` list (with `monitor_rect`).
-fn dispatch_brightness_for_all(
-    app: &AppHandle,
+fn dispatch_brightness_for_all<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     value: u32,
     configs: &[crate::config::MonitorMetadata],
     cached: &[crate::display::Monitor],

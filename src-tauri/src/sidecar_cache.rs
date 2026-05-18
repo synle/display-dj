@@ -161,3 +161,126 @@ impl Default for SidecarCache {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_monitor(id: &str) -> crate::display::Monitor {
+        crate::display::Monitor {
+            id: id.into(),
+            uid: format!("{}::Test", id),
+            name: "Test".into(),
+            original_name: "Test".into(),
+            brightness: 50,
+            contrast: None,
+            supports_brightness: true,
+            is_built_in: false,
+            hidden: false,
+            monitor_rect: None,
+        }
+    }
+
+    #[test]
+    fn test_new_cache_is_empty() {
+        let cache = SidecarCache::new();
+        assert!(cache.get_monitors().is_none());
+        assert!(cache.get_dark_mode().is_none());
+        assert!(cache.get_volume().is_none());
+        assert!(cache.get_accessibility().is_none());
+    }
+
+    #[test]
+    fn test_default_equivalent_to_new() {
+        let cache = SidecarCache::default();
+        assert!(cache.get_monitors().is_none());
+        assert!(cache.get_dark_mode().is_none());
+        assert!(cache.get_volume().is_none());
+        assert!(cache.get_accessibility().is_none());
+    }
+
+    #[test]
+    fn test_set_get_monitors() {
+        let cache = SidecarCache::new();
+        cache.set_monitors(vec![make_monitor("1"), make_monitor("2")]);
+        let got = cache.get_monitors().unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].id, "1");
+        assert_eq!(got[1].id, "2");
+    }
+
+    #[test]
+    fn test_set_get_dark_mode() {
+        let cache = SidecarCache::new();
+        cache.set_dark_mode(true);
+        assert_eq!(cache.get_dark_mode(), Some(true));
+        cache.set_dark_mode(false);
+        assert_eq!(cache.get_dark_mode(), Some(false));
+    }
+
+    #[test]
+    fn test_set_get_volume() {
+        let cache = SidecarCache::new();
+        cache.set_volume(75);
+        assert_eq!(cache.get_volume(), Some(75));
+        cache.set_volume(0);
+        assert_eq!(cache.get_volume(), Some(0));
+    }
+
+    #[test]
+    fn test_set_get_accessibility() {
+        let cache = SidecarCache::new();
+        cache.set_accessibility(true);
+        assert_eq!(cache.get_accessibility(), Some(true));
+        cache.set_accessibility(false);
+        assert_eq!(cache.get_accessibility(), Some(false));
+    }
+
+    #[test]
+    fn test_invalidate_clears_individual_caches() {
+        let cache = SidecarCache::new();
+        cache.set_monitors(vec![make_monitor("1")]);
+        cache.set_dark_mode(true);
+        cache.set_volume(50);
+        cache.set_accessibility(true);
+
+        cache.invalidate_monitors();
+        assert!(cache.get_monitors().is_none());
+        assert!(cache.get_dark_mode().is_some());
+
+        cache.invalidate_dark_mode();
+        assert!(cache.get_dark_mode().is_none());
+        assert!(cache.get_volume().is_some());
+
+        cache.invalidate_volume();
+        assert!(cache.get_volume().is_none());
+        assert!(cache.get_accessibility().is_some());
+
+        cache.invalidate_accessibility();
+        assert!(cache.get_accessibility().is_none());
+    }
+
+    #[test]
+    fn test_invalidate_all_clears_everything() {
+        let cache = SidecarCache::new();
+        cache.set_monitors(vec![make_monitor("1")]);
+        cache.set_dark_mode(true);
+        cache.set_volume(50);
+        cache.set_accessibility(true);
+
+        cache.invalidate_all();
+
+        assert!(cache.get_monitors().is_none());
+        assert!(cache.get_dark_mode().is_none());
+        assert!(cache.get_volume().is_none());
+        assert!(cache.get_accessibility().is_none());
+    }
+
+    #[test]
+    fn test_overwrite_resets_freshness() {
+        let cache = SidecarCache::new();
+        cache.set_volume(10);
+        cache.set_volume(20);
+        assert_eq!(cache.get_volume(), Some(20));
+    }
+}

@@ -171,7 +171,7 @@ fn draw_thick_line(
 }
 
 /// Updates the cached dark mode state and refreshes the tray icon.
-pub fn set_dark_mode_state(app: &tauri::AppHandle, is_dark: bool) {
+pub fn set_dark_mode_state<R: tauri::Runtime>(app: &tauri::AppHandle<R>, is_dark: bool) {
     if let Some(state) = app.try_state::<crate::AppState>() {
         if let Ok(mut v) = state.is_dark_mode.lock() {
             *v = is_dark;
@@ -181,7 +181,7 @@ pub fn set_dark_mode_state(app: &tauri::AppHandle, is_dark: bool) {
 }
 
 /// Updates the cached muted state and refreshes the tray icon.
-pub fn set_muted_state(app: &tauri::AppHandle, is_muted: bool) {
+pub fn set_muted_state<R: tauri::Runtime>(app: &tauri::AppHandle<R>, is_muted: bool) {
     if let Some(state) = app.try_state::<crate::AppState>() {
         if let Ok(mut v) = state.is_muted.lock() {
             *v = is_muted;
@@ -193,7 +193,7 @@ pub fn set_muted_state(app: &tauri::AppHandle, is_muted: bool) {
 /// Updates the tray icon to reflect current app state.
 /// Reads is_dark_mode, is_muted, and keep_awake from AppState,
 /// generates a new icon with indicators, and applies it.
-pub fn update_tray_icon(app: &tauri::AppHandle) {
+pub fn update_tray_icon<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let state = match app.try_state::<crate::AppState>() {
         Some(s) => s,
         None => return,
