@@ -548,8 +548,24 @@ pub fn write_debug_log(state: &crate::AppState, message: &str) {
     }
 }
 
+/// Test-only global lock that serializes any test which mutates the
+/// `DISPLAY_DJ_CONFIG_DIR` env var. Multiple test modules
+/// (display::tests, wallpaper::tests, etc.) point this env var at their
+/// own tempdir; without a shared lock they race because env vars are
+/// process-global. Each tempdir helper must acquire this same lock.
+#[cfg(test)]
+pub(crate) static TEST_CONFIG_DIR_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Returns the app's config directory (creates it if it doesn't exist).
+///
+/// In tests, the `DISPLAY_DJ_CONFIG_DIR` env var can override the default location
+/// so disk-write tests don't pollute the dev's real config dir.
 pub(crate) fn config_dir() -> PathBuf {
+    if let Ok(override_dir) = std::env::var("DISPLAY_DJ_CONFIG_DIR") {
+        let dir = PathBuf::from(override_dir);
+        std::fs::create_dir_all(&dir).ok();
+        return dir;
+    }
     let dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("display-dj");
