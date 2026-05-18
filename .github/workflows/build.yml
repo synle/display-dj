@@ -75,9 +75,19 @@ jobs:
           DISPLAY_DJ_CLI_VERSION: ${{ github.event.inputs.display_dj_cli_version }}
         run: |
           if [[ "${{ matrix.platform }}" == "windows-latest" ]]; then
-            # Skip integration smoke test on Windows CI — Dxva2.dll (DDC/CI) is not
-            # available on Server SKUs, so the smoke binary crashes at load time.
-            cargo test --target ${{ matrix.target }} --lib
+            # Windows Server CI runners cannot LOAD our test binaries:
+            #   * Smoke test (tests/smoke.rs) imports Dxva2.dll (DDC/CI), which
+            #     is not available on Windows Server SKUs.
+            #   * Lib tests pull in WebView2 imports via tauri's `test` feature
+            #     (added as a dev-dependency for tauri::test::mock_app() in
+            #     display.rs / lib.rs / overlay.rs), and the WebView2 loader on
+            #     the runner has missing exports -> STATUS_ENTRYPOINT_NOT_FOUND
+            #     (0xc0000139) at load time, before any test runs.
+            # Compilation itself works on Windows, so we use --no-run to keep
+            # validating that all Windows-targeted code (#[cfg(target_os =
+            # "windows")] paths) still compiles. Actual test *execution* runs
+            # on macOS ARM, macOS Intel, and Linux.
+            cargo test --target ${{ matrix.target }} --no-run
           else
             cargo test --target ${{ matrix.target }}
           fi
