@@ -781,11 +781,19 @@ mod tests {
     }
 
     /// Verifies wallpapers_dir() returns the expected path under config dir.
+    /// Acquires CFG_DIR_LOCK and clears the env var to avoid racing with
+    /// tempdir tests in the same module.
     #[test]
     fn test_wallpapers_dir_path() {
+        let _lock = CFG_DIR_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var("DISPLAY_DJ_CONFIG_DIR").ok();
+        std::env::remove_var("DISPLAY_DJ_CONFIG_DIR");
         let dir = wallpapers_dir();
         assert!(dir.ends_with("wallpapers"));
         assert!(dir.parent().unwrap().ends_with("display-dj"));
+        if let Some(v) = prev {
+            std::env::set_var("DISPLAY_DJ_CONFIG_DIR", v);
+        }
     }
 
     /// Verifies parse_wallpaper_args extracts a known fit mode.
@@ -894,5 +902,238 @@ mod tests {
         std::fs::write(dir.join("readme.txt"), b"hello").unwrap();
         assert!(!has_valid_images(&dir));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // --- Disk-write tests using DISPLAY_DJ_CONFIG_DIR override ---
+
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    /// Run `body` with DISPLAY_DJ_CONFIG_DIR pointed at a fresh tempdir.
+    fn with_tempdir_config<F: FnOnce()>(body: F) {
+        let _lock = crate::config::TEST_CONFIG_DIR_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var("DISPLAY_DJ_CONFIG_DIR").ok();
+        let tmp = tempfile::tempdir().expect("create tempdir");
+        std::env::set_var("DISPLAY_DJ_CONFIG_DIR", tmp.path());
+        let result = catch_unwind(AssertUnwindSafe(body));
+        match prev {
+            Some(v) => std::env::set_var("DISPLAY_DJ_CONFIG_DIR", v),
+            None => std::env::remove_var("DISPLAY_DJ_CONFIG_DIR"),
+        }
+        drop(tmp);
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
+    }
+
+    /// copy_to_wallpapers copies a fresh source to the cache directory.
+    #[test]
+    fn test_copy_to_wallpapers_fresh() {
+        with_tempdir_config(|| {
+            let src = std::env::temp_dir().join("test_copy_fresh.jpg");
+            std::fs::write(&src, vec![0u8; 2048]).unwrap();
+            let state = crate::AppState::default();
+            let dest = copy_to_wallpapers(src.to_str().unwrap(), &state).unwrap();
+            assert!(dest.exists());
+            assert!(dest.file_name().unwrap().to_str().unwrap().starts_with("wallpaper-"));
+            std::fs::remove_file(&src).ok();
+        });
+    }
+
+    /// copy_to_wallpapers skips the copy when dest already has identical content.
+    #[test]
+    fn test_copy_to_wallpapers_skip_identical() {
+        with_tempdir_config(|| {
+            let src = std::env::temp_dir().join("test_copy_skip.jpg");
+            std::fs::write(&src, vec![0u8; 2048]).unwrap();
+            let state = crate::AppState::default();
+            // First call: copies
+            let dest1 = copy_to_wallpapers(src.to_str().unwrap(), &state).unwrap();
+            let mtime1 = std::fs::metadata(&dest1).unwrap().modified().unwrap();
+            // Second call: should skip (same MD5)
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let dest2 = copy_to_wallpapers(src.to_str().unwrap(), &state).unwrap();
+            let mtime2 = std::fs::metadata(&dest2).unwrap().modified().unwrap();
+            assert_eq!(mtime1, mtime2, "should not overwrite identical content");
+            std::fs::remove_file(&src).ok();
+        });
+    }
+
+    /// copy_to_wallpapers overwrites cache when source content changed.
+    #[test]
+    fn test_copy_to_wallpapers_overwrite_on_change() {
+        with_tempdir_config(|| {
+            let src = std::env::temp_dir().join("test_copy_overwrite.jpg");
+            std::fs::write(&src, vec![0u8; 2048]).unwrap();
+            let state = crate::AppState::default();
+            let dest1 = copy_to_wallpapers(src.to_str().unwrap(), &state).unwrap();
+            let hash1 = file_content_hash(&dest1).unwrap();
+            // Change source
+            std::fs::write(&src, vec![1u8; 2048]).unwrap();
+            let dest2 = copy_to_wallpapers(src.to_str().unwrap(), &state).unwrap();
+            let hash2 = file_content_hash(&dest2).unwrap();
+            assert_ne!(hash1, hash2, "should overwrite when source changed");
+            std::fs::remove_file(&src).ok();
+        });
+    }
+
+    /// copy_to_wallpapers returns Err when source is missing AND no cache exists.
+    #[test]
+    fn test_copy_to_wallpapers_missing_source() {
+        with_tempdir_config(|| {
+            let state = crate::AppState::default();
+            let result = copy_to_wallpapers("/no/such/file.jpg", &state);
+            assert!(result.is_err());
+        });
+    }
+
+    /// copy_to_wallpapers falls back to cached copy when source vanishes
+    /// but the destination already exists.
+    #[test]
+    fn test_copy_to_wallpapers_fallback_to_cache() {
+        with_tempdir_config(|| {
+            let src = std::env::temp_dir().join("test_copy_fallback.jpg");
+            std::fs::write(&src, vec![0u8; 2048]).unwrap();
+            let state = crate::AppState::default();
+            // Prime cache
+            let dest = copy_to_wallpapers(src.to_str().unwrap(), &state).unwrap();
+            assert!(dest.exists());
+            // Delete source
+            std::fs::remove_file(&src).ok();
+            // Should still return the cached path
+            let result = copy_to_wallpapers(src.to_str().unwrap(), &state);
+            assert!(result.is_ok());
+            assert!(result.unwrap().exists());
+        });
+    }
+
+    /// clear_wallpaper_cache removes all cached files.
+    #[test]
+    fn test_clear_wallpaper_cache_removes_files() {
+        with_tempdir_config(|| {
+            let dir = wallpapers_dir();
+            std::fs::write(dir.join("wallpaper-a.jpg"), vec![0u8; 100]).unwrap();
+            std::fs::write(dir.join("wallpaper-b.png"), vec![0u8; 100]).unwrap();
+            let state = crate::AppState::default();
+            clear_wallpaper_cache(&state);
+            let remaining: Vec<_> = std::fs::read_dir(&dir).unwrap()
+                .filter_map(|e| e.ok())
+                .collect();
+            assert!(remaining.is_empty(), "should clear all files");
+        });
+    }
+
+    /// change_wallpaper with a missing source must not panic.
+    #[test]
+    fn test_change_wallpaper_missing_source() {
+        with_tempdir_config(|| {
+            let state = crate::AppState::default();
+            // Should not panic, just log a warning.
+            change_wallpaper(&state, "/no/such/file.jpg", None);
+        });
+    }
+
+    /// change_wallpaper_single with a missing source must not panic.
+    #[test]
+    fn test_change_wallpaper_single_missing() {
+        with_tempdir_config(|| {
+            let state = crate::AppState::default();
+            change_wallpaper_single(&state, "Dell", "/no/such/file.jpg", None);
+        });
+    }
+
+    /// start_slideshow with no images in folder logs error but doesn't panic.
+    #[test]
+    fn test_start_slideshow_empty_folder() {
+        with_tempdir_config(|| {
+            let empty = tempfile::tempdir().unwrap();
+            let state = crate::AppState::default();
+            start_slideshow(&state, empty.path().to_str().unwrap(), Some(5), Some("forward"));
+            // Should not panic; preferences should NOT be set to enabled since slideshow failed.
+            let prefs = state.preferences.lock().unwrap();
+            assert!(!prefs.wallpaper.slideshow_enabled);
+        });
+    }
+
+    /// stop_slideshow updates preferences to disable slideshow.
+    #[test]
+    fn test_stop_slideshow_disables_pref() {
+        with_tempdir_config(|| {
+            let state = crate::AppState::default();
+            {
+                let mut prefs = state.preferences.lock().unwrap();
+                prefs.wallpaper.slideshow_enabled = true;
+            }
+            stop_slideshow(&state);
+            let prefs = state.preferences.lock().unwrap();
+            assert!(!prefs.wallpaper.slideshow_enabled);
+        });
+    }
+
+    /// resume_slideshow_if_enabled is a no-op when slideshow_enabled=false.
+    #[test]
+    fn test_resume_slideshow_disabled() {
+        with_tempdir_config(|| {
+            let state = crate::AppState::default();
+            // Default: slideshow_enabled = false
+            resume_slideshow_if_enabled(&state);
+            // Just verify no panic — pref stays unchanged.
+            let prefs = state.preferences.lock().unwrap();
+            assert!(!prefs.wallpaper.slideshow_enabled);
+        });
+    }
+
+    /// resume_slideshow_if_enabled is a no-op when slideshow_folder is empty/None.
+    #[test]
+    fn test_resume_slideshow_no_folder() {
+        with_tempdir_config(|| {
+            let state = crate::AppState::default();
+            {
+                let mut prefs = state.preferences.lock().unwrap();
+                prefs.wallpaper.slideshow_enabled = true;
+                prefs.wallpaper.slideshow_folder = None;
+            }
+            resume_slideshow_if_enabled(&state);
+        });
+    }
+
+    /// resume_slideshow_if_enabled with a real folder of images starts/exits without panic.
+    #[test]
+    fn test_resume_slideshow_with_folder() {
+        with_tempdir_config(|| {
+            let imgs = tempfile::tempdir().unwrap();
+            std::fs::write(imgs.path().join("a.png"), vec![0u8; 100]).unwrap();
+            let state = crate::AppState::default();
+            {
+                let mut prefs = state.preferences.lock().unwrap();
+                prefs.wallpaper.slideshow_enabled = true;
+                prefs.wallpaper.slideshow_folder = Some(imgs.path().to_string_lossy().into_owned());
+                prefs.wallpaper.slideshow_interval_minutes = 5;
+                prefs.wallpaper.slideshow_order = "forward".to_string();
+            }
+            resume_slideshow_if_enabled(&state);
+            // Cleanup any started slideshow
+            let _ = crate::core::wallpaper::slideshow_stop();
+        });
+    }
+
+    /// download_and_start_remote_slideshow rejects non-zip URLs (no actual download).
+    #[test]
+    fn test_remote_slideshow_rejects_non_zip() {
+        with_tempdir_config(|| {
+            let state = crate::AppState::default();
+            // Should not panic; just logs warning and returns.
+            download_and_start_remote_slideshow(&state, "https://example.com/pack.tar.gz");
+        });
+    }
+
+    /// download_and_start_remote_slideshow rejects empty URLs without panic.
+    #[test]
+    fn test_remote_slideshow_rejects_empty_url() {
+        with_tempdir_config(|| {
+            let state = crate::AppState::default();
+            download_and_start_remote_slideshow(&state, "");
+        });
     }
 }

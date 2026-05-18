@@ -180,6 +180,25 @@ pub struct AppState {
     pub sidecar_cache: sidecar_cache::SidecarCache,
 }
 
+impl Default for AppState {
+    /// Test-only convenience constructor. Builds a fully-initialized AppState
+    /// with empty/default fields, no preferences file loaded, so unit tests
+    /// can stand up a state without going through `setup`.
+    fn default() -> Self {
+        AppState {
+            preferences: std::sync::Mutex::new(config::Preferences::default()),
+            last_tray_rect: std::sync::Mutex::new(None),
+            expect_focus_gain: std::sync::Mutex::new(false),
+            keep_awake: std::sync::Mutex::new(None),
+            is_dark_mode: std::sync::Mutex::new(false),
+            is_muted: std::sync::Mutex::new(false),
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            tiling_state: std::sync::Mutex::new(tiling::TilingState::default()),
+            sidecar_cache: sidecar_cache::SidecarCache::default(),
+        }
+    }
+}
+
 /// `log::Log` implementation that tees every record to `env_logger` (stderr)
 /// AND to the user's `debug.log` file via `config::write_debug_log_unbound`.
 /// The tee is necessary because GUI builds have no console attached — stderr
@@ -409,6 +428,8 @@ mod tests {
 
     // -- Windows console-flash regression test --
 
+    // -- Windows console-flash regression test --
+
     /// Regression test for the v7.0.9 Windows console-flash bug.
     ///
     /// The GUI parent runs without a console (`windows_subsystem = "windows"`).
@@ -444,6 +465,98 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// AppState::default() can be constructed and exposes fresh mutexes.
+    #[test]
+    fn test_appstate_default_constructs() {
+        let state = AppState::default();
+        assert!(!*state.is_dark_mode.lock().unwrap());
+        assert!(!*state.is_muted.lock().unwrap());
+        assert!(state.last_tray_rect.lock().unwrap().is_none());
+        assert!(state.keep_awake.lock().unwrap().is_none());
+        // sidecar_cache starts empty
+        assert!(state.sidecar_cache.get_dark_mode().is_none());
+        assert!(state.sidecar_cache.get_volume().is_none());
+    }
+
+    /// Build a fully-managed Tauri test app with our AppState attached. Lets
+    /// State-only commands (get_dark_mode, get_volume) be invoked from tests
+    /// without spinning up the real GUI.
+    fn make_test_app() -> tauri::App<tauri::test::MockRuntime> {
+        let app = tauri::test::mock_app();
+        app.manage(AppState::default());
+        app
+    }
+
+    /// AllState serializes with camelCase field names.
+    #[test]
+    fn test_all_state_serializes_camel_case() {
+        let s = AllState {
+            monitors: Vec::new(),
+            is_dark: true,
+            volume: 50,
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        // The struct uses #[serde(rename_all = "camelCase")] so isDark/volume show up.
+        assert!(json.contains("\"isDark\":true"));
+        assert!(json.contains("\"volume\":50"));
+        assert!(json.contains("\"monitors\":[]"));
+    }
+
+    /// fetch_initial_tray_state must not panic with a real mock app handle.
+    #[test]
+    fn test_fetch_initial_tray_state_smoke() {
+        let app = make_test_app();
+        // Won't panic even if dark mode / volume detection fails on CI.
+        fetch_initial_tray_state(&app.handle());
+    }
+
+    /// write_startup_dump must not panic with a managed AppState.
+    /// It writes to debug.log when DEBUG_LOG_ENABLED, otherwise no-ops.
+    #[test]
+    fn test_write_startup_dump_smoke() {
+        let app = make_test_app();
+        write_startup_dump(&app.handle());
+    }
+
+    /// get_dark_mode via Tauri command path returns Ok(bool) and primes the cache.
+    #[test]
+    fn test_get_dark_mode_returns_value() {
+        let app = make_test_app();
+        let state = app.state::<AppState>();
+        let result = tauri::async_runtime::block_on(crate::dark_mode::get_dark_mode(state));
+        assert!(result.is_ok());
+    }
+
+    /// get_dark_mode hits the cache on the second call.
+    #[test]
+    fn test_get_dark_mode_uses_cache() {
+        let app = make_test_app();
+        // Seed cache directly.
+        app.state::<AppState>().sidecar_cache.set_dark_mode(true);
+        let state = app.state::<AppState>();
+        let result = tauri::async_runtime::block_on(crate::dark_mode::get_dark_mode(state)).unwrap();
+        assert!(result, "should return cached value");
+    }
+
+    /// get_volume via Tauri command path returns Ok(u32) and primes the cache.
+    #[test]
+    fn test_get_volume_returns_value() {
+        let app = make_test_app();
+        let state = app.state::<AppState>();
+        let result = tauri::async_runtime::block_on(crate::volume::get_volume(state));
+        assert!(result.is_ok());
+    }
+
+    /// get_volume hits the cache on the second call.
+    #[test]
+    fn test_get_volume_uses_cache() {
+        let app = make_test_app();
+        app.state::<AppState>().sidecar_cache.set_volume(42);
+        let state = app.state::<AppState>();
+        let result = tauri::async_runtime::block_on(crate::volume::get_volume(state)).unwrap();
+        assert_eq!(result, 42);
     }
 }
 

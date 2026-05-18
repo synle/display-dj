@@ -1271,4 +1271,210 @@ mod tests {
         assert_eq!(route_for_mode("whatever"), BrightnessRoute::AutoWithOverlayFallback);
         assert_eq!(route_for_mode(""), BrightnessRoute::AutoWithOverlayFallback);
     }
+
+    // --- Tauri-state tests with DISPLAY_DJ_CONFIG_DIR override ---
+
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use tauri::Manager;
+
+    /// Run `body` with DISPLAY_DJ_CONFIG_DIR pointed at a fresh tempdir.
+    /// Restores prior env and cleans up the tempdir even if the body panics.
+    fn with_tempdir_config<F: FnOnce(&std::path::Path)>(body: F) {
+        let _lock = crate::config::TEST_CONFIG_DIR_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var("DISPLAY_DJ_CONFIG_DIR").ok();
+        let tmp = tempfile::tempdir().expect("create tempdir");
+        std::env::set_var("DISPLAY_DJ_CONFIG_DIR", tmp.path());
+        let result = catch_unwind(AssertUnwindSafe(|| body(tmp.path())));
+        match prev {
+            Some(v) => std::env::set_var("DISPLAY_DJ_CONFIG_DIR", v),
+            None => std::env::remove_var("DISPLAY_DJ_CONFIG_DIR"),
+        }
+        drop(tmp);
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
+    }
+
+    /// Build a Tauri test app with our AppState managed (for State-only tests).
+    fn make_app() -> tauri::App<tauri::test::MockRuntime> {
+        let app = tauri::test::mock_app();
+        app.manage(crate::AppState::default());
+        app
+    }
+
+    /// rename_monitor creates a new MonitorMetadata when one doesn't exist
+    /// and persists it through save_preferences_to_disk.
+    #[test]
+    fn test_rename_monitor_creates_new() {
+        with_tempdir_config(|_| {
+            let app = make_app();
+            let state = app.state::<crate::AppState>();
+            rename_monitor(state, "1::Dell U2720Q".to_string(), "MyDell".to_string()).unwrap();
+            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
+            let meta = prefs.monitor_configs.iter().find(|m| m.uid == "1::Dell U2720Q").unwrap();
+            assert_eq!(meta.label, "MyDell");
+            assert_eq!(meta.api_id, "1");
+            assert_eq!(meta.api_name, "Dell U2720Q");
+        });
+    }
+
+    /// rename_monitor updates the label of an existing MonitorMetadata.
+    #[test]
+    fn test_rename_monitor_updates_existing() {
+        with_tempdir_config(|_| {
+            let app = make_app();
+            // Seed one entry
+            {
+                let st = app.state::<crate::AppState>(); let mut prefs = st.preferences.lock().unwrap();
+                prefs.monitor_configs.push(crate::config::MonitorMetadata {
+                    uid: "1::Dell".to_string(),
+                    api_id: "1".to_string(),
+                    api_name: "Dell".to_string(),
+                    label: "old".to_string(),
+                    sort_order: 0,
+                    hidden: false,
+                    brightness_mode: crate::config::default_brightness_mode(),
+                });
+            }
+            let state = app.state::<crate::AppState>();
+            rename_monitor(state, "1::Dell".to_string(), "new".to_string()).unwrap();
+            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
+            let meta = prefs.monitor_configs.iter().find(|m| m.uid == "1::Dell").unwrap();
+            assert_eq!(meta.label, "new");
+            assert_eq!(prefs.monitor_configs.len(), 1, "should update, not insert");
+        });
+    }
+
+    /// rename_monitor handles uids without "::" separator gracefully.
+    #[test]
+    fn test_rename_monitor_no_separator() {
+        with_tempdir_config(|_| {
+            let app = make_app();
+            let state = app.state::<crate::AppState>();
+            rename_monitor(state, "builtin".to_string(), "Internal".to_string()).unwrap();
+            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
+            let meta = prefs.monitor_configs.iter().find(|m| m.uid == "builtin").unwrap();
+            assert_eq!(meta.api_id, "builtin");
+            assert_eq!(meta.api_name, "");
+        });
+    }
+
+    /// save_monitor_order creates new MonitorMetadata entries when needed.
+    #[test]
+    fn test_save_monitor_order_creates_new() {
+        with_tempdir_config(|_| {
+            let app = make_app();
+            let orders = vec![("1::Dell".to_string(), 5)];
+            let state = app.state::<crate::AppState>();
+            save_monitor_order(state, orders).unwrap();
+            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
+            let meta = prefs.monitor_configs.iter().find(|m| m.uid == "1::Dell").unwrap();
+            assert_eq!(meta.sort_order, 5);
+        });
+    }
+
+    /// save_monitor_order updates sort_order on existing entries.
+    #[test]
+    fn test_save_monitor_order_updates_existing() {
+        with_tempdir_config(|_| {
+            let app = make_app();
+            {
+                let st = app.state::<crate::AppState>(); let mut prefs = st.preferences.lock().unwrap();
+                prefs.monitor_configs.push(crate::config::MonitorMetadata {
+                    uid: "1::Dell".to_string(),
+                    api_id: "1".to_string(),
+                    api_name: "Dell".to_string(),
+                    label: "Dell".to_string(),
+                    sort_order: 0,
+                    hidden: false,
+                    brightness_mode: crate::config::default_brightness_mode(),
+                });
+            }
+            let orders = vec![("1::Dell".to_string(), 99)];
+            let state = app.state::<crate::AppState>();
+            save_monitor_order(state, orders).unwrap();
+            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
+            let meta = prefs.monitor_configs.iter().find(|m| m.uid == "1::Dell").unwrap();
+            assert_eq!(meta.sort_order, 99);
+            assert_eq!(prefs.monitor_configs.len(), 1);
+        });
+    }
+
+    /// set_monitor_visibility toggles the hidden flag on an existing entry.
+    #[test]
+    fn test_set_monitor_visibility_toggles() {
+        with_tempdir_config(|_| {
+            let app = make_app();
+            {
+                let st = app.state::<crate::AppState>(); let mut prefs = st.preferences.lock().unwrap();
+                prefs.monitor_configs.push(crate::config::MonitorMetadata {
+                    uid: "1::Dell".to_string(),
+                    api_id: "1".to_string(),
+                    api_name: "Dell".to_string(),
+                    label: "Dell".to_string(),
+                    sort_order: 0,
+                    hidden: false,
+                    brightness_mode: crate::config::default_brightness_mode(),
+                });
+            }
+            let state = app.state::<crate::AppState>();
+            set_monitor_visibility(state, "1::Dell".to_string(), true).unwrap();
+            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
+            assert!(prefs.monitor_configs.iter().find(|m| m.uid == "1::Dell").unwrap().hidden);
+        });
+    }
+
+    /// set_monitor_visibility is a no-op for nonexistent uids (no error).
+    #[test]
+    fn test_set_monitor_visibility_unknown_uid() {
+        with_tempdir_config(|_| {
+            let app = make_app();
+            let state = app.state::<crate::AppState>();
+            // Should not error even when uid doesn't exist.
+            set_monitor_visibility(state, "nonexistent::foo".to_string(), true).unwrap();
+            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
+            assert!(prefs.monitor_configs.is_empty());
+        });
+    }
+
+    /// get_monitors smoke test — returns Ok regardless of platform.
+    #[test]
+    fn test_get_monitors_smoke() {
+        with_tempdir_config(|_| {
+            let app = make_app();
+            let state = app.state::<crate::AppState>();
+            let result = tauri::async_runtime::block_on(get_monitors(state));
+            // May return empty vec on CI; just verify Ok.
+            assert!(result.is_ok());
+        });
+    }
+
+    /// set_contrast smoke test — completes (may error if monitor not found).
+    #[test]
+    fn test_set_contrast_smoke() {
+        with_tempdir_config(|_| {
+            let app = make_app();
+            let state = app.state::<crate::AppState>();
+            let result = tauri::async_runtime::block_on(set_contrast(
+                state,
+                "1".to_string(),
+                50,
+            ));
+            // Either Ok (hardware succeeded) or Err (monitor not found) — both acceptable.
+            let _ = result;
+        });
+    }
+
+    /// set_all_contrast smoke test — returns Ok regardless of HW success.
+    #[test]
+    fn test_set_all_contrast_smoke() {
+        with_tempdir_config(|_| {
+            let app = make_app();
+            let state = app.state::<crate::AppState>();
+            let result = tauri::async_runtime::block_on(set_all_contrast(state, 50));
+            assert!(result.is_ok());
+        });
+    }
 }
