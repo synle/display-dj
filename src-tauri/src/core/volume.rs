@@ -188,3 +188,60 @@ pub fn set_mute(mute: bool) -> bool {
         .map(|o| o.status.success())
         .unwrap_or(false)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Smoke test: get_volume must not panic and returns Option.
+    #[test]
+    fn test_get_volume_smoke() {
+        let _ = get_volume();
+    }
+
+    /// Smoke test: set_volume must not panic for valid levels.
+    /// Restores original state at the end so we don't leave the dev's audio modified.
+    #[test]
+    fn test_set_volume_smoke() {
+        let original = get_volume();
+        let _ = set_volume(50);
+        // Restore (best-effort; may fail in CI without audio)
+        if let Some(info) = original {
+            let _ = set_volume(info.volume as u16);
+            let _ = set_mute(info.muted);
+        }
+    }
+
+    /// Smoke test: set_mute must not panic.
+    /// Restores original state at the end.
+    #[test]
+    fn test_set_mute_smoke() {
+        let original = get_volume();
+        let _ = set_mute(false);
+        if let Some(info) = original {
+            let _ = set_mute(info.muted);
+        }
+    }
+
+    /// VolumeInfo must serialize round-trip cleanly with serde.
+    #[test]
+    fn test_volume_info_serde_roundtrip() {
+        let v = VolumeInfo { volume: 42, muted: true };
+        let json = serde_json::to_string(&v).unwrap();
+        assert!(json.contains("\"volume\":42"));
+        assert!(json.contains("\"muted\":true"));
+        let parsed: VolumeInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.volume, 42);
+        assert!(parsed.muted);
+    }
+
+    /// VolumeInfo with muted=false and volume=0 serializes correctly
+    /// (both flags independent — volume 0 ≠ muted in the data model).
+    #[test]
+    fn test_volume_info_zero_not_muted() {
+        let v = VolumeInfo { volume: 0, muted: false };
+        let json = serde_json::to_string(&v).unwrap();
+        assert!(json.contains("\"volume\":0"));
+        assert!(json.contains("\"muted\":false"));
+    }
+}

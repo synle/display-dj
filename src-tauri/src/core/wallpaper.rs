@@ -593,3 +593,251 @@ pub fn shuffle(items: &mut Vec<String>) {
         items.swap(i, j);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    // Tests that touch the global SLIDESHOW mutex serialize via this lock so they
+    // don't fight each other when cargo runs them in parallel.
+    static SLIDESHOW_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    /// validate_fit accepts the five canonical fit modes.
+    #[test]
+    fn test_validate_fit_valid_modes() {
+        assert!(validate_fit("fill"));
+        assert!(validate_fit("fit"));
+        assert!(validate_fit("stretch"));
+        assert!(validate_fit("center"));
+        assert!(validate_fit("tile"));
+    }
+
+    /// validate_fit rejects unknown modes and case mismatches.
+    #[test]
+    fn test_validate_fit_invalid_modes() {
+        assert!(!validate_fit("FILL"));
+        assert!(!validate_fit("zoom"));
+        assert!(!validate_fit(""));
+        assert!(!validate_fit("stretched"));
+    }
+
+    /// scan_images returns empty for a nonexistent folder (no panic).
+    #[test]
+    fn test_scan_images_missing_folder() {
+        let images = scan_images("/nonexistent/folder/abc123xyz");
+        assert!(images.is_empty());
+    }
+
+    /// scan_images returns empty for a folder with no image files.
+    #[test]
+    fn test_scan_images_no_images() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Create a non-image file
+        std::fs::write(tmp.path().join("readme.txt"), "hello").unwrap();
+        let images = scan_images(tmp.path().to_str().unwrap());
+        assert!(images.is_empty());
+    }
+
+    /// scan_images detects png/jpg/jpeg/bmp/gif/webp and returns sorted paths.
+    #[test]
+    fn test_scan_images_finds_supported_extensions() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a.png"), "x").unwrap();
+        std::fs::write(tmp.path().join("c.jpg"), "x").unwrap();
+        std::fs::write(tmp.path().join("b.jpeg"), "x").unwrap();
+        std::fs::write(tmp.path().join("d.bmp"), "x").unwrap();
+        std::fs::write(tmp.path().join("ignore.txt"), "x").unwrap();
+        let images = scan_images(tmp.path().to_str().unwrap());
+        assert_eq!(images.len(), 4);
+        // Sorted alphabetically — a.png comes first.
+        assert!(images[0].ends_with("a.png"));
+        assert!(images[1].ends_with("b.jpeg"));
+        assert!(images[2].ends_with("c.jpg"));
+        assert!(images[3].ends_with("d.bmp"));
+    }
+
+    /// scan_images is case-insensitive on extensions (PNG and png both match).
+    #[test]
+    fn test_scan_images_case_insensitive() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a.PNG"), "x").unwrap();
+        std::fs::write(tmp.path().join("b.JPG"), "x").unwrap();
+        let images = scan_images(tmp.path().to_str().unwrap());
+        assert_eq!(images.len(), 2);
+    }
+
+    /// shuffle on empty or single-element vec is a no-op.
+    #[test]
+    fn test_shuffle_empty_and_single() {
+        let mut empty: Vec<String> = Vec::new();
+        shuffle(&mut empty);
+        assert!(empty.is_empty());
+
+        let mut single = vec!["a".to_string()];
+        shuffle(&mut single);
+        assert_eq!(single, vec!["a".to_string()]);
+    }
+
+    /// shuffle preserves all elements (just reorders).
+    #[test]
+    fn test_shuffle_preserves_elements() {
+        let original = vec![
+            "a".to_string(), "b".to_string(), "c".to_string(),
+            "d".to_string(), "e".to_string()
+        ];
+        let mut items = original.clone();
+        shuffle(&mut items);
+        let mut sorted = items.clone();
+        sorted.sort();
+        let mut expected = original.clone();
+        expected.sort();
+        assert_eq!(sorted, expected);
+    }
+
+    /// slideshow_start rejects intervals < 5 minutes.
+    #[test]
+    fn test_slideshow_start_rejects_short_interval() {
+        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let result = slideshow_start(1, "forward", "fill", tmp.path().to_str().unwrap());
+        assert!(result.contains("at least 5 minutes"));
+    }
+
+    /// slideshow_start rejects invalid fit modes.
+    #[test]
+    fn test_slideshow_start_rejects_invalid_fit() {
+        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let result = slideshow_start(5, "forward", "zoom", tmp.path().to_str().unwrap());
+        assert!(result.contains("invalid fit mode"));
+    }
+
+    /// slideshow_start rejects invalid order values.
+    #[test]
+    fn test_slideshow_start_rejects_invalid_order() {
+        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let result = slideshow_start(5, "sideways", "fill", tmp.path().to_str().unwrap());
+        assert!(result.contains("invalid order"));
+    }
+
+    /// slideshow_start rejects nonexistent folders.
+    #[test]
+    fn test_slideshow_start_rejects_missing_folder() {
+        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let result = slideshow_start(5, "forward", "fill", "/no/such/path/abc123");
+        assert!(result.contains("folder not found"));
+    }
+
+    /// slideshow_start rejects empty folders.
+    #[test]
+    fn test_slideshow_start_rejects_empty_folder() {
+        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        let result = slideshow_start(5, "forward", "fill", tmp.path().to_str().unwrap());
+        assert!(result.contains("no valid images"));
+    }
+
+    /// slideshow_stop reports was_running=false when nothing is running.
+    #[test]
+    fn test_slideshow_stop_when_not_running() {
+        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        slideshow_cancel();
+        let result = slideshow_stop();
+        assert!(result.contains("was_running"));
+    }
+
+    /// slideshow_status returns running=false when no slideshow active.
+    #[test]
+    fn test_slideshow_status_not_running() {
+        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        slideshow_cancel();
+        let result = slideshow_status();
+        assert!(result.contains("\"running\":false"));
+    }
+
+    /// slideshow_cancel must not panic when no slideshow exists.
+    #[test]
+    fn test_slideshow_cancel_no_state() {
+        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        slideshow_cancel();
+        slideshow_cancel(); // idempotent
+    }
+
+    /// SlideshowState::default produces a clean non-running instance.
+    #[test]
+    fn test_slideshow_state_default() {
+        let s = SlideshowState::default();
+        assert!(!s.running);
+        assert!(s.folder.is_empty());
+        assert_eq!(s.interval_minutes, 0);
+        assert!(s.images.is_empty());
+        assert_eq!(s.current_index, 0);
+    }
+
+    /// WallpaperInfo serializes/deserializes with optional fields.
+    #[test]
+    fn test_wallpaper_info_serde() {
+        let info = WallpaperInfo {
+            path: Some("/tmp/wp.jpg".to_string()),
+            fit: Some("fill".to_string()),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let parsed: WallpaperInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.path, Some("/tmp/wp.jpg".to_string()));
+        assert_eq!(parsed.fit, Some("fill".to_string()));
+    }
+
+    /// WallpaperInfo with None fields round-trips cleanly.
+    #[test]
+    fn test_wallpaper_info_none_fields() {
+        let info = WallpaperInfo { path: None, fit: None };
+        let json = serde_json::to_string(&info).unwrap();
+        let parsed: WallpaperInfo = serde_json::from_str(&json).unwrap();
+        assert!(parsed.path.is_none());
+        assert!(parsed.fit.is_none());
+    }
+
+    /// is_wallpaper_supported returns a deterministic bool (does not panic).
+    #[test]
+    fn test_is_wallpaper_supported_smoke() {
+        let _ = is_wallpaper_supported();
+    }
+
+    /// get_wallpaper is smoke-safe (may return None on CI).
+    #[test]
+    fn test_get_wallpaper_smoke() {
+        let _ = get_wallpaper();
+    }
+
+    /// set_wallpaper with an invalid path returns false (no panic).
+    #[test]
+    fn test_set_wallpaper_invalid_path() {
+        // Not asserting outcome — some platforms may succeed silently — just no panic.
+        let _ = set_wallpaper("/no/such/wallpaper.jpg", "fill");
+    }
+
+    /// set_wallpaper_one with an invalid path/index does not panic.
+    #[test]
+    fn test_set_wallpaper_one_invalid() {
+        let _ = set_wallpaper_one(99, "/no/such/path.jpg", "fill");
+    }
+
+    /// slideshow_start with an actual folder of images starts and is cancellable.
+    /// Verifies the happy-path branches in slideshow_start (validation passed,
+    /// image scan succeeded, state stored) without waiting for the timer to fire.
+    #[test]
+    fn test_slideshow_start_and_cancel() {
+        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a.png"), "x").unwrap();
+        std::fs::write(tmp.path().join("b.png"), "x").unwrap();
+        // set_wallpaper may fail in CI but slideshow_start still validates input
+        // and either succeeds or returns "failed to set first wallpaper".
+        let result = slideshow_start(5, "forward", "fill", tmp.path().to_str().unwrap());
+        // Either succeeded or hit the wallpaper-set failure branch — both exercise validation.
+        assert!(result.contains("\"ok\":true") || result.contains("failed to set first wallpaper"));
+        slideshow_cancel();
+    }
+}

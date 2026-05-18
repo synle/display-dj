@@ -28,7 +28,7 @@ static STARTUP_DUMP_WRITTEN: AtomicBool = AtomicBool::new(false);
 /// contrast reads, DDC enumerate error, WMI brightness). Critical for diagnosing
 /// "slider moves but hardware doesn't" symptoms: the JSON shows whether DDC reads
 /// even succeeded for each panel before we tried any writes.
-fn write_startup_dump(app: &tauri::AppHandle) {
+fn write_startup_dump<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     use tauri::Manager;
     if STARTUP_DUMP_WRITTEN.swap(true, Ordering::Relaxed) {
         return; // already wrote it
@@ -220,7 +220,7 @@ impl log::Log for TeeLogger {
 
 /// Fetch initial dark mode and volume state via the in-process platform layer
 /// and update the tray icon. Called on startup to seed the icon state.
-fn fetch_initial_tray_state(app: &tauri::AppHandle) {
+fn fetch_initial_tray_state<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(is_dark) = core::theme::get_dark_mode() {
         tray_icon::set_dark_mode_state(app, is_dark);
         log::info!("initial tray state: dark_mode={}", is_dark);

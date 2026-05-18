@@ -75,8 +75,8 @@ fn overlay_label(monitor_id: &str) -> String {
 /// # Returns
 /// `Ok(())` on success. `Err(String)` if the Tauri window creation, move,
 /// resize, or show call fails.
-pub fn set_overlay_brightness(
-    app: &AppHandle,
+pub fn set_overlay_brightness<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     monitor_id: &str,
     monitor_rect: Option<(i32, i32, i32, i32)>,
     brightness_pct: u32,
@@ -197,7 +197,7 @@ pub fn set_overlay_brightness(
 /// `Ok(())` whether the window existed or not. `Err(String)` only when the
 /// close call itself failed (rare — usually means the window was already
 /// torn down by Tauri).
-pub fn destroy_overlay(app: &AppHandle, monitor_id: &str) -> Result<(), String> {
+pub fn destroy_overlay<R: tauri::Runtime>(app: &AppHandle<R>, monitor_id: &str) -> Result<(), String> {
     let label = overlay_label(monitor_id);
     if let Some(window) = app.get_webview_window(&label) {
         window
@@ -216,7 +216,7 @@ pub fn destroy_overlay(app: &AppHandle, monitor_id: &str) -> Result<(), String> 
 ///
 /// Emits via the global app event channel, scoped by label so each overlay
 /// only updates its own opacity.
-fn emit_alpha(app: &AppHandle, monitor_id: &str, brightness_pct: u32) {
+fn emit_alpha<R: tauri::Runtime>(app: &AppHandle<R>, monitor_id: &str, brightness_pct: u32) {
     let alpha = compute_alpha(brightness_pct);
     let label = overlay_label(monitor_id);
     if let Err(e) = app.emit_to(label.as_str(), "set-overlay-alpha", alpha) {

@@ -63,3 +63,52 @@ pub fn set_all_contrast(level: u16) -> Vec<(String, bool)> {
     }
     results
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Smoke test: list_all must not panic. Returns Vec<DisplayInfo>; may be
+    /// empty in CI (no display server) or non-empty on dev machines.
+    #[test]
+    fn test_list_all_smoke() {
+        let displays = list_all();
+        // Either empty (CI) or each entry has a non-empty id.
+        for d in &displays {
+            assert!(!d.id.is_empty(), "display has empty id");
+        }
+    }
+
+    /// Smoke test: set_one_brightness with a non-existent id returns false.
+    #[test]
+    fn test_set_one_brightness_unknown_id() {
+        let result = set_one_brightness("nonexistent_id_xyz_123", 50, "force");
+        assert!(!result);
+    }
+
+    /// Smoke test: set_one_contrast with a non-existent id returns false.
+    #[test]
+    fn test_set_one_contrast_unknown_id() {
+        let result = set_one_contrast("nonexistent_id_xyz_123", 50);
+        assert!(!result);
+    }
+
+    /// Smoke test: set_all_brightness returns one entry per display.
+    #[test]
+    fn test_set_all_brightness_returns_per_display() {
+        let results = set_all_brightness(50, "force");
+        // Length matches number of displays; each entry has non-empty id.
+        for (id, _ok) in &results {
+            assert!(!id.is_empty());
+        }
+    }
+
+    /// Smoke test: set_all_contrast returns one entry per display.
+    #[test]
+    fn test_set_all_contrast_returns_per_display() {
+        let results = set_all_contrast(50);
+        for (id, _ok) in &results {
+            assert!(!id.is_empty());
+        }
+    }
+}

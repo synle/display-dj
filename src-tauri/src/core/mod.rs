@@ -89,3 +89,115 @@ pub type PlatformImpl = macos::MacPlatform;
 pub type PlatformImpl = windows::WinPlatform;
 #[cfg(target_os = "linux")]
 pub type PlatformImpl = linux::LinuxPlatform;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_info(id: &str, name: &str) -> DisplayInfo {
+        DisplayInfo {
+            id: id.to_string(),
+            name: name.to_string(),
+            display_type: "external".to_string(),
+            brightness: Some(50),
+            contrast: Some(50),
+            ddc_supported: true,
+            monitor_rect: None,
+        }
+    }
+
+    /// VCP register addresses are fixed by the DDC/CI spec.
+    #[test]
+    fn test_vcp_codes() {
+        assert_eq!(VCP_BRIGHTNESS, 0x10);
+        assert_eq!(VCP_CONTRAST, 0x12);
+        assert_eq!(BUILTIN_ID, "builtin");
+    }
+
+    /// matches_display matches by exact id.
+    #[test]
+    fn test_matches_display_by_id() {
+        let info = make_info("1", "Dell U2720Q");
+        assert!(matches_display(&info, "1"));
+        assert!(!matches_display(&info, "2"));
+    }
+
+    /// matches_display matches by case-insensitive name.
+    #[test]
+    fn test_matches_display_by_name_case_insensitive() {
+        let info = make_info("1", "Dell U2720Q");
+        assert!(matches_display(&info, "dell u2720q"));
+        assert!(matches_display(&info, "DELL U2720Q"));
+        assert!(matches_display(&info, "Dell U2720Q"));
+        assert!(!matches_display(&info, "samsung"));
+    }
+
+    /// matches_display: "0" is an alias for the builtin display only.
+    #[test]
+    fn test_matches_display_zero_is_builtin_alias() {
+        let builtin = make_info(BUILTIN_ID, "Built-in Display");
+        let external = make_info("1", "Dell");
+        assert!(matches_display(&builtin, "0"));
+        assert!(!matches_display(&external, "0"));
+    }
+
+    /// DisplayInfo serializes to JSON cleanly with optional fields preserved.
+    #[test]
+    fn test_display_info_serde_roundtrip() {
+        let info = make_info("1", "Dell");
+        let json = serde_json::to_string(&info).unwrap();
+        let parsed: DisplayInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.id, "1");
+        assert_eq!(parsed.name, "Dell");
+        assert_eq!(parsed.brightness, Some(50));
+        assert_eq!(parsed.contrast, Some(50));
+        assert!(parsed.ddc_supported);
+    }
+
+    /// DisplayInfo with monitor_rect serializes/deserializes correctly.
+    #[test]
+    fn test_display_info_monitor_rect_serde() {
+        let mut info = make_info("1", "Dell");
+        info.monitor_rect = Some((0, 0, 1920, 1080));
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"monitor_rect\":[0,0,1920,1080]"));
+        let parsed: DisplayInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.monitor_rect, Some((0, 0, 1920, 1080)));
+    }
+
+    /// DisplayInfo with None monitor_rect omits the field (skip_serializing_if).
+    #[test]
+    fn test_display_info_monitor_rect_none_omitted() {
+        let info = make_info("1", "Dell");
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(!json.contains("monitor_rect"));
+    }
+
+    /// DisplayInfo brightness/contrast can be None and parsed back as None.
+    #[test]
+    fn test_display_info_none_brightness_contrast() {
+        let mut info = make_info("1", "Dell");
+        info.brightness = None;
+        info.contrast = None;
+        let json = serde_json::to_string(&info).unwrap();
+        let parsed: DisplayInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.brightness, None);
+        assert_eq!(parsed.contrast, None);
+    }
+
+    /// Backward-compatible deserialization: old JSON without monitor_rect parses.
+    #[test]
+    fn test_display_info_back_compat_no_monitor_rect() {
+        let json = r#"{
+            "id": "1",
+            "name": "Dell",
+            "display_type": "external",
+            "brightness": 50,
+            "contrast": 50,
+            "ddc_supported": true
+        }"#;
+        let parsed: DisplayInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.id, "1");
+        assert_eq!(parsed.monitor_rect, None);
+    }
+}

@@ -1079,6 +1079,7 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-dialog",
  "tauri-plugin-global-shortcut",
+ "tempfile",
  "winapi",
  "windows 0.58.0",
  "x11rb",
