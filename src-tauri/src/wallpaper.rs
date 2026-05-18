@@ -781,11 +781,13 @@ mod tests {
     }
 
     /// Verifies wallpapers_dir() returns the expected path under config dir.
-    /// Acquires CFG_DIR_LOCK and clears the env var to avoid racing with
-    /// tempdir tests in the same module.
+    /// Acquires TEST_CONFIG_DIR_LOCK and clears the env var to avoid racing with
+    /// tempdir tests in this module or in display::tests.
     #[test]
     fn test_wallpapers_dir_path() {
-        let _lock = CFG_DIR_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = crate::config::TEST_CONFIG_DIR_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var("DISPLAY_DJ_CONFIG_DIR").ok();
         std::env::remove_var("DISPLAY_DJ_CONFIG_DIR");
         let dir = wallpapers_dir();

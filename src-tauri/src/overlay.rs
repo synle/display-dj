@@ -274,4 +274,51 @@ mod tests {
         assert_eq!(overlay_label("1"), "overlay-1");
         assert_eq!(overlay_label("builtin"), "overlay-builtin");
     }
+
+    /// set_overlay_brightness with `monitor_rect = None` is the
+    /// no-op platform-stub path (current macOS/Linux behavior). Must
+    /// return Ok(()) without attempting any Tauri window calls.
+    #[test]
+    fn test_set_overlay_brightness_none_rect_is_noop() {
+        let app = tauri::test::mock_app();
+        let result = set_overlay_brightness(app.handle(), "1", None, 50);
+        assert!(result.is_ok(), "None rect should be a silent no-op");
+    }
+
+    /// set_overlay_brightness must reject a degenerate rect (zero or
+    /// negative width/height) — those would crash the window builder
+    /// downstream on real platforms.
+    #[test]
+    fn test_set_overlay_brightness_invalid_rect_errors() {
+        let app = tauri::test::mock_app();
+        let r1 = set_overlay_brightness(app.handle(), "1", Some((0, 0, 0, 600)), 50);
+        let r2 = set_overlay_brightness(app.handle(), "1", Some((0, 0, 1920, 0)), 50);
+        let r3 = set_overlay_brightness(app.handle(), "1", Some((0, 0, -10, 600)), 50);
+        assert!(r1.is_err());
+        assert!(r2.is_err());
+        assert!(r3.is_err());
+    }
+
+    /// set_overlay_brightness at brightness >= 100 with no pre-existing
+    /// window short-circuits to Ok(()) — we don't create a transparent
+    /// window only to hide it.
+    #[test]
+    fn test_set_overlay_brightness_full_brightness_no_window() {
+        let app = tauri::test::mock_app();
+        let result = set_overlay_brightness(app.handle(), "9999", Some((0, 0, 1920, 1080)), 100);
+        assert!(result.is_ok());
+        // Also at >100 (saturating).
+        let result = set_overlay_brightness(app.handle(), "9999", Some((0, 0, 1920, 1080)), 200);
+        assert!(result.is_ok());
+    }
+
+    /// destroy_overlay on a missing window must succeed silently —
+    /// the unplug path calls it without checking whether an overlay
+    /// was ever created.
+    #[test]
+    fn test_destroy_overlay_missing_window_is_ok() {
+        let app = tauri::test::mock_app();
+        let result = destroy_overlay(app.handle(), "nonexistent");
+        assert!(result.is_ok());
+    }
 }
