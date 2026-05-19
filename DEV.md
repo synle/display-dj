@@ -23,5 +23,17 @@ Other useful commands:
 ```bash
 npm run dev              # Frontend only (Vite at localhost:1420)
 npm test                 # Run frontend tests
+npm run test:coverage    # Frontend tests with coverage gate
+cd src-tauri && cargo test                # Backend tests
+cd src-tauri && cargo llvm-cov --lib --summary-only   # Backend coverage
 npm run tauri build      # Production build (.dmg / .exe / .deb / .AppImage)
 ```
+
+## Coverage thresholds
+
+CI enforces coverage floors that trail the current main-branch measurement by ~10pp. Read the actual numbers from the source of truth — they are NOT mirrored anywhere else:
+
+- **Frontend (Vitest, v8 provider)** → `vite.config.ts` → `test.coverage.thresholds` (`lines`, `statements`, `branches`, `functions`). Reports in `coverage/`.
+- **Backend (cargo-llvm-cov)** → `.github/workflows/build.yml`, `Rust coverage` step, `--fail-under-lines` / `--fail-under-functions` / `--fail-under-regions` flags. HTML reports in `src-tauri/target/llvm-cov-target/html/`.
+
+Raising thresholds: measure current %, set floor ~10pp below, update both files. Never lower without keeping the ~10pp safety gap (history is tracked in comments above each set of thresholds).
