@@ -117,8 +117,14 @@ display-dj2/
 │       ├── VolumeControl.test.tsx
 │       ├── DarkModeToggle.tsx    # Dark / Light toggle buttons
 │       ├── DarkModeToggle.test.tsx
-│       ├── SettingsPanel.tsx     # In-app settings: min brightness, show contrast, night mode schedule
-│       └── ProfileButtons.tsx   # Profile quick-action buttons with overflow menu
+│       ├── SettingsPanel.tsx     # In-app settings: min brightness, show contrast, night mode schedule, layout presets, wallpaper
+│       ├── SettingsPanel.test.tsx
+│       ├── ProfileButtons.tsx    # Profile quick-action buttons with overflow menu
+│       ├── ProfileButtons.test.tsx
+│       ├── KeepAwakeToggle.tsx   # Prevent-sleep toggle button
+│       ├── KeepAwakeToggle.test.tsx
+│       ├── AboutPanel.tsx        # About dialog: version, latest release, platform info, post-install commands
+│       └── AboutPanel.test.tsx
 │
 ├── src-tauri/                    # Backend (Rust + Tauri v2)
 │   ├── Cargo.toml                # Rust dependencies (tauri, ddc, ddc-macos/winapi, windows, x11rb, serde, etc.)
@@ -145,10 +151,15 @@ display-dj2/
 │       ├── dark_mode.rs          # Tauri-command wrappers around core::theme
 │       ├── volume.rs             # Tauri-command wrappers around core::volume
 │       ├── wallpaper.rs          # Tauri-command wrappers around core::wallpaper (incl. remote-pack download via reqwest)
-│       ├── config.rs             # Preferences + monitor metadata persistence, NightModeSchedule, min brightness, reset to defaults (+ unit tests)
+│       ├── config.rs             # Preferences + monitor metadata persistence, NightModeSchedule, layout presets, min brightness, reset to defaults (+ unit tests)
 │       ├── tray.rs               # System tray menu, window positioning, keyboard shortcut dispatch (in-process command execution)
-│       └── tray_icon.rs          # Programmatic tray icon generation (128x128, percentage-based layout, state indicators)
+│       ├── tray_icon.rs          # Programmatic tray icon generation (128x128, percentage-based layout, state indicators)
+│       ├── keep_awake.rs         # Sleep-prevention guard via keepawake crate
+│       ├── sidecar_cache.rs      # 5-minute TTL cache for monitor/dark-mode/volume reads
+│       ├── overlay.rs            # Per-monitor click-through WebView for soft-overlay brightness fallback
+│       └── tiling/               # Window tiling, exposé, z-order, tile-snap (macOS) — shared mod.rs + per-OS impl
 │
+
 ├── index.html                    # HTML shell that loads src/main.tsx
 ├── package.json                  # Node deps (react, tauri API, vite, typescript)
 ├── vite.config.ts                # Vite config (dev server on port 1420, test config)
@@ -447,10 +458,21 @@ The `monitorConfigs` array in `preferences.json` stores per-monitor metadata. Ea
 ### Running Tests
 
 ```bash
-npm test                       # Run all frontend tests (once, ~1 second)
-npm run test:watch             # Run frontend tests in watch mode
-cd src-tauri && cargo test     # Run all Rust backend tests
+npm test                                  # Run all frontend tests (once, ~1 second)
+npm run test:watch                        # Run frontend tests in watch mode
+npm run test:coverage                     # Frontend tests + coverage gate
+cd src-tauri && cargo test                # Run all Rust backend tests
+cd src-tauri && cargo llvm-cov --lib --summary-only   # Backend coverage
 ```
+
+### Coverage thresholds
+
+CI enforces coverage floors that trail the current main-branch measurement by ~10pp. The actual numbers are NOT mirrored in this doc — read from the source of truth:
+
+- **Frontend (Vitest, v8 provider)** — `vite.config.ts` → `test.coverage.thresholds` (`lines`, `statements`, `branches`, `functions`). Reports in `coverage/`.
+- **Backend (cargo-llvm-cov)** — `.github/workflows/build.yml`, the `Rust coverage` step, `--fail-under-lines` / `--fail-under-functions` / `--fail-under-regions` flags. HTML reports in `src-tauri/target/llvm-cov-target/html/`.
+
+When raising thresholds: measure current %, set the floor ~10pp below, update both files, commit. Never lower without keeping the same ~10pp safety gap.
 
 ### Frontend Tests (Vitest + React Testing Library)
 
@@ -458,12 +480,16 @@ Test files live next to the components they test (`*.test.tsx`).
 
 | File                                         | What it covers                                                                                                             |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `src/components/Header.test.tsx`             | Title rendering, version display, expand/collapse toggle, chevron state                                                    |
+| `src/components/Header.test.tsx`             | Title rendering, version display, settings button, chevron state                                                           |
 | `src/components/Slider.test.tsx`             | Range input rendering, debounced onChange (150ms), fill width calculation, prop updates                                    |
 | `src/components/DarkModeToggle.test.tsx`     | Active button state, click handlers for dark/light                                                                         |
 | `src/components/VolumeControl.test.tsx`      | Slider value, muted/unmuted icon switching                                                                                 |
-| `src/components/AllMonitorsControl.test.tsx` | Brightness slider, average brightness calculation                                                                          |
+| `src/components/AllMonitorsControl.test.tsx` | Brightness slider, contrast slider visibility, icon-click toggles, monitor count, expand callback                          |
 | `src/components/MonitorControl.test.tsx`     | Monitor name rendering, inline edit mode (Enter/Escape), brightness slider, built-in vs external icons                     |
+| `src/components/KeepAwakeToggle.test.tsx`    | Toggle button state, on/off labels, click handlers                                                                         |
+| `src/components/ProfileButtons.test.tsx`     | Profile rendering, activation callbacks, empty-list handling                                                               |
+| `src/components/AboutPanel.test.tsx`         | Version display, update-available badge, GitHub release fetch, platform-specific commands                                  |
+| `src/components/SettingsPanel.test.tsx`      | Debounced auto-save, preference round-trip, profile editing, layout-preset CRUD                                            |
 | `src/App.test.tsx`                           | **Smoke test**: App mounts without crashing, fetches initial data, renders all sections, handles backend errors gracefully |
 
 **Tauri API mocking**: `src/test/setup.ts` globally mocks `invoke()` and `listen()` from `@tauri-apps/api` so tests run without a Tauri backend. The App smoke test provides per-command mock responses.
@@ -472,13 +498,19 @@ Test files live next to the components they test (`*.test.tsx`).
 
 Inline `#[cfg(test)]` modules plus an integration smoke test.
 
-| Location         | What it covers                                                                                                                                                                                                                                                                                      |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `config.rs`      | `Preferences` defaults, `MonitorMetadata` serde, `CommandValue` Single/Multiple serde, camelCase JSON fields, file roundtrips, malformed JSON fallback, `get_app_version`, effective min brightness, backward-compatible deserialization of old configs, preferences with monitor configs roundtrip |
-| `display.rs`     | `DjDisplay` to `Monitor` conversion (builtin, external DDC, null brightness, uid computation), `Monitor` serde (camelCase, roundtrip), `merge_with_configs` (rename, sort, empty label), `reconcile_migrated_configs`, `ensure_metadata_for_monitors`                                               |
-| `keep_awake.rs`  | KeepAwake guard creation, Mutex<Option<KeepAwake>> pattern (enable/disable/re-enable)                                                                                                                                                                                                               |
-| `tray_icon.rs`   | Percentage-to-pixel conversion, icon generation for all state combinations (dark/light, keep-awake, muted), filled rect and thick line drawing                                                                                                                                                      |
-| `tests/smoke.rs` | **Smoke test**: crate compiles and links, `AppState` is constructable, `run` function is exported                                                                                                                                                                                                   |
+| Location                          | What it covers                                                                                                                                                                                                                                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config.rs`                       | `Preferences` defaults, `MonitorMetadata` serde, `CommandValue` Single/Multiple serde, camelCase JSON fields, file roundtrips, malformed JSON fallback, `get_app_version`, effective min brightness, backward-compatible deserialization of old configs, preferences with monitor configs roundtrip |
+| `display.rs`                      | `DjDisplay` to `Monitor` conversion (builtin, external DDC, null brightness, uid computation), `Monitor` serde (camelCase, roundtrip), `merge_with_configs` (rename, sort, empty label), `reconcile_migrated_configs`, `ensure_metadata_for_monitors`                                               |
+| `keep_awake.rs`                   | KeepAwake guard creation, Mutex<Option<KeepAwake>> pattern (enable/disable/re-enable)                                                                                                                                                                                                               |
+| `tray_icon.rs`                    | Percentage-to-pixel conversion, icon generation for all state combinations (dark/light, keep-awake, muted), filled rect and thick line drawing                                                                                                                                                      |
+| `tray.rs`                         | `build_command_url()` always returns `None`; brightness clamping; contrast capping                                                                                                                                                                                                                  |
+| `tiling/mod.rs`                   | `TilingLayout` parsing, all 19 layouts, gap/padding math, overflow + DPI scaling, preset rule matching, expose plans, smart-restore helpers, z-order command parsing                                                                                                                                |
+| `tiling/{macos,windows,linux}.rs` | Platform helpers: snap-zone hit-tests (macOS), DPI border correction (Windows), strut-to-work-area math (Linux)                                                                                                                                                                                     |
+| `wallpaper.rs`                    | Image validation, MD5 path hashing, content-hash comparison, fit/slideshow arg parsing, `WallpaperPreferences` serde, remote-pack URL/folder validation                                                                                                                                             |
+| `overlay.rs`                      | Brightness-to-alpha math, label generation, monitor-rect → window-position math                                                                                                                                                                                                                     |
+| `sidecar_cache.rs`                | TTL freshness, write/refresh invalidation, per-entry race-free reads                                                                                                                                                                                                                                |
+| `tests/smoke.rs`                  | **Smoke test**: crate compiles and links, `AppState` is constructable, `run` function is exported                                                                                                                                                                                                   |
 
 Rust tests don't require external tools or hardware -- they test pure logic that works on all platforms.
 
