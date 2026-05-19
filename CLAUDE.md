@@ -20,6 +20,8 @@ The Rust backend is split into two layers:
   - `core::wallpaper` — wallpaper set + slideshow timer/state/cycling (all in-process).
   - `core::display` — high-level helpers (`set_all_brightness`, `set_one_brightness`, contrast variants) that fan out to `PlatformImpl`.
 - **`src-tauri/src/{display,dark_mode,volume,wallpaper}.rs`** — thin Tauri-command wrappers around `core::*`. CPU-bound work is wrapped in `tauri::async_runtime::spawn_blocking` because every Tauri command taking `State<'_, AppState>` must be `async fn` (see "macOS Tray Icon Pitfall" below).
+- **`src-tauri/src/sidecar_cache.rs`** — 5-minute TTL cache wrapping `core::PlatformImpl::enumerate()`, `core::theme::get_dark_mode()`, and `core::volume::get_volume()` so rapid polls don't re-hit OS APIs. Writes and Force Refresh invalidate. Name retained from the v6.x HTTP-sidecar era; v7+ is pure in-process.
+- **`src-tauri/src/overlay.rs`** — per-monitor Tauri `WebviewWindow` for soft-overlay brightness fallback (see "Soft-Overlay Brightness Fallback" below).
 
 ## Build Commands
 
@@ -73,7 +75,7 @@ cd src-tauri && cargo test   # Backend tests (Rust)
 ### Frontend Tests (Vitest + React Testing Library)
 
 - **Setup**: `src/test/setup.ts` — jsdom, jest-dom matchers, Tauri API mocks (`invoke()` and `listen()` mocked globally).
-- **Unit tests**: `src/components/*.test.tsx` — one per component (Header, Slider, DarkModeToggle, VolumeControl, AllMonitorsControl, MonitorControl, KeepAwakeToggle).
+- **Unit tests**: `src/components/*.test.tsx` — one per component (Header, Slider, DarkModeToggle, VolumeControl, AllMonitorsControl, MonitorControl, KeepAwakeToggle, AboutPanel, ProfileButtons, SettingsPanel).
 - **Smoke test**: `src/App.test.tsx` — verifies App renders, fetches initial data, handles backend failures.
 
 ### Backend Tests (Rust)
@@ -85,17 +87,28 @@ Inline `#[cfg(test)]` modules cover:
 - `keep_awake.rs`: `KeepAwake` guard creation, `Mutex<Option<KeepAwake>>` enable/disable cycle.
 - `tray_icon.rs`: %-to-px conversion, icon generation across all state combos (dark/light × keep-awake × muted), filled rect/thick line drawing.
 - `tray.rs`: `build_command_url()` always returns `None` (every command dispatches in-process to `core::*`); brightness clamping; contrast capping.
-- `tiling/mod.rs` (shared): `TilingLayout` parsing, all 17 layouts, gap/padding math, `layout_across_displays` overflow + min cell size + DPI scaling, layout preset resolution + rule matching, `plan_expose` / `plan_expose_app` / `plan_layout_preset`, smart-restore helpers (`is_rect_oversized`, `calculate_smart_restore_rect`, `calculate_smart_restore_rect_at_cursor`), grid-aligned oversized placement (`find_free_cell`, `find_free_block`, `mark_block`), `parse_zorder_command` (all 6 variants), `is_window_at_front` pure helper.
+- `tiling/mod.rs` (shared): `TilingLayout` parsing, all 19 layouts, gap/padding math, `layout_across_displays` overflow + min cell size + DPI scaling, layout preset resolution + rule matching, `plan_expose` / `plan_expose_app` / `plan_layout_preset`, smart-restore helpers (`is_rect_oversized`, `calculate_smart_restore_rect`, `calculate_smart_restore_rect_at_cursor`), grid-aligned oversized placement (`find_free_cell`, `find_free_block`, `mark_block`), `parse_zorder_command` (all 6 variants), `is_window_at_front` pure helper.
 - `tiling/macos.rs` (macOS only): `is_window_move`, `build_snap_zones` / `detect_snap_zone_macos`, `get_display_full_frames`, `is_pseudo_fullscreen` / `send_escape_key`, `get_all_gui_app_pids`, `move_all_windows_to_current_space`.
 - `tiling/windows.rs` (Windows only): `should_skip_system_window`, DPI border correction, `dbg_log`, expose debounce.
 - `tiling/linux.rs` (Linux only): X11 availability check, strut-to-work-area math, process name resolution.
 - `wallpaper.rs`: image validation, MD5 path hashing, content hash comparison, fit/slideshow arg parsing, `WallpaperPreferences` serde, remote pack URL/folder validation.
+- `overlay.rs`: brightness-to-alpha math, label generation, monitor-rect → window-position math.
+- `sidecar_cache.rs`: TTL freshness, write/refresh invalidation, per-entry race-free reads.
 
 **Smoke test**: `src-tauri/tests/smoke.rs` verifies the crate compiles, links, and exposes `AppState` and `run`.
 
 ### CI
 
 GitHub Actions (`build.yml`) runs `npm test` and `cargo test` on macOS ARM/Intel, Windows, and Linux for every push and PR. PRs get a comment with per-platform build artifact links. A single rolled-up check named **`Main Build`** (job id `main_build`) aggregates the 4-platform matrix + coverage into one green/red status on the commit — require this name in branch protection instead of every matrix permutation.
+
+### Coverage thresholds (where they live)
+
+Coverage floors trail the current main-branch measurement by ~10pp (per CLAUDE.md global rule 40). The actual numbers are NOT mirrored in this doc — read them from the source of truth before changing:
+
+- **Frontend (Vitest, v8 provider)** — thresholds in `vite.config.ts` under `test.coverage.thresholds` (`lines`, `statements`, `branches`, `functions`). Run locally via `npm run test:coverage`; CI step `Frontend coverage (Vitest)` fails the build when any axis dips below its floor. Reports land in `coverage/`.
+- **Backend (cargo-llvm-cov)** — thresholds inline on the `Rust coverage (cargo-llvm-cov)` step in `.github/workflows/build.yml` as `--fail-under-lines`, `--fail-under-functions`, `--fail-under-regions` flags. Run locally with `cd src-tauri && cargo llvm-cov --lib --summary-only`. HTML report lands in `src-tauri/target/llvm-cov-target/html/`.
+
+When raising thresholds: measure current %, set floor ~10pp below, update both files, commit. Never lower without leaving the same ~10pp safety gap (the comments above the flags track the history).
 
 ## Formatting
 
@@ -119,28 +132,10 @@ otherwise reads as a visible black flash on every brightness change, volume
 change, theme toggle, and wallpaper write (the GUI parent has
 `windows_subsystem = "windows"` and therefore no console to share).
 
-- **Where this matters**: `core/{windows,volume,theme,wallpaper}.rs`. Every
-  `Command::new("powershell")` and `Command::new("reg")` call in those files
-  is routed through `hidden_command(...)`. A regression test in `lib.rs`
-  (`no_bare_powershell_or_reg_spawns_in_core`) fails the build if a bare spawn
-  drifts back in. See the v7.0.9 fix.
-- **Where this does NOT matter**: macOS (osascript) and Linux (gsettings /
-  feh / xfconf-query / plasma-apply-colorscheme / xrandr / etc.) — neither OS
-  has a "Win32 PE subsystem" concept, and neither auto-allocates a terminal
-  for a child process. A GUI parent launched from `.desktop` / Finder has no
-  controlling terminal; child stdio inherits null fds and no window appears.
-  `CREATE_NO_WINDOW` and `windows_subsystem` are Win32-only abstractions.
-- **The `windows_subsystem` attribute itself**: must live on the binary root
-  (`src-tauri/src/main.rs`), never on `lib.rs`. The inner attribute is
-  silently ignored on `lib.rs` and the release `.exe` then ships as a
-  console-subsystem program — pops a console for the _parent_ process, which
-  `CREATE_NO_WINDOW` on children cannot fix. (`main.rs:1` has it correctly.)
-  This burned `sqlui-native` at v3.1.9 — same trap, same fix.
-- **Cross-apply to upstream**: `core/*` is vendored from `display-dj-cli`,
-  which is itself a CLI (console app) and does not need any of this. The
-  `hidden_command(...)` substitution is a display-dj-local patch. On the next
-  vendor refresh, re-apply it (or run the substitution and let the test
-  enforce the rule).
+- **Where this matters**: `core/{windows,volume,theme,wallpaper}.rs`. Every `powershell` / `reg` spawn routes through `hidden_command(...)`. The regression test `no_bare_powershell_or_reg_spawns_in_core` in `lib.rs` fails the build if a bare spawn drifts back in.
+- **Where this does NOT matter**: macOS (osascript) and Linux (gsettings / feh / xfconf-query / xrandr) — no Win32-PE-subsystem concept; a GUI parent launched from `.desktop` / Finder has no controlling terminal so child stdio inherits null fds and no window appears.
+- **The `windows_subsystem` attribute** must live on the binary root (`src-tauri/src/main.rs`), never `lib.rs` — the inner attribute is silently ignored on `lib.rs` and the release `.exe` then ships as a console-subsystem program (`CREATE_NO_WINDOW` on children cannot fix the parent's console).
+- **Cross-apply to upstream**: `core/*` is vendored from `display-dj-cli` (itself a CLI, doesn't need this). The `hidden_command(...)` substitution is a display-dj-local patch — re-apply on vendor refresh; the regression test enforces it.
 
 ## macOS Tray Icon Pitfall (Critical)
 
@@ -170,9 +165,9 @@ Tile Snap uses `NSEvent.addGlobalMonitorForEvents(matching:handler:)` to observe
 5. Convert `[NSEvent mouseLocation]` (Cocoa: Y up from bottom-left) → CG coords (Y down from top-left): `primary_h - cocoa_y`.
 6. Use the `block` crate (v0.1) for ObjC blocks. The block must stay alive (`.copy()` to heap) for the monitor's lifetime.
 
-## Soft-Overlay Brightness Fallback (v7.0.19+)
+## Soft-Overlay Brightness Fallback
 
-Some panels — most prominently the Samsung Smart Monitor M7/M8 family over USB-C on Intel Iris Xe — ignore DDC/CI writes and have their `SetDeviceGammaRamp` calls silently rejected by the Intel iGPU driver. There is no hardware path that can dim them. The industry workaround (Twinkle Tray, Lunar, Win10_BrightnessSlider) is a software overlay: a transparent, always-on-top, click-through window per monitor whose opacity rises as brightness falls. The OS compositor blends it with everything underneath, so it works on any GPU/driver.
+Some panels (e.g. Samsung Smart Monitor M7/M8 over USB-C on Intel Iris Xe) ignore DDC/CI and reject `SetDeviceGammaRamp`. The industry workaround (Twinkle Tray, Lunar) is a transparent, always-on-top, click-through window per monitor whose opacity rises as brightness falls — the OS compositor blends it with everything underneath, so it works on any GPU/driver.
 
 ### Per-monitor `brightnessMode` preference
 
@@ -196,16 +191,9 @@ Public API:
 
 ### Routing (`display::set_brightness` / `display::set_all_brightness`)
 
-Each Tauri brightness command snapshots `min_brightness`, the per-monitor `brightnessMode`, and the cached `monitor_rect` _before_ awaiting (so the preferences mutex isn't held across `.await` — see CLAUDE.md macOS Tray Icon Pitfall). It then dispatches through `display::route_for_mode(...)`:
+Each Tauri brightness command snapshots `min_brightness`, the per-monitor `brightnessMode`, and the cached `monitor_rect` _before_ awaiting (mutex must not be held across `.await` — see macOS Tray Icon Pitfall). It dispatches through `display::route_for_mode(...)` to one of: `DdcOnly` / `GammaOnly` (call `core::display::set_one_brightness` with the named backend, destroy overlay first), `OverlayOnly` (overlay only, no hardware), or `AutoWithOverlayFallback` (try `"force"`; on failure fall back to overlay).
 
-- `BrightnessRoute::DdcOnly` → `core::display::set_one_brightness(id, value, "ddc")`; `destroy_overlay` first.
-- `BrightnessRoute::GammaOnly` → `core::display::set_one_brightness(id, value, "gamma")`; `destroy_overlay` first.
-- `BrightnessRoute::OverlayOnly` → `overlay::set_overlay_brightness(...)`; no hardware call.
-- `BrightnessRoute::AutoWithOverlayFallback` → `core::display::set_one_brightness(id, value, "force")`; on success `destroy_overlay`; on failure `set_overlay_brightness`.
-
-`set_all_brightness` keeps a fast path for the common "every monitor in auto" case (single bulk `set_all_brightness("force")` call + per-monitor overlay touch-up). When any monitor has a non-auto mode it iterates per monitor.
-
-The same routing is used by `tray::execute_command` for the `command/changeBrightness/{value}` and `command/changeBrightness/{monitor_id}/{value}` keyboard-shortcut paths via `dispatch_brightness_for_one` / `dispatch_brightness_for_all` helpers.
+`set_all_brightness` keeps a fast path for the common all-auto case (bulk `set_all_brightness("force")` + per-monitor overlay touch-up). The same routing is reused by `tray::execute_command` for `command/changeBrightness/...` via `dispatch_brightness_for_{one,all}` helpers.
 
 ### Platform status
 
@@ -266,7 +254,7 @@ The shared `layout_across_displays` in `tiling/mod.rs` handles overflow for all 
 
 ### Platform Implementations
 
-- **macOS**: AX API (`AXUIElement`) for move/resize. Requires Accessibility. State per CGWindowID in `AppState.tiling_state`. Uses `_AXUIElementGetWindow` (private but stable since 10.6) to bridge AX → CGWindowID. NSScreen visible frames for display bounds — must use `screens[0]` (primary) not `mainScreen` for coord conversion. Tile Snap via `NSEvent.addGlobalMonitorForEvents` (10px move threshold + position-change check before activation; drop-zone overlays via simple rect hit-tests in `build_snap_zones` / `detect_snap_zone_macos` (per display: 4 corner quarters, top-edge maximize, left/right-edge halves, three 1/3 markers on the bottom row at 25%/50%/75%, and two double-width 2/3 markers on the same bottom row at 12.5%/87.5%); on mouse_up, move to pre-calculated target — no re-detection). Crates: `objc` v0.2 + `block` v0.1; AX is raw `extern "C"`.
+- **macOS**: AX API (`AXUIElement`) for move/resize. Requires Accessibility. State per CGWindowID in `AppState.tiling_state`. Uses `_AXUIElementGetWindow` (private but stable since 10.6) to bridge AX → CGWindowID. NSScreen visible frames for display bounds — must use `screens[0]` (primary) not `mainScreen` for coord conversion. Tile Snap via `NSEvent.addGlobalMonitorForEvents` (10px move threshold; drop-zone overlays via `build_snap_zones` / `detect_snap_zone_macos`: per display, 4 corner quarters, top-edge maximize, left/right-edge halves, three 1/3 markers + two 2/3 markers on the bottom row; on mouse_up move to pre-calculated target). Crates: `objc` v0.2 + `block` v0.1; AX is raw `extern "C"`.
 - **Windows**: Win32 (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`) via `windows` crate v0.58. No special permissions. All 19 layouts + restore + Exposé + App Exposé. Tile Snap not implemented.
 - **Linux/X11**: `x11rb` (pure Rust X11 client) + EWMH. Focused window via `_NET_ACTIVE_WINDOW`; move/resize via `_NET_MOVERESIZE_WINDOW`; enumeration via `_NET_CLIENT_LIST`; geometry via XRandr. Panels respected via `_NET_WM_STRUT_PARTIAL` / `_NET_WM_STRUT` with `_NET_WORKAREA` fallback. Frame decoration via `_NET_FRAME_EXTENTS`. Runtime-gated: `get_tiling_supported` checks `$DISPLAY` (false on Wayland-only). Tile Snap not implemented. Tested on Linux Mint with XFCE (xfwm4).
 
@@ -302,7 +290,7 @@ Parsing centralized in `tiling::parse_zorder_command()`; dispatch in `tiling::ex
 
 ### Back
 
-- **macOS**: no public AX API to lower — uses private `CGSOrderWindow(cid, wid, -1, 0)` (CoreGraphics SkyLight, `kCGSOrderBelow`), the standard approach in yabai/Rectangle/AeroSpace. CGS extern declared next to existing `CGSGetActiveSpace`/`CGSMoveWindowsToManagedSpace` in `tiling/macos.rs`. `move_window_to_back` resolves AX → CGWindowID via `_AXUIElementGetWindow`. `move_app_to_back` iterates AXWindows front-first, lowering each — preserves within-app relative order at the bottom of the stack. **Critical: `CGSOrderWindow` alone is invisible when the lowered window's app is the active app** — every window of the active app sits above every window of every inactive app on macOS, regardless of within-app z-order. After lowering, `activate_next_app_excluding_pid()` activates the frontmost window's PID from `get_all_windows()` whose owner differs from the lowered app, dropping the lowered app into the inactive layer. The lowered PID is then stored in the module-local `LAST_BACKED_PID: Mutex<Option<i32>>` so a subsequent `move_window_to_front` / `move_app_to_front` can bring that PID back even though focus has shifted to the app we activated. The remembered PID is consumed (cleared) on the first front call after a back, giving natural back/front-pair undo semantics; once consumed, front falls back to "currently focused window." Windows and Linux do not need this trick (no active-app grouping at the WM level), so the remembered-PID logic is macOS-only.
+- **macOS**: no public AX API to lower — uses private `CGSOrderWindow(cid, wid, -1, 0)` (CoreGraphics SkyLight, `kCGSOrderBelow`), the standard approach in yabai/Rectangle/AeroSpace. `move_app_to_back` iterates AXWindows front-first to preserve within-app relative order. **Critical: `CGSOrderWindow` alone is invisible when the lowered window's app is the active app** — every window of the active app sits above every inactive app's windows on macOS. After lowering, `activate_next_app_excluding_pid()` activates a different app's frontmost window, dropping the lowered app into the inactive layer. The lowered PID is stored in `LAST_BACKED_PID: Mutex<Option<i32>>` so a subsequent `move_*_to_front` can bring it back; consumed on first front call after a back (natural undo). macOS-only — Windows/Linux WMs have no active-app grouping.
 - **Windows**: `SetWindowPos(HWND_BOTTOM, …, SWP_NOACTIVATE)` (Windows transfers focus automatically). App scope iterates HWNDs front-to-back so each `HWND_BOTTOM` drops one window to the absolute bottom.
 - **Linux**: `ConfigureWindow(stack_mode = BELOW)` via `lower_window()` — honored by Mutter/KWin/xfwm4.
 
@@ -384,7 +372,7 @@ Monitor IDs are the `id` field on `core::DisplayInfo` (e.g. `"1"`, `"2"`, `"buil
 
 ## Related Projects
 
-- **[display-dj-cli](https://github.com/synle/display-dj-cli)** — the **upstream** of the platform code now vendored at `src-tauri/src/core/`. Local checkout at `/Users/syle/git/display-dj-cli`. Display DJ has **no runtime dependency** on this repo: builds and releases do not download or bundle anything from it. It remains useful as a standalone CLI and as a place to land platform-code changes that should be cross-applied; when fixing display/wallpaper/theme bugs, consider whether the fix belongs in both repos. See [`VENDORING.md`](VENDORING.md) for per-file provenance (upstream path + last-synced SHA) and run `./scripts/check-vendor-drift.sh` to detect upstream drift.
+- **[display-dj-cli](https://github.com/synle/display-dj-cli)** — upstream of `src-tauri/src/core/`. No runtime dependency: builds and releases don't pull from it. When fixing display/wallpaper/theme bugs, consider whether the fix belongs in both repos. See [`VENDORING.md`](VENDORING.md) for per-file provenance + last-synced SHA; `./scripts/check-vendor-drift.sh` detects drift.
 
 ## Dependencies
 
@@ -411,9 +399,9 @@ sudo usermod -aG i2c $USER
 
 ## CI Workflows
 
-- **`build.yml`** — tests + builds on all platforms for every push/PR. PR comment with artifact download links. A rolled-up `Main Build` check (job `main_build`, `needs: [build, coverage]`, `if: always()`) collapses the 4-platform matrix + coverage into one green/red commit status — use this name in branch protection.
-- **`release-official.yml`** — triggered by `v*` tags or manual `workflow_dispatch`. Uses `synle/workflows/actions/release/` shared actions (`begin-release` → Tauri matrix build → `end-release`). `begin-release` resolves the tag, cleans existing release, creates a draft. Build uploads assets. `end-release` generates changelog (top 10 commits since last tag, diff link, platform support from `.github/release-body-static.md`) and finalizes flags. Custom notes via `release_notes` input. Sets `TAURI_RELEASE=true` (clean version). Use `/release-official` for interactive triggering.
-- **`release-beta.yml`** — manual `workflow_dispatch` only. Same flow with `mode: beta`. Optional `sha` (defaults to HEAD) and `notes` inputs. Creates a draft prerelease tagged `release-beta-<date>-<sha>`. Does not set `TAURI_RELEASE`, so builds show the `[beta - <sha>]` suffix. Use `/release-beta` for interactive triggering.
+- **`build.yml`** — tests + builds on all platforms for every push/PR. PR comment with artifact download links. Rolled-up `Main Build` check (job `main_build`, `needs: [build, coverage]`, `if: always()`) collapses the 4-platform matrix + coverage into one green/red status — use this name in branch protection.
+- **`release-official.yml`** — `v*` tag or manual dispatch. Uses `synle/workflows/actions/release/` shared actions (`begin-release` → Tauri matrix build → `end-release`). Generates changelog from commits since last tag + `.github/release-body-static.md`. Sets `TAURI_RELEASE=true` (clean version). Trigger via `/release-official`.
+- **`release-beta.yml`** — manual dispatch only. Same flow with `mode: beta`. Draft prerelease tagged `release-beta-<date>-<sha>`. No `TAURI_RELEASE`, so builds show the `[beta - <sha>]` suffix. Trigger via `/release-beta`.
 
 ## GitHub Raw File URLs
 
