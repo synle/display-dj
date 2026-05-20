@@ -132,6 +132,56 @@ const K_AX_ERROR_SUCCESS: AXError = 0;
 const K_AX_VALUE_TYPE_CG_POINT: u32 = 1;
 const K_AX_VALUE_TYPE_CG_SIZE: u32 = 2;
 
+/// Map an `AXError` code to a short human-readable description for logs.
+///
+/// Codes are documented in `AXError.h` (ApplicationServices). The values most
+/// relevant to tiling — and the one that motivated the Brave/Chromium fix —
+/// are:
+///
+/// - `-25212` `kAXErrorCannotComplete` — the AX server reached the target
+///   process but couldn't complete the request. **This is what Brave / Chrome /
+///   Edge / Arc return from a system-wide `AXFocusedApplication` lookup.**
+///   Chromium-based browsers run their renderers in sandboxed child processes
+///   and the per-process AX trees aren't fully wired to the system-wide AX
+///   server, so `AXUIElementCreateSystemWide()` → `AXFocusedApplication` fails
+///   even though the app *is* clearly focused. The workaround is to bypass the
+///   system-wide AX traversal and go directly through
+///   `NSWorkspace.frontmostApplication` → `AXUIElementCreateApplication(pid)`.
+///   See `get_focused_window_via_frontmost_app` for the fallback.
+/// - `-25204` `kAXErrorAttributeUnsupported` — the focused element doesn't
+///   expose this attribute (e.g. a fullscreen-locked window rejects
+///   `AXPosition`).
+/// - `-25205` `kAXErrorActionUnsupported`.
+/// - `-25206` `kAXErrorNotificationUnsupported`.
+/// - `-25211` `kAXErrorAPIDisabled` — Accessibility permission not granted.
+/// - `-25213` `kAXErrorNotImplemented` — the target app doesn't implement AX
+///   at all.
+/// - `-25214` `kAXErrorNotificationNotRegistered`.
+/// - `-25215` `kAXErrorNotificationAlreadyRegistered`.
+/// - `-25216` `kAXErrorInvalidUIElement` — the AX element became stale.
+/// - `-25200` `kAXErrorIllegalArgument`.
+/// - `-25201` `kAXErrorInvalidUIElementObserver`.
+/// - `-25202` `kAXErrorParameterizedAttributeUnsupported`.
+/// - `-25203` `kAXErrorActionUnsupported`.
+fn ax_error_description(code: AXError) -> &'static str {
+    match code {
+        0 => "success",
+        -25200 => "illegalArgument",
+        -25201 => "invalidUIElementObserver",
+        -25202 => "parameterizedAttributeUnsupported",
+        -25204 => "attributeUnsupported",
+        -25205 => "actionUnsupported",
+        -25206 => "notificationUnsupported",
+        -25211 => "apiDisabled (Accessibility permission not granted)",
+        -25212 => "cannotComplete (Chromium-style apps trigger this on system-wide AX lookups)",
+        -25213 => "notImplemented",
+        -25214 => "notificationNotRegistered",
+        -25215 => "notificationAlreadyRegistered",
+        -25216 => "invalidUIElement (stale element)",
+        _ => "unknown",
+    }
+}
+
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     fn AXIsProcessTrusted() -> bool;
@@ -395,24 +445,130 @@ unsafe fn activate_app_by_pid_with_options(pid: i32, options: u64) {
 // ---------------------------------------------------------------------------
 
 /// Get the AXUIElementRef for the currently focused window.
+///
+/// Primary path: system-wide AX → `AXFocusedApplication` → `AXFocusedWindow`.
+///
+/// Fallback path (Chromium/Brave/Chrome/Edge/Arc): the system-wide AX chain
+/// sometimes returns a renderer subelement or fails outright because those
+/// browsers expose a non-standard AX tree per-process. In that case, ask
+/// NSWorkspace for the frontmost application's PID, build an
+/// `AXUIElementCreateApplication(pid)`, and read `AXFocusedWindow` from that
+/// application-scoped element instead. This is the same approach used by
+/// AeroSpace and Rectangle.
 unsafe fn get_focused_window() -> Option<CfRef> {
+    // --- Primary path: system-wide AX ---
+    if let Some(w) = get_focused_window_via_systemwide() {
+        return Some(w);
+    }
+
+    // --- Fallback path: NSWorkspace.frontmostApplication ---
+    log::info!(
+        "tiling: system-wide AX focused-window lookup failed, falling back to \
+         NSWorkspace.frontmostApplication (likely a Chromium-based app like Brave/Chrome/Edge/Arc)"
+    );
+    get_focused_window_via_frontmost_app()
+}
+
+/// Primary `get_focused_window` path — system-wide AX traversal.
+/// Returns None on any AX error and logs the error code so Brave-class
+/// regressions show up in the log instead of disappearing.
+unsafe fn get_focused_window_via_systemwide() -> Option<CfRef> {
     let system = CfRef::new(AXUIElementCreateSystemWide())?;
 
-    // Focused application
     let attr = cfstr("AXFocusedApplication")?;
     let mut app_ref: CFTypeRef = std::ptr::null();
     let err = AXUIElementCopyAttributeValue(system.as_ptr(), attr.as_ptr(), &mut app_ref);
     if err != K_AX_ERROR_SUCCESS {
+        log::info!(
+            "tiling: AXFocusedApplication failed with AXError={} ({})",
+            err,
+            ax_error_description(err)
+        );
         return None;
     }
     let app = CfRef::new(app_ref)?;
 
-    // Focused window of that application
     let attr = cfstr("AXFocusedWindow")?;
     let mut win_ref: CFTypeRef = std::ptr::null();
     let err = AXUIElementCopyAttributeValue(app.as_ptr(), attr.as_ptr(), &mut win_ref);
     if err != K_AX_ERROR_SUCCESS {
+        log::info!(
+            "tiling: AXFocusedWindow (system-wide path) failed with AXError={} ({})",
+            err,
+            ax_error_description(err)
+        );
         return None;
+    }
+    CfRef::new(win_ref)
+}
+
+/// Fallback `get_focused_window` path — resolve via NSWorkspace frontmost app.
+/// Works for Chromium-based browsers where the system-wide AX chain breaks.
+unsafe fn get_focused_window_via_frontmost_app() -> Option<CfRef> {
+    use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl};
+
+    let ws_cls = objc::runtime::Class::get("NSWorkspace")?;
+    let workspace: *mut Object = msg_send![ws_cls, sharedWorkspace];
+    if workspace.is_null() {
+        log::info!("tiling: NSWorkspace sharedWorkspace returned nil");
+        return None;
+    }
+    let app: *mut Object = msg_send![workspace, frontmostApplication];
+    if app.is_null() {
+        log::info!("tiling: NSWorkspace frontmostApplication returned nil");
+        return None;
+    }
+    let pid: i32 = msg_send![app, processIdentifier];
+    if pid <= 0 {
+        log::info!("tiling: frontmostApplication has invalid pid={}", pid);
+        return None;
+    }
+
+    extern "C" {
+        fn AXUIElementCreateApplication(pid: i32) -> CFTypeRef;
+    }
+    let app_el = CfRef::new(AXUIElementCreateApplication(pid))?;
+
+    let attr = cfstr("AXFocusedWindow")?;
+    let mut win_ref: CFTypeRef = std::ptr::null();
+    let err = AXUIElementCopyAttributeValue(app_el.as_ptr(), attr.as_ptr(), &mut win_ref);
+    if err != K_AX_ERROR_SUCCESS {
+        log::info!(
+            "tiling: AXFocusedWindow (frontmost-app pid={} path) failed with AXError={} ({})",
+            pid,
+            err,
+            ax_error_description(err)
+        );
+        // Last-ditch: just grab the first window from AXWindows.
+        let attr = cfstr("AXWindows")?;
+        let mut windows_ref: CFTypeRef = std::ptr::null();
+        let err =
+            AXUIElementCopyAttributeValue(app_el.as_ptr(), attr.as_ptr(), &mut windows_ref);
+        if err != K_AX_ERROR_SUCCESS {
+            log::info!(
+                "tiling: AXWindows (frontmost-app pid={} path) failed with AXError={} ({})",
+                pid,
+                err,
+                ax_error_description(err)
+            );
+            return None;
+        }
+        let windows_arr = CfRef::new(windows_ref)?;
+        let count = CFArrayGetCount(windows_arr.as_ptr() as CFArrayRef);
+        if count == 0 {
+            log::info!("tiling: frontmost app pid={} has zero AXWindows", pid);
+            return None;
+        }
+        let win_el = CFArrayGetValueAtIndex(windows_arr.as_ptr() as CFArrayRef, 0);
+        if win_el.is_null() {
+            return None;
+        }
+        extern "C" {
+            fn CFRetain(cf: CFTypeRef) -> CFTypeRef;
+        }
+        CFRetain(win_el);
+        return CfRef::new(win_el);
     }
     CfRef::new(win_ref)
 }
@@ -549,6 +705,8 @@ unsafe fn get_window_min_size(window: &CfRef) -> Option<(f64, f64)> {
 }
 
 /// Move a window to the given position (in points).
+/// Returns `true` on AX success. Logs the AX error code on failure so Brave-class
+/// "tile silently does nothing" bugs are diagnosable from the log.
 unsafe fn set_window_position(window: &CfRef, x: f64, y: f64) -> bool {
     let mut point = CGPoint { x, y };
     let value = AXValueCreate(
@@ -557,17 +715,31 @@ unsafe fn set_window_position(window: &CfRef, x: f64, y: f64) -> bool {
     );
     let val_ref = match CfRef::new(value) {
         Some(v) => v,
-        None => return false,
+        None => {
+            log::warn!("tiling: AXValueCreate(CGPoint) returned null");
+            return false;
+        }
     };
     let attr = match cfstr("AXPosition") {
         Some(a) => a,
         None => return false,
     };
-    AXUIElementSetAttributeValue(window.as_ptr(), attr.as_ptr(), val_ref.as_ptr())
-        == K_AX_ERROR_SUCCESS
+    let err = AXUIElementSetAttributeValue(window.as_ptr(), attr.as_ptr(), val_ref.as_ptr());
+    if err != K_AX_ERROR_SUCCESS {
+        log::warn!(
+            "tiling: set AXPosition({}, {}) failed with AXError={} ({})",
+            x,
+            y,
+            err,
+            ax_error_description(err)
+        );
+        return false;
+    }
+    true
 }
 
 /// Resize a window to the given dimensions (in points).
+/// Returns `true` on AX success. Logs the AX error code on failure.
 unsafe fn set_window_size(window: &CfRef, w: f64, h: f64) -> bool {
     let mut size = CGSize { width: w, height: h };
     let value = AXValueCreate(
@@ -576,23 +748,39 @@ unsafe fn set_window_size(window: &CfRef, w: f64, h: f64) -> bool {
     );
     let val_ref = match CfRef::new(value) {
         Some(v) => v,
-        None => return false,
+        None => {
+            log::warn!("tiling: AXValueCreate(CGSize) returned null");
+            return false;
+        }
     };
     let attr = match cfstr("AXSize") {
         Some(a) => a,
         None => return false,
     };
-    AXUIElementSetAttributeValue(window.as_ptr(), attr.as_ptr(), val_ref.as_ptr())
-        == K_AX_ERROR_SUCCESS
+    let err = AXUIElementSetAttributeValue(window.as_ptr(), attr.as_ptr(), val_ref.as_ptr());
+    if err != K_AX_ERROR_SUCCESS {
+        log::warn!(
+            "tiling: set AXSize({}, {}) failed with AXError={} ({})",
+            w,
+            h,
+            err,
+            ax_error_description(err)
+        );
+        return false;
+    }
+    true
 }
 
 /// Move and resize a window. Sets position, then size, then position again
-/// (some apps adjust position after resize).
-unsafe fn set_window_rect(window: &CfRef, rect: &Rect) {
-    set_window_position(window, rect.x, rect.y);
-    set_window_size(window, rect.width, rect.height);
+/// (some apps adjust position after resize). Returns `true` if at least the
+/// final position+size pair landed successfully — i.e. the window is in the
+/// requested rect.
+unsafe fn set_window_rect(window: &CfRef, rect: &Rect) -> bool {
+    let _ = set_window_position(window, rect.x, rect.y);
+    let size_ok = set_window_size(window, rect.width, rect.height);
     // Re-set position: some apps shift after resize
-    set_window_position(window, rect.x, rect.y);
+    let pos_ok = set_window_position(window, rect.x, rect.y);
+    size_ok && pos_ok
 }
 
 // ---------------------------------------------------------------------------
@@ -655,8 +843,17 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
         }
     };
 
-    // Get focused window info (no locks held during AX calls)
-    let (window, window_id, win_rect) = unsafe {
+    // Get focused window info (no locks held during AX calls).
+    //
+    // `window_id` is intentionally Option here: `_AXUIElementGetWindow` is a
+    // private API that returns AXError or wid=0 for some Chromium-based apps
+    // (Brave/Chrome/Edge/Arc) depending on which subelement the AX tree has
+    // focused. The window_id is ONLY used as the HashMap key for restore-state
+    // tracking — it is NOT needed to actually resize the window via AXPosition
+    // / AXSize. So if we can't get a window_id, log it and tile anyway; the
+    // user just won't be able to "restore" this specific tile. Previously this
+    // path bailed early, making Ctrl+Shift+Arrow silently no-op on Brave.
+    let (window, window_id_opt, win_rect) = unsafe {
         let window = match get_focused_window() {
             Some(w) => w,
             None => {
@@ -664,13 +861,14 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
                 return;
             }
         };
-        let wid = match get_window_id(&window) {
-            Some(id) => id,
-            None => {
-                log::info!("tiling: could not get window ID");
-                return;
-            }
-        };
+        let wid_opt = get_window_id(&window);
+        if wid_opt.is_none() {
+            log::warn!(
+                "tiling: _AXUIElementGetWindow returned no CGWindowID for the focused \
+                 AX element (common with Chromium-based browsers like Brave/Chrome/Edge/Arc). \
+                 Proceeding without restore-state tracking — the tile will still apply."
+            );
+        }
         let rect = match get_window_rect(&window) {
             Some(r) => r,
             None => {
@@ -678,7 +876,7 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
                 return;
             }
         };
-        (window, wid, rect)
+        (window, wid_opt, rect)
     };
 
     // Get displays
@@ -691,10 +889,11 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     // Always tile on the display the window is currently on
     let target_display = find_display_for_window(&win_rect, &displays);
 
-    // Save original position (only on first tile) and update state.
-    // Cast u32 CGWindowID to i64 for the HashMap key.
-    let wid_key = window_id as i64;
-    {
+    // Save original position (only on first tile) and update state — but only
+    // if we actually have a CGWindowID to key on. See the note above on
+    // Chromium-style apps.
+    if let Some(window_id) = window_id_opt {
+        let wid_key = window_id as i64;
         let state = app.state::<crate::AppState>();
         let mut ts = state.tiling_state.lock().unwrap();
         let entry = ts.windows.entry(wid_key).or_insert(WindowState {
@@ -710,16 +909,23 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     let target =
         calculate_target_rect(layout, &displays[target_display], half_ratio, third_ratio, gap);
     log::info!(
-        "tiling: {} on display {} -> ({}, {}, {}x{})",
+        "tiling: {} on display {} -> ({}, {}, {}x{}) wid={:?}",
         layout_str,
         target_display,
         target.x,
         target.y,
         target.width,
         target.height,
+        window_id_opt,
     );
-    unsafe {
-        set_window_rect(&window, &target);
+    let ok = unsafe { set_window_rect(&window, &target) };
+    if !ok {
+        log::warn!(
+            "tiling: set_window_rect did not fully succeed for layout '{}'. \
+             The app's AX implementation may reject AXPosition or AXSize \
+             (some apps require a Sonoma+ entitlement, others ignore AX entirely).",
+            layout_str
+        );
     }
 }
 
@@ -2903,6 +3109,76 @@ mod tests {
     /// Helper to build a Rect for tests.
     fn rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
         Rect { x, y, width: w, height: h }
+    }
+
+    // --- ax_error_description tests ---
+    //
+    // These tests pin the AX error → human-readable mapping used by the
+    // tiling diagnostic log lines. The mapping itself is the user-facing
+    // contract that turned a previously-silent Brave bug into an
+    // immediately-actionable log entry (`AXError=-25212 (cannotComplete …)`).
+
+    /// Success code maps to "success" — sanity check.
+    #[test]
+    fn test_ax_error_description_success() {
+        assert_eq!(ax_error_description(0), "success");
+    }
+
+    /// `-25212` is the Brave/Chromium signature error. The description must
+    /// mention "cannotComplete" AND name Chromium, so that the very first
+    /// time anyone greps the logs for the symptom they land on the explanation.
+    /// If this string changes, double-check that DEV.md still references it.
+    #[test]
+    fn test_ax_error_description_chromium_signature() {
+        let desc = ax_error_description(-25212);
+        assert!(
+            desc.contains("cannotComplete"),
+            "expected 'cannotComplete' in description, got: {}",
+            desc
+        );
+        assert!(
+            desc.contains("Chromium"),
+            "expected 'Chromium' in description, got: {}",
+            desc
+        );
+    }
+
+    /// `-25211` (`kAXErrorAPIDisabled`) must call out Accessibility permission
+    /// — that's the recovery action for the user (System Settings → Privacy &
+    /// Security → Accessibility).
+    #[test]
+    fn test_ax_error_description_api_disabled_mentions_accessibility() {
+        let desc = ax_error_description(-25211);
+        assert!(desc.contains("apiDisabled"), "got: {}", desc);
+        assert!(
+            desc.to_lowercase().contains("accessibility"),
+            "expected 'accessibility' in description, got: {}",
+            desc
+        );
+    }
+
+    /// Common AX error codes all map to a non-empty description and never
+    /// silently collide on "unknown".
+    #[test]
+    fn test_ax_error_description_known_codes_have_unique_descriptions() {
+        let codes = [
+            -25200, -25201, -25202, -25204, -25205, -25206,
+            -25211, -25212, -25213, -25214, -25215, -25216,
+        ];
+        let mut seen = std::collections::HashSet::new();
+        for c in codes {
+            let d = ax_error_description(c);
+            assert_ne!(d, "unknown", "code {} mapped to 'unknown'", c);
+            assert!(seen.insert(d), "duplicate description '{}' for code {}", d, c);
+        }
+    }
+
+    /// Unrecognized codes fall back to "unknown" — guards against panics
+    /// when the AX FFI returns something off the documented list.
+    #[test]
+    fn test_ax_error_description_unknown_code() {
+        assert_eq!(ax_error_description(12345), "unknown");
+        assert_eq!(ax_error_description(-1), "unknown");
     }
 
     // --- is_window_move tests ---
