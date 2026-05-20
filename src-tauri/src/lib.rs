@@ -82,6 +82,12 @@ mod tiling_stubs {
         false
     }
 
+    /// Accessibility recheck is not applicable on this platform.
+    #[tauri::command]
+    pub fn recheck_accessibility_trusted() -> bool {
+        false
+    }
+
     /// No-op on unsupported platforms.
     #[tauri::command]
     pub fn open_accessibility_settings() {}
@@ -647,11 +653,15 @@ pub fn run() {
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling::get_accessibility_trusted,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            tiling::recheck_accessibility_trusted,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling::open_accessibility_settings,
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             tiling_stubs::get_tiling_supported,
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             tiling_stubs::get_accessibility_trusted,
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            tiling_stubs::recheck_accessibility_trusted,
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             tiling_stubs::open_accessibility_settings,
         ])

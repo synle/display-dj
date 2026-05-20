@@ -11,6 +11,7 @@ import ProfileButtons from './components/ProfileButtons';
 import KeepAwakeToggle from './components/KeepAwakeToggle';
 import SettingsPanel from './components/SettingsPanel';
 import AboutPanel from './components/AboutPanel';
+import AccessibilityGate from './components/AccessibilityGate';
 import { Monitor, Preferences, Profile } from './types';
 
 const ABSOLUTE_MIN_BRIGHTNESS = 5;
@@ -29,6 +30,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [version, setVersion] = useState('');
+  const [isMac, setIsMac] = useState(false);
+  const [accessibilityTrusted, setAccessibilityTrusted] = useState(true);
   const appRef = useRef<HTMLDivElement>(null);
 
   /** Merges refetched monitors with the current state, preserving client-side
@@ -123,7 +126,15 @@ function App() {
     fetchAllState();
     fetchPreferences();
     fetchKeepAwake();
-    invoke<boolean>('get_accessibility_trusted').catch(() => {});
+    // Detect macOS once and track the Accessibility-permission state so we
+    // can render a blocking gate when it's missing (tiling/Tile-Snap/exposé
+    // silently no-op without it — see CLAUDE.md "macOS Tray Icon Pitfall").
+    invoke<Record<string, string>>('get_about_info')
+      .then((info) => setIsMac(info.os === 'macOS'))
+      .catch(() => {});
+    invoke<boolean>('get_accessibility_trusted')
+      .then((v) => setAccessibilityTrusted(v ?? true))
+      .catch(() => {});
     invoke<string>('get_app_version')
       .then(setVersion)
       .catch(() => {});
@@ -142,7 +153,9 @@ function App() {
       if (document.visibilityState === 'visible') {
         fetchAllState();
         fetchKeepAwake();
-        invoke<boolean>('get_accessibility_trusted').catch(() => {});
+        invoke<boolean>('get_accessibility_trusted')
+          .then(setAccessibilityTrusted)
+          .catch(() => {});
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -310,6 +323,13 @@ function App() {
     }
   };
 
+  // macOS-only: when Accessibility permission is missing, render a blocking
+  // gate instead of the normal popup body. Tiling, Tile Snap, exposé, and
+  // z-order commands all no-op without it; surfacing the fix in the popup
+  // (rather than only auto-opening System Settings on launch) makes the
+  // recovery loop a single round-trip.
+  const showAccessibilityGate = isMac && !accessibilityTrusted;
+
   // Only show non-hidden monitors in the main UI
   const visibleMonitors = monitors.filter((m) => !m.hidden);
 
@@ -324,7 +344,16 @@ function App() {
         settingsOpen={settingsOpen}
       />
 
-      {aboutOpen ? (
+      {showAccessibilityGate ? (
+        <AccessibilityGate
+          onGranted={() => {
+            setAccessibilityTrusted(true);
+            fetchAllState();
+            fetchPreferences();
+            fetchKeepAwake();
+          }}
+        />
+      ) : aboutOpen ? (
         <AboutPanel onClose={() => setAboutOpen(false)} />
       ) : settingsOpen ? (
         <SettingsPanel
