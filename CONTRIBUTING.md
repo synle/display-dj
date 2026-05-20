@@ -829,3 +829,21 @@ System tray app, not a regular window:
 ### Dark mode toggle does nothing (Linux)
 
 Requires GNOME. Check: `echo $XDG_CURRENT_DESKTOP` -- if not `GNOME`, dark mode won't work.
+
+### Tile-window keybindings (Ctrl+Shift+Arrow) silently do nothing — macOS only, certain apps (Brave / Chrome / Edge / Arc)
+
+**Symptom:** the global shortcut fires (you can see it in `log` output) but the window doesn't move on Chromium-based browsers. The same shortcut works fine on Safari, Finder, VS Code, etc., and on the Windows / Linux builds.
+
+**Root cause:** macOS's system-wide AX traversal — `AXUIElementCreateSystemWide()` → `AXFocusedApplication` → `AXFocusedWindow` — returns `AXError = -25212` (`kAXErrorCannotComplete`) for Chromium browsers. Chromium runs each renderer in a sandboxed child process and the per-process AX trees aren't fully wired into the system-wide AX server. The bridge `_AXUIElementGetWindow` can also return `wid = 0` for the same elements. Windows/Linux don't hit this because `GetForegroundWindow()` and `_NET_ACTIVE_WINDOW` are OS-level lookups, not AX-tree traversals.
+
+**Fix (shipped v7.0.24):** `tiling::macos::get_focused_window` falls back to `NSWorkspace.frontmostApplication` → `AXUIElementCreateApplication(pid)`, and `execute_tile` treats the CGWindowID as optional. See DEV.md "Platform pitfalls" for the full diagnosis.
+
+**Verifying the fix in live logs (`npx tauri dev`):**
+
+```
+tiling: AXFocusedApplication failed with AXError=-25212 (cannotComplete (Chromium-style apps …))
+tiling: system-wide AX focused-window lookup failed, falling back to NSWorkspace.frontmostApplication …
+tiling: rightThird on display 0 -> (…) wid=Some(…)
+```
+
+If you see `tiling: set AXPosition(…) failed with AXError=…` instead, the focused-window lookup worked but the _app itself_ is refusing the position write (typically a fullscreen-locked or undecorated window). That's a different problem.
