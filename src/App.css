@@ -790,6 +790,83 @@ body,
   word-break: break-all;
 }
 
+/* Accessibility gate (macOS-only blocking view when permission missing) */
+.accessibility-gate {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 16px;
+}
+
+.accessibility-gate-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.accessibility-gate-body {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.accessibility-gate-steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.accessibility-gate-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.accessibility-gate-button-primary,
+.accessibility-gate-button-secondary {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+
+.accessibility-gate-button-primary {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.accessibility-gate-button-primary:hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+
+.accessibility-gate-button-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.accessibility-gate-button-secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.accessibility-gate-button-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.accessibility-gate-hint {
+  font-size: 11px;
+  color: #e67700;
+  margin-top: 4px;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 4px;

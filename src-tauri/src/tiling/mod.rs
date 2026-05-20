@@ -1067,6 +1067,34 @@ pub fn get_accessibility_trusted(
     result
 }
 
+/// Tauri command: force a fresh Accessibility-permission check, bypassing the
+/// TTL cache. Used by the macOS Accessibility Gate's "I've granted it — recheck"
+/// button so the user doesn't have to wait up to 5 minutes for the cached
+/// `false` to expire after flipping the toggle in System Settings.
+#[tauri::command]
+pub fn recheck_accessibility_trusted(state: tauri::State<'_, crate::AppState>) -> bool {
+    state.sidecar_cache.invalidate_accessibility();
+    let result;
+    #[cfg(target_os = "macos")]
+    {
+        result = macos::is_accessibility_trusted();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        result = true;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        result = true;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        result = false;
+    }
+    state.sidecar_cache.set_accessibility(result);
+    result
+}
+
 /// Tauri command: open the macOS Accessibility settings pane.
 /// On non-macOS platforms this is a no-op.
 #[tauri::command]
