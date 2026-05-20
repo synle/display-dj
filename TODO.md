@@ -31,6 +31,100 @@
   - Must add on the **main thread** (Cocoa requirement)
   - Remove all the tap enable/retry/timeout re-enable logic
 
+## In Progress — Keyboard Backlight Control (beta)
+
+**Status:** design locked 2026-05-19, implementation starting same day. macOS first, Windows (popular vendors only) second.
+
+**Goal:** Control the laptop's built-in keyboard backlight from Display DJ — slider in the popup below the volume slider, keyboard shortcut to dim instantly, hide entirely when unsupported. Mirrors the existing "single global value, slider in popup, keybindings, tray command" pattern that volume uses.
+
+#### Scope
+
+- **macOS** — IOKit private path (`IOHIDEventSystemClient` + property `KeyboardBacklightBrightness`, 0..65535). Same path Lunar, kbdlight, BetterTouchTool use. Works on Intel and Apple Silicon **built-in** keyboards. External keyboards not supported (IOKit doesn't enumerate them this way).
+- **Windows** — popular-vendor WMI only. **Lenovo** ThinkPad/IdeaPad (`root\WMI` keyboard backlight class) + **Dell** Latitude/XPS (`Dell_KeyboardBacklight` WMI class). Other vendors → reports unsupported. All spawns route through the existing `core::win_cmd::hidden_command(...)` PowerShell helper (Windows console-flash rule — see CLAUDE.md).
+- **Linux** — explicitly **out of scope** for this patch. Sysfs path (`/sys/class/leds/*::kbd_backlight/`) and UPower D-Bus (`org.freedesktop.UPower.KbdBacklight`) are well-known follow-ups; ~20 LOC each, additive.
+- **No Razer / Corsair / Logitech SDK integration.** Those need bundled DLLs + vendor runtimes — out of scope for a "minor patch."
+
+#### Default-behavior contract
+
+Mirrors the existing brightness fallback chain (DDC → gamma → overlay):
+
+1. **`auto` (default)** — try every backend the current OS implements. macOS: IOKit. Windows: Lenovo WMI → Dell WMI. First one to succeed wins.
+2. **Settings toggle** — `Enable keyboard backlight control (beta)` checkbox in Settings. Default **on**. When off, the UI hides the slider and the tray command is a no-op.
+3. **Hide-on-unsupported** — if every backend reports unsupported on the current device, the UI hides the slider entirely (same shape as how `brightnessMode = "overlay"` on macOS hides itself today because `monitor_rect` is `None`).
+
+#### UI
+
+- New component `src/components/KeyboardBacklightControl.tsx` — single slider, range 0..100, **step=25** (so the only reachable values are 0 / 25 / 50 / 75 / 100). Icon: `⌨` (U+2328 keyboard symbol — monochrome, sits cleanly next to 🔊).
+- Placed in `src/App.tsx` **directly below `<VolumeControl />`**.
+- Settings panel: new "Keyboard Backlight (beta)" section with the enable checkbox + short caption — "Beta — macOS built-in keyboards and select Lenovo / Dell laptops only. Hides automatically when not supported."
+- No per-device dropdown (`brightnessMode`-style). Single backend per OS — the dropdown would be theater.
+
+#### Backend / Tauri surface
+
+- New module `src-tauri/src/core/keyboard_backlight.rs` — pure platform impl, no Tauri types. Public API:
+  - `pub fn is_supported() -> bool`
+  - `pub fn get_keyboard_backlight() -> Option<u32>` (0..100, `None` = unsupported)
+  - `pub fn set_keyboard_backlight(level: u32) -> bool` (caller clamps + snaps)
+- New module `src-tauri/src/keyboard_backlight.rs` — thin Tauri-command wrappers:
+  - `#[tauri::command] async fn get_keyboard_backlight(state) -> Result<Option<u32>, String>` — cache via `sidecar_cache`.
+  - `#[tauri::command] async fn set_keyboard_backlight(value: u32, app) -> Result<(), String>` — clamp to 0..100, snap to nearest 25, invalidate cache, emit `keyboard-backlight-changed`.
+  - `#[tauri::command] async fn get_keyboard_backlight_supported() -> Result<bool, String>` — cheap, called once at startup to decide whether to render the slider.
+- Cache: extend `SidecarCache` with `keyboard_backlight: Option<u32>` + matching `get` / `set` / `invalidate` (parallel to volume).
+- AppState: no new field needed — backlight has no derived icon state.
+
+#### Tray command + keybinding
+
+- New command pattern: `command/changeKeyboardBacklight/{value}` — dispatched in-process from `tray::execute_command()` on a background thread (same shape as `changeVolume`). Clamped to 0..100, snapped to nearest 25 in the dispatcher so shortcut and slider behave identically.
+- Default keybinding: `Shift+F2` → `command/changeKeyboardBacklight/0` (user's spec). Added to the `KeyBinding` array in `Preferences::default()` in `config.rs`.
+
+#### Preferences
+
+New sub-struct in `config.rs` (mirrors `WallpaperPreferences` / `TilingPreferences`):
+
+```rust
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct KeyboardBacklightPreferences {
+    pub enabled: bool,  // default true
+}
+```
+
+Top-level `Preferences` gains `pub keyboard_backlight: KeyboardBacklightPreferences`. Backward-compatible via `#[serde(default)]` on the parent.
+
+#### Tests
+
+- Frontend: `src/components/KeyboardBacklightControl.test.tsx` — slider renders, step=25 snap, hidden when `supported=false`, hidden when `enabled=false`, icon click toggles 0↔100.
+- Backend (Rust `#[cfg(test)]`):
+  - `core::keyboard_backlight` — snap-to-25 helper, unsupported-platform graceful path.
+  - `keyboard_backlight.rs` — Tauri command clamp + snap behavior.
+  - `config.rs` — `KeyboardBacklightPreferences` serde roundtrip + `#[serde(default)]` back-compat (missing field deserializes to `enabled = true`).
+  - `tray.rs` — `command/changeKeyboardBacklight/{value}` clamp + snap; `build_command_url()` still returns `None`.
+  - `sidecar_cache.rs` — keyboard backlight TTL freshness + invalidate.
+
+#### Docs
+
+Update parallel sections in `CLAUDE.md`, `DEV.md`, `README.md`, `CONTRIBUTING.md`:
+
+- Architecture: add `core::keyboard_backlight` to the modules list.
+- Cache: add backlight to the `SidecarCache` line.
+- Command Reference table: new `command/changeKeyboardBacklight/{value}` row.
+- Tests section: add the new test files.
+- Preferences: add `keyboardBacklight.enabled`.
+- Default keybindings table: add `Shift+F2`.
+
+#### Release
+
+Bump `src-tauri/tauri.conf.json` → `7.0.26`, single squash-merge PR, then `/sy-release` (official).
+
+#### Explicit non-goals (to keep this minor)
+
+- No Razer / Corsair / Logitech SDK.
+- No external USB keyboard support on macOS.
+- No Linux backend (designed in, not implemented).
+- No per-device backend dropdown.
+
+---
+
 ## Quick Wins
 
 - [x] **Volume presets via keyboard shortcuts** — Add intermediate volume levels (e.g., 25%, 50%, 75%) alongside the existing mute/unmute shortcuts (Shift+F6/F7).
