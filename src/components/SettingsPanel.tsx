@@ -233,6 +233,26 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
               </label>
             </div>
 
+            <div className='settings-section'>
+              <label className='settings-checkbox-row'>
+                <input
+                  type='checkbox'
+                  checked={prefs.keyboardBacklight?.enabled ?? true}
+                  onChange={(e) =>
+                    updateField('keyboardBacklight', {
+                      ...prefs.keyboardBacklight,
+                      enabled: e.target.checked,
+                    })
+                  }
+                />
+                <span>Enable Keyboard Backlight Control (beta)</span>
+              </label>
+              <p className='settings-help'>
+                Beta — built-in macOS keyboards and select Lenovo / Dell laptops only. The slider
+                hides automatically when the device is not supported.
+              </p>
+            </div>
+
             <div className='settings-divider' />
 
             <div className='settings-section'>

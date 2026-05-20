@@ -104,6 +104,12 @@ export interface WallpaperPreferences {
   slideshowOrder: string;
 }
 
+/** Keyboard backlight (beta) preferences. */
+export interface KeyboardBacklightPreferences {
+  /** Master toggle. When false the slider is hidden and shortcut commands no-op. */
+  enabled: boolean;
+}
+
 export interface Preferences {
   showIndividualDisplays: boolean;
   minBrightness: number;
@@ -118,6 +124,8 @@ export interface Preferences {
   layoutPresets: LayoutPreset[];
   /** Wallpaper preferences: fit mode and current wallpaper path. */
   wallpaper: WallpaperPreferences;
+  /** Keyboard backlight (beta) preferences. */
+  keyboardBacklight: KeyboardBacklightPreferences;
 }
 
 export interface KeyBinding {

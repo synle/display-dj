@@ -115,6 +115,8 @@ display-dj2/
 │       ├── MonitorControl.test.tsx
 │       ├── VolumeControl.tsx     # Volume slider
 │       ├── VolumeControl.test.tsx
+│       ├── KeyboardBacklightControl.tsx     # Keyboard backlight slider (beta, snapped to 25%)
+│       ├── KeyboardBacklightControl.test.tsx
 │       ├── DarkModeToggle.tsx    # Dark / Light toggle buttons
 │       ├── DarkModeToggle.test.tsx
 │       ├── SettingsPanel.tsx     # In-app settings: min brightness, show contrast, night mode schedule, layout presets, wallpaper
@@ -145,11 +147,13 @@ display-dj2/
 │       │   ├── linux.rs          # Linux ddcutil + brightnessctl
 │       │   ├── theme.rs          # Cross-platform dark mode get/set
 │       │   ├── volume.rs         # Cross-platform volume get/set
+│       │   ├── keyboard_backlight.rs  # Keyboard backlight (beta) — macOS IOHIDEventSystem, Windows Lenovo+Dell WMI
 │       │   ├── wallpaper.rs      # Wallpaper set + slideshow timer/state/cycling
 │       │   └── display.rs        # set_all_brightness / set_one_brightness + contrast variants
 │       ├── display.rs            # Tauri-command wrappers around core::display (+ unit tests). Uses spawn_blocking
 │       ├── dark_mode.rs          # Tauri-command wrappers around core::theme
 │       ├── volume.rs             # Tauri-command wrappers around core::volume
+│       ├── keyboard_backlight.rs # Tauri-command wrappers around core::keyboard_backlight
 │       ├── wallpaper.rs          # Tauri-command wrappers around core::wallpaper (incl. remote-pack download via reqwest)
 │       ├── config.rs             # Preferences + monitor metadata persistence, NightModeSchedule, layout presets, min brightness, reset to defaults (+ unit tests)
 │       ├── tray.rs               # System tray menu, window positioning, keyboard shortcut dispatch (in-process command execution)
@@ -478,19 +482,20 @@ When raising thresholds: measure current %, set the floor ~10pp below, update bo
 
 Test files live next to the components they test (`*.test.tsx`).
 
-| File                                         | What it covers                                                                                                             |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `src/components/Header.test.tsx`             | Title rendering, version display, settings button, chevron state                                                           |
-| `src/components/Slider.test.tsx`             | Range input rendering, debounced onChange (150ms), fill width calculation, prop updates                                    |
-| `src/components/DarkModeToggle.test.tsx`     | Active button state, click handlers for dark/light                                                                         |
-| `src/components/VolumeControl.test.tsx`      | Slider value, muted/unmuted icon switching                                                                                 |
-| `src/components/AllMonitorsControl.test.tsx` | Brightness slider, contrast slider visibility, icon-click toggles, monitor count, expand callback                          |
-| `src/components/MonitorControl.test.tsx`     | Monitor name rendering, inline edit mode (Enter/Escape), brightness slider, built-in vs external icons                     |
-| `src/components/KeepAwakeToggle.test.tsx`    | Toggle button state, on/off labels, click handlers                                                                         |
-| `src/components/ProfileButtons.test.tsx`     | Profile rendering, activation callbacks, empty-list handling                                                               |
-| `src/components/AboutPanel.test.tsx`         | Version display, update-available badge, GitHub release fetch, platform-specific commands                                  |
-| `src/components/SettingsPanel.test.tsx`      | Debounced auto-save, preference round-trip, profile editing, layout-preset CRUD                                            |
-| `src/App.test.tsx`                           | **Smoke test**: App mounts without crashing, fetches initial data, renders all sections, handles backend errors gracefully |
+| File                                               | What it covers                                                                                                             |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `src/components/Header.test.tsx`                   | Title rendering, version display, settings button, chevron state                                                           |
+| `src/components/Slider.test.tsx`                   | Range input rendering, debounced onChange (150ms), fill width calculation, prop updates                                    |
+| `src/components/DarkModeToggle.test.tsx`           | Active button state, click handlers for dark/light                                                                         |
+| `src/components/VolumeControl.test.tsx`            | Slider value, muted/unmuted icon switching                                                                                 |
+| `src/components/KeyboardBacklightControl.test.tsx` | Slider value + step=25 snap, ⌨ icon click toggles 0 ↔ 100                                                                  |
+| `src/components/AllMonitorsControl.test.tsx`       | Brightness slider, contrast slider visibility, icon-click toggles, monitor count, expand callback                          |
+| `src/components/MonitorControl.test.tsx`           | Monitor name rendering, inline edit mode (Enter/Escape), brightness slider, built-in vs external icons                     |
+| `src/components/KeepAwakeToggle.test.tsx`          | Toggle button state, on/off labels, click handlers                                                                         |
+| `src/components/ProfileButtons.test.tsx`           | Profile rendering, activation callbacks, empty-list handling                                                               |
+| `src/components/AboutPanel.test.tsx`               | Version display, update-available badge, GitHub release fetch, platform-specific commands                                  |
+| `src/components/SettingsPanel.test.tsx`            | Debounced auto-save, preference round-trip, profile editing, layout-preset CRUD                                            |
+| `src/App.test.tsx`                                 | **Smoke test**: App mounts without crashing, fetches initial data, renders all sections, handles backend errors gracefully |
 
 **Tauri API mocking**: `src/test/setup.ts` globally mocks `invoke()` and `listen()` from `@tauri-apps/api` so tests run without a Tauri backend. The App smoke test provides per-command mock responses.
 

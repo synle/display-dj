@@ -365,6 +365,10 @@ body,
 .volume-section {
 }
 
+/* Keyboard backlight (beta) section — same shape as volume slider. */
+.keyboard-backlight-section {
+}
+
 /* Dark mode toggle */
 .dark-mode-toggle {
   display: flex;
@@ -636,6 +640,13 @@ body,
 
 .settings-checkbox-row input[type='checkbox'] {
   accent-color: var(--accent);
+}
+
+.settings-help {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 2px 0 0 24px;
+  line-height: 1.35;
 }
 
 .settings-schedule-header {

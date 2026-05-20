@@ -16,6 +16,7 @@ pub mod win_cmd;
 
 pub mod theme;
 pub mod volume;
+pub mod keyboard_backlight;
 pub mod wallpaper;
 pub mod display;
 

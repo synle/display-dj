@@ -36,6 +36,7 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Contrast control** -- DDC/CI contrast adjustment for external monitors (enable in Settings)
 - **Dark mode toggle** -- system-wide dark/light mode switch
 - **Volume control** -- system volume slider with mute indicator
+- **Keyboard backlight (beta)** -- built-in laptop keyboard backlight slider snapped to 25% increments. macOS via IOHIDEventSystem (built-in keyboards) and Windows via Lenovo / Dell WMI. Auto-hides on unsupported devices; master enable/disable in Settings. Default `Shift+F2` dims the backlight to 0 alongside the Focus profile
 - **Keep Awake** -- prevent your system from sleeping with a single toggle (macOS, Windows, Linux)
 - **Night mode schedule** -- automatically set brightness and dark/light mode on a time-based schedule (e.g., dim at 9 PM, bright at 7 AM). Supports custom commands (`nightCommands`/`dayCommands`) to run arbitrary actions on schedule (volume changes, profile activation, per-monitor brightness)
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
@@ -116,13 +117,13 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 
 ### Default Keyboard Shortcuts
 
-| Keys            | Action                       |
-| --------------- | ---------------------------- |
-| Shift + Escape  | Toggle Dark Mode             |
-| Shift + F1      | Brightness 10% + Dark Mode   |
-| Shift + F2      | Brightness 100% + Light Mode |
-| Shift + F3-F5   | Brightness 0% / 50% / 100%   |
-| Shift + F10-F12 | Volume 0% / 10% / 100%       |
+| Keys            | Action                                |
+| --------------- | ------------------------------------- |
+| Shift + Escape  | Toggle Dark Mode                      |
+| Shift + F1      | Brightness 10% + Dark Mode            |
+| Shift + F2      | Focus profile + Keyboard Backlight 0% |
+| Shift + F3-F5   | Brightness 0% / 50% / 100%            |
+| Shift + F10-F12 | Volume 0% / 10% / 100%                |
 
 **Window Tiling** (macOS + Windows + Linux/X11):
 

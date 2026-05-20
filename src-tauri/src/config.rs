@@ -213,6 +213,26 @@ impl Default for WallpaperPreferences {
     }
 }
 
+/// Keyboard backlight (beta) preferences. Controls the slider and command
+/// behavior for the built-in laptop keyboard backlight. When `enabled` is
+/// false, the UI hides the slider AND the `command/changeKeyboardBacklight/*`
+/// command becomes a no-op (a master kill-switch). The slider also auto-hides
+/// when the platform layer reports the device as unsupported (e.g. desktop
+/// Macs, non-Lenovo/Dell Windows PCs).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct KeyboardBacklightPreferences {
+    /// Master toggle. When false the slider is hidden and shortcut commands
+    /// are ignored. Default: true (beta — opt-out, not opt-in).
+    pub enabled: bool,
+}
+
+impl Default for KeyboardBacklightPreferences {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 /// A named window layout preset containing one or more layout rules.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
@@ -250,6 +270,8 @@ pub struct Preferences {
     pub layout_presets: Vec<LayoutPreset>,
     /// Wallpaper preferences: fit mode and current wallpaper path.
     pub wallpaper: WallpaperPreferences,
+    /// Keyboard backlight (beta) preferences. See `KeyboardBacklightPreferences`.
+    pub keyboard_backlight: KeyboardBacklightPreferences,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -303,9 +325,15 @@ impl Default for Preferences {
                     key: "Shift+F1".into(),
                     command: CommandValue::Single("command/changeProfile/1".into()),
                 },
+                // Shift+F2: combo binding. Activates profile 2 (Focus) AND
+                // dims the keyboard backlight to 0. Mirrors the "dim everything"
+                // intent — same shortcut, two coordinated dims.
                 KeyBinding {
                     key: "Shift+F2".into(),
-                    command: CommandValue::Single("command/changeProfile/2".into()),
+                    command: CommandValue::Multiple(vec![
+                        "command/changeProfile/2".into(),
+                        "command/changeKeyboardBacklight/0".into(),
+                    ]),
                 },
                 KeyBinding {
                     key: "Shift+F3".into(),
@@ -454,6 +482,7 @@ impl Default for Preferences {
             tiling: TilingPreferences::default(),
             layout_presets: Vec::new(),
             wallpaper: WallpaperPreferences::default(),
+            keyboard_backlight: KeyboardBacklightPreferences::default(),
         }
     }
 }
@@ -943,6 +972,62 @@ mod tests {
         assert_eq!(keys[1], "Shift+F1");
         assert_eq!(keys[7], "Shift+F11");
         assert_eq!(keys[8], "Shift+F12");
+    }
+
+    /// Shift+F2 is a combo binding: it must run BOTH changeProfile/2 and
+    /// changeKeyboardBacklight/0. Single-command form is a regression.
+    #[test]
+    fn test_shift_f2_includes_keyboard_backlight_zero() {
+        let prefs = Preferences::default();
+        let f2 = prefs
+            .key_bindings
+            .iter()
+            .find(|kb| kb.key == "Shift+F2")
+            .expect("Shift+F2 default binding must exist");
+        match &f2.command {
+            CommandValue::Multiple(cmds) => {
+                assert!(
+                    cmds.iter().any(|c| c == "command/changeProfile/2"),
+                    "Shift+F2 must still trigger profile 2 (Focus): {:?}",
+                    cmds
+                );
+                assert!(
+                    cmds.iter().any(|c| c == "command/changeKeyboardBacklight/0"),
+                    "Shift+F2 must also dim the keyboard backlight to 0: {:?}",
+                    cmds
+                );
+            }
+            CommandValue::Single(s) => panic!(
+                "Shift+F2 must be CommandValue::Multiple now, got Single({:?})",
+                s
+            ),
+        }
+    }
+
+    /// Old preferences.json files written before keyboardBacklight existed
+    /// must deserialize with enabled = true (opt-out, not opt-in).
+    #[test]
+    fn test_keyboard_backlight_missing_field_defaults_enabled() {
+        let json = r#"{ "keyBindings": [] }"#;
+        let prefs: Preferences = serde_json::from_str(json).unwrap();
+        assert!(prefs.keyboard_backlight.enabled);
+    }
+
+    /// KeyboardBacklightPreferences roundtrips through serde with camelCase.
+    #[test]
+    fn test_keyboard_backlight_preferences_serde_roundtrip() {
+        let kb = KeyboardBacklightPreferences { enabled: false };
+        let json = serde_json::to_string(&kb).unwrap();
+        assert!(json.contains("\"enabled\":false"));
+        let parsed: KeyboardBacklightPreferences = serde_json::from_str(&json).unwrap();
+        assert!(!parsed.enabled);
+    }
+
+    /// Default KeyboardBacklightPreferences is enabled = true (beta opt-out).
+    #[test]
+    fn test_keyboard_backlight_preferences_default_enabled() {
+        let kb = KeyboardBacklightPreferences::default();
+        assert!(kb.enabled);
     }
 
     #[test]

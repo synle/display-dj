@@ -5,6 +5,13 @@ interface SliderProps {
   value: number;
   min?: number;
   max?: number;
+  /**
+   * Step size for the underlying range input. Defaults to 1 (continuous).
+   * Used by the keyboard-backlight slider to snap to 25% increments so the
+   * only reachable values are 0/25/50/75/100 — matches the same snapping
+   * the backend applies to shortcut commands.
+   */
+  step?: number;
   onChange: (value: number) => void;
   showValue?: boolean;
   unit?: string;
@@ -17,6 +24,7 @@ export default function Slider({
   value,
   min = 0,
   max = 100,
+  step = 1,
   onChange,
   showValue = true,
   unit = '%',
@@ -65,6 +73,7 @@ export default function Slider({
           className='slider-input'
           min={min}
           max={max}
+          step={step}
           value={localValue}
           onChange={handleChange}
         />
