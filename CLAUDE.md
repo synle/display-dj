@@ -17,10 +17,11 @@ The Rust backend is split into two layers:
   - `core::macos`, `core::windows`, `core::linux` — per-OS display implementations (DDC/CI, gamma, DisplayServices, WMI, brightnessctl/ddcutil).
   - `core::theme` — system dark mode read/write.
   - `core::volume` — system volume get/set.
+  - `core::keyboard_backlight` — built-in laptop keyboard backlight (beta). macOS via private IOHIDEventSystem, Windows via Lenovo+Dell WMI. Linux unsupported.
   - `core::wallpaper` — wallpaper set + slideshow timer/state/cycling (all in-process).
   - `core::display` — high-level helpers (`set_all_brightness`, `set_one_brightness`, contrast variants) that fan out to `PlatformImpl`.
-- **`src-tauri/src/{display,dark_mode,volume,wallpaper}.rs`** — thin Tauri-command wrappers around `core::*`. CPU-bound work is wrapped in `tauri::async_runtime::spawn_blocking` because every Tauri command taking `State<'_, AppState>` must be `async fn` (see "macOS Tray Icon Pitfall" below).
-- **`src-tauri/src/sidecar_cache.rs`** — 5-minute TTL cache wrapping `core::PlatformImpl::enumerate()`, `core::theme::get_dark_mode()`, and `core::volume::get_volume()` so rapid polls don't re-hit OS APIs. Writes and Force Refresh invalidate. Name retained from the v6.x HTTP-sidecar era; v7+ is pure in-process.
+- **`src-tauri/src/{display,dark_mode,volume,keyboard_backlight,wallpaper}.rs`** — thin Tauri-command wrappers around `core::*`. CPU-bound work is wrapped in `tauri::async_runtime::spawn_blocking` because every Tauri command taking `State<'_, AppState>` must be `async fn` (see "macOS Tray Icon Pitfall" below).
+- **`src-tauri/src/sidecar_cache.rs`** — 5-minute TTL cache wrapping `core::PlatformImpl::enumerate()`, `core::theme::get_dark_mode()`, `core::volume::get_volume()`, and `core::keyboard_backlight::get_keyboard_backlight()`. Writes and Force Refresh invalidate. Name retained from the v6.x HTTP-sidecar era; v7+ is pure in-process.
 - **`src-tauri/src/overlay.rs`** — per-monitor Tauri `WebviewWindow` for soft-overlay brightness fallback (see "Soft-Overlay Brightness Fallback" below).
 
 ## Build Commands
@@ -38,20 +39,7 @@ cargo check          # Check Rust compilation (from src-tauri/)
 
 ## Local Install from Release
 
-Use the `/install-app` slash command to download and install the latest release for the current platform. It handles all platform-specific steps automatically.
-
-### macOS post-install steps (required)
-
-```bash
-xattr -cr "/Applications/Display DJ.app"                       # Strip Apple quarantine (unsigned builds)
-tccutil reset Accessibility com.synle.display-dj               # Reset Accessibility (required after each new build for tiling)
-open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-open "/Applications/Display DJ.app"
-```
-
-### Windows post-install steps
-
-Run the `*_x64-setup.exe` installer — it handles everything.
+Use the `/install-app` slash command — handles platform-specific steps. macOS post-install (unsigned builds): `xattr -cr "/Applications/Display DJ.app"`, then `tccutil reset Accessibility com.synle.display-dj` and grant Accessibility for tiling. Windows: run the `*_x64-setup.exe` installer.
 
 ## Versioning
 
@@ -75,14 +63,16 @@ cd src-tauri && cargo test   # Backend tests (Rust)
 ### Frontend Tests (Vitest + React Testing Library)
 
 - **Setup**: `src/test/setup.ts` — jsdom, jest-dom matchers, Tauri API mocks (`invoke()` and `listen()` mocked globally).
-- **Unit tests**: `src/components/*.test.tsx` — one per component (Header, Slider, DarkModeToggle, VolumeControl, AllMonitorsControl, MonitorControl, KeepAwakeToggle, AboutPanel, ProfileButtons, SettingsPanel).
+- **Unit tests**: `src/components/*.test.tsx` — one per component (Header, Slider, DarkModeToggle, VolumeControl, KeyboardBacklightControl, AllMonitorsControl, MonitorControl, KeepAwakeToggle, AboutPanel, ProfileButtons, SettingsPanel).
 - **Smoke test**: `src/App.test.tsx` — verifies App renders, fetches initial data, handles backend failures.
 
 ### Backend Tests (Rust)
 
 Inline `#[cfg(test)]` modules cover:
 
-- `config.rs`: serde roundtrips, defaults, camelCase, `CommandValue` enum, `MonitorMetadata`, effective min brightness, backward-compatible deserialization, layout presets, night-mode schedules, `WallpaperPreferences`.
+- `config.rs`: serde roundtrips, defaults, camelCase, `CommandValue` enum, `MonitorMetadata`, effective min brightness, backward-compatible deserialization, layout presets, night-mode schedules, `WallpaperPreferences`, `KeyboardBacklightPreferences` + `Shift+F2` combo binding.
+- `core::keyboard_backlight`: `snap_to_25` rounds to nearest 25 + clamps at 100; cross-platform `get` / `set` / `is_supported` smoke tests; back-compat default (`enabled = true`).
+- `keyboard_backlight.rs` (Tauri commands): cache hit/miss, snap-on-set, supported-bool smoke.
 - `display.rs`: `DjDisplay` → `Monitor` conversion (incl. uid). `DjDisplay` is the local conversion struct in `display.rs`; its fields are populated from `core::DisplayInfo`. Also: `merge_with_configs`, `reconcile_migrated_configs`, `ensure_metadata_for_monitors`, `resolve_monitor` (id/uid/substring).
 - `keep_awake.rs`: `KeepAwake` guard creation, `Mutex<Option<KeepAwake>>` enable/disable cycle.
 - `tray_icon.rs`: %-to-px conversion, icon generation across all state combos (dark/light × keep-awake × muted), filled rect/thick line drawing.
@@ -123,19 +113,12 @@ After modifying frontend code (`src/`), config, or docs, always run `npx prettie
 
 ## Windows Console-Flash Pitfall (Critical, Windows-only)
 
-**Every Windows child spawn from a `#[cfg(target_os = "windows")]` code path
-must go through `core::win_cmd::hidden_command(...)`.** That helper returns a
-`std::process::Command` with the Win32 `CREATE_NO_WINDOW` (`0x08000000`)
-creation flag pre-applied, so the short-lived `powershell` / `reg` child does
-not allocate and immediately tear down a console window of its own — which
-otherwise reads as a visible black flash on every brightness change, volume
-change, theme toggle, and wallpaper write (the GUI parent has
-`windows_subsystem = "windows"` and therefore no console to share).
+**Every Windows child spawn from `#[cfg(target_os = "windows")]` must go through `core::win_cmd::hidden_command(...)`.** That helper pre-applies `CREATE_NO_WINDOW` (`0x08000000`) so the short-lived `powershell` / `reg` child doesn't allocate a console (visible black flash on every brightness / volume / theme / wallpaper / keyboard-backlight change — the GUI parent has `windows_subsystem = "windows"` and no console to share).
 
-- **Where this matters**: `core/{windows,volume,theme,wallpaper}.rs`. Every `powershell` / `reg` spawn routes through `hidden_command(...)`. The regression test `no_bare_powershell_or_reg_spawns_in_core` in `lib.rs` fails the build if a bare spawn drifts back in.
-- **Where this does NOT matter**: macOS (osascript) and Linux (gsettings / feh / xfconf-query / xrandr) — no Win32-PE-subsystem concept; a GUI parent launched from `.desktop` / Finder has no controlling terminal so child stdio inherits null fds and no window appears.
-- **The `windows_subsystem` attribute** must live on the binary root (`src-tauri/src/main.rs`), never `lib.rs` — the inner attribute is silently ignored on `lib.rs` and the release `.exe` then ships as a console-subsystem program (`CREATE_NO_WINDOW` on children cannot fix the parent's console).
-- **Cross-apply to upstream**: `core/*` is vendored from `display-dj-cli` (itself a CLI, doesn't need this). The `hidden_command(...)` substitution is a display-dj-local patch — re-apply on vendor refresh; the regression test enforces it.
+- **Where this matters**: `core/{windows,volume,theme,wallpaper,keyboard_backlight}.rs`. Regression test `no_bare_powershell_or_reg_spawns_in_core` in `lib.rs` fails the build if a bare spawn drifts back in.
+- **Not relevant on macOS / Linux** — no Win32-PE-subsystem concept; GUI parents launched from `.desktop` / Finder inherit null stdio.
+- **The `windows_subsystem` attribute** must live on `main.rs`, never `lib.rs` (silently ignored there — release `.exe` then ships as console-subsystem, which `CREATE_NO_WINDOW` on children cannot fix).
+- **Vendor refresh**: `core/*` is vendored from `display-dj-cli` (a CLI — doesn't need this). The `hidden_command` substitution is a display-dj-local patch; re-apply on refresh. Regression test enforces it.
 
 ## macOS Tray Icon Pitfall (Critical)
 
@@ -148,22 +131,7 @@ Inline WARNING comments in `config.rs` document this.
 
 ## Tile Snap Event Monitoring (NSEvent Global Monitor)
 
-Tile Snap uses `NSEvent.addGlobalMonitorForEvents(matching:handler:)` to observe mouse events globally. This replaced `CGEventTap`, which silently failed in production `.app` bundles (macOS Sequoia rejects `CGEventTapEnable` for ad-hoc signed bundles).
-
-**Why NSEvent:**
-
-- Higher-level Cocoa API; macOS trusts it from `.app` bundles without special signing.
-- Listen-only, which is all Tile Snap needs.
-- Handler runs on the main thread automatically.
-
-**Handler rules (main thread):**
-
-1. Keep it fast — defer AX API calls (`get_focused_window`, `get_window_rect`) until the 10px drag threshold is crossed.
-2. Use `try_lock()`, never `lock()`.
-3. Wrap with `catch_unwind` — Rust panics cannot unwind through ObjC blocks (would abort).
-4. Use raw `objc_msgSend` with `Sel::register("type")` for `[event type]` — `type` is a Rust keyword; `msg_send![event, r#type]` raises an ObjC exception.
-5. Convert `[NSEvent mouseLocation]` (Cocoa: Y up from bottom-left) → CG coords (Y down from top-left): `primary_h - cocoa_y`.
-6. Use the `block` crate (v0.1) for ObjC blocks. The block must stay alive (`.copy()` to heap) for the monitor's lifetime.
+Tile Snap uses `NSEvent.addGlobalMonitorForEvents` (listen-only, main-thread, trusted from ad-hoc-signed `.app` bundles — replaces `CGEventTap`, which silently failed under macOS Sequoia). Handler must: stay fast (defer AX calls until the 10 px drag threshold), use `try_lock()` only, wrap in `catch_unwind` (panics can't unwind through ObjC blocks), call `[event type]` via raw `objc_msgSend` + `Sel::register("type")` (`type` is a Rust keyword), and convert Cocoa Y-up coords to CG Y-down via `primary_h - cocoa_y`. Uses the `block` crate (v0.1); the block must outlive the monitor (`.copy()` to heap).
 
 ## Soft-Overlay Brightness Fallback
 
@@ -171,34 +139,20 @@ Some panels (e.g. Samsung Smart Monitor M7/M8 over USB-C on Intel Iris Xe) ignor
 
 ### Per-monitor `brightnessMode` preference
 
-Stored on `MonitorMetadata` in `preferences.monitor_configs`. Four values:
-
-- **`"auto"`** (default) — try DDC, then gamma, then fall back to the overlay if both hardware paths failed.
-- **`"ddc"`** — DDC/CI only, no overlay fallback.
-- **`"gamma"`** — `SetDeviceGammaRamp` only, no overlay fallback.
-- **`"overlay"`** — skip hardware entirely; dim with the overlay window. The only mode that works on the failing-panel scenario above.
-
-The dropdown is rendered next to the existing "Hide" button in Settings (`SettingsPanel.tsx`); built-in displays don't get the dropdown (they dim natively via DisplayServices / WMI / sysfs backlight).
+Stored on `MonitorMetadata.brightnessMode`. Four values: `"auto"` (default — DDC → gamma → overlay), `"ddc"`, `"gamma"`, `"overlay"` (skip hardware, dim via overlay window — only mode that works on USB-C Samsung Smart Monitors on Intel Iris Xe). Dropdown in `SettingsPanel.tsx` next to "Hide"; built-in displays don't get the dropdown (they dim natively via DisplayServices / WMI / sysfs backlight).
 
 ### Overlay module (`src-tauri/src/overlay.rs`)
 
-One Tauri `WebviewWindow` per external monitor, labeled `overlay-{monitor_id}`. Created lazily on the first overlay request, positioned to the monitor's `DisplayInfo.monitor_rect`, made click-through with `set_ignore_cursor_events(true)`. The content is `public/overlay.html` — a single full-viewport black div listening for `set-overlay-alpha` events. Alpha is `1.0 - brightness/100`, clamped to `[0.0, 0.9]` so the user can never make the panel fully opaque (which would prevent recovery via the slider).
+One Tauri `WebviewWindow` per external monitor, labeled `overlay-{monitor_id}`. Lazy-created on first request, positioned via `DisplayInfo.monitor_rect`, click-through (`set_ignore_cursor_events(true)`). Content is `public/overlay.html` — a full-viewport black div listening for `set-overlay-alpha` events. Alpha = `1.0 - brightness/100`, clamped to `[0.0, 0.9]` (so the user can always recover via the slider). API: `overlay::set_overlay_brightness(app, monitor_id, monitor_rect, brightness_pct)` and `overlay::destroy_overlay(app, monitor_id)`.
 
-Public API:
+### Routing
 
-- `overlay::set_overlay_brightness(app, monitor_id, monitor_rect, brightness_pct)` — ensure window, show, emit alpha. Hides instead of showing when `brightness_pct >= 100`.
-- `overlay::destroy_overlay(app, monitor_id)` — close the overlay (called on unplug or when switching back to a hardware-only mode).
-
-### Routing (`display::set_brightness` / `display::set_all_brightness`)
-
-Each Tauri brightness command snapshots `min_brightness`, the per-monitor `brightnessMode`, and the cached `monitor_rect` _before_ awaiting (mutex must not be held across `.await` — see macOS Tray Icon Pitfall). It dispatches through `display::route_for_mode(...)` to one of: `DdcOnly` / `GammaOnly` (call `core::display::set_one_brightness` with the named backend, destroy overlay first), `OverlayOnly` (overlay only, no hardware), or `AutoWithOverlayFallback` (try `"force"`; on failure fall back to overlay).
-
-`set_all_brightness` keeps a fast path for the common all-auto case (bulk `set_all_brightness("force")` + per-monitor overlay touch-up). The same routing is reused by `tray::execute_command` for `command/changeBrightness/...` via `dispatch_brightness_for_{one,all}` helpers.
+Each Tauri brightness command snapshots `min_brightness`, the per-monitor `brightnessMode`, and the cached `monitor_rect` _before_ awaiting (mutex must not be held across `.await` — see macOS Tray Icon Pitfall). Dispatches through `display::route_for_mode(...)` to `DdcOnly` / `GammaOnly` / `OverlayOnly` / `AutoWithOverlayFallback`. The same routing is reused by `tray::execute_command` via `dispatch_brightness_for_{one,all}` helpers.
 
 ### Platform status
 
-- **Windows**: fully functional. `DisplayInfo.monitor_rect` is populated from `MONITORINFOEXW.rcMonitor` for external displays.
-- **macOS / Linux**: the Tauri overlay window itself spawns, but `monitor_rect` is currently `None` on both platforms (see TODOs in `core::macos` and `core::linux`). `brightnessMode = "overlay"` is selectable in the UI but no-ops on those platforms until the rect is filled in. The auto path keeps working on macOS/Linux because DDC and DisplayServices/ddcutil paths are unaffected.
+- **Windows**: fully functional. `DisplayInfo.monitor_rect` from `MONITORINFOEXW.rcMonitor`.
+- **macOS / Linux**: overlay window spawns, but `monitor_rect` is currently `None` (see TODOs). `brightnessMode = "overlay"` is selectable but no-ops on those platforms until the rect is filled in. Auto path unaffected (DDC + DisplayServices / ddcutil still work).
 
 ## Key Conventions
 
@@ -210,6 +164,17 @@ Each Tauri brightness command snapshots `min_brightness`, the per-monitor `brigh
 - Brightness is clamped to `[effective_min_brightness(), 100]` (absolute floor of 5).
 - Contrast is DDC-only (`Option<u32>` / `number | null`); the slider is hidden by default and toggled via `showContrast` in Settings.
 - Keep Awake uses the `keepawake` crate (v0.6) — guard stored as `Mutex<Option<KeepAwake>>` in `AppState`. Creating enables; dropping (set to `None`) releases. Works on macOS (IOKit), Windows (`SetThreadExecutionState`), Linux (D-Bus). The `set_keep_awake` command is `async` (tray pitfall).
+
+## Keyboard Backlight (beta)
+
+Built-in laptop keyboard backlight slider rendered directly below the volume slider. Slider is `step=25` so the only reachable values are **0 / 25 / 50 / 75 / 100**; the backend re-snaps via `core::keyboard_backlight::snap_to_25()` so the shortcut command (`command/changeKeyboardBacklight/{value}`) and the slider produce identical hardware state.
+
+- **macOS**: IOKit `IOHIDEventSystemClient` + `KeyboardBacklightBrightness` property on the service with HID page `0x0B` / usage `0x4B`. Symbols loaded via `dlopen("/System/Library/Frameworks/IOKit.framework/IOKit")` so a future SDK rename degrades to `is_supported() = false` instead of failing to link. Built-in keyboards only.
+- **Windows**: probes Lenovo WMI (`Lenovo_KeyboardBacklightLevel` / `Lenovo_SetKeyboardBacklightLevel` in `root\wmi`) then Dell WMI (`DellKeyboardBacklight`). Vendor 0/1/2 levels map to 0/50/100 %. All spawns route through `core::win_cmd::hidden_command` (console-flash rule).
+- **Linux**: unsupported. Sysfs (`/sys/class/leds/*::kbd_backlight/`) and UPower D-Bus are future work — out of scope for v7.0.26.
+- **External keyboards**: not supported. No Razer / Corsair / Logitech SDK integration.
+
+UI hides the slider when **either** the backend reports unsupported **or** `preferences.keyboardBacklight.enabled = false`. Default keybinding: `Shift+F2` is a `CommandValue::Multiple` that runs both `command/changeProfile/2` (Focus) and `command/changeKeyboardBacklight/0` — a single "dim everything" shortcut.
 
 ## Dynamic Tray Icon (`tray_icon.rs`)
 
@@ -342,6 +307,7 @@ Commands are strings dispatched by `execute_command()` in `tray.rs`. Bindable to
 | `command/changeContrast/{value}`                          | `core::display::set_all_contrast(value)`                    | Set contrast on all monitors                   |
 | `command/changeContrast/{monitor_id}/{value}`             | `core::display::set_one_contrast(id, value)`                | Set contrast on a single monitor               |
 | `command/changeVolume/{value}`                            | `core::volume::set_volume(value)`                           | Set volume (0-100)                             |
+| `command/changeKeyboardBacklight/{value}`                 | `core::keyboard_backlight::set_keyboard_backlight(value)`   | Set keyboard backlight (snapped to nearest 25) |
 | `command/changeDarkMode/dark`                             | `core::theme::set_dark_mode(true)`                          | Switch to dark mode                            |
 | `command/changeDarkMode/light`                            | `core::theme::set_dark_mode(false)`                         | Switch to light mode                           |
 | `command/changeDarkMode/toggle`                           | `core::theme::get_dark_mode()` then `set_dark_mode(!cur)`   | Toggle dark/light mode                         |

@@ -38,6 +38,9 @@ pub struct SidecarCache {
     dark_mode: Mutex<Option<CacheEntry<bool>>>,
     /// Cached volume level (from `core::volume::get_volume()`).
     volume: Mutex<Option<CacheEntry<u32>>>,
+    /// Cached keyboard-backlight level 0..100
+    /// (from `core::keyboard_backlight::get_keyboard_backlight()`).
+    keyboard_backlight: Mutex<Option<CacheEntry<u32>>>,
     /// Cached macOS Accessibility permission status (AXIsProcessTrusted).
     accessibility: Mutex<Option<CacheEntry<bool>>>,
 }
@@ -49,6 +52,7 @@ impl SidecarCache {
             monitors: Mutex::new(None),
             dark_mode: Mutex::new(None),
             volume: Mutex::new(None),
+            keyboard_backlight: Mutex::new(None),
             accessibility: Mutex::new(None),
         }
     }
@@ -103,6 +107,29 @@ impl SidecarCache {
         }
     }
 
+    /// Get cached keyboard backlight level if fresh, otherwise None.
+    pub fn get_keyboard_backlight(&self) -> Option<u32> {
+        let lock = self.keyboard_backlight.lock().ok()?;
+        lock.as_ref().filter(|e| e.is_fresh()).map(|e| e.value)
+    }
+
+    /// Store keyboard backlight level in cache.
+    pub fn set_keyboard_backlight(&self, level: u32) {
+        if let Ok(mut lock) = self.keyboard_backlight.lock() {
+            *lock = Some(CacheEntry {
+                value: level,
+                fetched_at: Instant::now(),
+            });
+        }
+    }
+
+    /// Invalidate the keyboard backlight cache (e.g., after set_keyboard_backlight).
+    pub fn invalidate_keyboard_backlight(&self) {
+        if let Ok(mut lock) = self.keyboard_backlight.lock() {
+            *lock = None;
+        }
+    }
+
     /// Get cached accessibility status if fresh, otherwise None.
     pub fn get_accessibility(&self) -> Option<bool> {
         let lock = self.accessibility.lock().ok()?;
@@ -152,6 +179,7 @@ impl SidecarCache {
         self.invalidate_monitors();
         self.invalidate_dark_mode();
         self.invalidate_volume();
+        self.invalidate_keyboard_backlight();
         self.invalidate_accessibility();
     }
 }
@@ -187,6 +215,7 @@ mod tests {
         assert!(cache.get_monitors().is_none());
         assert!(cache.get_dark_mode().is_none());
         assert!(cache.get_volume().is_none());
+        assert!(cache.get_keyboard_backlight().is_none());
         assert!(cache.get_accessibility().is_none());
     }
 
@@ -196,6 +225,7 @@ mod tests {
         assert!(cache.get_monitors().is_none());
         assert!(cache.get_dark_mode().is_none());
         assert!(cache.get_volume().is_none());
+        assert!(cache.get_keyboard_backlight().is_none());
         assert!(cache.get_accessibility().is_none());
     }
 
@@ -225,6 +255,24 @@ mod tests {
         assert_eq!(cache.get_volume(), Some(75));
         cache.set_volume(0);
         assert_eq!(cache.get_volume(), Some(0));
+    }
+
+    #[test]
+    fn test_set_get_keyboard_backlight() {
+        let cache = SidecarCache::new();
+        cache.set_keyboard_backlight(50);
+        assert_eq!(cache.get_keyboard_backlight(), Some(50));
+        cache.set_keyboard_backlight(0);
+        assert_eq!(cache.get_keyboard_backlight(), Some(0));
+    }
+
+    #[test]
+    fn test_invalidate_keyboard_backlight() {
+        let cache = SidecarCache::new();
+        cache.set_keyboard_backlight(75);
+        assert_eq!(cache.get_keyboard_backlight(), Some(75));
+        cache.invalidate_keyboard_backlight();
+        assert!(cache.get_keyboard_backlight().is_none());
     }
 
     #[test]
@@ -266,6 +314,7 @@ mod tests {
         cache.set_monitors(vec![make_monitor("1")]);
         cache.set_dark_mode(true);
         cache.set_volume(50);
+        cache.set_keyboard_backlight(25);
         cache.set_accessibility(true);
 
         cache.invalidate_all();
@@ -273,6 +322,7 @@ mod tests {
         assert!(cache.get_monitors().is_none());
         assert!(cache.get_dark_mode().is_none());
         assert!(cache.get_volume().is_none());
+        assert!(cache.get_keyboard_backlight().is_none());
         assert!(cache.get_accessibility().is_none());
     }
 

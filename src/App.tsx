@@ -6,6 +6,7 @@ import Header from './components/Header';
 import AllMonitorsControl from './components/AllMonitorsControl';
 import MonitorControl from './components/MonitorControl';
 import VolumeControl from './components/VolumeControl';
+import KeyboardBacklightControl from './components/KeyboardBacklightControl';
 import DarkModeToggle from './components/DarkModeToggle';
 import ProfileButtons from './components/ProfileButtons';
 import KeepAwakeToggle from './components/KeepAwakeToggle';
@@ -22,6 +23,9 @@ function App() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [darkMode, setDarkMode] = useState(false);
   const [volume, setVolume] = useState(50);
+  const [keyboardBacklight, setKeyboardBacklight] = useState(0);
+  const [keyboardBacklightEnabled, setKeyboardBacklightEnabled] = useState(true);
+  const [keyboardBacklightSupported, setKeyboardBacklightSupported] = useState(false);
   const [minBrightness, setMinBrightness] = useState(10);
   const [showContrast, setShowContrast] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -82,6 +86,19 @@ function App() {
     }
   }, []);
 
+  /** Fetches the current keyboard-backlight level from the backend.
+   * Returns null when the device doesn't support it (we then hide the slider). */
+  const fetchKeyboardBacklight = useCallback(async () => {
+    try {
+      const v = await invoke<number | null>('get_keyboard_backlight');
+      if (v !== null && v !== undefined) {
+        setKeyboardBacklight(v);
+      }
+    } catch (e) {
+      console.error('Failed to get keyboard backlight:', e);
+    }
+  }, []);
+
   /** Fetches the current keep-awake state from the backend. */
   const fetchKeepAwake = useCallback(async () => {
     try {
@@ -99,6 +116,9 @@ function App() {
       setMinBrightness(Math.max(prefs.minBrightness, ABSOLUTE_MIN_BRIGHTNESS));
       setShowContrast(prefs.showContrast ?? false);
       setProfiles(prefs.profiles || []);
+      // Beta keyboard-backlight master toggle. The slider hides when this is
+      // false OR when the platform layer reports the device as unsupported.
+      setKeyboardBacklightEnabled(prefs.keyboardBacklight?.enabled ?? true);
     } catch {
       // ignore
     }
@@ -126,6 +146,17 @@ function App() {
     fetchAllState();
     fetchPreferences();
     fetchKeepAwake();
+    // Keyboard backlight (beta) — probe once for hardware support, then
+    // fetch the current level if supported. `null` from the backend means
+    // unsupported on this device, in which case we never show the slider.
+    invoke<boolean>('get_keyboard_backlight_supported')
+      .then((supported) => {
+        setKeyboardBacklightSupported(supported);
+        if (supported) {
+          fetchKeyboardBacklight();
+        }
+      })
+      .catch(() => setKeyboardBacklightSupported(false));
     // Detect macOS once and track the Accessibility-permission state so we
     // can render a blocking gate when it's missing (tiling/Tile-Snap/exposé
     // silently no-op without it — see CLAUDE.md "macOS Tray Icon Pitfall").
@@ -147,12 +178,24 @@ function App() {
       setAboutOpen(true);
       setSettingsOpen(false);
     });
+    const unlisten5 = listen('keyboard-backlight-changed', () => fetchKeyboardBacklight());
 
     // Also refetch when window becomes visible
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         fetchAllState();
         fetchKeepAwake();
+        // Re-probe keyboard backlight support on every popup open — laptops
+        // can be docked/undocked and external keyboard hot-plug shouldn't
+        // require an app restart to surface the slider correctly.
+        invoke<boolean>('get_keyboard_backlight_supported')
+          .then((supported) => {
+            setKeyboardBacklightSupported(supported);
+            if (supported) {
+              fetchKeyboardBacklight();
+            }
+          })
+          .catch(() => {});
         invoke<boolean>('get_accessibility_trusted')
           .then(setAccessibilityTrusted)
           .catch(() => {});
@@ -171,10 +214,18 @@ function App() {
       unlisten2.then((f) => f());
       unlisten3.then((f) => f());
       unlisten4.then((f) => f());
+      unlisten5.then((f) => f());
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [fetchMonitors, fetchDarkMode, fetchVolume, fetchPreferences, fetchKeepAwake]);
+  }, [
+    fetchMonitors,
+    fetchDarkMode,
+    fetchVolume,
+    fetchPreferences,
+    fetchKeepAwake,
+    fetchKeyboardBacklight,
+  ]);
 
   // Auto-resize window to fit content
   useEffect(() => {
@@ -301,6 +352,18 @@ function App() {
     }
   };
 
+  /** Sets the keyboard backlight level (snapped to 0/25/50/75/100 by the slider
+   * and again by the backend). Optimistic UI update — refetch on failure. */
+  const handleKeyboardBacklight = async (value: number) => {
+    setKeyboardBacklight(value);
+    try {
+      await invoke('set_keyboard_backlight', { value });
+    } catch (e) {
+      console.error('Failed to set keyboard backlight:', e);
+      fetchKeyboardBacklight();
+    }
+  };
+
   /** Toggles the keep-awake state (prevents system from sleeping). */
   const handleKeepAwake = async (enabled: boolean) => {
     try {
@@ -407,6 +470,12 @@ function App() {
             ))}
 
           <VolumeControl value={volume} onChange={handleVolume} />
+          {keyboardBacklightSupported && keyboardBacklightEnabled && (
+            <KeyboardBacklightControl
+              value={keyboardBacklight}
+              onChange={handleKeyboardBacklight}
+            />
+          )}
           <DarkModeToggle isDarkMode={darkMode} onChange={handleDarkMode} />
           <ProfileButtons profiles={profiles} onActivate={handleProfile} />
           <KeepAwakeToggle isActive={keepAwake} onChange={handleKeepAwake} />

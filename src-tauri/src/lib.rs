@@ -3,6 +3,7 @@ pub mod core;
 mod dark_mode;
 mod display;
 mod keep_awake;
+mod keyboard_backlight;
 mod overlay;
 pub mod sidecar_cache;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
@@ -638,6 +639,9 @@ pub fn run() {
             dark_mode::set_dark_mode,
             volume::get_volume,
             volume::set_volume,
+            keyboard_backlight::get_keyboard_backlight,
+            keyboard_backlight::set_keyboard_backlight,
+            keyboard_backlight::get_keyboard_backlight_supported,
             config::get_preferences,
             config::save_preferences,
             config::open_preferences_file,

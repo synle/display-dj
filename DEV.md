@@ -1,6 +1,6 @@
 # display-dj
 
-Cross-platform desktop app for monitor brightness, contrast, dark mode, volume, and window tiling control. Built with Tauri v2 (Rust backend) and React 19 + TypeScript + Vite 6 (WebView frontend). All platform code (DDC/CI, gamma, WMI, DisplayServices, wallpaper) is vendored in-process under `src-tauri/src/core/`.
+Cross-platform desktop app for monitor brightness, contrast, dark mode, volume, **keyboard backlight (beta)**, and window tiling control. Built with Tauri v2 (Rust backend) and React 19 + TypeScript + Vite 6 (WebView frontend). All platform code (DDC/CI, gamma, WMI, DisplayServices, wallpaper, IOHIDEventSystem / vendor-WMI keyboard backlight) is vendored in-process under `src-tauri/src/core/`.
 
 ## Quick Start
 

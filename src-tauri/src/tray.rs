@@ -1125,6 +1125,31 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                 });
             }
         }
+        // Set keyboard backlight: command/changeKeyboardBacklight/{value}
+        //
+        // Value is clamped to 0..100 then snapped to the nearest 25% step so
+        // shortcut bindings and the slider produce the same reachable levels.
+        // Honors the `keyboardBacklight.enabled` preference — when disabled,
+        // the command no-ops (the UI also hides the slider when disabled).
+        ["command", "changeKeyboardBacklight", value] => {
+            if let Ok(val) = value.parse::<u32>() {
+                let enabled = app
+                    .try_state::<crate::AppState>()
+                    .and_then(|s| s.preferences.lock().ok().map(|p| p.keyboard_backlight.enabled))
+                    .unwrap_or(true);
+                if !enabled {
+                    log::info!("changeKeyboardBacklight: feature disabled in preferences — skipping");
+                    return;
+                }
+                let snapped = crate::core::keyboard_backlight::snap_to_25(val);
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    state.sidecar_cache.invalidate_keyboard_backlight();
+                }
+                run_then_emit(app.clone(), "keyboard-backlight-changed", move || {
+                    let _ = crate::core::keyboard_backlight::set_keyboard_backlight(snapped);
+                });
+            }
+        }
         ["command", "changeProfile", idx_str] => {
             if let Ok(idx) = idx_str.parse::<usize>() {
                 let profiles = app
@@ -1345,6 +1370,10 @@ mod tests {
             "command/changeContrast/2/70",
             "command/changeContrast/150",
             "command/changeVolume/50",
+            "command/changeKeyboardBacklight/0",
+            "command/changeKeyboardBacklight/50",
+            "command/changeKeyboardBacklight/100",
+            "command/changeKeyboardBacklight/abc",
             "command/changeBrightness/abc",
             "command/changeBrightness/1/abc",
             "command/unknown/123",
