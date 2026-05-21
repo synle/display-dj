@@ -1071,8 +1071,19 @@ pub fn get_accessibility_trusted(
 /// TTL cache. Used by the macOS Accessibility Gate's "I've granted it — recheck"
 /// button so the user doesn't have to wait up to 5 minutes for the cached
 /// `false` to expire after flipping the toggle in System Settings.
+///
+/// On macOS, when the live result is `true`, also (re)starts the Tile Snap
+/// NSEvent monitor + zone-overlay windows if tiling + tile_snap are enabled
+/// in preferences. This closes a UX hole: prior to this, granting permission
+/// while the app was running dismissed the gate but left Tile Snap dormant
+/// (no drag-zone borders), and only a full app restart fixed it. The
+/// underlying `start_tile_snap` is idempotent via a one-shot atomic flag, so
+/// this is safe to call on every recheck.
 #[tauri::command]
-pub fn recheck_accessibility_trusted(state: tauri::State<'_, crate::AppState>) -> bool {
+pub fn recheck_accessibility_trusted(
+    state: tauri::State<'_, crate::AppState>,
+    app: tauri::AppHandle,
+) -> bool {
     state.sidecar_cache.invalidate_accessibility();
     let result;
     #[cfg(target_os = "macos")]
@@ -1092,6 +1103,26 @@ pub fn recheck_accessibility_trusted(state: tauri::State<'_, crate::AppState>) -
         result = false;
     }
     state.sidecar_cache.set_accessibility(result);
+
+    // macOS-only post-grant hook: if the user just flipped Accessibility on,
+    // bootstrap Tile Snap so the drag-zone borders appear without an app
+    // restart. Read prefs in a short scope so we don't hold the lock across
+    // the call into Cocoa. `start_tile_snap` itself dispatches to the main
+    // thread asynchronously (Cocoa requirement) and dedups via an atomic
+    // flag, so duplicate calls are harmless.
+    #[cfg(target_os = "macos")]
+    if result {
+        let prefs_allow = match state.preferences.lock() {
+            Ok(p) => p.tiling.enabled && p.tiling.tile_snap_enabled,
+            Err(_) => false,
+        };
+        if prefs_allow {
+            macos::start_tile_snap(app.clone());
+        }
+    }
+    // Silence "unused" warning on non-macOS where `app` is never read.
+    let _ = &app;
+
     result
 }
 

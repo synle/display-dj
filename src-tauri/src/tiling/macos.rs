@@ -9,8 +9,39 @@
 //! System Settings > Privacy & Security > Accessibility.
 
 use std::ffi::{c_char, c_void, CString};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
+
+/// Idempotence guard for `start_tile_snap`.
+///
+/// `start_tile_snap` may now be invoked twice in the same process — once at
+/// app launch (when Accessibility may or may not be granted) and again from
+/// `recheck_accessibility_trusted` after the user flips the toggle in System
+/// Settings. The NSEvent global monitor and the zone-overlay NSWindows are
+/// `mem::forget`'d (they live for the app's lifetime), so re-registering
+/// would double up handlers and leak windows. This flag flips to `true` the
+/// first time we successfully pass the trusted + prefs gate; subsequent
+/// invocations short-circuit.
+///
+/// Set only after the trusted gate passes, so a launch-time call that bailed
+/// (untrusted) does not block a later post-grant recheck from succeeding.
+static TILE_SNAP_STARTED: AtomicBool = AtomicBool::new(false);
+
+/// Attempt to claim "tile snap has been started" exclusively. Returns `true`
+/// for the first successful caller; subsequent callers get `false` and must
+/// not re-run setup. Extracted so the start-once policy is unit-testable
+/// without touching Cocoa.
+fn try_mark_tile_snap_started() -> bool {
+    TILE_SNAP_STARTED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+}
+
+#[cfg(test)]
+fn reset_tile_snap_started_for_test() {
+    TILE_SNAP_STARTED.store(false, Ordering::SeqCst);
+}
 
 /// Remembers the PID of the app most recently sent to back via
 /// `move_window_to_back` / `move_app_to_back`, so the next
@@ -2986,6 +3017,22 @@ pub fn start_tile_snap(app: AppHandle) {
         return;
     }
 
+    // Idempotence: this may be called twice — once at launch and once from
+    // `recheck_accessibility_trusted` after the user grants permission. The
+    // NSEvent monitor + zone overlay NSWindows are leaked-for-lifetime, so a
+    // second registration would double up handlers and leak windows. Claim
+    // the started flag now; if someone else already did, bail.
+    if !try_mark_tile_snap_started() {
+        log::info!("tile_snap: already started, skipping re-registration");
+        if let Some(state) = app.try_state::<crate::AppState>() {
+            crate::config::write_debug_log(
+                &state,
+                "tile_snap: re-entry skipped (already started this process)",
+            );
+        }
+        return;
+    }
+
     // Create overlay window on the main thread
     init_overlay_on_main_thread();
 
@@ -3118,6 +3165,23 @@ mod tests {
     /// Helper to build a Rect for tests.
     fn rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
         Rect { x, y, width: w, height: h }
+    }
+
+    /// First successful `try_mark_tile_snap_started()` returns true; the
+    /// second returns false. Encodes the invariant that `start_tile_snap`
+    /// will only register the NSEvent monitor + zone overlays once per
+    /// process, even when re-invoked after the user grants Accessibility
+    /// permission post-launch.
+    #[test]
+    fn test_try_mark_tile_snap_started_is_one_shot() {
+        // Reset because other tests in this module may race on the same
+        // static; the helper is gated by `#[cfg(test)]`.
+        reset_tile_snap_started_for_test();
+        assert!(try_mark_tile_snap_started(), "first call should claim");
+        assert!(!try_mark_tile_snap_started(), "second call must short-circuit");
+        assert!(!try_mark_tile_snap_started(), "subsequent calls also short-circuit");
+        // Reset so we don't poison other tests that may run after.
+        reset_tile_snap_started_for_test();
     }
 
     // --- ax_error_description tests ---
