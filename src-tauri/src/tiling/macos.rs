@@ -2742,15 +2742,24 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
 
             match zone {
                 Some((layout, display_idx)) => {
+                    // Defensive bounds check: `detect_snap_zone_macos` already
+                    // returns an index into `state.displays`, but `state.displays`
+                    // may have been refreshed mid-drag (monitor hotplug). An
+                    // out-of-bounds indexing here would panic inside the NSEvent
+                    // ObjC block, which on a `panic = "abort"` build aborts the
+                    // process. Skip rather than crash.
+                    let display = match state.displays.get(display_idx) {
+                        Some(d) => d.clone(),
+                        None => return,
+                    };
                     if state.current_layout != Some(layout) || state.current_display != display_idx
                     {
                         if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
-                            let d = &state.displays[display_idx];
                             crate::config::write_debug_log(
                                 &dbg_state,
                                 &format!(
                                     "tile_snap: zone detected — layout={:?}, display={} ({:.0},{:.0} {:.0}x{:.0}), cursor=({:.0},{:.0})",
-                                    layout, display_idx, d.x, d.y, d.width, d.height, cursor.x, cursor.y,
+                                    layout, display_idx, display.x, display.y, display.width, display.height, cursor.x, cursor.y,
                                 ),
                             );
                         }
@@ -2758,7 +2767,7 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                         state.current_display = display_idx;
                         let target = calculate_target_rect(
                             layout,
-                            &state.displays[display_idx],
+                            &display,
                             state.half_ratio,
                             state.third_ratio,
                             state.gap,

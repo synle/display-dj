@@ -57,8 +57,14 @@ windows = { version = "0.58", features = [
 ddc-winapi = "0.2"
 winapi = { version = "0.3", features = ["wingdi", "windef"] }
 
+# `panic = "unwind"` is required so that `std::panic::catch_unwind` in the
+# macOS Tile Snap NSEvent global monitor (tiling/macos.rs) actually catches
+# panics. With `panic = "abort"`, a panic in that ObjC-block handler bypasses
+# `catch_unwind` and calls `abort()`, which has crashed the bundled app
+# multiple times in the field (SIGABRT in `GlobalObserverHandler`). Slightly
+# larger binary in exchange for not aborting on a recoverable handler bug.
 [profile.release]
-panic = "abort"
+panic = "unwind"
 codegen-units = 1
 lto = true
 opt-level = "s"
