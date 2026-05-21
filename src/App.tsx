@@ -153,8 +153,22 @@ function App() {
       if (document.visibilityState === 'visible') {
         fetchAllState();
         fetchKeepAwake();
-        invoke<boolean>('get_accessibility_trusted')
-          .then(setAccessibilityTrusted)
+        // Use the cache-bypassing recheck on every popup open so a freshly
+        // granted Accessibility permission auto-dismisses the gate without
+        // the user having to click "I've granted it — recheck". When the
+        // permission flips from false → true we also refetch the state that
+        // was previously gated, so the normal popup body lands populated.
+        invoke<boolean>('recheck_accessibility_trusted')
+          .then((trusted) => {
+            setAccessibilityTrusted((prev) => {
+              if (trusted && !prev) {
+                fetchAllState();
+                fetchPreferences();
+                fetchKeepAwake();
+              }
+              return trusted;
+            });
+          })
           .catch(() => {});
       }
     };
