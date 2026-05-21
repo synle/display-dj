@@ -123,19 +123,12 @@ After modifying frontend code (`src/`), config, or docs, always run `npx prettie
 
 ## Windows Console-Flash Pitfall (Critical, Windows-only)
 
-**Every Windows child spawn from a `#[cfg(target_os = "windows")]` code path
-must go through `core::win_cmd::hidden_command(...)`.** That helper returns a
-`std::process::Command` with the Win32 `CREATE_NO_WINDOW` (`0x08000000`)
-creation flag pre-applied, so the short-lived `powershell` / `reg` child does
-not allocate and immediately tear down a console window of its own — which
-otherwise reads as a visible black flash on every brightness change, volume
-change, theme toggle, and wallpaper write (the GUI parent has
-`windows_subsystem = "windows"` and therefore no console to share).
+**Every Windows child spawn from `#[cfg(target_os = "windows")]` must go through `core::win_cmd::hidden_command(...)`.** That helper pre-applies `CREATE_NO_WINDOW` (`0x08000000`) so the short-lived `powershell` / `reg` child doesn't flash a console — the GUI parent has `windows_subsystem = "windows"` and no console to share.
 
-- **Where this matters**: `core/{windows,volume,theme,wallpaper}.rs`. Every `powershell` / `reg` spawn routes through `hidden_command(...)`. The regression test `no_bare_powershell_or_reg_spawns_in_core` in `lib.rs` fails the build if a bare spawn drifts back in.
-- **Where this does NOT matter**: macOS (osascript) and Linux (gsettings / feh / xfconf-query / xrandr) — no Win32-PE-subsystem concept; a GUI parent launched from `.desktop` / Finder has no controlling terminal so child stdio inherits null fds and no window appears.
-- **The `windows_subsystem` attribute** must live on the binary root (`src-tauri/src/main.rs`), never `lib.rs` — the inner attribute is silently ignored on `lib.rs` and the release `.exe` then ships as a console-subsystem program (`CREATE_NO_WINDOW` on children cannot fix the parent's console).
-- **Cross-apply to upstream**: `core/*` is vendored from `display-dj-cli` (itself a CLI, doesn't need this). The `hidden_command(...)` substitution is a display-dj-local patch — re-apply on vendor refresh; the regression test enforces it.
+- **Matters in**: `core/{windows,volume,theme,wallpaper}.rs`. Regression test `no_bare_powershell_or_reg_spawns_in_core` in `lib.rs` fails the build on bare spawns.
+- **N/A on macOS/Linux** — no Win32-PE-subsystem concept; GUI parents launched from `.desktop` / Finder inherit null stdio.
+- **The `windows_subsystem` attribute** must live on `main.rs`, never `lib.rs` (silently ignored — release `.exe` ships as console-subsystem and `CREATE_NO_WINDOW` on children can't fix it).
+- **Vendor refresh**: `core/*` is vendored from `display-dj-cli` (a CLI, doesn't need this). The `hidden_command` substitution is display-dj-local; re-apply on refresh.
 
 ## macOS Tray Icon Pitfall (Critical)
 
@@ -160,7 +153,7 @@ Tile Snap uses `NSEvent.addGlobalMonitorForEvents(matching:handler:)` to observe
 
 1. Keep it fast — defer AX API calls (`get_focused_window`, `get_window_rect`) until the 10px drag threshold is crossed.
 2. Use `try_lock()`, never `lock()`.
-3. Wrap with `catch_unwind` — Rust panics cannot unwind through ObjC blocks (would abort).
+3. Wrap with `catch_unwind` — Rust panics cannot unwind through ObjC blocks (would abort). **REQUIRES `panic = "unwind"` in `[profile.release]`**; `catch_unwind` is inert under `panic = "abort"`. v7.0.26 crashed 3× in field from this — see DEV.md "Crash Logging" for the post-mortem and `crash.log` shape.
 4. Use raw `objc_msgSend` with `Sel::register("type")` for `[event type]` — `type` is a Rust keyword; `msg_send![event, r#type]` raises an ObjC exception.
 5. Convert `[NSEvent mouseLocation]` (Cocoa: Y up from bottom-left) → CG coords (Y down from top-left): `primary_h - cocoa_y`.
 6. Use the `block` crate (v0.1) for ObjC blocks. The block must stay alive (`.copy()` to heap) for the monitor's lifetime.

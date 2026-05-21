@@ -1,5 +1,6 @@
 mod config;
 pub mod core;
+mod crash_log;
 mod dark_mode;
 mod display;
 mod keep_awake;
@@ -571,6 +572,13 @@ mod tests {
 /// wallpaper operations are handled in-process via the vendored `core` module —
 /// no sidecar process is spawned.
 pub fn run() {
+    // Install the crash-log panic hook FIRST, before any other work. Has to
+    // happen before any thread spawn so that the env_var-based RUST_BACKTRACE
+    // flip inside it is safe. Every Rust panic from this point forward writes
+    // a structured record (timestamp, version, backtrace, debug.log tail,
+    // preferences snapshot) to `{config_dir}/crash.log`. See crash_log.rs.
+    crash_log::install_panic_hook();
+
     // Default to `info` level when `RUST_LOG` isn't set, so the per-call
     // `log::info!("set_brightness[external]: …")` diagnostics in
     // `core::windows` (and equivalents in the other platforms) actually
@@ -645,6 +653,8 @@ pub fn run() {
             config::open_app_folder,
             config::get_app_version,
             config::get_about_info,
+            crash_log::open_crash_log,
+            crash_log::get_crash_log,
             tray::apply_profile,
             keep_awake::get_keep_awake,
             keep_awake::set_keep_awake,
@@ -670,6 +680,11 @@ pub fn run() {
             // thread so the main-thread tray setup isn't delayed by hardware probes.
             let startup_handle = app.handle().clone();
             std::thread::spawn(move || {
+                // Import any new macOS native crash reports (~/Library/Logs/
+                // DiagnosticReports/display-dj-*.ips) into crash.log so support
+                // dumps capture both Rust panics AND OS-level aborts/segfaults
+                // in one file. No-op on non-macOS; idempotent across launches.
+                crash_log::import_macos_native_crashes();
                 fetch_initial_tray_state(&startup_handle);
                 // Pre-warm the cache so the first popup open is instant.
                 let state = startup_handle.state::<AppState>();

@@ -63,3 +63,79 @@ tiling: rightThird on display 0 -> (…) wid=Some(…)
 ```
 
 If the third line shows `wid=None`, the tile still works — we proceeded without restore-state on purpose.
+
+## Crash Logging
+
+Every Rust panic and (on macOS) every native crash macOS records for the app is appended to a single file: `{config_dir}/display-dj/crash.log` (same folder as `preferences.json` / `debug.log` — "Open App Folder" in the tray menu reveals it).
+
+**Why two sources in one file:** Rust panics are caught by an in-process `std::panic::set_hook`, which sees the full stack and context. Native crashes (SIGSEGV, SIGABRT from C-side asserts, etc.) bypass Rust entirely — macOS dumps them to `~/Library/Logs/DiagnosticReports/display-dj-*.ips`. Both kinds matter, so the importer in `crash_log.rs::import_macos_native_crashes` runs at every launch, summarizes any new `.ips` file, and writes it to the same `crash.log`. Reader sees both crash modes in chronological order without having to open Console.app.
+
+### Record shape
+
+Rust panic block:
+
+```
+========== RUST PANIC ==========
+timestamp:    2026-05-20T19:50:16.123-07:00
+app_version:  7.0.31
+build_date:   ...
+is_dev_build: false
+os:           macos aarch64
+thread:       main
+location:     src/tiling/macos.rs:2761:42
+payload:      index out of bounds: the len is 1 but the index is 2
+
+backtrace:
+   0: std::backtrace::Backtrace::force_capture
+   1: ...
+
+recent debug.log tail (last 80 lines):
+[2026-05-20 19:50:14.901] tile_snap: ...
+
+preferences snapshot:
+{ ...full preferences.json verbatim... }
+========== END RUST PANIC ==========
+```
+
+macOS native crash block (parsed from `.ips`):
+
+```
+========== MACOS NATIVE CRASH ==========
+source_file:           display-dj-2026-05-20-195016.ips
+incident_id:           ...
+crashed_app_version:   7.0.26
+os:                    macOS 26.5 (25F71)  cpu: ARM-64
+exception_type:        EXC_CRASH
+signal:                SIGABRT
+termination:           Abort trap: 6
+asi:                   {"libsystem_c.dylib":["abort() called"]}
+faulting_thread:       'main' (idx=0)
+frames (top 40):
+   0: __pthread_kill +8  (imageIndex=4, imageOffset=38376)
+   1: pthread_kill +296  ...
+========== END MACOS NATIVE CRASH ==========
+```
+
+### File rotation
+
+`crash_log.rs::rotate_if_needed` trims at the next `==========` boundary when the file crosses ~2 MB so the newest entries are always preserved. No background thread; rotation happens at the next append. Crash logging is **never gated on `debug_logging`** — diagnostic value is high, volume is low.
+
+### Tauri commands
+
+- `get_crash_log` — returns the file contents as `String` (empty on fresh install). Used by the About panel to render the latest entry.
+- `open_crash_log` — opens `crash.log` in the OS default editor. Creates an empty file first if missing, so the button never fails.
+
+### Post-mortem: v7.0.26 SIGABRT in `GlobalObserverHandler` (2026-05-20)
+
+Three identical SIGABRTs in the field. macOS DiagnosticReports showed the abort in the NSEvent global monitor block (`GlobalObserverHandler` → `DispatchEventToHandlers` → display-dj code → `abort`). Root cause:
+
+1. `tiling/macos.rs::start_tile_snap` registers an NSEvent global monitor whose ObjC block calls into Rust.
+2. The Rust handler is wrapped in `std::panic::catch_unwind` (per CLAUDE.md "Tile Snap Event Monitoring") because panics can't unwind through an ObjC block.
+3. **`[profile.release].panic = "abort"`** in `Cargo.toml` made `catch_unwind` inert — any panic skipped the catch and went straight to `abort()`.
+4. Some edge case (likely a transient out-of-bounds index on `state.displays` when a monitor was disconnected mid-drag) panicked the handler, hit `abort`, and the whole app died.
+
+**Fix (v7.0.29):** `panic = "unwind"` in release + defensive `state.displays.get(display_idx)` in `handle_snap_event`.
+
+**Rule going forward:** Any code path that wraps a Rust closure in a foreign-language callback (ObjC block, C function pointer, Win32 callback, X11 handler) **must rely on `panic = "unwind"`** — otherwise the `catch_unwind` is a documentation comment, not a safety net.
+
+**Why crash logging is now mandatory:** the only reason we caught this was because the user happened to share their macOS DiagnosticReports `.ips` file. Future panics write directly to `crash.log` with full context (backtrace, debug.log tail, preferences snapshot) so triage doesn't depend on the user knowing where the OS hid the crash.
