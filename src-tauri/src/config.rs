@@ -4,6 +4,14 @@ use std::path::PathBuf;
 /// Absolute floor for brightness — never allow less than this regardless of user config.
 pub const ABSOLUTE_MIN_BRIGHTNESS: u32 = 5;
 
+/// Default-value helper for `bool` fields that should default to `true` when
+/// missing from a deserialized config. `#[serde(default)]` alone yields `false`
+/// for bools, which would silently disable newly-added snap-zone toggles on
+/// older configs after an upgrade.
+fn default_true() -> bool {
+    true
+}
+
 /// Tiling window manager preferences.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
@@ -25,6 +33,38 @@ pub struct TilingPreferences {
     pub top_edge_trigger: u32,
     /// Tile Snap: pixel size of the corner hot zone (quarter tile trigger).
     pub corner_trigger: u32,
+    /// Tile Snap zone visibility: top edge (maximize). Default true.
+    /// When false, the top-edge strip is neither drawn nor hit-tested.
+    #[serde(default = "default_true")]
+    pub snap_top_edge_enabled: bool,
+    /// Tile Snap zone visibility: left edge (left-half snap). Default true.
+    #[serde(default = "default_true")]
+    pub snap_left_edge_enabled: bool,
+    /// Tile Snap zone visibility: right edge (right-half snap). Default true.
+    #[serde(default = "default_true")]
+    pub snap_right_edge_enabled: bool,
+    /// Tile Snap zone visibility: top-left corner (top-left quarter). Default true.
+    #[serde(default = "default_true")]
+    pub snap_top_left_corner_enabled: bool,
+    /// Tile Snap zone visibility: top-right corner (top-right quarter). Default true.
+    #[serde(default = "default_true")]
+    pub snap_top_right_corner_enabled: bool,
+    /// Tile Snap zone visibility: bottom-left corner (bottom-left quarter). Default true.
+    #[serde(default = "default_true")]
+    pub snap_bottom_left_corner_enabled: bool,
+    /// Tile Snap zone visibility: bottom-right corner (bottom-right quarter). Default true.
+    #[serde(default = "default_true")]
+    pub snap_bottom_right_corner_enabled: bool,
+    /// Tile Snap zone visibility: bottom row 1/3 markers (left/center/right thirds).
+    /// Default true. Toggles all three 1/3 markers as a group.
+    #[serde(default = "default_true")]
+    pub snap_bottom_thirds_enabled: bool,
+    /// Tile Snap zone visibility: bottom row 2/3 markers (left-2/3 and right-2/3).
+    /// Default true. The 2/3 markers are rendered twice as wide as the 1/3 markers
+    /// (`corner_trigger * 2` vs `corner_trigger`) so the visual size matches the
+    /// 2× layout ratio they apply.
+    #[serde(default = "default_true")]
+    pub snap_bottom_two_thirds_enabled: bool,
     /// Master toggle to enable/disable Exposé features.
     pub expose_enabled: bool,
     /// Exposé: number of columns in the grid.
@@ -58,6 +98,15 @@ impl Default for TilingPreferences {
             side_edge_trigger: 18,
             top_edge_trigger: 18,
             corner_trigger: 30,
+            snap_top_edge_enabled: true,
+            snap_left_edge_enabled: true,
+            snap_right_edge_enabled: true,
+            snap_top_left_corner_enabled: true,
+            snap_top_right_corner_enabled: true,
+            snap_bottom_left_corner_enabled: true,
+            snap_bottom_right_corner_enabled: true,
+            snap_bottom_thirds_enabled: true,
+            snap_bottom_two_thirds_enabled: true,
             expose_enabled: true,
             expose_columns: 3,
             expose_rows: 3,

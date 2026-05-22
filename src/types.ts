@@ -54,6 +54,24 @@ export interface TilingPreferences {
   sideEdgeTrigger: number;
   topEdgeTrigger: number;
   cornerTrigger: number;
+  /** Tile Snap zone visibility: top edge (maximize). Default true. */
+  snapTopEdgeEnabled: boolean;
+  /** Tile Snap zone visibility: left edge (left-half snap). Default true. */
+  snapLeftEdgeEnabled: boolean;
+  /** Tile Snap zone visibility: right edge (right-half snap). Default true. */
+  snapRightEdgeEnabled: boolean;
+  /** Tile Snap zone visibility: top-left corner (top-left quarter). Default true. */
+  snapTopLeftCornerEnabled: boolean;
+  /** Tile Snap zone visibility: top-right corner (top-right quarter). Default true. */
+  snapTopRightCornerEnabled: boolean;
+  /** Tile Snap zone visibility: bottom-left corner. Default true. */
+  snapBottomLeftCornerEnabled: boolean;
+  /** Tile Snap zone visibility: bottom-right corner. Default true. */
+  snapBottomRightCornerEnabled: boolean;
+  /** Tile Snap zone visibility: bottom-row 1/3 markers (group). Default true. */
+  snapBottomThirdsEnabled: boolean;
+  /** Tile Snap zone visibility: bottom-row 2/3 markers (group, 2× wider than 1/3). Default true. */
+  snapBottomTwoThirdsEnabled: boolean;
   exposeEnabled: boolean;
   exposeColumns: number;
   exposeRows: number;

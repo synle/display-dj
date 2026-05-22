@@ -597,6 +597,132 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         onChange={(v) => updateTiling('cornerTrigger', v)}
                       />
                     </div>
+
+                    {/* Per-zone visibility toggles. Each checkbox disables both
+                        the drawn drop-zone indicator AND the cursor hit-test
+                        for that zone, so a disabled zone is truly inert.
+                        Grouped (edges / corners / bottom row) so the dialog
+                        doesn't read as nine flat checkboxes. */}
+                    <div style={{ marginTop: '12px' }}>
+                      <label className='settings-label'>Zone Visibility</label>
+
+                      <div
+                        style={{
+                          marginTop: '6px',
+                          fontSize: '11px',
+                          opacity: 0.7,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                        }}>
+                        Edges
+                      </div>
+                      <label className='settings-checkbox-row'>
+                        <input
+                          type='checkbox'
+                          checked={tiling?.snapTopEdgeEnabled ?? true}
+                          onChange={(e) => updateTiling('snapTopEdgeEnabled', e.target.checked)}
+                        />
+                        <span>Top edge (maximize)</span>
+                      </label>
+                      <label className='settings-checkbox-row'>
+                        <input
+                          type='checkbox'
+                          checked={tiling?.snapLeftEdgeEnabled ?? true}
+                          onChange={(e) => updateTiling('snapLeftEdgeEnabled', e.target.checked)}
+                        />
+                        <span>Left edge (left half)</span>
+                      </label>
+                      <label className='settings-checkbox-row'>
+                        <input
+                          type='checkbox'
+                          checked={tiling?.snapRightEdgeEnabled ?? true}
+                          onChange={(e) => updateTiling('snapRightEdgeEnabled', e.target.checked)}
+                        />
+                        <span>Right edge (right half)</span>
+                      </label>
+
+                      <div
+                        style={{
+                          marginTop: '8px',
+                          fontSize: '11px',
+                          opacity: 0.7,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                        }}>
+                        Corners
+                      </div>
+                      <label className='settings-checkbox-row'>
+                        <input
+                          type='checkbox'
+                          checked={tiling?.snapTopLeftCornerEnabled ?? true}
+                          onChange={(e) =>
+                            updateTiling('snapTopLeftCornerEnabled', e.target.checked)
+                          }
+                        />
+                        <span>Top-left corner</span>
+                      </label>
+                      <label className='settings-checkbox-row'>
+                        <input
+                          type='checkbox'
+                          checked={tiling?.snapTopRightCornerEnabled ?? true}
+                          onChange={(e) =>
+                            updateTiling('snapTopRightCornerEnabled', e.target.checked)
+                          }
+                        />
+                        <span>Top-right corner</span>
+                      </label>
+                      <label className='settings-checkbox-row'>
+                        <input
+                          type='checkbox'
+                          checked={tiling?.snapBottomLeftCornerEnabled ?? true}
+                          onChange={(e) =>
+                            updateTiling('snapBottomLeftCornerEnabled', e.target.checked)
+                          }
+                        />
+                        <span>Bottom-left corner</span>
+                      </label>
+                      <label className='settings-checkbox-row'>
+                        <input
+                          type='checkbox'
+                          checked={tiling?.snapBottomRightCornerEnabled ?? true}
+                          onChange={(e) =>
+                            updateTiling('snapBottomRightCornerEnabled', e.target.checked)
+                          }
+                        />
+                        <span>Bottom-right corner</span>
+                      </label>
+
+                      <div
+                        style={{
+                          marginTop: '8px',
+                          fontSize: '11px',
+                          opacity: 0.7,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                        }}>
+                        Bottom row
+                      </div>
+                      <label className='settings-checkbox-row'>
+                        <input
+                          type='checkbox'
+                          checked={tiling?.snapBottomThirdsEnabled ?? true}
+                          onChange={(e) =>
+                            updateTiling('snapBottomThirdsEnabled', e.target.checked)
+                          }
+                        />
+                        <span>1/3 splits (left / center / right thirds)</span>
+                      </label>
+                      <label className='settings-checkbox-row'>
+                        <input
+                          type='checkbox'
+                          checked={tiling?.snapBottomTwoThirdsEnabled ?? true}
+                          onChange={(e) =>
+                            updateTiling('snapBottomTwoThirdsEnabled', e.target.checked)
+                          }
+                        />
+                        <span>2/3 splits (left-2/3 / right-2/3, 2× width)</span>
+                      </label>
+                    </div>
                   </div>
                 )}
 
