@@ -480,14 +480,15 @@ impl Default for Preferences {
                 },
                 Profile {
                     name: "Focus".into(),
+                    // Bound to Shift+F1 (default keybinding)
                     command: CommandValue::Multiple(vec![
                         "command/changeBrightness/75".into(),
                         "command/changeDarkMode/dark".into(),
-                        "command/changeVolume/30".into(),
                     ]),
                 },
                 Profile {
                     name: "Daylight".into(),
+                    // Bound to Shift+F2 (default keybinding)
                     command: CommandValue::Multiple(vec![
                         "command/changeBrightness/100".into(),
                         "command/changeDarkMode/light".into(),
