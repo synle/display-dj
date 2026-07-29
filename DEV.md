@@ -4,7 +4,7 @@ Cross-platform desktop app for monitor brightness, contrast, dark mode, volume, 
 
 ## Quick Start
 
-Prerequisites: Node.js 20+, [Rust toolchain](https://rustup.rs/) (stable), and platform deps (Linux: see CLAUDE.md for `apt` packages).
+Prerequisites: Node.js 20+, [Rust toolchain](https://rustup.rs/) (stable), and platform deps (Linux: see AGENTS for `apt` packages).
 
 Install dependencies:
 
@@ -130,7 +130,7 @@ frames (top 40):
 Three identical SIGABRTs in the field. macOS DiagnosticReports showed the abort in the NSEvent global monitor block (`GlobalObserverHandler` → `DispatchEventToHandlers` → display-dj code → `abort`). Root cause:
 
 1. `tiling/macos.rs::start_tile_snap` registers an NSEvent global monitor whose ObjC block calls into Rust.
-2. The Rust handler is wrapped in `std::panic::catch_unwind` (per CLAUDE.md "Tile Snap Event Monitoring") because panics can't unwind through an ObjC block.
+2. The Rust handler is wrapped in `std::panic::catch_unwind` (per AGENTS "Tile Snap Event Monitoring") because panics can't unwind through an ObjC block.
 3. **`[profile.release].panic = "abort"`** in `Cargo.toml` made `catch_unwind` inert — any panic skipped the catch and went straight to `abort()`.
 4. Some edge case (likely a transient out-of-bounds index on `state.displays` when a monitor was disconnected mid-drag) panicked the handler, hit `abort`, and the whole app died.
 
