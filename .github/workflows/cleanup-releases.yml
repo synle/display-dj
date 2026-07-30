@@ -2,31 +2,31 @@ name: cleanup-releases
 
 on:
   schedule:
-    - cron: "0 0 * * 0"
+    - cron: '0 0 * * 0'
   workflow_dispatch:
     inputs:
       cleanup_drafts:
-        description: "Delete old draft releases"
+        description: 'Delete old draft releases'
         type: boolean
         default: true
       draft_keep_count:
-        description: "Number of most recent draft releases to keep"
+        description: 'Number of most recent draft releases to keep'
         type: number
         default: 0
       cleanup_incomplete:
-        description: "Delete incomplete releases (missing assets)"
+        description: 'Delete incomplete releases (missing assets)'
         type: boolean
         default: true
       expected_assets:
-        description: "Expected number of assets per release"
+        description: 'Expected number of assets per release'
         type: number
         default: 4
       lookback_months:
-        description: "How many months back to check for incomplete releases"
+        description: 'How many months back to check for incomplete releases'
         type: number
         default: 3
       dry_run:
-        description: "Preview deletions without actually deleting"
+        description: 'Preview deletions without actually deleting'
         type: boolean
         default: true
 

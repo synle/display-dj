@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { Profile } from "../types";
+import { useState, useRef, useEffect } from 'react';
+import { Profile } from '../types';
 
 const MAX_VISIBLE = 3;
 
@@ -14,10 +14,7 @@ function profileName(profile: Profile, index: number): string {
 }
 
 /** Row of profile quick-action buttons with overflow menu for 4+ profiles. */
-export default function ProfileButtons({
-  profiles,
-  onActivate,
-}: ProfileButtonsProps) {
+export default function ProfileButtons({ profiles, onActivate }: ProfileButtonsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -28,8 +25,8 @@ export default function ProfileButtons({
         setMenuOpen(false);
       }
     };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
   }, [menuOpen]);
 
   if (profiles.length === 0) return null;
@@ -38,39 +35,36 @@ export default function ProfileButtons({
   const overflow = profiles.slice(MAX_VISIBLE);
 
   return (
-    <div className="profile-buttons">
+    <div className='profile-buttons'>
       {visible.map((profile, i) => (
         <button
           key={i}
-          className="profile-btn"
+          className='profile-btn'
           onClick={() => onActivate(i)}
-          title={profileName(profile, i)}
-        >
+          title={profileName(profile, i)}>
           {profileName(profile, i)}
         </button>
       ))}
       {overflow.length > 0 && (
-        <div className="profile-overflow" ref={menuRef}>
+        <div className='profile-overflow' ref={menuRef}>
           <button
-            className="profile-btn profile-overflow-btn"
+            className='profile-btn profile-overflow-btn'
             onClick={() => setMenuOpen(!menuOpen)}
-            title="More profiles"
-          >
-            {"\u25BE"}
+            title='More profiles'>
+            {'\u25BE'}
           </button>
           {menuOpen && (
-            <div className="profile-overflow-menu">
+            <div className='profile-overflow-menu'>
               {overflow.map((profile, i) => {
                 const actualIndex = MAX_VISIBLE + i;
                 return (
                   <button
                     key={actualIndex}
-                    className="profile-overflow-item"
+                    className='profile-overflow-item'
                     onClick={() => {
                       onActivate(actualIndex);
                       setMenuOpen(false);
-                    }}
-                  >
+                    }}>
                     {profileName(profile, actualIndex)}
                   </button>
                 );

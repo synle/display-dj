@@ -1,1 +1,25 @@
-{"default":{"identifier":"default","description":"Default capabilities for Display DJ","local":true,"windows":["main"],"permissions":["core:default","core:window:default","core:window:allow-close","core:window:allow-hide","core:window:allow-show","core:window:allow-set-focus","core:window:allow-set-position","core:window:allow-set-size","core:window:allow-is-visible","global-shortcut:allow-register","global-shortcut:allow-unregister","global-shortcut:allow-is-registered","autostart:allow-enable","autostart:allow-disable","autostart:allow-is-enabled"]}}
+{
+  "default": {
+    "identifier": "default",
+    "description": "Default capabilities for Display DJ",
+    "local": true,
+    "windows": ["main"],
+    "permissions": [
+      "core:default",
+      "core:window:default",
+      "core:window:allow-close",
+      "core:window:allow-hide",
+      "core:window:allow-show",
+      "core:window:allow-set-focus",
+      "core:window:allow-set-position",
+      "core:window:allow-set-size",
+      "core:window:allow-is-visible",
+      "global-shortcut:allow-register",
+      "global-shortcut:allow-unregister",
+      "global-shortcut:allow-is-registered",
+      "autostart:allow-enable",
+      "autostart:allow-disable",
+      "autostart:allow-is-enabled"
+    ]
+  }
+}

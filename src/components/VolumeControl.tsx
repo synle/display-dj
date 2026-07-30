@@ -1,4 +1,4 @@
-import Slider from "./Slider";
+import Slider from './Slider';
 
 interface VolumeControlProps {
   value: number;
@@ -8,9 +8,9 @@ interface VolumeControlProps {
 /** System volume slider with mute/unmute toggle on icon click. */
 export default function VolumeControl({ value, onChange }: VolumeControlProps) {
   return (
-    <div className="volume-section">
+    <div className='volume-section'>
       <Slider
-        icon={value === 0 ? "\uD83D\uDD07" : "\uD83D\uDD0A"}
+        icon={value === 0 ? '\uD83D\uDD07' : '\uD83D\uDD0A'}
         value={value}
         onChange={onChange}
         onIconClick={() => onChange(value > 0 ? 0 : 100)}

@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "semi": true,
+  "useTabs": false,
+  "tabWidth": 2,
+  "singleQuote": true,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "bracketSameLine": true,
+  "jsxSingleQuote": true,
+  "arrowParens": "always",
+  "endOfLine": "lf",
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "*.bundle.*",
+    "*.min.*",
+    "*.spec.js",
+    "*.spec.jsx",
+    "*.spec.ts",
+    ".build",
+    "_layouts/default.html",
+    "build",
+    "coverage",
+    "display-dj",
+    "dist",
+    "node_modules",
+    "public/vs"
+  ]
+}

@@ -10,14 +10,17 @@ Create a published official release of Display DJ.
 ## Instructions
 
 1. **Find the last official release tag** (non-prerelease, non-draft):
+
    ```bash
    gh release list --limit 20 --json tagName,isDraft,isPrerelease --jq '[.[] | select(.isDraft == false and .isPrerelease == false)] | .[0].tagName'
    ```
 
 2. **Generate the changelog** from commits since that tag:
+
    ```bash
    git log --oneline --no-decorate <last_tag>..HEAD
    ```
+
    Show the changelog to the user and confirm they want to proceed.
 
 3. **Determine the new version**:
@@ -28,6 +31,7 @@ Create a published official release of Display DJ.
 4. **Bump the version** in `src-tauri/tauri.conf.json`
 
 5. **Commit and push**:
+
    ```bash
    git add src-tauri/tauri.conf.json
    git commit -m "chore: bump version to <new_version>"
@@ -35,6 +39,7 @@ Create a published official release of Display DJ.
    ```
 
 6. **Trigger the release workflow**:
+
    ```bash
    gh workflow run release-official.yml --ref main -f tag=v<new_version>
    ```
