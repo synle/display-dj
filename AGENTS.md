@@ -200,7 +200,8 @@ Each Tauri brightness command snapshots `min_brightness`, the per-monitor `brigh
 - Frontend parameter objects use camelCase (Serde converts).
 - `CommandValue` uses `#[serde(untagged)]` so keybindings accept both `"string"` and `["array"]`.
 - Preferences use `#[serde(default)]` for forward-compatible config loading.
-- Brightness is clamped to `[effective_min_brightness(), 100]` (absolute floor of 5).
+- **All user-editable numerics are bounded on both sides by `Preferences::sanitize()`** (`config.rs`), called from `load_preferences()` (disk → memory) and the `save_preferences` command (frontend → memory + disk). `preferences.json` is a documented hand-editing surface, so treat every numeric in it as untrusted input. Add new numeric preferences to `sanitize()` in the same commit that introduces them.
+- Brightness is clamped to `[effective_min_brightness(), 100]`, where `effective_min_brightness()` is itself clamped to `[5, 100]`. The **upper** bound is load-bearing: `u32::clamp` panics when `min > max`, so an unbounded `minBrightness` would panic every brightness path.
 - Contrast is DDC-only (`Option<u32>` / `number | null`); the slider is hidden by default and toggled via `showContrast` in Settings.
 - Keep Awake uses the `keepawake` crate (v0.6) — guard stored as `Mutex<Option<KeepAwake>>` in `AppState`. Creating enables; dropping (set to `None`) releases. Works on macOS (IOKit), Windows (`SetThreadExecutionState`), Linux (D-Bus). The `set_keep_awake` command is `async` (tray pitfall).
 

@@ -138,12 +138,16 @@ pub fn calculate_target_rect(
     let g = gap as f64;
     let dx = display.x + g;
     let dy = display.y + g;
-    let dw = display.width - 2.0 * g;
-    let dh = display.height - 2.0 * g;
+    // A gap that is valid globally can still be too large for a *small*
+    // display (e.g. gap=200 on a 320px-wide panel), which would make the
+    // usable area negative and send every tile off-screen. Floor at 0 so the
+    // worst case is a degenerate-but-onscreen tile instead of garbage.
+    let dw = (display.width - 2.0 * g).max(0.0);
+    let dh = (display.height - 2.0 * g).max(0.0);
     let h = half_ratio as f64 / 100.0;
     let t = third_ratio as f64 / 100.0;
 
-    match layout {
+    let rect = match layout {
         // Halves
         TilingLayout::LeftHalf => Rect {
             x: dx,
@@ -269,6 +273,16 @@ pub fn calculate_target_rect(
             width: dw,
             height: dh,
         },
+    };
+
+    // Final guard: no layout may hand a negative dimension to the platform
+    // resize call. `third_ratio > 50` used to make the center/middle third
+    // `dw * (1 - 2t)` negative; `sanitize()` now prevents that at the source,
+    // but this keeps a corrupt in-memory value from reaching the OS.
+    Rect {
+        width: rect.width.max(0.0),
+        height: rect.height.max(0.0),
+        ..rect
     }
 }
 
@@ -2317,6 +2331,59 @@ mod tests {
         let d = display(0.0, 0.0, 100.0, 80.0);
         let r = calculate_target_rect(TilingLayout::TopLeftQuarter, &d, 50, 33, 0);
         assert!(rect_approx(&r, 0.0, 0.0, 50.0, 40.0));
+    }
+
+    /// Regression: `third_ratio > 50` made the center/middle third
+    /// `dw * (1 - 2t)` negative, which collapsed the tile to a 1px sliver on
+    /// Linux and produced a garbage resize on macOS / Windows.
+    /// `config::TilingPreferences::sanitize()` clamps the preference, and
+    /// `calculate_target_rect` floors the output as a second line of defense.
+    #[test]
+    fn test_layout_never_returns_negative_dimensions_for_extreme_third_ratio() {
+        let d = display(0.0, 0.0, 1000.0, 800.0);
+        for third_ratio in [0u32, 33, 45, 50, 51, 75, 100, 500] {
+            for layout in [
+                TilingLayout::CenterThird,
+                TilingLayout::MiddleThird,
+                TilingLayout::LeftThird,
+                TilingLayout::RightThird,
+                TilingLayout::LeftTwoThirds,
+                TilingLayout::RightTwoThirds,
+            ] {
+                let r = calculate_target_rect(layout, &d, 50, third_ratio, 0);
+                assert!(
+                    r.width >= 0.0 && r.height >= 0.0,
+                    "negative dimension for {:?} at third_ratio={}: {}x{}",
+                    layout, third_ratio, r.width, r.height,
+                );
+            }
+        }
+    }
+
+    /// Regression: a `gap` larger than half the display made the usable area
+    /// `display - 2*gap` negative, sending every tile off-screen with a
+    /// negative size. The usable area is now floored at 0.
+    #[test]
+    fn test_layout_never_returns_negative_dimensions_for_oversized_gap() {
+        // Deliberately smaller than the 200 gap ceiling `sanitize()` allows,
+        // so this covers the "valid globally, too big for THIS display" case.
+        let d = display(0.0, 0.0, 320.0, 240.0);
+        for gap in [0u32, 10, 100, 160, 200] {
+            for layout in [
+                TilingLayout::Maximize,
+                TilingLayout::LeftHalf,
+                TilingLayout::RightHalf,
+                TilingLayout::CenterThird,
+                TilingLayout::BottomRightQuarter,
+            ] {
+                let r = calculate_target_rect(layout, &d, 50, 33, gap);
+                assert!(
+                    r.width >= 0.0 && r.height >= 0.0,
+                    "negative dimension for {:?} at gap={}: {}x{}",
+                    layout, gap, r.width, r.height,
+                );
+            }
+        }
     }
 
     #[test]

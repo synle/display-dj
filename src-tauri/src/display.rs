@@ -594,14 +594,22 @@ pub async fn set_all_brightness(
                     .map(|_| true)
             }
             BrightnessRoute::AutoWithOverlayFallback => {
-                let hw_ok = set_monitor_brightness(&m.id, value, min, "force").await?;
-                if hw_ok {
-                    let _ = crate::overlay::destroy_overlay(&app, &m.id);
-                    Ok(true)
-                } else {
-                    let rect = resolve_monitor_rect(&m.id, &cached_monitors).await;
-                    crate::overlay::set_overlay_brightness(&app, &m.id, rect, value)
-                        .map(|_| true)
+                // NOTE: deliberately no `?` here. This runs inside the
+                // per-monitor loop, so propagating would abandon every
+                // *remaining* monitor because one panel errored — the user
+                // would see some displays dim and the rest stay put. Fold the
+                // error into this monitor's result and keep going.
+                match set_monitor_brightness(&m.id, value, min, "force").await {
+                    Ok(true) => {
+                        let _ = crate::overlay::destroy_overlay(&app, &m.id);
+                        Ok(true)
+                    }
+                    Ok(false) => {
+                        let rect = resolve_monitor_rect(&m.id, &cached_monitors).await;
+                        crate::overlay::set_overlay_brightness(&app, &m.id, rect, value)
+                            .map(|_| true)
+                    }
+                    Err(e) => Err(e),
                 }
             }
         };

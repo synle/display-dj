@@ -4,6 +4,14 @@ use std::path::PathBuf;
 /// Absolute floor for brightness — never allow less than this regardless of user config.
 pub const ABSOLUTE_MIN_BRIGHTNESS: u32 = 5;
 
+/// Absolute ceiling for the *minimum* brightness preference.
+///
+/// Brightness is applied as `value.clamp(effective_min_brightness(), 100)`, and
+/// `u32::clamp` **panics** when `min > max`. Without this ceiling a hand-edited
+/// `"minBrightness": 150` in preferences.json panics every brightness code path
+/// (slider, tray, keybinding, night-mode timer). See [`Preferences::sanitize`].
+pub const ABSOLUTE_MAX_MIN_BRIGHTNESS: u32 = 100;
+
 /// Default-value helper for `bool` fields that should default to `true` when
 /// missing from a deserialized config. `#[serde(default)]` alone yields `false`
 /// for bools, which would silently disable newly-added snap-zone toggles on
@@ -85,6 +93,40 @@ pub struct TilingPreferences {
     /// non-zero, we migrate sqrt(value) into columns and rows.
     #[serde(default, skip_serializing)]
     pub expose_max_windows: u32,
+}
+
+impl TilingPreferences {
+    /// Clamp the tiling numerics that feed the layout math.
+    ///
+    /// `calculate_target_rect` derives tile geometry from these directly:
+    /// - `third_ratio > 50` makes the center/middle third `dw * (1 - 2t)`
+    ///   **negative**, so "center third" tiles collapse to a 1px sliver (Linux)
+    ///   or get a garbage size (macOS / Windows).
+    /// - `half_ratio` at 0 or 100 yields a zero-width tile.
+    /// - an oversized `gap` makes the whole usable area `display - 2*gap`
+    ///   negative, which breaks every layout and Exposé cell.
+    /// - `expose_columns` / `expose_rows` of 0 would divide by zero in the
+    ///   Exposé grid math.
+    ///
+    /// None of these have both-sided bounds anywhere else, and only some have a
+    /// UI control at all, so this is the single choke point.
+    pub fn sanitize(&mut self) {
+        // Thirds must stay strictly under 50% or the center third goes negative.
+        self.third_ratio = self.third_ratio.clamp(10, 45);
+        // Halves must leave a non-empty tile on both sides.
+        self.half_ratio = self.half_ratio.clamp(10, 90);
+        // A gap beyond this can't fit on any real display; the per-display
+        // guard in `calculate_target_rect` handles the small-display case.
+        self.gap = self.gap.min(200);
+        // A 0-column or 0-row grid divides by zero in the Exposé layout.
+        self.expose_columns = self.expose_columns.clamp(1, 20);
+        self.expose_rows = self.expose_rows.clamp(1, 20);
+        self.expose_min_width = self.expose_min_width.clamp(50, 10_000);
+        self.expose_min_height = self.expose_min_height.clamp(50, 10_000);
+        self.side_edge_trigger = self.side_edge_trigger.clamp(1, 500);
+        self.top_edge_trigger = self.top_edge_trigger.clamp(1, 500);
+        self.corner_trigger = self.corner_trigger.clamp(1, 500);
+    }
 }
 
 impl Default for TilingPreferences {
@@ -332,9 +374,35 @@ pub enum CommandValue {
 }
 
 impl Preferences {
-    /// Returns the effective minimum brightness, enforcing the absolute floor.
+    /// Returns the effective minimum brightness, bounded on **both** sides.
+    ///
+    /// The upper bound is load-bearing: callers do
+    /// `value.clamp(effective_min_brightness(), 100)`, and `u32::clamp` panics
+    /// when `min > max`. Clamping here means a corrupt or hand-edited
+    /// `minBrightness` can never panic a brightness path.
     pub fn effective_min_brightness(&self) -> u32 {
-        self.min_brightness.max(ABSOLUTE_MIN_BRIGHTNESS)
+        self.min_brightness
+            .clamp(ABSOLUTE_MIN_BRIGHTNESS, ABSOLUTE_MAX_MIN_BRIGHTNESS)
+    }
+
+    /// Clamp every user-editable numeric into a range the rest of the app can
+    /// safely consume.
+    ///
+    /// `preferences.json` is a documented hand-editing surface (the tray exposes
+    /// "Open App Preferences", and layout presets can only be configured that
+    /// way), so every numeric here is untrusted input. The UI clamps these on
+    /// its own sliders, but the backend consumes the raw file directly on
+    /// startup and from the tray / keybinding / night-mode paths, which never
+    /// pass through the UI.
+    ///
+    /// Called from [`load_preferences`] (disk -> memory) and from the
+    /// `save_preferences` command (frontend -> memory + disk) so both entry
+    /// points are covered.
+    pub fn sanitize(&mut self) {
+        self.min_brightness = self
+            .min_brightness
+            .clamp(ABSOLUTE_MIN_BRIGHTNESS, ABSOLUTE_MAX_MIN_BRIGHTNESS);
+        self.tiling.sanitize();
     }
 }
 
@@ -642,6 +710,9 @@ pub fn load_preferences() -> Preferences {
     };
     migrate_monitor_configs_if_needed(&mut prefs);
     migrate_expose_grid_if_needed(&mut prefs);
+    // Runs after the migrations so migrated values are bounded too (e.g. a
+    // legacy `exposeMaxWindows` that squares out to an absurd grid).
+    prefs.sanitize();
     prefs
 }
 
@@ -788,6 +859,12 @@ pub async fn save_preferences(
     state: tauri::State<'_, crate::AppState>,
     preferences: Preferences,
 ) -> Result<(), String> {
+    // The frontend clamps its own sliders, but this command is also reachable
+    // with an arbitrary payload, and the file it writes is hand-editable. Bound
+    // everything before it reaches memory or disk.
+    let mut preferences = preferences;
+    preferences.sanitize();
+
     write_debug_log(
         &state,
         &format!(
@@ -971,6 +1048,76 @@ mod tests {
 
         prefs.min_brightness = 0;
         assert_eq!(prefs.effective_min_brightness(), ABSOLUTE_MIN_BRIGHTNESS);
+    }
+
+    /// Regression: a `minBrightness` above 100 must clamp to 100.
+    ///
+    /// Every brightness path does `value.clamp(effective_min_brightness(), 100)`,
+    /// and `u32::clamp` panics when `min > max`. Before the ceiling was added, a
+    /// hand-edited `"minBrightness": 150` panicked the slider, tray, keybinding
+    /// and night-mode brightness paths.
+    #[test]
+    fn test_effective_min_brightness_clamps_above_100() {
+        let mut prefs = Preferences::default();
+
+        prefs.min_brightness = 150;
+        assert_eq!(prefs.effective_min_brightness(), ABSOLUTE_MAX_MIN_BRIGHTNESS);
+
+        prefs.min_brightness = u32::MAX;
+        assert_eq!(prefs.effective_min_brightness(), ABSOLUTE_MAX_MIN_BRIGHTNESS);
+    }
+
+    /// Regression: the exact panic the ceiling exists to prevent.
+    ///
+    /// This mirrors what `set_monitor_brightness` / `tray::execute_command` do.
+    /// Without the upper clamp this test panics with "min > max".
+    #[test]
+    fn test_brightness_clamp_never_panics_for_any_min_brightness() {
+        for raw_min in [0u32, 5, 10, 100, 101, 150, 10_000, u32::MAX] {
+            let mut prefs = Preferences::default();
+            prefs.min_brightness = raw_min;
+            let min = prefs.effective_min_brightness();
+            assert!(
+                min <= 100,
+                "effective_min_brightness()={} exceeds the 100 max used by callers",
+                min,
+            );
+            // The call that used to panic.
+            let clamped = 50u32.clamp(min, 100);
+            assert!((min..=100).contains(&clamped));
+        }
+    }
+
+    /// `sanitize()` must bound every user-editable numeric, not just brightness.
+    #[test]
+    fn test_sanitize_clamps_out_of_range_values() {
+        let mut prefs = Preferences::default();
+        prefs.min_brightness = 250;
+        prefs.tiling.third_ratio = 90;
+        prefs.tiling.half_ratio = 0;
+        prefs.tiling.gap = 100_000;
+        prefs.tiling.expose_columns = 0;
+        prefs.tiling.expose_rows = 0;
+
+        prefs.sanitize();
+
+        assert_eq!(prefs.min_brightness, 100);
+        // third_ratio must stay under 50 or the center third goes negative.
+        assert!(prefs.tiling.third_ratio <= 45, "third_ratio not clamped");
+        assert!(prefs.tiling.half_ratio >= 10, "half_ratio not clamped");
+        assert!(prefs.tiling.gap <= 200, "gap not clamped");
+        // A zero-dimension grid divides by zero in the Exposé layout.
+        assert!(prefs.tiling.expose_columns >= 1);
+        assert!(prefs.tiling.expose_rows >= 1);
+    }
+
+    /// `sanitize()` must be a no-op on values that are already valid.
+    #[test]
+    fn test_sanitize_leaves_valid_values_untouched() {
+        let mut prefs = Preferences::default();
+        let before = serde_json::to_string(&prefs).unwrap();
+        prefs.sanitize();
+        assert_eq!(serde_json::to_string(&prefs).unwrap(), before);
     }
 
     #[test]
