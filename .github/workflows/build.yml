@@ -31,9 +31,19 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: Windows (x64)
+          # Native arm64 build on GitHub's Windows 11 arm64 runner (free and
+          # unlimited on public repos). Not a cross-compile - the toolchain,
+          # tests and NSIS bundle all run on real arm64 hardware.
+          - platform: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            artifact_name: Windows (ARM64)
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             artifact_name: Linux (x64)
+          # Native arm64 Linux build (Raspberry Pi, Ampere, Asahi, arm64 VMs).
+          - platform: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact_name: Linux (ARM64)
 
     runs-on: ${{ matrix.platform }}
 
@@ -51,7 +61,10 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        # Matches both ubuntu-22.04 and ubuntu-22.04-arm. A bare equality
+        # check against 'ubuntu-22.04' would skip these on the arm64 runner
+        # and the build would fail on a missing webkit2gtk.
+        if: startsWith(matrix.platform, 'ubuntu-')
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -74,8 +87,10 @@ jobs:
         env:
           DISPLAY_DJ_CLI_VERSION: ${{ github.event.inputs.display_dj_cli_version }}
         run: |
-          if [[ "${{ matrix.platform }}" == "windows-latest" ]]; then
-            # Windows Server CI runners cannot LOAD our test binaries:
+          # Keyed on `runner.os`, not the platform label, so this covers
+          # windows-latest and windows-11-arm alike.
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            # Windows CI runners cannot LOAD our test binaries:
             #   * Smoke test (tests/smoke.rs) imports Dxva2.dll (DDC/CI), which
             #     is not available on Windows Server SKUs.
             #   * Lib tests pull in WebView2 imports via tauri's `test` feature
@@ -86,7 +101,7 @@ jobs:
             # Compilation itself works on Windows, so we use --no-run to keep
             # validating that all Windows-targeted code (#[cfg(target_os =
             # "windows")] paths) still compiles. Actual test *execution* runs
-            # on macOS ARM, macOS Intel, and Linux.
+            # on macOS ARM, macOS Intel, and Linux (x64 + arm64).
             cargo test --target ${{ matrix.target }} --no-run
           else
             cargo test --target ${{ matrix.target }}
@@ -248,7 +263,7 @@ jobs:
             echo "lines ≥ 50, functions ≥ 54, regions ≥ 49."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Single rolled-up status check for the whole workflow. The 4-platform
+  # Single rolled-up status check for the whole workflow. The 6-platform
   # `build` matrix and the `coverage` job each produce their own check on
   # the commit, which makes branch protection awkward (you'd have to list
   # every matrix permutation by name) and clutters the PR/commit UI. This
@@ -273,7 +288,7 @@ jobs:
             echo
             echo "| Required job | Result |"
             echo "|--------------|--------|"
-            echo "| build (4-platform matrix) | \`${BUILD_RESULT}\` |"
+            echo "| build (6-platform matrix) | \`${BUILD_RESULT}\` |"
             echo "| coverage | \`${COVERAGE_RESULT}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 

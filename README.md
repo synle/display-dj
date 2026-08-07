@@ -70,9 +70,13 @@ Grab the latest release from the **[Releases](../../releases)** page.
 
 ### Windows
 
-| Architecture | File                             |
-| ------------ | -------------------------------- |
-| x64          | `Display DJ_x.x.x_x64-setup.exe` |
+| Architecture | File                               |
+| ------------ | ---------------------------------- |
+| x64          | `Display DJ_x.x.x_x64-setup.exe`   |
+| ARM64        | `Display DJ_x.x.x_arm64-setup.exe` |
+
+Pick **ARM64** on Windows-on-ARM devices (Snapdragon X, Surface Pro X and similar) for a native
+binary; the x64 installer also works there via emulation, but runs slower.
 
 1. Download the `.exe` installer
 2. Run the installer and follow the prompts
@@ -80,10 +84,15 @@ Grab the latest release from the **[Releases](../../releases)** page.
 
 ### Linux
 
-| Format   | File                              |
-| -------- | --------------------------------- |
-| Debian   | `Display DJ_x.x.x_amd64.deb`      |
-| AppImage | `Display DJ_x.x.x_amd64.AppImage` |
+| Format           | File                                |
+| ---------------- | ----------------------------------- |
+| Debian (x64)     | `Display DJ_x.x.x_amd64.deb`        |
+| Debian (ARM64)   | `Display DJ_x.x.x_arm64.deb`        |
+| AppImage (x64)   | `Display DJ_x.x.x_amd64.AppImage`   |
+| AppImage (ARM64) | `Display DJ_x.x.x_aarch64.AppImage` |
+
+Pick the **ARM64** build on arm64 hardware (Raspberry Pi, Ampere, Asahi Linux, arm64 VMs).
+Note the suffix differs by format: `.deb` uses `arm64`, `.AppImage` uses `aarch64`.
 
 1. Install via your preferred format:
 

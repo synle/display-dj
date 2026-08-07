@@ -392,7 +392,27 @@ sudo usermod -aG i2c $USER
 
 ## CI Workflows
 
-- **`build.yml`** — tests + builds on all platforms for every push/PR. PR comment with artifact download links. Rolled-up `Main Build` check (job `main_build`, `needs: [build, coverage]`, `if: always()`) collapses the 4-platform matrix + coverage into one green/red status — use this name in branch protection.
+All three workflows share the same **6-entry build matrix** — keep them in sync when adding a target:
+
+| Runner             | Rust target                 | Ships                             |
+| ------------------ | --------------------------- | --------------------------------- |
+| `macos-latest`     | `aarch64-apple-darwin`      | `_aarch64.dmg`                    |
+| `macos-latest`     | `x86_64-apple-darwin`       | `_x64.dmg`                        |
+| `windows-latest`   | `x86_64-pc-windows-msvc`    | `_x64-setup.exe`                  |
+| `windows-11-arm`   | `aarch64-pc-windows-msvc`   | `_arm64-setup.exe`                |
+| `ubuntu-22.04`     | `x86_64-unknown-linux-gnu`  | `_amd64.deb`, `_amd64.AppImage`   |
+| `ubuntu-22.04-arm` | `aarch64-unknown-linux-gnu` | `_arm64.deb`, `_aarch64.AppImage` |
+
+The arm64 rows are **native** builds on GitHub-hosted arm64 runners (free and unlimited on public
+repos), not cross-compiles. Two gotchas when editing these workflows:
+
+- Platform conditionals must not compare against a bare label. `if: matrix.platform == 'ubuntu-22.04'`
+  silently skips the arm64 runner — use `startsWith(matrix.platform, 'ubuntu-')`, and key the
+  Windows test branch on `runner.os` so it covers `windows-latest` and `windows-11-arm` alike.
+- The arm64 filename suffix is **not** uniform: `.deb` and NSIS use `arm64`, `.AppImage` uses
+  `aarch64`. The upload globs are extension-based (`*.deb`, `*.AppImage`, `*.exe`) so they match either.
+
+- **`build.yml`** — tests + builds on all platforms for every push/PR. PR comment with artifact download links. Rolled-up `Main Build` check (job `main_build`, `needs: [build, coverage]`, `if: always()`) collapses the 6-platform matrix + coverage into one green/red status — use this name in branch protection. Rust tests run with `--no-run` on both Windows runners (Dxva2/WebView2 can't load in CI); they execute on macOS ARM/Intel and Linux x64/arm64.
 - **`release-official.yml`** — `v*` tag or manual dispatch. Uses `synle/workflows/actions/release/` shared actions (`begin-release` → Tauri matrix build → `end-release`). Generates changelog from commits since last tag + `.github/release-body-static.md`. Sets `TAURI_RELEASE=true` (clean version). Trigger via `/release-official`.
 - **`release-beta.yml`** — manual dispatch only. Same flow with `mode: beta`. Draft prerelease tagged `release-beta-<date>-<sha>`. No `TAURI_RELEASE`, so builds show the `[beta - <sha>]` suffix. Trigger via `/release-beta`.
 
