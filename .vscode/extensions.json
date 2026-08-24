@@ -1,7 +1,3 @@
 {
-  "recommendations": [
-    "rust-lang.rust-analyzer",
-    "tauri-apps.tauri-vscode",
-    "dbaeumer.vscode-eslint"
-  ]
+  "recommendations": ["rust-lang.rust-analyzer", "oxc.vscode", "tauri-apps.tauri-vscode"]
 }

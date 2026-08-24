@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicoverbruggen/tauri-v2-docs/refs/heads/main/schemas/config.schema.json",
   "productName": "Display DJ",
-  "version": "7.0.37",
+  "version": "7.0.38",
   "identifier": "com.synle.display-dj",
   "build": {
     "beforeDevCommand": "npm run dev",
