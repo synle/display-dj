@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'rolldown-vite';
 import react from '@vitejs/plugin-react-swc';
 
 const host = process.env.TAURI_DEV_HOST;
