@@ -8,6 +8,11 @@ interface AccessibilityGateProps {
   onGranted: () => void;
 }
 
+/** Open System Settings → Privacy & Security → Accessibility. */
+function openSystemSettings(): void {
+  invoke('open_accessibility_settings').catch(() => {});
+}
+
 /** macOS-only blocking gate shown when Accessibility permission is missing.
  *
  * Tile Snap, window tiling, exposé, and z-order commands all silently no-op
@@ -22,11 +27,6 @@ interface AccessibilityGateProps {
 export default function AccessibilityGate({ onGranted }: AccessibilityGateProps) {
   const [checking, setChecking] = useState(false);
   const [lastCheckFailed, setLastCheckFailed] = useState(false);
-
-  /** Open System Settings → Privacy & Security → Accessibility. */
-  const handleOpenSettings = () => {
-    invoke('open_accessibility_settings').catch(() => {});
-  };
 
   /** Force a fresh permission check (bypasses TTL cache). On success the
    * parent unmounts the gate; on failure we surface a one-line hint. */
@@ -69,7 +69,7 @@ export default function AccessibilityGate({ onGranted }: AccessibilityGateProps)
         <button
           type='button'
           className='accessibility-gate-button-primary'
-          onClick={handleOpenSettings}>
+          onClick={openSystemSettings}>
           Open Accessibility Settings
         </button>
         <button

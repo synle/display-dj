@@ -123,9 +123,12 @@ function App() {
   }, [mergeMonitors]);
 
   useEffect(() => {
-    fetchAllState();
-    fetchPreferences();
-    fetchKeepAwake();
+    // Startup state fetches. False positive below: each fn is async and every
+    // setState runs after `await invoke`, so nothing renders synchronously
+    // inside this effect's body.
+    // oxlint-disable react/set-state-in-effect
+    void Promise.all([fetchAllState(), fetchPreferences(), fetchKeepAwake()]);
+    // oxlint-enable react/set-state-in-effect
     // Detect macOS once and track the Accessibility-permission state so we
     // can render a blocking gate when it's missing (tiling/Tile-Snap/exposé
     // silently no-op without it — see AGENTS.md "macOS Tray Icon Pitfall").
@@ -188,7 +191,7 @@ function App() {
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [fetchMonitors, fetchDarkMode, fetchVolume, fetchPreferences, fetchKeepAwake]);
+  }, [fetchAllState, fetchMonitors, fetchDarkMode, fetchVolume, fetchPreferences, fetchKeepAwake]);
 
   // Auto-resize window to fit content
   useEffect(() => {

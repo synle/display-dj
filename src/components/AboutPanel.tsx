@@ -17,6 +17,11 @@ function compareSemver(a: string, b: string): number {
   return 0;
 }
 
+/** Left-pads a number to two digits ("7" -> "07"). */
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
 /** Format a GitHub ISO timestamp (e.g. "2026-05-13T22:46:56Z") as
  * "yyyy-mm-dd HH:mm" in the user's local timezone. Returns an empty
  * string for falsy, non-string, or unparseable input so the caller can
@@ -26,7 +31,6 @@ function formatPublishedAt(iso: string | undefined | null): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 

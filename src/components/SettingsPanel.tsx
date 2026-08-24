@@ -73,7 +73,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   if (!prefs) return null;
 
   const schedule = prefs.nightModeSchedule;
-  const configs = [...prefs.monitorConfigs].sort(
+  const configs = [...prefs.monitorConfigs].toSorted(
     (a, b) => a.sortOrder - b.sortOrder || a.uid.localeCompare(b.uid),
   );
 

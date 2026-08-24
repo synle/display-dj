@@ -38,7 +38,7 @@ export default function ProfileButtons({ profiles, onActivate }: ProfileButtonsP
     <div className='profile-buttons'>
       {visible.map((profile, i) => (
         <button
-          key={i}
+          key={profile.name || `unnamed-${i}`}
           className='profile-btn'
           onClick={() => onActivate(i)}
           title={profileName(profile, i)}>

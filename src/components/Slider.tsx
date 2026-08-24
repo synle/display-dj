@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 
 interface SliderProps {
   icon?: string;
@@ -23,11 +23,17 @@ export default function Slider({
   onIconClick,
 }: SliderProps) {
   const [localValue, setLocalValue] = useState(value);
+  const [prevPropValue, setPrevPropValue] = useState(value);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  // Sync external value changes (backend updates, profile applies) into local
+  // state by adjusting during render — the pattern React recommends instead of
+  // a setState-in-effect round trip. Drag edits stay local; only prop changes
+  // reset.
+  if (value !== prevPropValue) {
+    setPrevPropValue(value);
     setLocalValue(value);
-  }, [value]);
+  }
 
   /** Debounces slider input to avoid flooding the backend with brightness/volume calls. */
   const handleChange = useCallback(
