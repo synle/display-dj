@@ -177,9 +177,9 @@ pub fn default_brightness_mode() -> String {
 pub struct MonitorMetadata {
     /// Composite unique key: "{api_id}::{api_name}" (e.g. "1::Dell U2723QE")
     pub uid: String,
-    /// Raw ID from the display-dj sidecar API (e.g. "1", "builtin")
+    /// Raw ID from the platform display API (`core::DisplayInfo`, e.g. "1", "builtin")
     pub api_id: String,
-    /// Model name from the display-dj sidecar API (e.g. "Dell U2723QE")
+    /// Model name from the platform display API (`core::DisplayInfo`, e.g. "Dell U2723QE")
     pub api_name: String,
     /// User-set friendly label. Empty string means use api_name.
     pub label: String,
@@ -418,11 +418,11 @@ impl Default for Preferences {
                 },
                 KeyBinding {
                     key: "Shift+F1".into(),
-                    command: CommandValue::Single("command/changeProfile/1".into()),
+                    command: CommandValue::Single("command/changeVolume/50".into()),
                 },
                 KeyBinding {
                     key: "Shift+F2".into(),
-                    command: CommandValue::Single("command/changeProfile/2".into()),
+                    command: CommandValue::Single("command/changeVolume/50".into()),
                 },
                 KeyBinding {
                     key: "Shift+F3".into(),
@@ -548,7 +548,6 @@ impl Default for Preferences {
                 },
                 Profile {
                     name: "Focus".into(),
-                    // Bound to Shift+F1 (default keybinding)
                     command: CommandValue::Multiple(vec![
                         "command/changeBrightness/75".into(),
                         "command/changeDarkMode/dark".into(),
@@ -556,7 +555,6 @@ impl Default for Preferences {
                 },
                 Profile {
                     name: "Daylight".into(),
-                    // Bound to Shift+F2 (default keybinding)
                     command: CommandValue::Multiple(vec![
                         "command/changeBrightness/100".into(),
                         "command/changeDarkMode/light".into(),

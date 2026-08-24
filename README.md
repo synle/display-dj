@@ -6,11 +6,11 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 
 ## Why I Built This
 
-- **No built-in external display control** -- macOS, Windows, and Linux have no native way to adjust brightness or contrast on external monitors connected via HDMI, USB-C, or DisplayPort. You're stuck reaching for physical buttons on the back of your monitor.
-- **Fragmented experience** -- every OS handles brightness, dark mode, and volume differently with different UIs, scattered across different system panels. There's no single place to control it all.
-- **Unified keyboard shortcuts** -- I wanted one set of global hotkeys that works the same way everywhere, regardless of which app is focused or which OS I'm on.
-- **Too many single-purpose apps** -- instead of installing separate apps for brightness control, volume control, keep awake, window tiling, and exposé, Display DJ bundles all of that into one lightweight tray app.
-- **Small and fast** -- built with Rust and Tauri instead of Electron/Node.js. The entire app is a fraction of the size and memory footprint of an Electron app, while still using a modern React frontend.
+- **No built-in external display control** — no OS offers brightness/contrast for HDMI/USB-C/DisplayPort monitors; you're stuck with the buttons on the back.
+- **Fragmented experience** — every OS scatters brightness, dark mode, and volume across different panels. One place to control it all.
+- **Unified keyboard shortcuts** — one set of global hotkeys that works identically on every OS, regardless of focused app.
+- **Too many single-purpose apps** — brightness, volume, keep awake, tiling, and exposé bundled into one lightweight tray app.
+- **Small and fast** — Rust + Tauri instead of Electron: a fraction of the size and memory footprint, modern React frontend.
 
 ## Screenshots
 
@@ -125,13 +125,12 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 
 ### Default Keyboard Shortcuts
 
-| Keys            | Action                       |
-| --------------- | ---------------------------- |
-| Shift + Escape  | Toggle Dark Mode             |
-| Shift + F1      | Brightness 10% + Dark Mode   |
-| Shift + F2      | Brightness 100% + Light Mode |
-| Shift + F3-F5   | Brightness 0% / 50% / 100%   |
-| Shift + F10-F12 | Volume 0% / 10% / 100%       |
+| Keys                    | Action                     |
+| ----------------------- | -------------------------- |
+| Shift + Escape          | Toggle Dark Mode           |
+| Shift + F1 / F2         | Volume 50%                 |
+| Shift + F3 / F4 / F5    | Brightness 0% / 50% / 100% |
+| Shift + F10 / F11 / F12 | Volume 0% / 10% / 100%     |
 
 **Window Tiling** (macOS + Windows + Linux/X11):
 
@@ -150,20 +149,25 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 | Ctrl + Shift + A      | App Exposé (current app only)    |
 | Ctrl + Down           | App Exposé (current app only)    |
 
+**Window Z-Order** (macOS + Windows + Linux/X11):
+
+| Keys                         | Action                                    |
+| ---------------------------- | ----------------------------------------- |
+| Shift + Ctrl + Super + Left  | Send all windows of focused app to back   |
+| Shift + Ctrl + Super + Right | Bring all windows of focused app to front |
+
+`Super` = Cmd on macOS, Win on Windows, Super on Linux. More z-order commands (`command/window/*`, `command/app/*`) are bindable in `preferences.json` — see AGENTS.md.
+
 ## Window Tiling (macOS + Windows + Linux/X11)
 
 Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or maximize using keyboard shortcuts or the **Tiling** submenu in the tray icon's right-click menu. All 19 layouts, restore, Exposé, and App Exposé work on macOS, Windows, and Linux (X11). Tile Snap (mouse edge snapping) is currently macOS-only.
 
 ### Exposé
 
-Two Exposé modes are available:
+- **Exposé** (Ctrl+Up or Ctrl+Shift+E) -- spreads all on-screen windows into a deterministic alphabetical grid, filling the first display and overflowing to the next. Windows with minimum size constraints (e.g., Steam, Chrome) that don't fit overflow to displays with larger cells.
+- **App Exposé** (Ctrl+Down or Ctrl+Shift+A) -- grids the frontmost app's windows, then fills remaining cells with other apps' windows.
 
-- **Exposé** (Ctrl+Up or Ctrl+Shift+E) -- spreads all on-screen windows into a deterministic alphabetical grid. Fills the first display, then overflows to the next. Windows with minimum size constraints (e.g., Steam, Chrome) that don't fit in the grid automatically overflow to subsequent displays where cells are larger.
-- **App Exposé** (Ctrl+Down or Ctrl+Shift+A) -- grids the frontmost app's windows, then fills remaining grid cells with other apps' windows.
-
-Both modes normalize windows first (unminimize and exit fullscreen), then lay out a grid. Each invocation always re-lays out all windows (no toggle/restore). The grid size is configurable in Settings (Tiling tab) with separate Columns and Rows sliders (1-5 each, default 3x3). The layout strategy can be set to "spread" (distribute windows evenly across all displays) or "fill" (pack each display to capacity before using the next).
-
-The Exposé tray submenu (separate from Tiling) provides an Enable/Disable toggle, Exposé and App Exposé actions, and grid size presets (2x2, 2x3, 3x3, 3x4, 4x4, 5x5).
+Both modes normalize windows first (unminimize, exit fullscreen), then lay out a grid; each invocation re-lays out everything (no toggle/restore). Grid size (1-5 columns/rows, default 3x3) and layout strategy ("spread" evenly across displays vs "fill" each to capacity) are in Settings (Tiling tab). The tray has a separate Exposé submenu: enable/disable, both actions, and grid presets (2x2 through 5x5).
 
 ### Layout Presets
 
@@ -183,28 +187,15 @@ Display DJ can change your desktop wallpaper via commands that work from keyboar
 
 Use the `command/wallpaper/change/{path}` command in your keyboard shortcuts or profiles. The path must be an absolute path to an image file.
 
-**macOS:**
-
 ```json
-"command/wallpaper/change//Users/jane/Pictures/mountain.jpg"
+"command/wallpaper/change//Users/jane/Pictures/mountain.jpg"                                  // macOS
+"command/wallpaper/change/D:\\Pictures\\mountain.jpg"                                         // Windows
+"command/wallpaper/change/\\\\NAS-SERVER\\g\\share\\Wallpapers\\sunset.jpg"                   // Windows UNC
 ```
 
-**Windows:**
+> **Note:** In JSON, backslashes must be doubled (`\\`).
 
-```json
-"command/wallpaper/change/D:\\Pictures\\mountain.jpg"
-"command/wallpaper/change/C:\\Users\\YourName\\Pictures\\wallpaper.png"
-```
-
-Windows network shares (UNC paths) also work:
-
-```json
-"command/wallpaper/change/\\\\NAS-SERVER\\g\\share\\Wallpapers\\sunset.jpg"
-```
-
-> **Note:** In JSON, backslashes must be doubled (`\\`). The path `\\NAS-SERVER\g\share\Wallpapers\sunset.jpg` becomes `\\\\NAS-SERVER\\g\\share\\Wallpapers\\sunset.jpg` in `preferences.json`.
-
-**Fit modes:** Add a fit mode before the path to control how the image fills the screen: `fill` (default), `fit`, `stretch`, `center`, `tile`.
+**Fit modes:** add a fit mode before the path: `fill` (default), `fit`, `stretch`, `center`, `tile`.
 
 ```json
 "command/wallpaper/change/fit/D:\\Pictures\\wide-banner.jpg"
@@ -221,24 +212,11 @@ The monitor name is matched by case-insensitive substring (e.g., `"Dell"` matche
 
 ### Slideshow
 
-Start a slideshow that cycles through all images in a folder:
+Start a slideshow that cycles through all images in a folder (interval in minutes, order `forward`/`backward`/`random`):
 
 ```json
-"command/wallpaper/slideshow/D:\\Pictures\\Wallpapers"
-"command/wallpaper/slideshow/\\\\NAS-SERVER\\g\\share\\Wallpapers"
 "command/wallpaper/slideshow//Users/jane/Pictures/rotation"
-```
-
-With explicit interval (minutes) and order (`forward`, `backward`, `random`):
-
-```json
 "command/wallpaper/slideshow/15/random/D:\\Pictures\\Wallpapers"
-"command/wallpaper/slideshow/30/forward/\\\\NAS-SERVER\\g\\share\\Wallpapers"
-```
-
-Stop the active slideshow:
-
-```json
 "command/wallpaper/slideshow_stop"
 ```
 
