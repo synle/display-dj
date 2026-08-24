@@ -103,7 +103,7 @@ GitHub Actions (`build.yml`) runs `npm test` and `cargo test` on macOS ARM/Intel
 
 ### Coverage thresholds (where they live)
 
-Coverage floors trail the current main-branch measurement by ~10pp (per CLAUDE.md global rule 40). The actual numbers are NOT mirrored in this doc — read them from the source of truth before changing:
+Coverage floors trail the current main-branch measurement by ~10pp. The actual numbers are NOT mirrored in this doc — read them from the source of truth before changing:
 
 - **Frontend (Vitest, v8 provider)** — thresholds in `vite.config.ts` under `test.coverage.thresholds` (`lines`, `statements`, `branches`, `functions`). Run locally via `npm run test:coverage`; CI step `Frontend coverage (Vitest)` fails the build when any axis dips below its floor. Reports land in `coverage/`.
 - **Backend (cargo-llvm-cov)** — thresholds inline on the `Rust coverage (cargo-llvm-cov)` step in `.github/workflows/build.yml` as `--fail-under-lines`, `--fail-under-functions`, `--fail-under-regions` flags. Run locally with `cd src-tauri && cargo llvm-cov --lib --summary-only`. HTML report lands in `src-tauri/target/llvm-cov-target/html/`.
@@ -112,13 +112,13 @@ When raising thresholds: measure current %, set floor ~10pp below, update both f
 
 ## Formatting
 
-After modifying frontend code (`src/`), config, or docs, always run `npx prettier --write` on the changed files. The prettier hook in `.claude/settings.json` automates this for Edit/Write tool calls — run it manually for non-Tool changes.
+After modifying frontend code (`src/`), config, or docs, always run `npm run format` (oxfmt) on the repo — `npm run format:check` verifies. Config lives in `.oxfmtrc.json`; generated files (`src-tauri/gen/`) are ignored.
 
 ## Required Steps for Every Feature Change
 
 1. **Tests**: Frontend → `*.test.tsx`, Rust → `#[cfg(test)]` modules. Mock at the API boundary if hardware/platform/external. Run `npm test` and `cd src-tauri && cargo test` before finishing.
-2. **Formatting**: `npx prettier --write` on changed `src/`, `*.ts`, `*.tsx`, `*.json`, `*.md`, `*.yml`.
-3. **Documentation**: Update `CLAUDE.md`, `README.md`, and `CONTRIBUTING.md` for new commands, preferences, UI components, architecture changes.
+2. **Formatting**: `npm run format` (oxfmt) after changing `src/`, `*.ts`, `*.tsx`, `*.json`, `*.md`.
+3. **Documentation**: Update `AGENTS.md`, `DEV.md`, `README.md`, and `CONTRIBUTING.md` for new commands, preferences, UI components, architecture changes.
 4. **Method comments**: `///` for Rust, `/** */` JSDoc for TS/React. Every public function, Tauri command, React component, non-trivial helper, and test must have one.
 
 ## Windows Console-Flash Pitfall (Critical, Windows-only)

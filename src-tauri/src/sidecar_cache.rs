@@ -9,7 +9,7 @@
 //!
 //! Name retained from v6.x (when the cache wrapped HTTP responses from the
 //! sidecar process). v7+ has no sidecar — this is now a pure in-process
-//! cache. See CLAUDE.md "Architecture".
+//! cache. See AGENTS.md "Architecture".
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};

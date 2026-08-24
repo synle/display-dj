@@ -386,7 +386,7 @@ pub async fn set_brightness(
 ) -> Result<(), String> {
     let t0 = std::time::Instant::now();
     // Snapshot the preference fields we need *before* awaiting anything so we
-    // don't hold the mutex across `.await` (CLAUDE.md tray-icon pitfall).
+    // don't hold the mutex across `.await` (AGENTS.md tray-icon pitfall).
     let (min, mode) = {
         let prefs = state.preferences.lock().map_err(|e| e.to_string())?;
         let mode = resolve_brightness_mode(&prefs.monitor_configs, &monitor_id);

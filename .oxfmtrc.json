@@ -25,6 +25,7 @@
     "display-dj",
     "dist",
     "node_modules",
-    "public/vs"
+    "public/vs",
+    "src-tauri/gen"
   ]
 }

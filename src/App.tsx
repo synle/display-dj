@@ -36,7 +36,7 @@ function App() {
 
   /** Merges refetched monitors with the current state, preserving client-side
    * brightness/contrast values. The client is the source of truth for these —
-   * reading them back from the sidecar can return stale values while DDC
+   * reading them back from the backend can return stale values while DDC
    * settles, which causes the slider to snap back to the pre-change value. */
   const mergeMonitors = useCallback((fetched: Monitor[], prev: Monitor[]): Monitor[] => {
     return fetched.map((m) => {
@@ -104,7 +104,7 @@ function App() {
     }
   }, []);
 
-  /** Fetches monitors, dark mode, and volume in a single parallel sidecar call. */
+  /** Fetches monitors, dark mode, and volume in a single parallel backend call. */
   const fetchAllState = useCallback(async () => {
     try {
       const state = await invoke<{
@@ -128,7 +128,7 @@ function App() {
     fetchKeepAwake();
     // Detect macOS once and track the Accessibility-permission state so we
     // can render a blocking gate when it's missing (tiling/Tile-Snap/exposé
-    // silently no-op without it — see CLAUDE.md "macOS Tray Icon Pitfall").
+    // silently no-op without it — see AGENTS.md "macOS Tray Icon Pitfall").
     invoke<Record<string, string>>('get_about_info')
       .then((info) => setIsMac(info.os === 'macOS'))
       .catch(() => {});

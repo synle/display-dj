@@ -6,9 +6,9 @@ use std::time::Duration;
 
 // Win32 API imports — the `windows` crate provides safe-ish Rust bindings to Win32.
 // Each feature must be explicitly enabled in Cargo.toml.
+use winapi::um::wingdi::SetDeviceGammaRamp;
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
-use winapi::um::wingdi::SetDeviceGammaRamp;
 
 /// Cast a `windows::Win32::Graphics::Gdi::HMONITOR` (raw pointer wrapped in a
 /// tuple struct) to the `winapi::shared::windef::HMONITOR` type expected by
@@ -67,7 +67,9 @@ impl BuiltinControl {
             .args(["-NoProfile", "-NonInteractive", "-Command",
                 "(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue).CurrentBrightness"])
             .output().ok()?; // .ok()? = convert Result->Option, return None on error
-        if !output.status.success() { return None; }
+        if !output.status.success() {
+            return None;
+        }
         // from_utf8_lossy handles invalid UTF-8 gracefully (replaces with ?).
         // .trim() removes whitespace, .parse() converts "75" -> 75u32.
         String::from_utf8_lossy(&output.stdout).trim().parse().ok()
@@ -85,10 +87,15 @@ impl BuiltinControl {
             .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
             .output();
         let ok = out.as_ref().map(|o| o.status.success()).unwrap_or(false);
-        let stderr = out.as_ref().map(|o| String::from_utf8_lossy(&o.stderr).trim().to_string()).unwrap_or_default();
+        let stderr = out
+            .as_ref()
+            .map(|o| String::from_utf8_lossy(&o.stderr).trim().to_string())
+            .unwrap_or_default();
         log::info!(
             "set_brightness[builtin/wmi]: value={} return_ok={} stderr={:?}",
-            value, ok, stderr,
+            value,
+            ok,
+            stderr,
         );
         ok
     }
@@ -98,10 +105,18 @@ impl BuiltinControl {
 /// All operations delegate to WMI — mode parameter is ignored since the built-in
 /// always uses the platform-native backlight API (no DDC, no gamma).
 impl DisplayControl for BuiltinControl {
-    fn get_brightness(&mut self) -> Option<u32> { Self::wmi_get() }
-    fn get_contrast(&mut self) -> Option<u32> { None }  // WMI doesn't expose contrast
-    fn set_brightness(&mut self, value: u16, _mode: &str) -> bool { Self::wmi_set(value) }
-    fn set_contrast(&mut self, _value: u16) -> bool { false }
+    fn get_brightness(&mut self) -> Option<u32> {
+        Self::wmi_get()
+    }
+    fn get_contrast(&mut self) -> Option<u32> {
+        None
+    } // WMI doesn't expose contrast
+    fn set_brightness(&mut self, value: u16, _mode: &str) -> bool {
+        Self::wmi_set(value)
+    }
+    fn set_contrast(&mut self, _value: u16) -> bool {
+        false
+    }
     fn reset_gamma(&self) {} // no gamma used for builtin — nothing to reset
 }
 
@@ -139,19 +154,33 @@ struct ExternalControl {
 impl DisplayControl for ExternalControl {
     fn get_brightness(&mut self) -> Option<u32> {
         // Read VCP brightness register via DDC/CI, convert to 0-100 percentage
-        self.ddc_monitor.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|val| {
-            let max = val.maximum() as f64;
-            let cur = val.value() as f64;
-            if max > 0.0 { (cur / max * 100.0).round() as u32 } else { 50 }
-        })
+        self.ddc_monitor
+            .get_vcp_feature(VCP_BRIGHTNESS)
+            .ok()
+            .map(|val| {
+                let max = val.maximum() as f64;
+                let cur = val.value() as f64;
+                if max > 0.0 {
+                    (cur / max * 100.0).round() as u32
+                } else {
+                    50
+                }
+            })
     }
 
     fn get_contrast(&mut self) -> Option<u32> {
-        self.ddc_monitor.get_vcp_feature(VCP_CONTRAST).ok().map(|val| {
-            let max = val.maximum() as f64;
-            let cur = val.value() as f64;
-            if max > 0.0 { (cur / max * 100.0).round() as u32 } else { 50 }
-        })
+        self.ddc_monitor
+            .get_vcp_feature(VCP_CONTRAST)
+            .ok()
+            .map(|val| {
+                let max = val.maximum() as f64;
+                let cur = val.value() as f64;
+                if max > 0.0 {
+                    (cur / max * 100.0).round() as u32
+                } else {
+                    50
+                }
+            })
     }
 
     fn set_brightness(&mut self, value: u16, mode: &str) -> bool {
@@ -165,7 +194,8 @@ impl DisplayControl for ExternalControl {
         // `try_ddc` — actually attempt the DDC write, even if read suggested no support.
         // In force mode we always try (write may succeed where read failed).
         let try_ddc = use_ddc || mode == "force";
-        let use_gamma = mode == "gamma" || mode == "force" || (mode == "auto" && !self.ddc_supported);
+        let use_gamma =
+            mode == "gamma" || mode == "force" || (mode == "auto" && !self.ddc_supported);
         let mut ddc_attempted = false;
         let mut ddc_ok = true;
         let mut ddc_err: Option<String> = None;
@@ -176,10 +206,10 @@ impl DisplayControl for ExternalControl {
         if try_ddc {
             ddc_attempted = true;
             let ddc_val = if value == 0 { 1 } else { value }; // clamp to 1 to avoid standby
-            // Retry the write — some monitors (Acer XZ322QU V3 family, several
-            // Samsung models) need repeated I2C writes before the hardware
-            // actually processes the command. Same retry/delay constants as
-            // macOS for consistency.
+                                                              // Retry the write — some monitors (Acer XZ322QU V3 family, several
+                                                              // Samsung models) need repeated I2C writes before the hardware
+                                                              // actually processes the command. Same retry/delay constants as
+                                                              // macOS for consistency.
             if !ddc_write_with_retry(&mut self.ddc_monitor, VCP_BRIGHTNESS, ddc_val) {
                 ddc_ok = false;
                 ddc_err = Some("set_vcp_feature failed after retries".to_string());
@@ -198,11 +228,19 @@ impl DisplayControl for ExternalControl {
                 // 100 ms settle delay matches the upstream cli's empirical
                 // baseline for "monitor has processed the write."
                 thread::sleep(Duration::from_millis(100));
-                ddc_verify = self.ddc_monitor.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|val| {
-                    let max = val.maximum() as f64;
-                    let cur = val.value() as f64;
-                    if max > 0.0 { (cur / max * 100.0).round() as u32 } else { 0 }
-                });
+                ddc_verify = self
+                    .ddc_monitor
+                    .get_vcp_feature(VCP_BRIGHTNESS)
+                    .ok()
+                    .map(|val| {
+                        let max = val.maximum() as f64;
+                        let cur = val.value() as f64;
+                        if max > 0.0 {
+                            (cur / max * 100.0).round() as u32
+                        } else {
+                            0
+                        }
+                    });
             }
         }
 
@@ -238,13 +276,21 @@ impl DisplayControl for ExternalControl {
 
     fn set_contrast(&mut self, value: u16) -> bool {
         if !self.ddc_supported {
-            log::info!("set_contrast[external]: skipped (ddc_supported=false) value={}", value);
+            log::info!(
+                "set_contrast[external]: skipped (ddc_supported=false) value={}",
+                value
+            );
             return false;
         }
         let res = self.ddc_monitor.set_vcp_feature(VCP_CONTRAST, value);
         let ok = res.is_ok();
         let err = res.err().map(|e| format!("{}", e));
-        log::info!("set_contrast[external]: value={} return_ok={} err={:?}", value, ok, err);
+        log::info!(
+            "set_contrast[external]: value={} return_ok={} err={:?}",
+            value,
+            ok,
+            err
+        );
         ok
     }
 
@@ -276,7 +322,9 @@ fn set_gamma_for_hmonitor(hmonitor: HMONITOR, brightness: u32) -> bool {
         }
         let hdc = CreateDCW(
             windows::core::PCWSTR(info.szDevice.as_ptr()),
-            None, None, None,
+            None,
+            None,
+            None,
         );
         if hdc.is_invalid() {
             return false;
@@ -285,7 +333,7 @@ fn set_gamma_for_hmonitor(hmonitor: HMONITOR, brightness: u32) -> bool {
         let mut ramp = [0u16; 768];
         for i in 0..256 {
             let val = ((i as f64 / 255.0 * factor) * 65535.0) as u16;
-            ramp[i] = val;       // red
+            ramp[i] = val; // red
             ramp[256 + i] = val; // green
             ramp[512 + i] = val; // blue
         }
@@ -309,14 +357,19 @@ fn enum_hmonitors() -> Vec<HMONITOR> {
         // Win32 callback — called once per monitor. We push each handle into the Vec.
         // LPARAM carries our Vec pointer through the callback (Win32's version of closure context).
         unsafe extern "system" fn enum_proc(
-            hmonitor: HMONITOR, _hdc: HDC, _lprect: *mut RECT, lparam: LPARAM,
+            hmonitor: HMONITOR,
+            _hdc: HDC,
+            _lprect: *mut RECT,
+            lparam: LPARAM,
         ) -> BOOL {
             let monitors = &mut *(lparam.0 as *mut Vec<HMONITOR>);
             monitors.push(hmonitor);
             BOOL(1) // return TRUE to continue enumeration
         }
         let _ = EnumDisplayMonitors(
-            None, None, Some(enum_proc),
+            None,
+            None,
+            Some(enum_proc),
             LPARAM(&mut hmonitors as *mut Vec<HMONITOR> as isize),
         );
     }
@@ -371,14 +424,15 @@ fn get_hmonitor_details(hmonitor: HMONITOR) -> (String, bool) {
         // Call EnumDisplayDevicesW with the adapter device name to get the monitor's PnP ID.
         let mut dd: DISPLAY_DEVICEW = std::mem::zeroed();
         dd.cb = std::mem::size_of::<DISPLAY_DEVICEW>() as u32;
-        if EnumDisplayDevicesW(
-            windows::core::PCWSTR(info.szDevice.as_ptr()),
-            0,
-            &mut dd,
-            0,
-        ).as_bool() {
+        if EnumDisplayDevicesW(windows::core::PCWSTR(info.szDevice.as_ptr()), 0, &mut dd, 0)
+            .as_bool()
+        {
             let full_id = String::from_utf16_lossy(
-                &dd.DeviceID[..dd.DeviceID.iter().position(|&c| c == 0).unwrap_or(dd.DeviceID.len())]
+                &dd.DeviceID[..dd
+                    .DeviceID
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(dd.DeviceID.len())],
             );
             // PnP device ID looks like "MONITOR\DEL40F4\{guid}\NNNN" — extract "DEL40F4"
             let parts: Vec<&str> = full_id.split('\\').collect();
@@ -389,7 +443,11 @@ fn get_hmonitor_details(hmonitor: HMONITOR) -> (String, bool) {
 
         // Fallback: extract display number from device name ("\\.\DISPLAY2" -> "DISPLAY2")
         let device_name = String::from_utf16_lossy(
-            &info.szDevice[..info.szDevice.iter().position(|&c| c == 0).unwrap_or(info.szDevice.len())]
+            &info.szDevice[..info
+                .szDevice
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(info.szDevice.len())],
         );
         let fallback = device_name.trim_start_matches("\\\\.\\").to_string();
         (fallback, is_primary)
@@ -452,16 +510,18 @@ impl Platform for WinPlatform {
         //
         // DEDUP: On laptops, the built-in panel appears in both WMI and DDC
         // enumeration. We track has_builtin to skip the primary HMONITOR from DDC
-        // when WMI already covered it. See "Windows display dedup" in CLAUDE.md.
+        // when WMI already covered it. (display-dj-local patch; see VENDORING.md.)
         let has_builtin = !result.is_empty();
         let hmonitors = enum_hmonitors();
-        let hmonitor_details: Vec<(String, bool)> = hmonitors.iter()
+        let hmonitor_details: Vec<(String, bool)> = hmonitors
+            .iter()
             .map(|&hm| get_hmonitor_details(hm))
             .collect();
 
         let mut ext_id = 1usize;
         for (idx, &hmonitor) in hmonitors.iter().enumerate() {
-            let (device_id, is_primary) = hmonitor_details.get(idx)
+            let (device_id, is_primary) = hmonitor_details
+                .get(idx)
                 .cloned()
                 .unwrap_or((String::new(), false));
 
@@ -501,12 +561,20 @@ impl Platform for WinPlatform {
                 let brightness = mon.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|val| {
                     let max = val.maximum() as f64;
                     let cur = val.value() as f64;
-                    if max > 0.0 { (cur / max * 100.0).round() as u32 } else { 50 }
+                    if max > 0.0 {
+                        (cur / max * 100.0).round() as u32
+                    } else {
+                        50
+                    }
                 });
                 let contrast = mon.get_vcp_feature(VCP_CONTRAST).ok().map(|val| {
                     let max = val.maximum() as f64;
                     let cur = val.value() as f64;
-                    if max > 0.0 { (cur / max * 100.0).round() as u32 } else { 50 }
+                    if max > 0.0 {
+                        (cur / max * 100.0).round() as u32
+                    } else {
+                        50
+                    }
                 });
                 let ddc_supported = brightness.is_some();
 
@@ -531,7 +599,14 @@ impl Platform for WinPlatform {
                     // this specific external display.
                     monitor_rect: get_hmonitor_rect(hmonitor),
                 };
-                result.push((info, Box::new(ExternalControl { ddc_monitor: mon, hmonitor, ddc_supported })));
+                result.push((
+                    info,
+                    Box::new(ExternalControl {
+                        ddc_monitor: mon,
+                        hmonitor,
+                        ddc_supported,
+                    }),
+                ));
                 ext_id += 1;
             }
         }
@@ -581,12 +656,14 @@ impl Platform for WinPlatform {
                         // takes ownership and calls DestroyPhysicalMonitor on drop.
                         let mut mon = unsafe { ddc_winapi::Monitor::new(pm) };
                         let desc = mon.description();
-                        let brightness_raw = mon.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|v| {
-                            serde_json::json!({"current": v.value(), "max": v.maximum()})
-                        });
-                        let contrast_raw = mon.get_vcp_feature(VCP_CONTRAST).ok().map(|v| {
-                            serde_json::json!({"current": v.value(), "max": v.maximum()})
-                        });
+                        let brightness_raw = mon
+                            .get_vcp_feature(VCP_BRIGHTNESS)
+                            .ok()
+                            .map(|v| serde_json::json!({"current": v.value(), "max": v.maximum()}));
+                        let contrast_raw = mon
+                            .get_vcp_feature(VCP_CONTRAST)
+                            .ok()
+                            .map(|v| serde_json::json!({"current": v.value(), "max": v.maximum()}));
                         ddc_list.push(serde_json::json!({
                             "index": ddc_seq,
                             "hmonitor_index": hm_idx,
@@ -633,7 +710,11 @@ fn debug_hmonitor(hmonitor: HMONITOR, idx: usize) -> serde_json::Value {
 
         let is_primary = (info.monitorInfo.dwFlags & 1) != 0;
         let device_name = String::from_utf16_lossy(
-            &info.szDevice[..info.szDevice.iter().position(|&c| c == 0).unwrap_or(info.szDevice.len())]
+            &info.szDevice[..info
+                .szDevice
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(info.szDevice.len())],
         );
         let rc = info.monitorInfo.rcMonitor;
 
@@ -647,20 +728,25 @@ fn debug_hmonitor(hmonitor: HMONITOR, idx: usize) -> serde_json::Value {
         loop {
             let mut dd: DISPLAY_DEVICEW = std::mem::zeroed();
             dd.cb = std::mem::size_of::<DISPLAY_DEVICEW>() as u32;
-            if !EnumDisplayDevicesW(
-                windows::core::PCWSTR::null(),
-                adapter_idx,
-                &mut dd,
-                0,
-            ).as_bool() {
+            if !EnumDisplayDevicesW(windows::core::PCWSTR::null(), adapter_idx, &mut dd, 0)
+                .as_bool()
+            {
                 break;
             }
             let name = String::from_utf16_lossy(
-                &dd.DeviceName[..dd.DeviceName.iter().position(|&c| c == 0).unwrap_or(dd.DeviceName.len())]
+                &dd.DeviceName[..dd
+                    .DeviceName
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(dd.DeviceName.len())],
             );
             if name == device_name {
                 adapter_name = String::from_utf16_lossy(
-                    &dd.DeviceString[..dd.DeviceString.iter().position(|&c| c == 0).unwrap_or(dd.DeviceString.len())]
+                    &dd.DeviceString[..dd
+                        .DeviceString
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(dd.DeviceString.len())],
                 );
                 adapter_dd = dd;
                 break;
@@ -678,12 +764,22 @@ fn debug_hmonitor(hmonitor: HMONITOR, idx: usize) -> serde_json::Value {
             0,
             &mut mon_dd,
             0,
-        ).as_bool() {
+        )
+        .as_bool()
+        {
             monitor_device_string = String::from_utf16_lossy(
-                &mon_dd.DeviceString[..mon_dd.DeviceString.iter().position(|&c| c == 0).unwrap_or(mon_dd.DeviceString.len())]
+                &mon_dd.DeviceString[..mon_dd
+                    .DeviceString
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(mon_dd.DeviceString.len())],
             );
             monitor_device_id = String::from_utf16_lossy(
-                &mon_dd.DeviceID[..mon_dd.DeviceID.iter().position(|&c| c == 0).unwrap_or(mon_dd.DeviceID.len())]
+                &mon_dd.DeviceID[..mon_dd
+                    .DeviceID
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(mon_dd.DeviceID.len())],
             );
         }
 

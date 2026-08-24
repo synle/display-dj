@@ -1,141 +1,57 @@
 # display-dj
 
-Cross-platform desktop app for monitor brightness, contrast, dark mode, volume, and window tiling control. Built with Tauri v2 (Rust backend) and React 19 + TypeScript + Vite 6 (WebView frontend). All platform code (DDC/CI, gamma, WMI, DisplayServices, wallpaper) is vendored in-process under `src-tauri/src/core/`.
+Cross-platform desktop app for monitor brightness, contrast, dark mode, volume, and window tiling control. Built with Tauri v2 (Rust backend) + React 19 + TypeScript + Vite 6 (WebView frontend). All platform code (DDC/CI, gamma, WMI, DisplayServices, wallpaper) is vendored in-process under `src-tauri/src/core/`.
 
 ## Quick Start
 
-Prerequisites: Node.js 20+, [Rust toolchain](https://rustup.rs/) (stable), and platform deps (Linux: see AGENTS for `apt` packages).
-
-Install dependencies:
+Prerequisites: Node.js 20+, [Rust toolchain](https://rustup.rs/) (stable), and platform deps (Linux: see CONTRIBUTING).
 
 ```bash
 npm install
-```
-
-Run the full app in dev mode (Vite + Rust backend):
-
-```bash
-npm run tauri dev
-```
-
-Other useful commands:
-
-```bash
-npm run dev              # Frontend only (Vite at localhost:1420)
-npm test                 # Run frontend tests
-npm run test:coverage    # Frontend tests with coverage gate
-cd src-tauri && cargo test                # Backend tests
+npm run tauri dev       # Full app (Vite + Rust backend)
+npm run dev             # Frontend only (localhost:1420)
+npm test                # Frontend tests
+npm run test:coverage   # Frontend coverage gate
+cd src-tauri && cargo test                            # Backend tests
 cd src-tauri && cargo llvm-cov --lib --summary-only   # Backend coverage
-npm run tauri build      # Production build (.dmg / .exe / .deb / .AppImage)
+npm run tauri build     # Production build (.dmg / .exe / .deb / .AppImage)
 ```
 
 ## Coverage thresholds
 
-CI enforces coverage floors that trail the current main-branch measurement by ~10pp. Read the actual numbers from the source of truth — they are NOT mirrored anywhere else:
+CI enforces floors that trail main-branch measurement by ~10pp. Actual numbers are NOT mirrored here — read from source of truth:
 
-- **Frontend (Vitest, v8 provider)** → `vite.config.ts` → `test.coverage.thresholds` (`lines`, `statements`, `branches`, `functions`). Reports in `coverage/`.
-- **Backend (cargo-llvm-cov)** → `.github/workflows/build.yml`, `Rust coverage` step, `--fail-under-lines` / `--fail-under-functions` / `--fail-under-regions` flags. HTML reports in `src-tauri/target/llvm-cov-target/html/`.
+- **Frontend** → `vite.config.ts` → `test.coverage.thresholds`. Reports in `coverage/`.
+- **Backend** → `.github/workflows/build.yml`, `Rust coverage` step (`--fail-under-lines/-functions/-regions`). HTML in `src-tauri/target/llvm-cov-target/html/`.
 
-Raising thresholds: measure current %, set floor ~10pp below, update both files. Never lower without keeping the ~10pp safety gap (history is tracked in comments above each set of thresholds).
+Raising: measure current %, set floor ~10pp below, update both files. Never lower without keeping the ~10pp gap.
 
 ## Platform pitfalls
 
-### macOS — Chromium-style apps & `AXFocusedApplication` (Brave / Chrome / Edge / Arc)
+### macOS — Chromium apps & `AXFocusedApplication` (Brave / Chrome / Edge / Arc)
 
-**Symptom:** Ctrl+Shift+Arrow (and every other `command/tile/*` keybinding) silently no-ops when a Brave / Chrome / Edge / Arc window is focused. Same shortcut works on every other macOS app and on the Windows / Linux builds.
+**Symptom:** all `command/tile/*` shortcuts silently no-op when a Chromium browser is focused; other apps and OSes fine.
 
-**Root cause:** The old `tiling::macos::get_focused_window` used `AXUIElementCreateSystemWide()` → `AXFocusedApplication` → `AXFocusedWindow`. Chromium-based browsers run their renderers in sandboxed child processes whose AX trees aren't fully wired to the system-wide AX server. The system-wide `AXFocusedApplication` lookup returns **`AXError = -25212`** (`kAXErrorCannotComplete`) even though the browser is clearly focused, and the old code bailed silently — no log line, no UI feedback. Windows uses `GetForegroundWindow()` (OS-level HWND) and Linux uses `_NET_ACTIVE_WINDOW` (window-manager-maintained), neither of which has a per-process AX-subelement layer, which is why this bug is macOS-only.
+**Root cause:** system-wide AX lookup (`AXUIElementCreateSystemWide()` → `AXFocusedApplication` → `AXFocusedWindow`) returns `-25212` (`kAXErrorCannotComplete`) for Chromium — its sandboxed renderers aren't fully wired to the system-wide AX server. Windows (`GetForegroundWindow`) and Linux (`_NET_ACTIVE_WINDOW`) don't traverse AX trees, hence macOS-only.
 
 **Fix (v7.0.24+):**
 
-1. **Fallback path** — when the system-wide AX chain fails, `get_focused_window_via_frontmost_app` asks `NSWorkspace.frontmostApplication` for the PID, builds an `AXUIElementCreateApplication(pid)`, then reads `AXFocusedWindow` from that application-scoped element. Same approach AeroSpace and Rectangle use.
-2. **Tile without a `CGWindowID`** — `_AXUIElementGetWindow` (the private bridge from AX → CGWindowID) returns `wid == 0` for some Chromium AX elements. The window_id is only used as the HashMap key for the restore-state feature; the actual `AXPosition` / `AXSize` writes go straight to the AX element. The new `execute_tile` treats `window_id` as optional — proceeds without restore-state when it's missing instead of bailing.
-3. **Diagnostic logs** — every AX failure now logs both the numeric code and a description via `ax_error_description`. The Chromium-signature error `-25212` is explicitly tagged `cannotComplete (Chromium-style apps trigger this on system-wide AX lookups)` so future regressions are immediately grep-able.
+1. Fallback: on failure, get PID via `NSWorkspace.frontmostApplication`, then read `AXFocusedWindow` from an app-scoped element (`get_focused_window_via_frontmost_app`). Same approach as AeroSpace/Rectangle.
+2. `_AXUIElementGetWindow` can return `wid == 0` for Chromium elements — `execute_tile` treats window_id as optional and proceeds without restore-state.
+3. All AX failures log code + description via `ax_error_description`; `-25212` is tagged "Chromium-style" so regressions are grep-able.
 
-**Where the code lives:** `src-tauri/src/tiling/macos.rs` — `get_focused_window` (primary + fallback), `get_focused_window_via_systemwide`, `get_focused_window_via_frontmost_app`, `ax_error_description`, `execute_tile`. Tests for the AX-error mapping in `src-tauri/src/tiling/macos.rs` `tests` module (`test_ax_error_description_*`).
-
-**Verifying the fix in live logs:** Focus Brave, hit Ctrl+Shift+Right. Look for:
-
-```
-tiling: AXFocusedApplication failed with AXError=-25212 (cannotComplete (Chromium-style apps …))
-tiling: system-wide AX focused-window lookup failed, falling back to NSWorkspace.frontmostApplication …
-tiling: rightThird on display 0 -> (…) wid=Some(…)
-```
-
-If the third line shows `wid=None`, the tile still works — we proceeded without restore-state on purpose.
+Code: `src-tauri/src/tiling/macos.rs`. Verify live: focus Brave, hit Ctrl+Shift+Right, expect a log line like `AXFocusedApplication failed with AXError=-25212 … falling back to NSWorkspace.frontmostApplication`. If you instead see `set AXPosition(…) failed`, the lookup worked but the app refused the move (fullscreen-locked or undecorated window) — different problem.
 
 ## Crash Logging
 
-Every Rust panic and (on macOS) every native crash macOS records for the app is appended to a single file: `{config_dir}/display-dj/crash.log` (same folder as `preferences.json` / `debug.log` — "Open App Folder" in the tray menu reveals it).
+Every Rust panic plus every macOS native crash (`.ips` from `~/Library/Logs/DiagnosticReports/`) lands in `{config_dir}/display-dj/crash.log` (same folder as `preferences.json`; "Open App Folder" reveals it). Panics are captured by an in-process `std::panic::set_hook`; native crashes are summarized into the same file by `crash_log.rs::import_macos_native_crashes` at each launch, so both crash modes appear chronologically without Console.app.
 
-**Why two sources in one file:** Rust panics are caught by an in-process `std::panic::set_hook`, which sees the full stack and context. Native crashes (SIGSEGV, SIGABRT from C-side asserts, etc.) bypass Rust entirely — macOS dumps them to `~/Library/Logs/DiagnosticReports/display-dj-*.ips`. Both kinds matter, so the importer in `crash_log.rs::import_macos_native_crashes` runs at every launch, summarizes any new `.ips` file, and writes it to the same `crash.log`. Reader sees both crash modes in chronological order without having to open Console.app.
+Each record carries timestamp, app version, OS/arch, thread, location, payload, backtrace, the last 80 lines of `debug.log`, and a full preferences snapshot (native crashes add incident id, exception type/signal, top 40 frames). `crash_log.rs::rotate_if_needed` trims at the next `==========` boundary past ~2 MB, newest preserved. Never gated on `debug_logging`.
 
-### Record shape
+Tauri commands: `get_crash_log` (contents as string), `open_crash_log` (opens in default editor, creates empty file if missing). Used by the About panel.
 
-Rust panic block:
+### Post-mortem: v7.0.26 SIGABRT in `GlobalObserverHandler`
 
-```
-========== RUST PANIC ==========
-timestamp:    2026-05-20T19:50:16.123-07:00
-app_version:  7.0.31
-build_date:   ...
-is_dev_build: false
-os:           macos aarch64
-thread:       main
-location:     src/tiling/macos.rs:2761:42
-payload:      index out of bounds: the len is 1 but the index is 2
+Three field crashes: abort inside the NSEvent global-monitor ObjC block. `catch_unwind` around the Rust handler was inert because `[profile.release].panic = "abort"` — panics skipped the catch and hit `abort()`. **Fix (v7.0.29):** `panic = "unwind"` in release + defensive `state.displays.get()` bounds check.
 
-backtrace:
-   0: std::backtrace::Backtrace::force_capture
-   1: ...
-
-recent debug.log tail (last 80 lines):
-[2026-05-20 19:50:14.901] tile_snap: ...
-
-preferences snapshot:
-{ ...full preferences.json verbatim... }
-========== END RUST PANIC ==========
-```
-
-macOS native crash block (parsed from `.ips`):
-
-```
-========== MACOS NATIVE CRASH ==========
-source_file:           display-dj-2026-05-20-195016.ips
-incident_id:           ...
-crashed_app_version:   7.0.26
-os:                    macOS 26.5 (25F71)  cpu: ARM-64
-exception_type:        EXC_CRASH
-signal:                SIGABRT
-termination:           Abort trap: 6
-asi:                   {"libsystem_c.dylib":["abort() called"]}
-faulting_thread:       'main' (idx=0)
-frames (top 40):
-   0: __pthread_kill +8  (imageIndex=4, imageOffset=38376)
-   1: pthread_kill +296  ...
-========== END MACOS NATIVE CRASH ==========
-```
-
-### File rotation
-
-`crash_log.rs::rotate_if_needed` trims at the next `==========` boundary when the file crosses ~2 MB so the newest entries are always preserved. No background thread; rotation happens at the next append. Crash logging is **never gated on `debug_logging`** — diagnostic value is high, volume is low.
-
-### Tauri commands
-
-- `get_crash_log` — returns the file contents as `String` (empty on fresh install). Used by the About panel to render the latest entry.
-- `open_crash_log` — opens `crash.log` in the OS default editor. Creates an empty file first if missing, so the button never fails.
-
-### Post-mortem: v7.0.26 SIGABRT in `GlobalObserverHandler` (2026-05-20)
-
-Three identical SIGABRTs in the field. macOS DiagnosticReports showed the abort in the NSEvent global monitor block (`GlobalObserverHandler` → `DispatchEventToHandlers` → display-dj code → `abort`). Root cause:
-
-1. `tiling/macos.rs::start_tile_snap` registers an NSEvent global monitor whose ObjC block calls into Rust.
-2. The Rust handler is wrapped in `std::panic::catch_unwind` (per AGENTS "Tile Snap Event Monitoring") because panics can't unwind through an ObjC block.
-3. **`[profile.release].panic = "abort"`** in `Cargo.toml` made `catch_unwind` inert — any panic skipped the catch and went straight to `abort()`.
-4. Some edge case (likely a transient out-of-bounds index on `state.displays` when a monitor was disconnected mid-drag) panicked the handler, hit `abort`, and the whole app died.
-
-**Fix (v7.0.29):** `panic = "unwind"` in release + defensive `state.displays.get(display_idx)` in `handle_snap_event`.
-
-**Rule going forward:** Any code path that wraps a Rust closure in a foreign-language callback (ObjC block, C function pointer, Win32 callback, X11 handler) **must rely on `panic = "unwind"`** — otherwise the `catch_unwind` is a documentation comment, not a safety net.
-
-**Why crash logging is now mandatory:** the only reason we caught this was because the user happened to share their macOS DiagnosticReports `.ips` file. Future panics write directly to `crash.log` with full context (backtrace, debug.log tail, preferences snapshot) so triage doesn't depend on the user knowing where the OS hid the crash.
+**Rule:** any Rust closure wrapped in a foreign callback (ObjC block, C fn pointer, Win32 callback) requires `panic = "unwind"` or `catch_unwind` is documentation, not a safety net.

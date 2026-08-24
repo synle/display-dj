@@ -9,10 +9,9 @@ Download the latest release artifact from GitHub, install it, and launch the app
 
 ## Instructions
 
-1. **Kill running instances** of Display DJ and its sidecar (fire-and-forget, ignore errors):
+1. **Kill running instances** (fire-and-forget, ignore errors):
    ```bash
    pkill -f "Display DJ" 2>/dev/null || true
-   pkill -f "display-dj-server" 2>/dev/null || true
    ```
 2. Determine the current platform and architecture by running `uname -s` and `uname -m`.
 3. Get the latest release tag: `gh release list --limit 1 --json tagName --jq '.[0].tagName'`

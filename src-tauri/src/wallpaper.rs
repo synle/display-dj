@@ -56,7 +56,11 @@ pub(crate) fn validate_image(path: &Path) -> Result<(), String> {
         .unwrap_or_default();
 
     if !VALID_EXTENSIONS.contains(&ext.as_str()) {
-        return Err(format!("invalid extension '{}' for: {}", ext, path.display()));
+        return Err(format!(
+            "invalid extension '{}' for: {}",
+            ext,
+            path.display()
+        ));
     }
 
     match std::fs::metadata(path) {
@@ -70,7 +74,11 @@ pub(crate) fn validate_image(path: &Path) -> Result<(), String> {
             }
         }
         Err(e) => {
-            return Err(format!("cannot read file metadata: {} — {}", path.display(), e));
+            return Err(format!(
+                "cannot read file metadata: {} — {}",
+                path.display(),
+                e
+            ));
         }
     }
 
@@ -93,8 +101,8 @@ pub(crate) fn destination_filename(source_path: &str) -> String {
 
 /// Computes the MD5 hash of a file's content. Returns the hex string.
 fn file_content_hash(path: &Path) -> Result<String, String> {
-    let bytes = std::fs::read(path)
-        .map_err(|e| format!("cannot read file {}: {}", path.display(), e))?;
+    let bytes =
+        std::fs::read(path).map_err(|e| format!("cannot read file {}: {}", path.display(), e))?;
     Ok(format!("{:x}", md5::compute(&bytes)))
 }
 
@@ -127,12 +135,18 @@ pub(crate) fn copy_to_wallpapers(
     let dest_name = destination_filename(source_path);
     let dest = wallpapers_dir().join(&dest_name);
 
-    crate::config::write_debug_log(state, &format!("wallpaper: validating source image: {}", source_path));
+    crate::config::write_debug_log(
+        state,
+        &format!("wallpaper: validating source image: {}", source_path),
+    );
 
     match validate_image(source) {
         Ok(()) => {
             // Source is valid — copy or update cache
-            crate::config::write_debug_log(state, &format!("wallpaper: destination path: {}", dest.display()));
+            crate::config::write_debug_log(
+                state,
+                &format!("wallpaper: destination path: {}", dest.display()),
+            );
 
             // Check cache size limit before writing new files
             let cache_size = dir_size(&wallpapers_dir());
@@ -143,7 +157,10 @@ pub(crate) fn copy_to_wallpapers(
                 let dest_hash = file_content_hash(&dest)?;
 
                 if source_hash == dest_hash {
-                    crate::config::write_debug_log(state, "wallpaper: content unchanged (same MD5), skipping copy");
+                    crate::config::write_debug_log(
+                        state,
+                        "wallpaper: content unchanged (same MD5), skipping copy",
+                    );
                 } else if over_limit {
                     // Cache full — skip overwrite, pass original path directly
                     crate::config::write_debug_log(
@@ -153,7 +170,10 @@ pub(crate) fn copy_to_wallpapers(
                     );
                     return Ok(source.to_path_buf());
                 } else {
-                    crate::config::write_debug_log(state, "wallpaper: content changed, overwriting cached copy");
+                    crate::config::write_debug_log(
+                        state,
+                        "wallpaper: content changed, overwriting cached copy",
+                    );
                     std::fs::copy(source, &dest)
                         .map_err(|e| format!("wallpaper: failed to copy: {}", e))?;
                 }
@@ -166,7 +186,10 @@ pub(crate) fn copy_to_wallpapers(
                 );
                 return Ok(source.to_path_buf());
             } else {
-                crate::config::write_debug_log(state, "wallpaper: first time — copying to wallpapers dir");
+                crate::config::write_debug_log(
+                    state,
+                    "wallpaper: first time — copying to wallpapers dir",
+                );
                 std::fs::copy(source, &dest)
                     .map_err(|e| format!("wallpaper: failed to copy: {}", e))?;
             }
@@ -176,10 +199,17 @@ pub(crate) fn copy_to_wallpapers(
             if dest.exists() {
                 crate::config::write_debug_log(
                     state,
-                    &format!("wallpaper: source unavailable ({}) — falling back to cached copy: {}", e, dest.display()),
+                    &format!(
+                        "wallpaper: source unavailable ({}) — falling back to cached copy: {}",
+                        e,
+                        dest.display()
+                    ),
                 );
             } else {
-                let msg = format!("wallpaper: validation failed — {} (no cached copy available)", e);
+                let msg = format!(
+                    "wallpaper: validation failed — {} (no cached copy available)",
+                    e
+                );
                 crate::config::write_debug_log(state, &msg);
                 return Err(msg);
             }
@@ -193,7 +223,10 @@ pub(crate) fn copy_to_wallpapers(
 /// Called from the "Clear Wallpaper Cache" tray menu item.
 pub(crate) fn clear_wallpaper_cache(state: &crate::AppState) {
     let dir = wallpapers_dir();
-    crate::config::write_debug_log(state, &format!("wallpaper: clearing cache at {}", dir.display()));
+    crate::config::write_debug_log(
+        state,
+        &format!("wallpaper: clearing cache at {}", dir.display()),
+    );
 
     let mut removed = 0u32;
     if let Ok(entries) = std::fs::read_dir(&dir) {
@@ -209,8 +242,15 @@ pub(crate) fn clear_wallpaper_cache(state: &crate::AppState) {
         }
     }
 
-    crate::config::write_debug_log(state, &format!("wallpaper: cleared {} cached items", removed));
-    log::info!("wallpaper: cleared {} cached items from {}", removed, dir.display());
+    crate::config::write_debug_log(
+        state,
+        &format!("wallpaper: cleared {} cached items", removed),
+    );
+    log::info!(
+        "wallpaper: cleared {} cached items from {}",
+        removed,
+        dir.display()
+    );
 }
 
 /// Sets the desktop wallpaper on a single monitor via the in-process platform layer.
@@ -246,7 +286,10 @@ pub(crate) fn change_wallpaper(
 
     crate::config::write_debug_log(
         state,
-        &format!("wallpaper: change_wallpaper called — source={}, fit={}", source_path, fit),
+        &format!(
+            "wallpaper: change_wallpaper called — source={}, fit={}",
+            source_path, fit
+        ),
     );
 
     // Copy to our wallpapers directory
@@ -261,7 +304,10 @@ pub(crate) fn change_wallpaper(
     let dest_str = dest.to_string_lossy().to_string();
     crate::config::write_debug_log(
         state,
-        &format!("wallpaper: setting desktop wallpaper (fit={}) to: {}", fit, dest_str),
+        &format!(
+            "wallpaper: setting desktop wallpaper (fit={}) to: {}",
+            fit, dest_str
+        ),
     );
 
     // Set the wallpaper using platform-specific API
@@ -322,7 +368,10 @@ pub(crate) fn change_wallpaper_single(
     let (monitor_index, monitor) = match crate::display::resolve_monitor(&monitors, monitor_query) {
         Some(result) => result,
         None => {
-            let available: Vec<String> = monitors.iter().map(|m| format!("{} ({})", m.name, m.id)).collect();
+            let available: Vec<String> = monitors
+                .iter()
+                .map(|m| format!("{} ({})", m.name, m.id))
+                .collect();
             let msg = format!(
                 "wallpaper: no monitor matched '{}' — available: {}",
                 monitor_query,
@@ -336,7 +385,10 @@ pub(crate) fn change_wallpaper_single(
 
     crate::config::write_debug_log(
         state,
-        &format!("wallpaper: matched monitor: {} ({}) at index {}", monitor.name, monitor.uid, monitor_index),
+        &format!(
+            "wallpaper: matched monitor: {} ({}) at index {}",
+            monitor.name, monitor.uid, monitor_index
+        ),
     );
 
     // Copy to wallpapers directory
@@ -357,27 +409,34 @@ pub(crate) fn change_wallpaper_single(
         ),
     );
 
-    // Set wallpaper on the specific monitor via sidecar
+    // Set wallpaper on the specific monitor in-process
     match set_wallpaper_single_on_os(monitor_index, &dest_str, &fit) {
         Ok(()) => {
             crate::config::write_debug_log(
                 state,
-                &format!("wallpaper: successfully set wallpaper on monitor {}", monitor.name),
+                &format!(
+                    "wallpaper: successfully set wallpaper on monitor {}",
+                    monitor.name
+                ),
             );
 
             // Update per-monitor state in preferences
             if let Ok(mut prefs) = state.preferences.lock() {
-                let entry = prefs.wallpaper.per_monitor_wallpapers.iter_mut()
+                let entry = prefs
+                    .wallpaper
+                    .per_monitor_wallpapers
+                    .iter_mut()
                     .find(|e| e.monitor_uid == monitor.uid);
                 if let Some(entry) = entry {
                     entry.wallpaper_path = dest_str;
                 } else {
-                    prefs.wallpaper.per_monitor_wallpapers.push(
-                        crate::config::MonitorWallpaper {
+                    prefs
+                        .wallpaper
+                        .per_monitor_wallpapers
+                        .push(crate::config::MonitorWallpaper {
                             monitor_uid: monitor.uid.clone(),
                             wallpaper_path: dest_str,
-                        }
-                    );
+                        });
                 }
                 crate::config::save_preferences_to_disk(&prefs);
             }
@@ -413,8 +472,8 @@ pub(crate) fn parse_slideshow_args(remainder: &str) -> (Option<u32>, Option<&str
     (None, None, remainder)
 }
 
-/// Starts a wallpaper slideshow via the display-dj-cli sidecar.
-/// Calls `GET /wallpaper_slideshow_start/{interval}/{order}/{fit}/{folder}`.
+/// Starts a wallpaper slideshow in-process via `core::wallpaper`.
+/// Replaces the old HTTP `GET /wallpaper_slideshow_start/{interval}/{order}/{fit}/{folder}` sidecar call.
 pub(crate) fn start_slideshow(
     state: &crate::AppState,
     folder: &str,
@@ -424,11 +483,13 @@ pub(crate) fn start_slideshow(
     let (fit, default_interval, default_order) = state
         .preferences
         .lock()
-        .map(|p| (
-            p.wallpaper.fit.clone(),
-            p.wallpaper.slideshow_interval_minutes,
-            p.wallpaper.slideshow_order.clone(),
-        ))
+        .map(|p| {
+            (
+                p.wallpaper.fit.clone(),
+                p.wallpaper.slideshow_interval_minutes,
+                p.wallpaper.slideshow_order.clone(),
+            )
+        })
         .unwrap_or_else(|_| ("fill".into(), 30, "forward".into()));
 
     let interval = interval.unwrap_or(default_interval).max(5);
@@ -444,12 +505,7 @@ pub(crate) fn start_slideshow(
 
     // Start the slideshow via the in-process platform layer.
     // Returns a JSON status string; if it contains an "error" field we treat the call as failed.
-    let resp = crate::core::wallpaper::slideshow_start(
-        interval as u64,
-        order,
-        &fit,
-        folder,
-    );
+    let resp = crate::core::wallpaper::slideshow_start(interval as u64, order, &fit, folder);
     if resp.contains("\"error\"") {
         let msg = format!("wallpaper: slideshow start failed: {}", resp);
         crate::config::write_debug_log(state, &msg);
@@ -479,7 +535,7 @@ pub(crate) fn stop_slideshow(state: &crate::AppState) {
 }
 
 /// Resumes a slideshow from saved preferences on app startup.
-/// Called after the sidecar is ready.
+/// Called during app setup.
 pub(crate) fn resume_slideshow_if_enabled(state: &crate::AppState) {
     let (enabled, folder, interval, order, fit) = match state.preferences.lock() {
         Ok(p) => (
@@ -503,15 +559,14 @@ pub(crate) fn resume_slideshow_if_enabled(state: &crate::AppState) {
 
     crate::config::write_debug_log(
         state,
-        &format!("wallpaper: resuming slideshow from preferences — folder={}", folder),
+        &format!(
+            "wallpaper: resuming slideshow from preferences — folder={}",
+            folder
+        ),
     );
 
-    let resp = crate::core::wallpaper::slideshow_start(
-        interval.max(5) as u64,
-        &order,
-        &fit,
-        &folder,
-    );
+    let resp =
+        crate::core::wallpaper::slideshow_start(interval.max(5) as u64, &order, &fit, &folder);
     if resp.contains("\"error\"") {
         log::warn!("wallpaper: failed to resume slideshow on startup: {}", resp);
     } else {
@@ -524,10 +579,7 @@ const MAX_REMOTE_PACK_SIZE: u64 = 500 * 1024 * 1024;
 
 /// Downloads a .zip file from a URL, extracts valid images to a subfolder
 /// in the wallpapers directory, then starts a slideshow on the extracted folder.
-pub(crate) fn download_and_start_remote_slideshow(
-    state: &crate::AppState,
-    url: &str,
-) {
+pub(crate) fn download_and_start_remote_slideshow(state: &crate::AppState, url: &str) {
     crate::config::write_debug_log(state, &format!("wallpaper: remote slideshow — url={}", url));
 
     // Validate URL ends in .zip
@@ -546,14 +598,20 @@ pub(crate) fn download_and_start_remote_slideshow(
     if dest_dir.exists() && has_valid_images(&dest_dir) {
         crate::config::write_debug_log(
             state,
-            &format!("wallpaper: remote pack cached, skipping download: {}", dest_dir.display()),
+            &format!(
+                "wallpaper: remote pack cached, skipping download: {}",
+                dest_dir.display()
+            ),
         );
         start_slideshow(state, &dest_dir.to_string_lossy(), None, None);
         return;
     }
 
     // Download
-    crate::config::write_debug_log(state, &format!("wallpaper: downloading remote pack from: {}", url));
+    crate::config::write_debug_log(
+        state,
+        &format!("wallpaper: downloading remote pack from: {}", url),
+    );
     let resp = match reqwest::blocking::get(url) {
         Ok(r) => r,
         Err(e) => {
@@ -565,7 +623,11 @@ pub(crate) fn download_and_start_remote_slideshow(
     };
 
     if !resp.status().is_success() {
-        let msg = format!("wallpaper: download returned HTTP {}: {}", resp.status(), url);
+        let msg = format!(
+            "wallpaper: download returned HTTP {}: {}",
+            resp.status(),
+            url
+        );
         crate::config::write_debug_log(state, &msg);
         log::warn!("{}", msg);
         return;
@@ -596,7 +658,11 @@ pub(crate) fn download_and_start_remote_slideshow(
 
     crate::config::write_debug_log(
         state,
-        &format!("wallpaper: download complete ({} bytes), extracting to: {}", bytes.len(), dest_dir.display()),
+        &format!(
+            "wallpaper: download complete ({} bytes), extracting to: {}",
+            bytes.len(),
+            dest_dir.display()
+        ),
     );
 
     // Extract valid images from zip
@@ -661,7 +727,10 @@ pub(crate) fn download_and_start_remote_slideshow(
 
     crate::config::write_debug_log(
         state,
-        &format!("wallpaper: extracted {} images from remote pack", extracted_count),
+        &format!(
+            "wallpaper: extracted {} images from remote pack",
+            extracted_count
+        ),
     );
 
     if extracted_count == 0 {
@@ -675,7 +744,10 @@ pub(crate) fn download_and_start_remote_slideshow(
     // Start slideshow on the extracted folder
     crate::config::write_debug_log(
         state,
-        &format!("wallpaper: starting slideshow on remote pack: {}", dest_dir.display()),
+        &format!(
+            "wallpaper: starting slideshow on remote pack: {}",
+            dest_dir.display()
+        ),
     );
     start_slideshow(state, &dest_dir.to_string_lossy(), None, None);
 }
@@ -684,7 +756,8 @@ pub(crate) fn download_and_start_remote_slideshow(
 fn has_valid_images(dir: &std::path::Path) -> bool {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
-            let ext = entry.path()
+            let ext = entry
+                .path()
                 .extension()
                 .and_then(|e| e.to_str())
                 .map(|e| e.to_lowercase())
@@ -871,10 +944,18 @@ mod tests {
     /// Verifies URL validation rejects non-.zip URLs.
     #[test]
     fn test_remote_url_must_be_zip() {
-        assert!("https://example.com/pack.zip".to_lowercase().ends_with(".zip"));
-        assert!("https://example.com/pack.ZIP".to_lowercase().ends_with(".zip"));
-        assert!(!"https://example.com/pack.tar.gz".to_lowercase().ends_with(".zip"));
-        assert!(!"https://example.com/pack.rar".to_lowercase().ends_with(".zip"));
+        assert!("https://example.com/pack.zip"
+            .to_lowercase()
+            .ends_with(".zip"));
+        assert!("https://example.com/pack.ZIP"
+            .to_lowercase()
+            .ends_with(".zip"));
+        assert!(!"https://example.com/pack.tar.gz"
+            .to_lowercase()
+            .ends_with(".zip"));
+        assert!(!"https://example.com/pack.rar"
+            .to_lowercase()
+            .ends_with(".zip"));
     }
 
     /// Verifies MD5 URL hashing produces a deterministic folder name.
@@ -938,7 +1019,12 @@ mod tests {
             let state = crate::AppState::default();
             let dest = copy_to_wallpapers(src.to_str().unwrap(), &state).unwrap();
             assert!(dest.exists());
-            assert!(dest.file_name().unwrap().to_str().unwrap().starts_with("wallpaper-"));
+            assert!(dest
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("wallpaper-"));
             std::fs::remove_file(&src).ok();
         });
     }
@@ -1019,7 +1105,8 @@ mod tests {
             std::fs::write(dir.join("wallpaper-b.png"), vec![0u8; 100]).unwrap();
             let state = crate::AppState::default();
             clear_wallpaper_cache(&state);
-            let remaining: Vec<_> = std::fs::read_dir(&dir).unwrap()
+            let remaining: Vec<_> = std::fs::read_dir(&dir)
+                .unwrap()
                 .filter_map(|e| e.ok())
                 .collect();
             assert!(remaining.is_empty(), "should clear all files");
@@ -1051,7 +1138,12 @@ mod tests {
         with_tempdir_config(|| {
             let empty = tempfile::tempdir().unwrap();
             let state = crate::AppState::default();
-            start_slideshow(&state, empty.path().to_str().unwrap(), Some(5), Some("forward"));
+            start_slideshow(
+                &state,
+                empty.path().to_str().unwrap(),
+                Some(5),
+                Some("forward"),
+            );
             // Should not panic; preferences should NOT be set to enabled since slideshow failed.
             let prefs = state.preferences.lock().unwrap();
             assert!(!prefs.wallpaper.slideshow_enabled);
