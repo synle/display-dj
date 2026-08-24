@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import react from '@vitejs/plugin-react-swc';
 
 const host = process.env.TAURI_DEV_HOST;
 
@@ -28,14 +28,14 @@ export default defineConfig(async () => ({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'json', 'html'],
-      // Explicit source globs (CLAUDE.md rule 41 — never `**/*` or `.`).
+      // Explicit source globs (never `**/*` or `.`).
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
         'src/**/*.{test,spec}.{ts,tsx}',
         'src/test/**',
         'src/main.tsx',
         'src/**/*.d.ts',
-        // Defensive exclusions (rule 41) — keep credentials, keys, and
+        // Defensive exclusions — keep credentials, keys, and
         // binary assets out of coverage even if they ever appear under src/.
         '.env*',
         '**/secret*',
