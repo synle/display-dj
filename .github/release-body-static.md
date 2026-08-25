@@ -3,7 +3,12 @@
 - **macOS** Apple Silicon (ARM64) - `.dmg`
 - **macOS** Intel (x64) - `.dmg`
 - **Windows** x64 / ARM64 - `.exe`
-- **Linux** x64 / ARM64 - `.deb` / `.AppImage`
+- **Linux** x64 / ARM64 - `.deb` / `.AppImage` **(BETA)**
+
+> ⚠️ **Linux support is in beta.** Builds are produced and smoke-tested on X11
+> desktops, but Linux is not yet battle-tested — features may break, be
+> incomplete, or behave differently across desktop environments and Wayland.
+> Use at your own discretion; issue reports welcome.
 
 ### Requirements
 

@@ -2,7 +2,7 @@
 
 # Display DJ
 
-A cross-platform desktop system tray app for controlling monitor brightness, contrast, dark mode, volume, keep-awake, window tiling, exposé, and layout presets -- all from one place. Works with both built-in laptop displays and external monitors via DDC/CI. Supports **macOS**, **Windows**, and **Linux**.
+A cross-platform desktop system tray app for controlling monitor brightness, contrast, dark mode, volume, keep-awake, window tiling, exposé, and layout presets -- all from one place. Works with both built-in laptop displays and external monitors via DDC/CI. Supports **macOS**, **Windows**, and **Linux** (Linux is **BETA** — see the [Linux section](#linux)).
 
 ## Why I Built This
 
@@ -83,6 +83,13 @@ binary; the x64 installer also works there via emulation, but runs slower.
 3. Launch **Display DJ** -- it will appear in your **system tray** (bottom-right; click `^` if hidden)
 
 ### Linux
+
+> [!WARNING]
+> **Linux support is in BETA.** Builds ship and the app runs on X11 desktops
+> (verified on Ubuntu 24.04 / Mint 22 with XFCE), but Linux is not yet
+> battle-tested: features may break, be incomplete, or behave differently
+> across desktop environments — and Wayland is largely unsupported (X11 only).
+> Use at your own discretion and [report issues](https://github.com/synle/display-dj/issues).
 
 | Format           | File                                |
 | ---------------- | ----------------------------------- |
