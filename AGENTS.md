@@ -385,10 +385,19 @@ The vendored `core::*` modules call OS APIs directly. Cargo deps:
 
 ### Linux (additional system packages)
 
+Runtime display control:
+
 ```bash
 sudo apt install ddcutil brightnessctl i2c-tools
 sudo modprobe i2c-dev
 sudo usermod -aG i2c $USER
+```
+
+Dev build dependencies (GTK3 / WebKit2GTK 4.1 / libsoup 3 / OpenSSL headers, `libayatana-appindicator3-dev` for the tray on Ubuntu 24.04+/Mint 22+):
+
+```bash
+sudo apt install -y pkg-config libssl-dev libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev \
+  libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev
 ```
 
 ## CI Workflows

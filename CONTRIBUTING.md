@@ -130,16 +130,24 @@ All platforms: Git, Node.js 20+, Rust stable.
 
 - **macOS**: `xcode-select --install`; Node/Rust via Homebrew or rustup.
 - **Windows**: Node LTS (+ C++ build tools), Rustup, WebView2 (preinstalled on Win11).
-- **Linux (Ubuntu/Debian)**:
+- **Linux (Ubuntu/Debian)** -- Tauri v2 GUI build dependencies:
+
   ```bash
-  sudo apt install -y git build-essential libwebkit2gtk-4.1-dev libappindicator3-dev \
-    librsvg2-dev patchelf libxdo-dev libssl-dev
+  sudo apt install -y git build-essential pkg-config \
+    libssl-dev libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev \
+    libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev
   # display control
   sudo apt install -y ddcutil i2c-tools brightnessctl
   sudo modprobe i2c-dev
   echo "i2c-dev" | sudo tee /etc/modules-load.d/i2c-dev.conf
   sudo usermod -aG i2c $USER   # log out and back in
   ```
+
+  Notes:
+  - `libssl-dev` is required by the `openssl-sys` crate (reqwest); missing it fails `cargo check` with an openssl-sys build error.
+  - On Ubuntu 24.04 / Mint 22+ use `libayatana-appindicator3-dev` (the older `libappindicator3-dev` package no longer exists). Tray icon support needs it.
+  - `libwebkit2gtk-4.1-dev` pulls in WebView for Tauri; on Ubuntu 22.04 also install `libjavascriptcoregtk-4.1-dev` if `pkg-config` can't find it.
+  - DDC/CI brightness/contrast on external monitors requires `i2c-dev` access: run `ddcutil detect` as your user to verify (see Troubleshooting).
 
 Verify: `node --version`, `rustc --version`, and on Linux `ddcutil detect`.
 
