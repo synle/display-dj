@@ -136,18 +136,23 @@ All platforms: Git, Node.js 20+, Rust stable.
   sudo apt install -y git build-essential pkg-config \
     libssl-dev libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev \
     libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev
-  # display control
+  # brightness / display control
   sudo apt install -y ddcutil i2c-tools brightnessctl
   sudo modprobe i2c-dev
   echo "i2c-dev" | sudo tee /etc/modules-load.d/i2c-dev.conf
-  sudo usermod -aG i2c $USER   # log out and back in
+  sudo usermod -aG i2c,video $USER   # log out and back in
   ```
 
   Notes:
   - `libssl-dev` is required by the `openssl-sys` crate (reqwest); missing it fails `cargo check` with an openssl-sys build error.
   - On Ubuntu 24.04 / Mint 22+ use `libayatana-appindicator3-dev` (the older `libappindicator3-dev` package no longer exists). Tray icon support needs it.
   - `libwebkit2gtk-4.1-dev` pulls in WebView for Tauri; on Ubuntu 22.04 also install `libjavascriptcoregtk-4.1-dev` if `pkg-config` can't find it.
-  - DDC/CI brightness/contrast on external monitors requires `i2c-dev` access: run `ddcutil detect` as your user to verify (see Troubleshooting).
+
+  Brightness adjustment on Linux uses two paths (`src-tauri/src/core/linux.rs`), each needing its own setup:
+
+  - **Built-in laptop panel** — direct write to `/sys/class/backlight/<device>/brightness`, falling back to the `brightnessctl` CLI when the direct write is permission-denied. Requires: `brightnessctl` installed and your user in the `video` group (the `usermod` above). Verify: `cat /sys/class/backlight/*/max_brightness` works as your user and `brightnessctl get` returns a number.
+  - **External monitor (DDC/CI)** — shells out to the `ddcutil` CLI over the `i2c-dev` kernel interface. Requires: `ddcutil`, `i2c-tools`, the `i2c-dev` module loaded at boot, and your user in the `i2c` group (the `modprobe`/`tee`/`usermod` lines above). Verify: `ddcutil detect` lists your monitor as your user; contrast also goes through this path.
+  - **Software (gamma) dimming** — uses `xrandr` on X11 (already present on X11 desktops); no extra setup.
 
 Verify: `node --version`, `rustc --version`, and on Linux `ddcutil detect`.
 
