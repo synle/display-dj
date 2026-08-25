@@ -418,11 +418,19 @@ impl Default for Preferences {
                 },
                 KeyBinding {
                     key: "Shift+F1".into(),
-                    command: CommandValue::Single("command/changeVolume/50".into()),
+                    command: CommandValue::Multiple(vec![
+                        "command/changeVolume/50".into(),
+                        "command/changeBrightness/50".into(),
+                        "command/changeDarkMode/light".into(),
+                    ]),
                 },
                 KeyBinding {
                     key: "Shift+F2".into(),
-                    command: CommandValue::Single("command/changeVolume/50".into()),
+                    command: CommandValue::Multiple(vec![
+                        "command/changeVolume/100".into(),
+                        "command/changeBrightness/100".into(),
+                        "command/changeDarkMode/light".into(),
+                    ]),
                 },
                 KeyBinding {
                     key: "Shift+F3".into(),
@@ -1138,6 +1146,37 @@ mod tests {
         assert_eq!(keys[1], "Shift+F1");
         assert_eq!(keys[7], "Shift+F11");
         assert_eq!(keys[8], "Shift+F12");
+    }
+
+    #[test]
+    fn test_default_keybindings_f1_f2_commands() {
+        // Shift+F1: 50% volume + brightness + light mode;
+        // Shift+F2: 100% volume + brightness + light mode
+        let prefs = Preferences::default();
+        let commands: Vec<Vec<String>> = prefs
+            .key_bindings
+            .iter()
+            .filter(|kb| kb.key == "Shift+F1" || kb.key == "Shift+F2")
+            .map(|kb| match &kb.command {
+                CommandValue::Single(cmd) => vec![cmd.clone()],
+                CommandValue::Multiple(cmds) => cmds.clone(),
+            })
+            .collect();
+        assert_eq!(
+            commands,
+            vec![
+                vec![
+                    "command/changeVolume/50".to_string(),
+                    "command/changeBrightness/50".to_string(),
+                    "command/changeDarkMode/light".to_string(),
+                ],
+                vec![
+                    "command/changeVolume/100".to_string(),
+                    "command/changeBrightness/100".to_string(),
+                    "command/changeDarkMode/light".to_string(),
+                ],
+            ]
+        );
     }
 
     #[test]
