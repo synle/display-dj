@@ -20,6 +20,15 @@ fn default_true() -> bool {
     true
 }
 
+/// Return the Tile Snap default for one platform.
+///
+/// Windows keeps this opt-in because its native Snap UI competes for the same
+/// drag edges. Other platforms preserve the existing enabled-by-default
+/// behavior.
+const fn default_tile_snap_enabled_for_platform(is_windows: bool) -> bool {
+    !is_windows
+}
+
 /// Tiling window manager preferences.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
@@ -33,7 +42,8 @@ pub struct TilingPreferences {
     /// Gap in points between tiled windows and screen edges.
     pub gap: u32,
     /// Toggle to enable/disable Tile Snap (mouse edge snapping). Only effective
-    /// when `enabled` is also true. Defaults to true.
+    /// when `enabled` is also true. Defaults to false on Windows and true
+    /// elsewhere.
     pub tile_snap_enabled: bool,
     /// Tile Snap: pixel width of the side edge hot zone (left/right/bottom).
     pub side_edge_trigger: u32,
@@ -136,7 +146,7 @@ impl Default for TilingPreferences {
             half_ratio: 50,
             third_ratio: 33,
             gap: 0,
-            tile_snap_enabled: true,
+            tile_snap_enabled: default_tile_snap_enabled_for_platform(cfg!(target_os = "windows")),
             side_edge_trigger: 18,
             top_edge_trigger: 18,
             corner_trigger: 30,
@@ -1068,6 +1078,13 @@ mod tests {
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.min_brightness, 10);
         assert_eq!(prefs.key_bindings.len(), 24);
+    }
+
+    /// Windows defaults Tile Snap off to avoid fighting the native Snap UI.
+    #[test]
+    fn test_tile_snap_platform_defaults() {
+        assert!(!default_tile_snap_enabled_for_platform(true));
+        assert!(default_tile_snap_enabled_for_platform(false));
     }
 
     #[test]

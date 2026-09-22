@@ -746,8 +746,8 @@ pub fn run() {
                 }
             }
 
-            // Start tile snap (mouse edge snapping) on macOS — requires both
-            // tiling.enabled and tiling.tile_snap_enabled to be true
+            // Start Tile Snap on macOS only when already enabled. Accessibility
+            // recheck can start it later after the user grants permission.
             #[cfg(target_os = "macos")]
             {
                 if preferences.tiling.enabled && preferences.tiling.tile_snap_enabled {
@@ -760,6 +760,15 @@ pub fn run() {
                         preferences.tiling.tile_snap_enabled,
                     );
                 }
+            }
+
+            // Windows keeps the lightweight WinEvent monitor alive even while
+            // Tile Snap is disabled (the platform default). Each drag checks
+            // preferences before creating overlays, so enabling it in Settings
+            // takes effect immediately without an app restart.
+            #[cfg(target_os = "windows")]
+            {
+                tiling::start_tile_snap(app.handle().clone());
             }
 
             // Z-order self-test (debug aid — opt-in via env var).

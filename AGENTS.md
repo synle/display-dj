@@ -87,9 +87,10 @@ Inline `#[cfg(test)]` modules cover:
 - `keep_awake.rs`: `KeepAwake` guard creation, `Mutex<Option<KeepAwake>>` enable/disable cycle.
 - `tray_icon.rs`: %-to-px conversion, icon generation across all state combos (dark/light × keep-awake × muted), filled rect/thick line drawing.
 - `tray.rs`: `build_command_url()` always returns `None` (every command dispatches in-process to `core::*`); brightness clamping; contrast capping.
-- `tiling/mod.rs` (shared): `TilingLayout` parsing, all 19 layouts, gap/padding math, `layout_across_displays` overflow + min cell size + DPI scaling, layout preset resolution + rule matching, `plan_expose` / `plan_expose_app` / `plan_layout_preset`, smart-restore helpers (`is_rect_oversized`, `calculate_smart_restore_rect`, `calculate_smart_restore_rect_at_cursor`), grid-aligned oversized placement (`find_free_cell`, `find_free_block`, `mark_block`), `parse_zorder_command` (all 6 variants), `is_window_at_front` pure helper.
+- `tiling/mod.rs` (shared): `TilingLayout` parsing, all 19 layouts, gap/padding math, shared Tile Snap zone building/hit-testing, `layout_across_displays` overflow + min cell size + DPI scaling, layout preset resolution + rule matching, `plan_expose` / `plan_expose_app` / `plan_layout_preset`, smart-restore helpers (`is_rect_oversized`, `calculate_smart_restore_rect`, `calculate_smart_restore_rect_at_cursor`), grid-aligned oversized placement (`find_free_cell`, `find_free_block`, `mark_block`), `parse_zorder_command` (all 6 variants), `is_window_at_front` pure helper.
 - `tiling/macos.rs` (macOS only): `is_window_move`, `build_snap_zones` / `detect_snap_zone_macos`, `get_display_full_frames`, `is_pseudo_fullscreen` / `send_escape_key`, `get_all_gui_app_pids`, `move_all_windows_to_current_space`, `ax_error_description`.
-- `tiling/windows.rs` (Windows only): `should_skip_system_window`, DPI border correction, `dbg_log`, expose debounce.
+- `tiling/windows.rs` (Windows only): `should_skip_system_window`, DPI border correction, `dbg_log`, expose debounce, WinEvent Tile Snap move/resize filtering, signed cursor packing.
+- `tiling/snap_overlay.rs` (Windows): reusable per-display transparent Tauri windows that draw Tile Snap zones and the active target preview from `public/tile-snap-overlay.html`.
 - `tiling/linux.rs` (Linux only): X11 availability check, strut-to-work-area math, process name resolution, managed-state filtering for maximize/fullscreen normalization.
 - `wallpaper.rs`: image validation, MD5 path hashing, content hash comparison, fit/slideshow arg parsing, `WallpaperPreferences` serde, remote pack URL/folder validation.
 - `overlay.rs`: brightness-to-alpha math, label generation, monitor-rect → window-position math.
@@ -139,7 +140,9 @@ Two patterns in Tauri command handlers break the system tray icon (left- and rig
 
 Inline WARNING comments in `config.rs` document this.
 
-## Tile Snap Event Monitoring (NSEvent Global Monitor)
+## Tile Snap Event Monitoring
+
+### macOS (NSEvent global monitor)
 
 Tile Snap uses `NSEvent.addGlobalMonitorForEvents(matching:handler:)` to observe mouse events globally. This replaced `CGEventTap`, which silently failed in production `.app` bundles (macOS Sequoia rejects `CGEventTapEnable` for ad-hoc signed bundles).
 
@@ -157,6 +160,14 @@ Tile Snap uses `NSEvent.addGlobalMonitorForEvents(matching:handler:)` to observe
 4. Use raw `objc_msgSend` with `Sel::register("type")` for `[event type]` — `type` is a Rust keyword; `msg_send![event, r#type]` raises an ObjC exception.
 5. Convert `[NSEvent mouseLocation]` (Cocoa: Y up from bottom-left) → CG coords (Y down from top-left): `primary_h - cocoa_y`.
 6. Use the `block` crate (v0.1) for ObjC blocks. The block must stay alive (`.copy()` to heap) for the monitor's lifetime.
+
+### Windows (WinEvent move monitor)
+
+Windows Tile Snap uses `SetWinEventHook(EVENT_SYSTEM_MOVESIZESTART..=EVENT_SYSTEM_MOVESIZEEND)` on a dedicated message-pump thread. `WM_NCHITTEST` rejects resize-border gestures; active title-bar moves poll `GetCursorPos` and render one transparent, click-through Tauri overlay per display. On move end, the exact rectangle shown in the preview is applied with `SetWindowPos`.
+
+- The WinEvent callback catches panics and only sends the HWND lifecycle event through a channel; no Tauri or blocking work runs across the FFI boundary.
+- The monitor starts at launch but remains dormant while `tileSnapEnabled` is false, so the Windows-default-off setting can be enabled without restarting.
+- Native Windows Snap competes for the same edges. README documents **Settings → System → Multitasking → Snap windows → Off** plus the `WindowArrangementActive=0` command-line alternative.
 
 ## Soft-Overlay Brightness Fallback
 
@@ -249,7 +260,7 @@ The shared `layout_across_displays` in `tiling/mod.rs` handles overflow for all 
 ### Platform Implementations
 
 - **macOS**: AX API (`AXUIElement`) for move/resize. Requires Accessibility. Focused tiling exits native `AXFullScreen` or browser/video pseudo-fullscreen before reading restored bounds. State per CGWindowID in `AppState.tiling_state`. Uses `_AXUIElementGetWindow` (private but stable since 10.6) to bridge AX → CGWindowID. NSScreen visible frames for display bounds — must use `screens[0]` (primary) not `mainScreen` for coord conversion. Tile Snap via `NSEvent.addGlobalMonitorForEvents` (10px move threshold; drop-zone overlays via `build_snap_zones` / `detect_snap_zone_macos`: per display, 4 corner quarters, top-edge maximize, left/right-edge halves, three 1/3 markers + two 2/3 markers on the bottom row; on mouse_up move to pre-calculated target). Crates: `objc` v0.2 + `block` v0.1; AX is raw `extern "C"`. Chromium apps need a `NSWorkspace.frontmostApplication` fallback — see DEV.md.
-- **Windows**: Win32 (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`) via `windows` crate v0.58. Focused tiling calls `ShowWindow(SW_RESTORE)` for maximized windows before reading normal bounds or resizing; minimized windows stay minimized outside Exposé. No special permissions. All 19 layouts + restore + Exposé + App Exposé. Tile Snap not implemented.
+- **Windows**: Win32 (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`) via `windows` crate v0.58. Focused tiling calls `ShowWindow(SW_RESTORE)` for maximized windows before reading normal bounds or resizing; minimized windows stay minimized outside Exposé. No special permissions. All 19 layouts + restore + Exposé + App Exposé. Tile Snap uses `SetWinEventHook` plus per-display click-through Tauri overlays; it defaults off because native Windows Snap uses the same edges.
 - **Linux/X11**: `x11rb` (pure Rust X11 client) + EWMH. Focused window via `_NET_ACTIVE_WINDOW`; move/resize via `_NET_MOVERESIZE_WINDOW`; enumeration via `_NET_CLIENT_LIST`; geometry via XRandr. Focused tiling removes horizontal maximize, vertical maximize, and fullscreen states, waits for `_NET_WM_STATE` confirmation, then records restored bounds; minimized state is untouched. Panels respected via `_NET_WM_STRUT_PARTIAL` / `_NET_WM_STRUT` with `_NET_WORKAREA` fallback. Frame decoration via `_NET_FRAME_EXTENTS`. Runtime-gated: `get_tiling_supported` checks `$DISPLAY` (false on Wayland-only). Tile Snap not implemented. Tested on Linux Mint with XFCE (xfwm4).
 
 ### Preferences

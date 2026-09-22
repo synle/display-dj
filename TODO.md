@@ -10,7 +10,6 @@
 
 ## Medium Effort
 
-- **Tile Snap on Windows** — edge snapping via `SetWinEventHook` or a low-level mouse hook. Windows Aero Snap covers halves/quarters only; ours would add thirds/custom ratios.
 - **Scheduled profiles** — time-of-day schedule for any profile ("Focus" at 9 AM...). Generalizes night mode; the 60s timer loop in `lib.rs` already checks time.
 - **Idle-based dimming** — auto-dim after inactivity, restore on input. macOS: `CGEventSourceSecondsSinceLastEventType`; Windows: `GetLastInputInfo`; Linux: `xprintidle`.
 - **Battery-aware brightness** — reduce brightness on battery / low charge (`battery` crate). Could trigger a profile.

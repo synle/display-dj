@@ -13,6 +13,8 @@ mod macos;
 mod windows;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "windows")]
+mod snap_overlay;
 
 // ---------------------------------------------------------------------------
 // Public types (shared across platforms)
@@ -671,6 +673,7 @@ pub(crate) fn layout_across_displays(
 /// (exact match), then checks displays where the cursor is slightly outside
 /// (vertical overflow into menu bar/dock area). This prevents margin expansion
 /// from stealing a cursor that belongs to an adjacent display.
+#[cfg(test)]
 pub(crate) fn detect_snap_zone(
     cx: f64,
     cy: f64,
@@ -750,6 +753,249 @@ pub(crate) fn detect_snap_zone(
         }
     }
     None
+}
+
+/// Per-zone visibility toggles shared by macOS, Windows, and X11 Tile Snap.
+///
+/// One value gates both drawing and hit-testing, so a hidden zone can never
+/// remain active as an invisible drop target.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SnapZoneToggles {
+    pub(crate) top_edge: bool,
+    pub(crate) left_edge: bool,
+    pub(crate) right_edge: bool,
+    pub(crate) top_left_corner: bool,
+    pub(crate) top_right_corner: bool,
+    pub(crate) bottom_left_corner: bool,
+    pub(crate) bottom_right_corner: bool,
+    pub(crate) bottom_thirds: bool,
+    pub(crate) bottom_two_thirds: bool,
+}
+
+impl SnapZoneToggles {
+    /// Return a toggle set with every Tile Snap target enabled.
+    pub(crate) fn all_enabled() -> Self {
+        Self {
+            top_edge: true,
+            left_edge: true,
+            right_edge: true,
+            top_left_corner: true,
+            top_right_corner: true,
+            bottom_left_corner: true,
+            bottom_right_corner: true,
+            bottom_thirds: true,
+            bottom_two_thirds: true,
+        }
+    }
+
+    /// Snapshot Tile Snap target visibility from persisted preferences.
+    pub(crate) fn from_prefs(prefs: &crate::config::TilingPreferences) -> Self {
+        Self {
+            top_edge: prefs.snap_top_edge_enabled,
+            left_edge: prefs.snap_left_edge_enabled,
+            right_edge: prefs.snap_right_edge_enabled,
+            top_left_corner: prefs.snap_top_left_corner_enabled,
+            top_right_corner: prefs.snap_top_right_corner_enabled,
+            bottom_left_corner: prefs.snap_bottom_left_corner_enabled,
+            bottom_right_corner: prefs.snap_bottom_right_corner_enabled,
+            bottom_thirds: prefs.snap_bottom_thirds_enabled,
+            bottom_two_thirds: prefs.snap_bottom_two_thirds_enabled,
+        }
+    }
+}
+
+/// Visual family for a Tile Snap target.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum SnapZoneVisualKind {
+    TopEdge,
+    SideEdge,
+    Corner,
+    BottomRow,
+}
+
+/// One drawable and hit-testable Tile Snap target.
+#[derive(Clone, Debug)]
+pub(crate) struct SnapZone {
+    pub(crate) rect: Rect,
+    pub(crate) layout: TilingLayout,
+    pub(crate) display_index: usize,
+    pub(crate) visual_kind: SnapZoneVisualKind,
+}
+
+/// Build the full Tile Snap target set for every display.
+///
+/// Corners come first so they win hit-test overlaps. Callers that draw zones
+/// should use `visual_kind` for z-order rather than relying on vector order.
+pub(crate) fn build_snap_zones(
+    displays: &[Rect],
+    side_edge: f64,
+    top_edge: f64,
+    corner: f64,
+    toggles: &SnapZoneToggles,
+) -> Vec<SnapZone> {
+    let mut zones = Vec::new();
+    for (display_index, display) in displays.iter().enumerate() {
+        let mut push = |rect, layout, visual_kind| {
+            zones.push(SnapZone {
+                rect,
+                layout,
+                display_index,
+                visual_kind,
+            });
+        };
+
+        if toggles.top_left_corner {
+            push(
+                Rect {
+                    x: display.x,
+                    y: display.y,
+                    width: corner,
+                    height: corner,
+                },
+                TilingLayout::TopLeftQuarter,
+                SnapZoneVisualKind::Corner,
+            );
+        }
+        if toggles.top_right_corner {
+            push(
+                Rect {
+                    x: display.x + display.width - corner,
+                    y: display.y,
+                    width: corner,
+                    height: corner,
+                },
+                TilingLayout::TopRightQuarter,
+                SnapZoneVisualKind::Corner,
+            );
+        }
+        if toggles.bottom_left_corner {
+            push(
+                Rect {
+                    x: display.x,
+                    y: display.y + display.height - corner,
+                    width: corner,
+                    height: corner,
+                },
+                TilingLayout::BottomLeftQuarter,
+                SnapZoneVisualKind::Corner,
+            );
+        }
+        if toggles.bottom_right_corner {
+            push(
+                Rect {
+                    x: display.x + display.width - corner,
+                    y: display.y + display.height - corner,
+                    width: corner,
+                    height: corner,
+                },
+                TilingLayout::BottomRightQuarter,
+                SnapZoneVisualKind::Corner,
+            );
+        }
+        if toggles.top_edge {
+            push(
+                Rect {
+                    x: display.x,
+                    y: display.y,
+                    width: display.width,
+                    height: top_edge,
+                },
+                TilingLayout::Maximize,
+                SnapZoneVisualKind::TopEdge,
+            );
+        }
+        if toggles.left_edge {
+            push(
+                Rect {
+                    x: display.x,
+                    y: display.y,
+                    width: side_edge,
+                    height: display.height,
+                },
+                TilingLayout::LeftHalf,
+                SnapZoneVisualKind::SideEdge,
+            );
+        }
+        if toggles.right_edge {
+            push(
+                Rect {
+                    x: display.x + display.width - side_edge,
+                    y: display.y,
+                    width: side_edge,
+                    height: display.height,
+                },
+                TilingLayout::RightHalf,
+                SnapZoneVisualKind::SideEdge,
+            );
+        }
+
+        let bottom_row_height = top_edge * 4.0 / 3.0;
+        let bottom_row_y = display.y + display.height - bottom_row_height;
+        if toggles.bottom_thirds {
+            for &(offset, layout) in &[
+                (0.25, TilingLayout::LeftThird),
+                (0.50, TilingLayout::CenterThird),
+                (0.75, TilingLayout::RightThird),
+            ] {
+                let center_x = display.x + display.width * offset;
+                push(
+                    Rect {
+                        x: center_x - corner / 2.0,
+                        y: bottom_row_y,
+                        width: corner,
+                        height: bottom_row_height,
+                    },
+                    layout,
+                    SnapZoneVisualKind::BottomRow,
+                );
+            }
+        }
+        if toggles.bottom_two_thirds {
+            let width = corner * 2.0;
+            for &(offset, layout) in &[
+                (0.125, TilingLayout::LeftTwoThirds),
+                (0.875, TilingLayout::RightTwoThirds),
+            ] {
+                let center_x = display.x + display.width * offset;
+                push(
+                    Rect {
+                        x: center_x - width / 2.0,
+                        y: bottom_row_y,
+                        width,
+                        height: bottom_row_height,
+                    },
+                    layout,
+                    SnapZoneVisualKind::BottomRow,
+                );
+            }
+        }
+    }
+    zones
+}
+
+/// Hit-test a cursor against enabled Tile Snap targets.
+///
+/// Returns the layout and display index for the first match. Corners win
+/// overlaps because `build_snap_zones` lists them before edge targets.
+pub(crate) fn detect_snap_zone_with_toggles(
+    cx: f64,
+    cy: f64,
+    displays: &[Rect],
+    side_edge: f64,
+    top_edge: f64,
+    corner: f64,
+    toggles: &SnapZoneToggles,
+) -> Option<(TilingLayout, usize)> {
+    build_snap_zones(displays, side_edge, top_edge, corner, toggles)
+        .into_iter()
+        .find(|zone| {
+            cx >= zone.rect.x
+                && cx < zone.rect.x + zone.rect.width
+                && cy >= zone.rect.y
+                && cy < zone.rect.y + zone.rect.height
+        })
+        .map(|zone| (zone.layout, zone.display_index))
 }
 
 // ---------------------------------------------------------------------------
@@ -1212,10 +1458,13 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
     }
 }
 
-/// Start tile snap (mouse edge snapping). Currently macOS only.
-#[cfg(target_os = "macos")]
+/// Start Tile Snap monitoring for the active desktop platform.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn start_tile_snap(app: AppHandle) {
+    #[cfg(target_os = "macos")]
     macos::start_tile_snap(app);
+    #[cfg(target_os = "windows")]
+    windows::start_tile_snap(app);
 }
 
 // ---------------------------------------------------------------------------

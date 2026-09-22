@@ -4,11 +4,14 @@
 //! using `GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, and
 //! `EnumWindows`. No special permissions are required on Windows.
 
+use super::snap_overlay::TileSnapOverlay;
 use super::{
-    build_sorted_window_list, calculate_target_rect, find_display_for_window,
-    layout_across_displays, layout_grid_on_display, plan_expose, plan_expose_app,
-    plan_layout_preset, Rect, TilingLayout, WindowInfo, WindowState,
+    build_snap_zones, build_sorted_window_list, calculate_target_rect,
+    detect_snap_zone_with_toggles, find_display_for_window, layout_across_displays,
+    layout_grid_on_display, plan_expose, plan_expose_app, plan_layout_preset, Rect,
+    SnapZoneToggles, TilingLayout, WindowInfo, WindowState,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager};
 
 /// Write a message to the debug log file (visible in production builds).
@@ -18,15 +21,20 @@ fn dbg_log(app: &AppHandle, msg: &str) {
         crate::config::write_debug_log(&state, msg);
     }
 }
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT, TRUE};
-use windows::Win32::Graphics::Gdi::{
+use ::windows::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, RECT, TRUE, WPARAM};
+use ::windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
 };
-use windows::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowTextW,
-    GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, SetForegroundWindow,
-    SetWindowPos, ShowWindow, HWND_BOTTOM, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_NOZORDER, SW_RESTORE,
+use ::windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
+use ::windows::Win32::UI::WindowsAndMessaging::{
+    BringWindowToTop, DispatchMessageW, EnumWindows, GetCursorPos, GetForegroundWindow,
+    GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow,
+    IsWindowVisible, IsZoomed, PeekMessageW, SendMessageTimeoutW, SetForegroundWindow,
+    SetWindowPos, ShowWindow, TranslateMessage, EVENT_SYSTEM_MOVESIZEEND,
+    EVENT_SYSTEM_MOVESIZESTART, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTLEFT, HTRIGHT,
+    HTTOP, HTTOPLEFT, HTTOPRIGHT, MSG, OBJID_WINDOW, PM_REMOVE, SMTO_ABORTIFHUNG,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_RESTORE, WINEVENT_OUTOFCONTEXT,
+    WINEVENT_SKIPOWNPROCESS, WM_NCHITTEST, HWND_BOTTOM, HWND_TOP,
 };
 
 // ---------------------------------------------------------------------------
@@ -63,7 +71,7 @@ fn get_display_work_areas() -> Vec<(Rect, f64)> {
                 let fm = info.rcMonitor;
 
                 // Query effective DPI for this monitor (96 = 1x, 192 = 2x, 240 = 2.5x)
-                use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+                use ::windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
                 let mut dpi_x: u32 = 96;
                 let mut dpi_y: u32 = 96;
                 let _ = GetDpiForMonitor(hmonitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y);
@@ -162,7 +170,7 @@ fn restore_maximized_window(hwnd: HWND) -> bool {
 /// over `GetWindowRect` (which includes them). This ensures that
 /// `find_display_for_window` and restore use the actual visible frame.
 fn get_hwnd_rect(hwnd: HWND) -> Option<Rect> {
-    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    use ::windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
     let mut rc = RECT::default();
     unsafe {
         // Try DWM extended frame bounds first (visible frame without invisible borders)
@@ -202,7 +210,7 @@ fn get_hwnd_rect(hwnd: HWND) -> Option<Rect> {
 /// difference between the full window rect and the visible (extended) frame
 /// so callers can compensate. Returns (0, 0, 0, 0) if DWM info is unavailable.
 fn get_dwm_border(hwnd: HWND) -> (i32, i32, i32, i32) {
-    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    use ::windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
     let mut window_rect = RECT::default();
     let mut frame_rect = RECT::default();
     unsafe {
@@ -326,7 +334,7 @@ fn get_process_name(hwnd: HWND) -> String {
     }
 
     // Open the process and query the image name
-    use windows::Win32::System::Threading::{
+    use ::windows::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
     };
     unsafe {
@@ -338,13 +346,13 @@ fn get_process_name(hwnd: HWND) -> String {
                 if QueryFullProcessImageNameW(
                     h,
                     PROCESS_NAME_FORMAT(0),
-                    windows::core::PWSTR(buf.as_mut_ptr()),
+                    ::windows::core::PWSTR(buf.as_mut_ptr()),
                     &mut size,
                 )
                 .is_ok()
                 {
                     let path = String::from_utf16_lossy(&buf[..size as usize]);
-                    let _ = windows::Win32::Foundation::CloseHandle(h);
+                    let _ = ::windows::Win32::Foundation::CloseHandle(h);
                     // Return just the exe name without extension
                     path.rsplit('\\')
                         .next()
@@ -353,7 +361,7 @@ fn get_process_name(hwnd: HWND) -> String {
                         .unwrap_or_else(|| path.rsplit('\\').next().unwrap_or(&path))
                         .to_string()
                 } else {
-                    let _ = windows::Win32::Foundation::CloseHandle(h);
+                    let _ = ::windows::Win32::Foundation::CloseHandle(h);
                     String::new()
                 }
             }
@@ -364,14 +372,14 @@ fn get_process_name(hwnd: HWND) -> String {
 
 /// Query the minimum window size via WM_GETMINMAXINFO.
 fn get_window_min_size(hwnd: HWND) -> Option<(f64, f64)> {
-    use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, MINMAXINFO, WM_GETMINMAXINFO};
+    use ::windows::Win32::UI::WindowsAndMessaging::{SendMessageW, MINMAXINFO, WM_GETMINMAXINFO};
     let mut info = MINMAXINFO::default();
     unsafe {
         SendMessageW(
             hwnd,
             WM_GETMINMAXINFO,
-            windows::Win32::Foundation::WPARAM(0),
-            windows::Win32::Foundation::LPARAM(&mut info as *mut MINMAXINFO as isize),
+            ::windows::Win32::Foundation::WPARAM(0),
+            ::windows::Win32::Foundation::LPARAM(&mut info as *mut MINMAXINFO as isize),
         );
     }
     let w = info.ptMinTrackSize.x as f64;
@@ -467,7 +475,7 @@ fn get_process_name_from_pid(pid: u32) -> String {
     if pid == 0 {
         return String::new();
     }
-    use windows::Win32::System::Threading::{
+    use ::windows::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
     };
     unsafe {
@@ -479,13 +487,13 @@ fn get_process_name_from_pid(pid: u32) -> String {
                 if QueryFullProcessImageNameW(
                     h,
                     PROCESS_NAME_FORMAT(0),
-                    windows::core::PWSTR(buf.as_mut_ptr()),
+                    ::windows::core::PWSTR(buf.as_mut_ptr()),
                     &mut size,
                 )
                 .is_ok()
                 {
                     let path = String::from_utf16_lossy(&buf[..size as usize]);
-                    let _ = windows::Win32::Foundation::CloseHandle(h);
+                    let _ = ::windows::Win32::Foundation::CloseHandle(h);
                     path.rsplit('\\')
                         .next()
                         .unwrap_or(&path)
@@ -493,7 +501,7 @@ fn get_process_name_from_pid(pid: u32) -> String {
                         .unwrap_or_else(|| path.rsplit('\\').next().unwrap_or(&path))
                         .to_string()
                 } else {
-                    let _ = windows::Win32::Foundation::CloseHandle(h);
+                    let _ = ::windows::Win32::Foundation::CloseHandle(h);
                     String::new()
                 }
             }
@@ -719,6 +727,406 @@ pub fn toggle_app_front_back(app: &AppHandle) {
     } else {
         move_app_to_front(app);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Tile Snap -- WinEvent move tracking with Tauri preview overlays
+// ---------------------------------------------------------------------------
+
+const TILE_SNAP_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(16);
+const TILE_SNAP_IDLE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+
+static TILE_SNAP_STARTED: AtomicBool = AtomicBool::new(false);
+static WIN_EVENT_SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<WindowMoveEvent>> =
+    std::sync::OnceLock::new();
+
+/// Move/size lifecycle event copied out of the Win32 callback.
+#[derive(Clone, Copy, Debug)]
+enum WindowMoveEvent {
+    Start(isize),
+    End(isize),
+}
+
+/// State captured for one system window-move gesture.
+struct TileSnapDrag {
+    hwnd: HWND,
+    original_rect: Rect,
+    displays: Vec<Rect>,
+    half_ratio: u32,
+    third_ratio: u32,
+    gap: u32,
+    side_edge_trigger: f64,
+    top_edge_trigger: f64,
+    corner_trigger: f64,
+    toggles: SnapZoneToggles,
+    current_layout: Option<TilingLayout>,
+    current_display: usize,
+    current_target: Option<Rect>,
+}
+
+/// WinEvent callback for system move/size start and end events.
+///
+/// The callback crosses an OS FFI boundary, so it catches panics and performs
+/// only a channel send. All Win32 queries and Tauri work happen on the monitor
+/// thread.
+unsafe extern "system" fn tile_snap_win_event_callback(
+    _hook: HWINEVENTHOOK,
+    event: u32,
+    hwnd: HWND,
+    object_id: i32,
+    child_id: i32,
+    _event_thread: u32,
+    _event_time: u32,
+) {
+    let _ = std::panic::catch_unwind(|| {
+        if object_id != OBJID_WINDOW.0 || child_id != 0 || hwnd.is_invalid() {
+            return;
+        }
+        let window_id = hwnd.0 as isize;
+        let move_event = match event {
+            EVENT_SYSTEM_MOVESIZESTART => WindowMoveEvent::Start(window_id),
+            EVENT_SYSTEM_MOVESIZEEND => WindowMoveEvent::End(window_id),
+            _ => return,
+        };
+        if let Some(sender) = WIN_EVENT_SENDER.get() {
+            let _ = sender.send(move_event);
+        }
+    });
+}
+
+/// Start the Windows Tile Snap monitor once for the process lifetime.
+///
+/// The monitor remains dormant while the preference is disabled, which lets a
+/// user enable Tile Snap in Settings without restarting the application.
+pub fn start_tile_snap(app: AppHandle) {
+    if TILE_SNAP_STARTED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        log::info!("tile_snap_win: already started");
+        return;
+    }
+
+    let (sender, receiver) = std::sync::mpsc::channel();
+    if WIN_EVENT_SENDER.set(sender).is_err() {
+        log::warn!("tile_snap_win: event sender already initialized");
+        return;
+    }
+
+    let thread_app = app.clone();
+    match std::thread::Builder::new()
+        .name("display-dj-tile-snap-win".into())
+        .spawn(move || run_tile_snap_monitor(thread_app, receiver))
+    {
+        Ok(_) => dbg_log(&app, "tile_snap_win: WinEvent monitor thread started"),
+        Err(error) => dbg_log(
+            &app,
+            &format!("tile_snap_win: failed to start monitor thread: {error}"),
+        ),
+    }
+}
+
+/// Run the WinEvent message pump and poll active drags for cursor movement.
+fn run_tile_snap_monitor(app: AppHandle, receiver: std::sync::mpsc::Receiver<WindowMoveEvent>) {
+    let hook = unsafe {
+        SetWinEventHook(
+            EVENT_SYSTEM_MOVESIZESTART,
+            EVENT_SYSTEM_MOVESIZEEND,
+            None,
+            Some(tile_snap_win_event_callback),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+        )
+    };
+    if hook.0.is_null() {
+        dbg_log(&app, "tile_snap_win: SetWinEventHook failed");
+        return;
+    }
+
+    let mut overlay = TileSnapOverlay::new(app.clone());
+    let mut drag: Option<TileSnapDrag> = None;
+    dbg_log(&app, "tile_snap_win: SetWinEventHook registered");
+
+    loop {
+        pump_win_event_messages();
+
+        while let Ok(event) = receiver.try_recv() {
+            match event {
+                WindowMoveEvent::Start(raw_hwnd) => {
+                    overlay.hide();
+                    drag = begin_tile_snap_drag(&app, &mut overlay, HWND(raw_hwnd as *mut _));
+                }
+                WindowMoveEvent::End(raw_hwnd) => {
+                    let should_finish = drag
+                        .as_ref()
+                        .map(|active| active.hwnd.0 as isize == raw_hwnd)
+                        .unwrap_or(false);
+                    if should_finish {
+                        if let Some(active) = drag.take() {
+                            finish_tile_snap_drag(&app, &overlay, active);
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(active) = drag.as_mut() {
+            if !update_tile_snap_drag(&app, &overlay, active) {
+                overlay.hide();
+                drag = None;
+            }
+        }
+
+        std::thread::sleep(if drag.is_some() {
+            TILE_SNAP_POLL_INTERVAL
+        } else {
+            TILE_SNAP_IDLE_INTERVAL
+        });
+    }
+}
+
+/// Dispatch pending WinEvent callback messages on the hook-owning thread.
+fn pump_win_event_messages() {
+    unsafe {
+        let mut message = MSG::default();
+        while PeekMessageW(&mut message, None, 0, 0, PM_REMOVE).as_bool() {
+            let _ = TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+    }
+}
+
+/// Initialize one move gesture after verifying it is not a resize.
+fn begin_tile_snap_drag(
+    app: &AppHandle,
+    overlay: &mut TileSnapOverlay,
+    hwnd: HWND,
+) -> Option<TileSnapDrag> {
+    if !unsafe { IsWindow(hwnd).as_bool() } || !is_window_move_gesture(hwnd) {
+        return None;
+    }
+
+    let prefs = {
+        let state = app.try_state::<crate::AppState>()?;
+        let prefs = state.preferences.lock().ok()?;
+        if !prefs.tiling.enabled || !prefs.tiling.tile_snap_enabled {
+            return None;
+        }
+        prefs.tiling.clone()
+    };
+    let original_rect = get_hwnd_rect(hwnd)?;
+    let displays: Vec<Rect> = get_display_work_areas()
+        .into_iter()
+        .map(|(rect, _)| rect)
+        .collect();
+    if displays.is_empty() {
+        dbg_log(app, "tile_snap_win: no displays found");
+        return None;
+    }
+
+    let toggles = SnapZoneToggles::from_prefs(&prefs);
+    let zones = build_snap_zones(
+        &displays,
+        prefs.side_edge_trigger as f64,
+        prefs.top_edge_trigger as f64,
+        prefs.corner_trigger as f64,
+        &toggles,
+    );
+    if let Err(error) = overlay.show_zones(&displays, &zones) {
+        dbg_log(app, &error);
+        overlay.hide();
+        return None;
+    }
+
+    dbg_log(
+        app,
+        &format!(
+            "tile_snap_win: move started hwnd={:?}, displays={}, zones={}",
+            hwnd,
+            displays.len(),
+            zones.len(),
+        ),
+    );
+    Some(TileSnapDrag {
+        hwnd,
+        original_rect,
+        displays,
+        half_ratio: prefs.half_ratio,
+        third_ratio: prefs.third_ratio,
+        gap: prefs.gap,
+        side_edge_trigger: prefs.side_edge_trigger as f64,
+        top_edge_trigger: prefs.top_edge_trigger as f64,
+        corner_trigger: prefs.corner_trigger as f64,
+        toggles,
+        current_layout: None,
+        current_display: 0,
+        current_target: None,
+    })
+}
+
+/// Update preview state from the current cursor position.
+///
+/// Returns `false` when the drag should be cancelled.
+fn update_tile_snap_drag(
+    app: &AppHandle,
+    overlay: &TileSnapOverlay,
+    drag: &mut TileSnapDrag,
+) -> bool {
+    if !tile_snap_enabled(app) || !unsafe { IsWindow(drag.hwnd).as_bool() } {
+        return false;
+    }
+
+    let cursor = match get_cursor_position() {
+        Some(cursor) => cursor,
+        None => return true,
+    };
+    let zone = detect_snap_zone_with_toggles(
+        cursor.x as f64,
+        cursor.y as f64,
+        &drag.displays,
+        drag.side_edge_trigger,
+        drag.top_edge_trigger,
+        drag.corner_trigger,
+        &drag.toggles,
+    );
+
+    match zone {
+        Some((layout, display_index))
+            if drag.current_layout != Some(layout) || drag.current_display != display_index =>
+        {
+            let display = match drag.displays.get(display_index) {
+                Some(display) => display,
+                None => return false,
+            };
+            let target =
+                calculate_target_rect(layout, display, drag.half_ratio, drag.third_ratio, drag.gap);
+            if let Err(error) = overlay.show_preview(display_index, &target) {
+                dbg_log(app, &error);
+                return false;
+            }
+            drag.current_layout = Some(layout);
+            drag.current_display = display_index;
+            drag.current_target = Some(target);
+        }
+        Some(_) => {}
+        None if drag.current_layout.is_some() => {
+            if let Err(error) = overlay.clear_preview() {
+                dbg_log(app, &error);
+                return false;
+            }
+            drag.current_layout = None;
+            drag.current_target = None;
+        }
+        None => {}
+    }
+    true
+}
+
+/// Hide overlays and apply the exact rectangle shown in the preview.
+fn finish_tile_snap_drag(app: &AppHandle, overlay: &TileSnapOverlay, drag: TileSnapDrag) {
+    overlay.hide();
+    let (layout, target) = match (drag.current_layout, drag.current_target) {
+        (Some(layout), Some(target)) => (layout, target),
+        _ => return,
+    };
+    if !unsafe { IsWindow(drag.hwnd).as_bool() } {
+        return;
+    }
+
+    let window_key = drag.hwnd.0 as isize as i64;
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        if let Ok(mut tiling_state) = state.tiling_state.lock() {
+            let entry = tiling_state
+                .windows
+                .entry(window_key)
+                .or_insert(WindowState {
+                    original: drag.original_rect,
+                    layout,
+                    display_index: drag.current_display,
+                });
+            entry.layout = layout;
+            entry.display_index = drag.current_display;
+        }
+    }
+
+    dbg_log(
+        app,
+        &format!(
+            "tile_snap_win: drop hwnd={:?}, layout={:?}, display={}, target=({:.0},{:.0} {:.0}x{:.0})",
+            drag.hwnd,
+            layout,
+            drag.current_display,
+            target.x,
+            target.y,
+            target.width,
+            target.height,
+        ),
+    );
+    set_hwnd_rect(drag.hwnd, &target);
+}
+
+/// Return whether Tile Snap remains enabled while a drag is active.
+fn tile_snap_enabled(app: &AppHandle) -> bool {
+    app.try_state::<crate::AppState>()
+        .and_then(|state| {
+            state
+                .preferences
+                .try_lock()
+                .ok()
+                .map(|prefs| prefs.tiling.enabled && prefs.tiling.tile_snap_enabled)
+        })
+        .unwrap_or(false)
+}
+
+/// Read the global cursor position in physical screen pixels.
+fn get_cursor_position() -> Option<POINT> {
+    let mut point = POINT::default();
+    unsafe { GetCursorPos(&mut point).ok().map(|_| point) }
+}
+
+/// Distinguish title-bar moves from border resize gestures.
+///
+/// `EVENT_SYSTEM_MOVESIZESTART` covers both operations. `WM_NCHITTEST` gives
+/// the non-client region that initiated the modal loop; explicit resize-border
+/// hits are rejected, while custom title bars that report `HTCLIENT` remain
+/// eligible.
+fn is_window_move_gesture(hwnd: HWND) -> bool {
+    if unsafe { IsZoomed(hwnd).as_bool() } {
+        return true;
+    }
+    let cursor = match get_cursor_position() {
+        Some(cursor) => cursor,
+        None => return false,
+    };
+    let mut hit_test = 0usize;
+    let status = unsafe {
+        SendMessageTimeoutW(
+            hwnd,
+            WM_NCHITTEST,
+            WPARAM(0),
+            point_to_lparam(cursor),
+            SMTO_ABORTIFHUNG,
+            50,
+            Some(&mut hit_test),
+        )
+    };
+    status.0 != 0 && !is_resize_hit_test(hit_test as u32)
+}
+
+/// Pack signed screen coordinates for `WM_NCHITTEST`.
+fn point_to_lparam(point: POINT) -> LPARAM {
+    let x = point.x as i16 as u16 as u32;
+    let y = point.y as i16 as u16 as u32;
+    LPARAM(((y << 16) | x) as isize)
+}
+
+/// Return whether a `WM_NCHITTEST` result represents a resize border.
+fn is_resize_hit_test(hit_test: u32) -> bool {
+    matches!(
+        hit_test,
+        HTLEFT | HTRIGHT | HTTOP | HTTOPLEFT | HTTOPRIGHT | HTBOTTOM | HTBOTTOMLEFT | HTBOTTOMRIGHT
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1163,7 +1571,12 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::should_restore_before_tiling;
+    use super::{is_resize_hit_test, point_to_lparam, should_restore_before_tiling};
+    use ::windows::Win32::Foundation::POINT;
+    use ::windows::Win32::UI::WindowsAndMessaging::{
+        HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
+        HTTOPLEFT, HTTOPRIGHT,
+    };
 
     /// Focused tiling restores maximized windows but never unminimizes them.
     #[test]
@@ -1172,5 +1585,28 @@ mod tests {
         assert!(!should_restore_before_tiling(true, false));
         assert!(!should_restore_before_tiling(true, true));
         assert!(should_restore_before_tiling(false, true));
+    }
+
+    /// Move detection rejects every Win32 resize-border hit-test value.
+    #[test]
+    fn resize_hit_tests_are_rejected() {
+        assert!(is_resize_hit_test(HTLEFT));
+        assert!(is_resize_hit_test(HTRIGHT));
+        assert!(is_resize_hit_test(HTTOP));
+        assert!(is_resize_hit_test(HTTOPLEFT));
+        assert!(is_resize_hit_test(HTTOPRIGHT));
+        assert!(is_resize_hit_test(HTBOTTOM));
+        assert!(is_resize_hit_test(HTBOTTOMLEFT));
+        assert!(is_resize_hit_test(HTBOTTOMRIGHT));
+        assert!(!is_resize_hit_test(HTCAPTION));
+        assert!(!is_resize_hit_test(HTCLIENT));
+    }
+
+    /// `WM_NCHITTEST` coordinate packing preserves signed virtual-screen values.
+    #[test]
+    fn point_lparam_preserves_negative_coordinates() {
+        let packed = point_to_lparam(POINT { x: -1200, y: 640 }).0 as u32;
+        assert_eq!(packed as u16 as i16, -1200);
+        assert_eq!((packed >> 16) as u16 as i16, 640);
     }
 }

@@ -42,7 +42,7 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Global keyboard shortcuts** -- work even when the app isn't focused; fully configurable
 - **Monitor renaming** -- click any display name to give it a custom label
 - **Window tiling** (macOS + Windows + Linux/X11) -- tile windows to halves, thirds, two-thirds, quarters, or maximize via keyboard shortcuts or tray menu
-- **Tile Snap** (macOS only) -- drag a window to a screen edge to preview and snap it into a tiled layout. Enable/disable via the Tile Snap toggle in Settings
+- **Tile Snap** (macOS + Windows) -- drag a window to a screen edge to draw drop zones, preview the target, and snap it into a tiled layout. Enable/disable via the Tile Snap toggle in Settings; Windows defaults it off to avoid conflicting with Windows Snap
 - **Exposé** (macOS + Windows + Linux/X11) -- spread all windows into a grid overview, or just the current app's windows. Deterministic alphabetical layout with configurable multi-display strategy (spread evenly or fill each display). Has its own tray submenu with enable/disable toggle and grid size presets (2x2 through 5x5)
 - **App Exposé** -- grids the frontmost app's windows and fills remaining grid cells with other apps' windows
 - **Layout Presets** -- named presets that automatically tile specific apps to specific layouts. Triggered via keyboard shortcuts, profiles, or the tray menu
@@ -165,9 +165,28 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 
 ## Window Tiling (macOS + Windows + Linux/X11)
 
-Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or maximize using keyboard shortcuts or the **Tiling** submenu in the tray icon's right-click menu. All 19 layouts, restore, Exposé, and App Exposé work on macOS, Windows, and Linux (X11). Tile Snap (mouse edge snapping) is currently macOS-only.
+Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or maximize using keyboard shortcuts or the **Tiling** submenu in the tray icon's right-click menu. All 19 layouts, restore, Exposé, and App Exposé work on macOS, Windows, and Linux (X11). Tile Snap (mouse edge snapping with visible drop zones and a live target preview) works on macOS and Windows.
 
 Before a focused window is tiled, Windows restores it from maximized state and macOS exits native or browser/video fullscreen. Display DJ then reads the normal window bounds and applies the requested layout; minimized windows remain minimized outside Exposé.
+
+### Windows Tile Snap setup
+
+Tile Snap defaults **off on Windows** because Windows 11 Snap uses the same screen edges and can draw a second, competing preview. For predictable drops, disable Windows Snap before enabling **Settings → Tiling → Enable Tile Snap (drag to edge)** in Display DJ.
+
+Recommended Windows 11 steps:
+
+1. Press **Win + I** to open Settings.
+2. Open **System → Multitasking**.
+3. Turn **Snap windows** off.
+4. Enable Tile Snap in Display DJ.
+
+Advanced command-line alternative (current user only):
+
+```powershell
+reg.exe add "HKCU\Control Panel\Desktop" /v WindowArrangementActive /t REG_SZ /d 0 /f
+```
+
+Sign out and back in after changing the registry value. To restore Windows Snap later, run the same command with `/d 1`, then sign out and back in again.
 
 ### Exposé
 
@@ -291,7 +310,7 @@ Tiling settings are stored in `preferences.json` under the `tiling` key. They ca
 | `halfRatio`            | `50`       | --         | Percentage for half splits (affects halves and quarters)                                                                             |
 | `thirdRatio`           | `33`       | --         | Percentage for third splits (center = 100 - 2 x third)                                                                               |
 | `gap`                  | `0`        | --         | Padding in points around the tiling area                                                                                             |
-| `tileSnapEnabled`      | `true`     | --         | Enable/disable Tile Snap mouse edge snapping (macOS only)                                                                            |
+| `tileSnapEnabled`      | platform   | --         | Enable/disable Tile Snap mouse edge snapping. Default: `true` on macOS, `false` on Windows to avoid Windows Snap conflicts           |
 | `sideEdgeTrigger`      | `10`       | 5-50 px    | Tile Snap: width of left/right/bottom edge zone                                                                                      |
 | `topEdgeTrigger`       | `10`       | 10-50 px   | Tile Snap: height of top edge zone (maximize)                                                                                        |
 | `cornerTrigger`        | `50`       | 25-150 px  | Tile Snap: size of corner zone (quarter tiles)                                                                                       |

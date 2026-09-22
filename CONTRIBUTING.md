@@ -129,7 +129,7 @@ Tauri APIs are mocked globally in `src/test/setup.ts`, so tests run without a ba
 All platforms: Git, Node.js 20+, Rust stable.
 
 - **macOS**: `xcode-select --install`; Node/Rust via Homebrew or rustup.
-- **Windows**: Node LTS (+ C++ build tools), Rustup, WebView2 (preinstalled on Win11).
+- **Windows**: Node LTS (+ C++ build tools), Rustup, WebView2 (preinstalled on Win11). Tile Snap defaults off; for manual testing, disable **Settings → System → Multitasking → Snap windows** first so the native preview does not compete with Display DJ's drop zones.
 - **Linux (Ubuntu/Debian)** -- Tauri v2 GUI build dependencies:
 
   ```bash
@@ -173,5 +173,6 @@ Verify: `node --version`, `rustc --version`, and on Linux `ddcutil detect`.
 - **Can't find the app** — tray app, no window (see Quick Start).
 - **"No displays found"** — Linux: `ddcutil detect` as your user; check `i2c` group membership. Windows: enable DDC/CI in the monitor OSD. macOS: try USB-C/DP instead of HDMI.
 - **Dark mode does nothing on Linux** — requires GNOME (`echo $XDG_CURRENT_DESKTOP`).
+- **Two snap previews appear on Windows** — disable **Settings → System → Multitasking → Snap windows**, then retry the drag. Display DJ Tile Snap defaults off on Windows for this reason.
 - **Tile shortcuts silently no-op on Chromium apps (macOS)** — known AX limitation; fixed since v7.0.24 via NSWorkspace fallback. Details in [DEV.md](DEV.md).
 - **Maximized/fullscreen window does not resize when tiled** — focused tiling restores Windows maximized windows, exits macOS native or browser/video fullscreen, and removes Linux/X11 EWMH maximize/fullscreen states before applying the layout. Linux waits for the window manager to confirm normal state before saving restore bounds. Minimized windows remain untouched outside Exposé.

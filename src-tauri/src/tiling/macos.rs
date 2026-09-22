@@ -76,9 +76,10 @@ fn take_backed_pid() -> Option<i32> {
 }
 
 use super::{
-    build_sorted_window_list, calculate_target_rect, find_display_for_window,
-    layout_across_displays, plan_expose, plan_expose_app, plan_layout_preset, Rect,
-    TilingLayout, WindowInfo, WindowState,
+    build_snap_zones as build_shared_snap_zones, calculate_target_rect,
+    detect_snap_zone_with_toggles, find_display_for_window, plan_expose, plan_expose_app,
+    plan_layout_preset, Rect, SnapZoneToggles, SnapZoneVisualKind, TilingLayout, WindowInfo,
+    WindowState,
 };
 
 // ---------------------------------------------------------------------------
@@ -2165,59 +2166,6 @@ fn get_mouse_location_cg() -> CGPoint {
 
 // --- Overlay window (NSWindow, main thread only) ---
 
-/// Per-zone visibility toggles for Tile Snap. Mirrors the `snap_*_enabled`
-/// fields on `TilingPreferences`. Used to gate **both** the visual drop-zone
-/// indicators and the hit-test rectangles in `build_snap_zones`, so a disabled
-/// zone is neither drawn nor reachable by the cursor — keeping visual state
-/// and behavior in lockstep.
-#[derive(Clone, Copy, Debug)]
-struct SnapZoneToggles {
-    top_edge: bool,
-    left_edge: bool,
-    right_edge: bool,
-    top_left_corner: bool,
-    top_right_corner: bool,
-    bottom_left_corner: bool,
-    bottom_right_corner: bool,
-    /// Bottom row 1/3 markers (LeftThird / CenterThird / RightThird) as a group.
-    bottom_thirds: bool,
-    /// Bottom row 2/3 markers (LeftTwoThirds / RightTwoThirds) as a group.
-    bottom_two_thirds: bool,
-}
-
-impl SnapZoneToggles {
-    /// All zones enabled. Default used by unit tests and the legacy non-toggle
-    /// `build_snap_zones` wrapper, so existing tests keep passing unchanged.
-    fn all_enabled() -> Self {
-        Self {
-            top_edge: true,
-            left_edge: true,
-            right_edge: true,
-            top_left_corner: true,
-            top_right_corner: true,
-            bottom_left_corner: true,
-            bottom_right_corner: true,
-            bottom_thirds: true,
-            bottom_two_thirds: true,
-        }
-    }
-
-    /// Build from the current `TilingPreferences`. Pure mapping — never panics.
-    fn from_prefs(p: &crate::config::TilingPreferences) -> Self {
-        Self {
-            top_edge: p.snap_top_edge_enabled,
-            left_edge: p.snap_left_edge_enabled,
-            right_edge: p.snap_right_edge_enabled,
-            top_left_corner: p.snap_top_left_corner_enabled,
-            top_right_corner: p.snap_top_right_corner_enabled,
-            bottom_left_corner: p.snap_bottom_left_corner_enabled,
-            bottom_right_corner: p.snap_bottom_right_corner_enabled,
-            bottom_thirds: p.snap_bottom_thirds_enabled,
-            bottom_two_thirds: p.snap_bottom_two_thirds_enabled,
-        }
-    }
-}
-
 /// Commands dispatched to the main thread for overlay window management.
 enum OverlayCmd {
     Show { x: f64, y: f64, w: f64, h: f64 },
@@ -2417,112 +2365,17 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
                     1080.0
                 };
 
-                // Build zone rects: per display, create top/left/right/corner zones
-                // Colors: green=top (maximize), orange=sides (halves), purple=corners,
-                // teal=bottom 1/3 and 2/3 markers. Individual zones suppressed via
-                // `toggles` so disabled zones are neither drawn nor (paired with the
-                // matching filter in `build_snap_zones`) hit-tested.
-                struct ZoneRect {
-                    x: f64, y: f64, w: f64, h: f64,
-                    /// 0=top(green), 1=side(orange), 2=corner(purple), 3=bottom-third(teal)
-                    kind: u8,
-                }
-                let mut zones: Vec<ZoneRect> = Vec::new();
-                for d in &displays {
-                    // Draw order: edges first, corners last (corners overlay edges).
-                    // Corners are simple corner×corner rectangles that cover the
-                    // edge strips beneath them, making it clear corners win.
-
-                    // Top strip (green) — full width, top_edge tall
-                    if toggles.top_edge {
-                        zones.push(ZoneRect {
-                            x: d.x, y: d.y,
-                            w: d.width, h: top_edge,
-                            kind: 0,
-                        });
-                    }
-                    // Left strip (orange) — side_edge wide, full height
-                    if toggles.left_edge {
-                        zones.push(ZoneRect {
-                            x: d.x, y: d.y,
-                            w: side_edge, h: d.height,
-                            kind: 1,
-                        });
-                    }
-                    // Right strip (orange) — side_edge wide, full height
-                    if toggles.right_edge {
-                        zones.push(ZoneRect {
-                            x: d.x + d.width - side_edge, y: d.y,
-                            w: side_edge, h: d.height,
-                            kind: 1,
-                        });
-                    }
-                    // Corner rectangles (purple) — drawn last, overlay edges
-                    if toggles.top_left_corner {
-                        zones.push(ZoneRect {
-                            x: d.x, y: d.y,
-                            w: corner, h: corner,
-                            kind: 2,
-                        });
-                    }
-                    if toggles.top_right_corner {
-                        zones.push(ZoneRect {
-                            x: d.x + d.width - corner, y: d.y,
-                            w: corner, h: corner,
-                            kind: 2,
-                        });
-                    }
-                    if toggles.bottom_left_corner {
-                        zones.push(ZoneRect {
-                            x: d.x, y: d.y + d.height - corner,
-                            w: corner, h: corner,
-                            kind: 2,
-                        });
-                    }
-                    if toggles.bottom_right_corner {
-                        zones.push(ZoneRect {
-                            x: d.x + d.width - corner, y: d.y + d.height - corner,
-                            w: corner, h: corner,
-                            kind: 2,
-                        });
-                    }
-
-                    // Bottom-third zones (teal) — small rectangles at 25%, 50%,
-                    // 75% horizontal offsets on the bottom edge. Match the
-                    // hit-test rects in `build_snap_zones`: width=corner,
-                    // height=top_edge × 4/3 (a third taller for an easier
-                    // hit target), centered on each offset.
-                    let third_w = corner;
-                    let third_h = top_edge * 4.0 / 3.0;
-                    let bottom_y = d.y + d.height - third_h;
-                    if toggles.bottom_thirds {
-                        for offset in &[0.25, 0.50, 0.75] {
-                            let cx = d.x + d.width * offset;
-                            zones.push(ZoneRect {
-                                x: cx - third_w / 2.0, y: bottom_y,
-                                w: third_w, h: third_h,
-                                kind: 3,
-                            });
-                        }
-                    }
-                    // Bottom 2/3 zones (teal) — `corner * 2` wide (double the
-                    // 1/3 markers, matching the 2× layout ratio they apply).
-                    // Centered at 12.5% (LeftTwoThirds) and 87.5% (RightTwoThirds)
-                    // so they sit between the 1/3 markers and the bottom-corner
-                    // quarter zones without overlapping either. Previously
-                    // hit-tested but not drawn — now rendered for visual parity.
-                    let two_third_w = corner * 2.0;
-                    if toggles.bottom_two_thirds {
-                        for offset in &[0.125, 0.875] {
-                            let cx = d.x + d.width * offset;
-                            zones.push(ZoneRect {
-                                x: cx - two_third_w / 2.0, y: bottom_y,
-                                w: two_third_w, h: third_h,
-                                kind: 3,
-                            });
-                        }
-                    }
-                }
+                // Shared geometry keeps macOS, Windows, and X11 drawing in
+                // lockstep with hit-testing. Preserve the prior visual-family
+                // order so reused NSWindow slots keep their assigned colors.
+                let mut zones =
+                    build_shared_snap_zones(&displays, side_edge, top_edge, corner, &toggles);
+                zones.sort_by_key(|zone| match zone.visual_kind {
+                    SnapZoneVisualKind::TopEdge => 0,
+                    SnapZoneVisualKind::SideEdge => 1,
+                    SnapZoneVisualKind::Corner => 2,
+                    SnapZoneVisualKind::BottomRow => 3,
+                });
 
                 // Ensure we have enough zone windows, creating new ones as needed
                 let zone_ptrs = ZONE_PTRS.get_or_init(|| std::sync::Mutex::new(Vec::new()));
@@ -2536,17 +2389,17 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
                 // Create/reuse windows and position them
                 for (i, zone) in zones.iter().enumerate() {
                     if ptrs[i] == 0 {
-                        let (r, g, b) = match zone.kind {
-                            0 => (0.2, 0.8, 0.3), // green for top/maximize
-                            1 => (1.0, 0.6, 0.1), // orange for sides
-                            2 => (0.6, 0.3, 0.9), // purple for corners
-                            _ => (0.0, 0.75, 0.7), // teal for bottom thirds
+                        let (r, g, b) = match zone.visual_kind {
+                            SnapZoneVisualKind::TopEdge => (0.2, 0.8, 0.3),
+                            SnapZoneVisualKind::SideEdge => (1.0, 0.6, 0.1),
+                            SnapZoneVisualKind::Corner => (0.6, 0.3, 0.9),
+                            SnapZoneVisualKind::BottomRow => (0.0, 0.75, 0.7),
                         };
                         ptrs[i] = create_colored_overlay(r, g, b, 0.25) as usize;
                     }
                     show_zone_window(
                         ptrs[i] as *mut c_void,
-                        zone.x, zone.y, zone.w, zone.h,
+                        zone.rect.x, zone.rect.y, zone.rect.width, zone.rect.height,
                         primary_h,
                     );
                 }
@@ -2571,23 +2424,15 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
     }
 }
 
-// --- Snap zone detection (macOS two-pass version) ---
+// --- Snap zone detection wrappers ---
 
-/// Detect which snap zone the cursor is in, if any (macOS two-pass version).
-/// Uses a two-pass approach: first checks displays whose bounds contain the cursor
-/// (exact match), then checks displays where the cursor is just outside (overflow
-/// into menu bar/dock). This prevents the margin expansion from stealing a cursor
-/// that belongs to an adjacent display.
-/// Returns the target layout and display index.
-/// `side_edge`: pixel trigger for left/right/bottom edges.
-/// `top_edge`: pixel trigger for top edge (maximize).
-/// `corner`: pixel trigger for corner zones (quarters).
 /// Build all snap zone rectangles for all displays, honoring per-zone
 /// visibility toggles. Each zone is a named rectangle — cursor is either
 /// inside it or not. No clamping, no deltas, no shared-edge math. Corners
 /// first (higher priority), then edges. Disabled zones are omitted entirely
 /// (no hit-test rect produced), keeping behavior in lockstep with the visual
 /// drop-zone indicators in `OverlayCmd::ShowZones`.
+#[cfg(test)]
 fn build_snap_zones_with_toggles(
     displays: &[Rect],
     side_edge: f64,
@@ -2595,87 +2440,10 @@ fn build_snap_zones_with_toggles(
     corner: f64,
     toggles: &SnapZoneToggles,
 ) -> Vec<(Rect, TilingLayout, usize)> {
-    let mut zones = Vec::new();
-    for (i, d) in displays.iter().enumerate() {
-        // Corners first — checked before edges so they win overlaps
-        if toggles.top_left_corner {
-            zones.push((Rect { x: d.x, y: d.y, width: corner, height: corner },
-                TilingLayout::TopLeftQuarter, i));
-        }
-        if toggles.top_right_corner {
-            zones.push((Rect { x: d.x + d.width - corner, y: d.y, width: corner, height: corner },
-                TilingLayout::TopRightQuarter, i));
-        }
-        if toggles.bottom_left_corner {
-            zones.push((Rect { x: d.x, y: d.y + d.height - corner, width: corner, height: corner },
-                TilingLayout::BottomLeftQuarter, i));
-        }
-        if toggles.bottom_right_corner {
-            zones.push((Rect { x: d.x + d.width - corner, y: d.y + d.height - corner, width: corner, height: corner },
-                TilingLayout::BottomRightQuarter, i));
-        }
-        // Top edge (full width)
-        if toggles.top_edge {
-            zones.push((Rect { x: d.x, y: d.y, width: d.width, height: top_edge },
-                TilingLayout::Maximize, i));
-        }
-        // Left edge (full height)
-        if toggles.left_edge {
-            zones.push((Rect { x: d.x, y: d.y, width: side_edge, height: d.height },
-                TilingLayout::LeftHalf, i));
-        }
-        // Right edge (full height)
-        if toggles.right_edge {
-            zones.push((Rect { x: d.x + d.width - side_edge, y: d.y, width: side_edge, height: d.height },
-                TilingLayout::RightHalf, i));
-        }
-        // Bottom-third zones — small rectangles at 25%, 50%, 75% horizontal
-        // offsets along the bottom edge. Each is `corner` wide × (top_edge × 4/3)
-        // tall (33% taller than the top strip so the bottom drop targets are
-        // easier to hit), centered on its offset. They don't overlap bottom
-        // corners (offsets > corner+corner/2 for any reasonable display), but
-        // corners are listed first anyway so they win priority. The 2/3
-        // markers added below share this same row and height.
-        let third_w = corner;
-        let third_h = top_edge * 4.0 / 3.0;
-        let bottom_y = d.y + d.height - third_h;
-        if toggles.bottom_thirds {
-            for &(offset, layout) in &[
-                (0.25, TilingLayout::LeftThird),
-                (0.50, TilingLayout::CenterThird),
-                (0.75, TilingLayout::RightThird),
-            ] {
-                let cx = d.x + d.width * offset;
-                zones.push((Rect {
-                    x: cx - third_w / 2.0,
-                    y: bottom_y,
-                    width: third_w,
-                    height: third_h,
-                }, layout, i));
-            }
-        }
-        // Bottom 2/3 zones — wider markers (`corner * 2` wide) sharing the
-        // same bottom row as the 1/3 markers, centered at 12.5% (LeftTwoThirds)
-        // and 87.5% (RightTwoThirds). Double width visually distinguishes
-        // them from the 1/3 markers without overlapping the bottom-corner
-        // quarter zones (which are listed first and win priority anyway).
-        let two_third_w = corner * 2.0;
-        if toggles.bottom_two_thirds {
-            for &(offset, layout) in &[
-                (0.125, TilingLayout::LeftTwoThirds),
-                (0.875, TilingLayout::RightTwoThirds),
-            ] {
-                let cx = d.x + d.width * offset;
-                zones.push((Rect {
-                    x: cx - two_third_w / 2.0,
-                    y: bottom_y,
-                    width: two_third_w,
-                    height: third_h,
-                }, layout, i));
-            }
-        }
-    }
-    zones
+    build_shared_snap_zones(displays, side_edge, top_edge, corner, toggles)
+        .into_iter()
+        .map(|zone| (zone.rect, zone.layout, zone.display_index))
+        .collect()
 }
 
 /// Build all snap zone rectangles for all displays with every zone enabled.
@@ -2688,7 +2456,13 @@ fn build_snap_zones(
     top_edge: f64,
     corner: f64,
 ) -> Vec<(Rect, TilingLayout, usize)> {
-    build_snap_zones_with_toggles(displays, side_edge, top_edge, corner, &SnapZoneToggles::all_enabled())
+    build_snap_zones_with_toggles(
+        displays,
+        side_edge,
+        top_edge,
+        corner,
+        &SnapZoneToggles::all_enabled(),
+    )
 }
 
 /// Detect which snap zone the cursor is in, honoring per-zone toggles.
@@ -2704,15 +2478,7 @@ fn detect_snap_zone_macos_with_toggles(
     corner: f64,
     toggles: &SnapZoneToggles,
 ) -> Option<(TilingLayout, usize)> {
-    let zones = build_snap_zones_with_toggles(displays, side_edge, top_edge, corner, toggles);
-    for (rect, layout, display_idx) in &zones {
-        if cx >= rect.x && cx < rect.x + rect.width
-            && cy >= rect.y && cy < rect.y + rect.height
-        {
-            return Some((*layout, *display_idx));
-        }
-    }
-    None
+    detect_snap_zone_with_toggles(cx, cy, displays, side_edge, top_edge, corner, toggles)
 }
 
 /// All-zones-enabled wrapper preserved for the legacy unit-test corpus.
@@ -2725,7 +2491,15 @@ fn detect_snap_zone_macos(
     top_edge: f64,
     corner: f64,
 ) -> Option<(TilingLayout, usize)> {
-    detect_snap_zone_macos_with_toggles(cx, cy, displays, side_edge, top_edge, corner, &SnapZoneToggles::all_enabled())
+    detect_snap_zone_macos_with_toggles(
+        cx,
+        cy,
+        displays,
+        side_edge,
+        top_edge,
+        corner,
+        &SnapZoneToggles::all_enabled(),
+    )
 }
 
 // --- Aero snap state and event tap ---
