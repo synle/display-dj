@@ -132,12 +132,12 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 
 ### Default Keyboard Shortcuts
 
-| Keys                    | Action                     |
-| ----------------------- | -------------------------- |
-| Shift + Escape          | Toggle Dark Mode           |
-| Shift + F1 / F2         | Volume 50%                 |
-| Shift + F3 / F4 / F5    | Brightness 0% / 50% / 100% |
-| Shift + F10 / F11 / F12 | Volume 0% / 10% / 100%     |
+| Keys                    | Action                                                 |
+| ----------------------- | ------------------------------------------------------ |
+| Shift + Escape          | Toggle Dark Mode                                       |
+| Shift + F1 / F2         | Volume 50% / 100% + Brightness 65% / 100% + Light Mode |
+| Shift + F3 / F4 / F5    | Brightness 0% / 50% / 100%                             |
+| Shift + F10 / F11 / F12 | Volume 0% / 10% / 100%                                 |
 
 **Window Tiling** (macOS + Windows + Linux/X11):
 
@@ -147,13 +147,11 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 | Ctrl + Shift + Right  | Right Third                      |
 | Ctrl + Shift + Up     | Left Two-Thirds                  |
 | Ctrl + Shift + Down   | Right Two-Thirds                 |
-| Ctrl + Shift + D/C    | Left/Center Third                |
+| Ctrl + Shift + C      | Center Third                     |
 | Ctrl + Shift + I/O    | Top-Left/Top-Right Quarter       |
 | Ctrl + Shift + K/L    | Bottom-Left/Bottom-Right Quarter |
 | Ctrl + Shift + M or / | Maximize                         |
-| Ctrl + Shift + E      | Exposé (all windows)             |
 | Ctrl + Up             | Exposé (all windows)             |
-| Ctrl + Shift + A      | App Exposé (current app only)    |
 | Ctrl + Down           | App Exposé (current app only)    |
 
 **Window Z-Order** (macOS + Windows + Linux/X11):

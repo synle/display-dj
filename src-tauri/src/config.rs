@@ -420,7 +420,7 @@ impl Default for Preferences {
                     key: "Shift+F1".into(),
                     command: CommandValue::Multiple(vec![
                         "command/changeVolume/50".into(),
-                        "command/changeBrightness/50".into(),
+                        "command/changeBrightness/65".into(),
                         "command/changeDarkMode/light".into(),
                     ]),
                 },
@@ -474,11 +474,7 @@ impl Default for Preferences {
                     key: "Shift+Ctrl+Down".into(),
                     command: CommandValue::Single("command/tile/rightTwoThirds".into()),
                 },
-                // Tiling: thirds via D/C
-                KeyBinding {
-                    key: "Shift+Ctrl+D".into(),
-                    command: CommandValue::Single("command/tile/leftThird".into()),
-                },
+                // Tiling: third via C
                 KeyBinding {
                     key: "Shift+Ctrl+C".into(),
                     command: CommandValue::Single("command/tile/centerThird".into()),
@@ -511,18 +507,10 @@ impl Default for Preferences {
                 },
                 // Tiling: exposé
                 KeyBinding {
-                    key: "Shift+Ctrl+E".into(),
-                    command: CommandValue::Single("command/tile/expose".into()),
-                },
-                KeyBinding {
                     key: "Ctrl+Up".into(),
                     command: CommandValue::Single("command/tile/expose".into()),
                 },
                 // Tiling: app exposé (current app only)
-                KeyBinding {
-                    key: "Shift+Ctrl+A".into(),
-                    command: CommandValue::Single("command/tile/exposeApp".into()),
-                },
                 KeyBinding {
                     key: "Ctrl+Down".into(),
                     command: CommandValue::Single("command/tile/exposeApp".into()),
@@ -713,26 +701,54 @@ pub fn load_preferences() -> Preferences {
     migrate_monitor_configs_if_needed(&mut prefs);
     migrate_expose_grid_if_needed(&mut prefs);
     let removed_conflicting_keybinding = migrate_legacy_ctrl_shift_g_binding(&mut prefs);
+    let removed_legacy_d_binding = migrate_legacy_ctrl_shift_d_binding(&mut prefs);
+    let removed_legacy_e_binding = migrate_legacy_ctrl_shift_e_binding(&mut prefs);
+    let removed_legacy_a_binding = migrate_legacy_ctrl_shift_a_binding(&mut prefs);
     // Runs after the migrations so migrated values are bounded too (e.g. a
     // legacy `exposeMaxWindows` that squares out to an absurd grid).
     prefs.sanitize();
-    if removed_conflicting_keybinding {
+    if removed_conflicting_keybinding
+        || removed_legacy_d_binding
+        || removed_legacy_e_binding
+        || removed_legacy_a_binding
+    {
         save_preferences_to_disk(&prefs);
     }
     prefs
 }
 
-/// Remove the retired default Ctrl+Shift+G mapping while preserving custom commands.
-fn migrate_legacy_ctrl_shift_g_binding(prefs: &mut Preferences) -> bool {
+/// Removes a retired default keybinding that matches the exact key + single
+/// command, preserving any user-customized command bound to the same key.
+fn remove_default_keybinding(prefs: &mut Preferences, key: &str, command: &str) -> bool {
     let original_len = prefs.key_bindings.len();
     prefs.key_bindings.retain(|binding| {
-        !(binding.key == "Shift+Ctrl+G"
+        !(binding.key == key
             && matches!(
                 &binding.command,
-                CommandValue::Single(command) if command == "command/tile/rightThird"
+                CommandValue::Single(actual) if actual == command
             ))
     });
     prefs.key_bindings.len() != original_len
+}
+
+/// Remove the retired default Ctrl+Shift+G mapping while preserving custom commands.
+fn migrate_legacy_ctrl_shift_g_binding(prefs: &mut Preferences) -> bool {
+    remove_default_keybinding(prefs, "Shift+Ctrl+G", "command/tile/rightThird")
+}
+
+/// Remove the retired default Ctrl+Shift+D mapping while preserving custom commands.
+fn migrate_legacy_ctrl_shift_d_binding(prefs: &mut Preferences) -> bool {
+    remove_default_keybinding(prefs, "Shift+Ctrl+D", "command/tile/leftThird")
+}
+
+/// Remove the retired default Ctrl+Shift+E mapping while preserving custom commands.
+fn migrate_legacy_ctrl_shift_e_binding(prefs: &mut Preferences) -> bool {
+    remove_default_keybinding(prefs, "Shift+Ctrl+E", "command/tile/expose")
+}
+
+/// Remove the retired default Ctrl+Shift+A mapping while preserving custom commands.
+fn migrate_legacy_ctrl_shift_a_binding(prefs: &mut Preferences) -> bool {
+    remove_default_keybinding(prefs, "Shift+Ctrl+A", "command/tile/exposeApp")
 }
 
 /// Serializes preferences to pretty JSON and writes to disk.
@@ -1051,7 +1067,7 @@ mod tests {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.min_brightness, 10);
-        assert_eq!(prefs.key_bindings.len(), 27);
+        assert_eq!(prefs.key_bindings.len(), 24);
     }
 
     #[test]
@@ -1205,9 +1221,108 @@ mod tests {
         }));
     }
 
+    /// The dropped Ctrl+Shift+D default mapping is removed from persisted configs.
+    #[test]
+    fn test_migrate_legacy_ctrl_shift_d_binding_removes_default_command() {
+        let mut prefs = Preferences::default();
+        prefs.key_bindings.push(KeyBinding {
+            key: "Shift+Ctrl+D".into(),
+            command: CommandValue::Single("command/tile/leftThird".into()),
+        });
+
+        assert!(migrate_legacy_ctrl_shift_d_binding(&mut prefs));
+        assert!(!prefs.key_bindings.iter().any(|binding| binding.key == "Shift+Ctrl+D"));
+        assert!(!migrate_legacy_ctrl_shift_d_binding(&mut prefs));
+    }
+
+    /// A user-defined Ctrl+Shift+D command is not mistaken for the dropped default mapping.
+    #[test]
+    fn test_migrate_legacy_ctrl_shift_d_binding_preserves_custom_command() {
+        let mut prefs = Preferences::default();
+        prefs.key_bindings.push(KeyBinding {
+            key: "Shift+Ctrl+D".into(),
+            command: CommandValue::Single("command/changeVolume/50".into()),
+        });
+
+        assert!(!migrate_legacy_ctrl_shift_d_binding(&mut prefs));
+        assert!(prefs.key_bindings.iter().any(|binding| {
+            binding.key == "Shift+Ctrl+D"
+                && matches!(
+                    &binding.command,
+                    CommandValue::Single(command) if command == "command/changeVolume/50"
+                )
+        }));
+    }
+
+    /// The dropped Ctrl+Shift+E default mapping is removed from persisted configs.
+    #[test]
+    fn test_migrate_legacy_ctrl_shift_e_binding_removes_default_command() {
+        let mut prefs = Preferences::default();
+        prefs.key_bindings.push(KeyBinding {
+            key: "Shift+Ctrl+E".into(),
+            command: CommandValue::Single("command/tile/expose".into()),
+        });
+
+        assert!(migrate_legacy_ctrl_shift_e_binding(&mut prefs));
+        assert!(!prefs.key_bindings.iter().any(|binding| binding.key == "Shift+Ctrl+E"));
+        assert!(!migrate_legacy_ctrl_shift_e_binding(&mut prefs));
+    }
+
+    /// A user-defined Ctrl+Shift+E command is not mistaken for the dropped default mapping.
+    #[test]
+    fn test_migrate_legacy_ctrl_shift_e_binding_preserves_custom_command() {
+        let mut prefs = Preferences::default();
+        prefs.key_bindings.push(KeyBinding {
+            key: "Shift+Ctrl+E".into(),
+            command: CommandValue::Single("command/changeVolume/50".into()),
+        });
+
+        assert!(!migrate_legacy_ctrl_shift_e_binding(&mut prefs));
+        assert!(prefs.key_bindings.iter().any(|binding| {
+            binding.key == "Shift+Ctrl+E"
+                && matches!(
+                    &binding.command,
+                    CommandValue::Single(command) if command == "command/changeVolume/50"
+                )
+        }));
+    }
+
+    /// The dropped Ctrl+Shift+A default mapping is removed from persisted configs.
+    #[test]
+    fn test_migrate_legacy_ctrl_shift_a_binding_removes_default_command() {
+        let mut prefs = Preferences::default();
+        prefs.key_bindings.push(KeyBinding {
+            key: "Shift+Ctrl+A".into(),
+            command: CommandValue::Single("command/tile/exposeApp".into()),
+        });
+
+        assert!(migrate_legacy_ctrl_shift_a_binding(&mut prefs));
+        assert!(!prefs.key_bindings.iter().any(|binding| binding.key == "Shift+Ctrl+A"));
+        assert!(!migrate_legacy_ctrl_shift_a_binding(&mut prefs));
+    }
+
+    /// A user-defined Ctrl+Shift+A command is not mistaken for the dropped default mapping.
+    #[test]
+    fn test_migrate_legacy_ctrl_shift_a_binding_preserves_custom_command() {
+        let mut prefs = Preferences::default();
+        prefs.key_bindings.push(KeyBinding {
+            key: "Shift+Ctrl+A".into(),
+            command: CommandValue::Single("command/changeVolume/50".into()),
+        });
+
+        assert!(!migrate_legacy_ctrl_shift_a_binding(&mut prefs));
+        assert!(prefs.key_bindings.iter().any(|binding| {
+            binding.key == "Shift+Ctrl+A"
+                && matches!(
+                    &binding.command,
+                    CommandValue::Single(command) if command == "command/changeVolume/50"
+                )
+        }));
+    }
+
     #[test]
     fn test_default_keybindings_f1_f2_commands() {
-        // Shift+F1: 50% volume + brightness + light mode;
+        // Shift+F1: 50% volume + 65% brightness + light mode;
         // Shift+F2: 100% volume + brightness + light mode
         let prefs = Preferences::default();
         let commands: Vec<Vec<String>> = prefs
@@ -1224,7 +1339,7 @@ mod tests {
             vec![
                 vec![
                     "command/changeVolume/50".to_string(),
-                    "command/changeBrightness/50".to_string(),
+                    "command/changeBrightness/65".to_string(),
                     "command/changeDarkMode/light".to_string(),
                 ],
                 vec![
@@ -1464,7 +1579,7 @@ mod tests {
         let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(loaded.min_brightness, 10);
-        assert_eq!(loaded.key_bindings.len(), 27);
+        assert_eq!(loaded.key_bindings.len(), 24);
 
         std::fs::remove_dir_all(&dir).ok();
     }

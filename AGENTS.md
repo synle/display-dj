@@ -239,8 +239,8 @@ On macOS, Tile Snap also smart-shrinks oversized windows on drag start (≥ 85% 
 
 ### Exposé
 
-- **Exposé** (`command/tile/expose`, Shift+Ctrl+E / Ctrl+Up): all on-screen windows into a deterministic alphabetical grid.
-- **App Exposé** (`command/tile/exposeApp`, Shift+Ctrl+A / Ctrl+Down): only frontmost app's windows.
+- **Exposé** (`command/tile/expose`, Ctrl+Up): all on-screen windows into a deterministic alphabetical grid.
+- **App Exposé** (`command/tile/exposeApp`, Ctrl+Down): only frontmost app's windows.
 
 Both **normalize** first (unminimize + exit native fullscreen + Escape browser/video pseudo-fullscreen + collapse virtual desktops/Spaces). **Fill-first overflow**: fill display 1 to `exposeColumns × exposeRows`, overflow to display 2, etc. Windows with min sizes (Steam, Chrome) that exceed grid cells overflow to subsequent displays; the last display uses grid-aligned placement (oversized windows consume `ceil`'d cells, snapped to grid boundaries with no gaps). Resizable windows placed first, oversized fill remaining slots. Layout is deterministic (sorted alphabetically by app, then `window_id`); each invocation re-lays out (no toggle/restore).
 
