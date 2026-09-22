@@ -790,6 +790,18 @@ pub fn position_window_near_tray(
     Ok(())
 }
 
+/// Runs a shortcut command only for the key-down half of a shortcut event.
+fn dispatch_shortcut_press(
+    state: tauri_plugin_global_shortcut::ShortcutState,
+    dispatch: impl FnOnce(),
+) {
+    if state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+        return;
+    }
+
+    dispatch();
+}
+
 /// Registers global keyboard shortcuts from the user's key binding preferences.
 /// Unregisters all existing shortcuts first, then re-registers from the provided bindings.
 pub fn register_shortcuts(app: &AppHandle, key_bindings: &[KeyBinding]) {
@@ -817,11 +829,13 @@ pub fn register_shortcuts(app: &AppHandle, key_bindings: &[KeyBinding]) {
         if let Ok(shortcut) = key.parse::<tauri_plugin_global_shortcut::Shortcut>() {
             match app.global_shortcut().on_shortcut(
                 shortcut,
-                move |_app, _shortcut, _event| {
-                    log::info!("shortcut triggered: '{}' → {:?}", key_for_log, cmds_for_log);
-                    for cmd in &commands {
-                        execute_command(&handle, cmd);
-                    }
+                move |_app, _shortcut, event| {
+                    dispatch_shortcut_press(event.state, || {
+                        log::info!("shortcut triggered: '{}' → {:?}", key_for_log, cmds_for_log);
+                        for cmd in &commands {
+                            execute_command(&handle, cmd);
+                        }
+                    });
                 },
             ) {
                 Ok(_) => {
@@ -1368,5 +1382,20 @@ mod tests {
                 cmd,
             );
         }
+    }
+
+    /// A press/release shortcut cycle dispatches its command exactly once.
+    #[test]
+    fn test_shortcut_release_does_not_dispatch_command_again() {
+        let mut dispatch_count = 0;
+
+        dispatch_shortcut_press(tauri_plugin_global_shortcut::ShortcutState::Pressed, || {
+            dispatch_count += 1;
+        });
+        dispatch_shortcut_press(tauri_plugin_global_shortcut::ShortcutState::Released, || {
+            dispatch_count += 1;
+        });
+
+        assert_eq!(dispatch_count, 1);
     }
 }
