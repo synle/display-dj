@@ -281,7 +281,7 @@ No special permissions are needed. Tiling works out of the box using Win32 APIs.
 
 #### Linux (X11)
 
-No special permissions are needed on X11. Tiling uses EWMH window manager hints and works out of the box. Wayland is not supported — `get_tiling_supported` returns false on Wayland-only sessions (the `$DISPLAY` env var must be set).
+No special permissions are needed on X11. Tiling uses EWMH window manager hints and works out of the box, including XFCE/xfwm4. Before focused tiling, Display DJ exits maximized or fullscreen state, waits for the window manager to confirm normal state, then records the restored bounds; minimized windows remain untouched. Wayland is not supported — `get_tiling_supported` returns false on Wayland-only sessions (the `$DISPLAY` env var must be set).
 
 ### Tiling Preferences
 

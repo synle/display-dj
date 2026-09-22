@@ -9,11 +9,15 @@ use super::{
     layout_across_displays, layout_grid_on_display, plan_expose, plan_expose_app,
     plan_layout_preset, Rect, TilingLayout, WindowInfo, WindowState,
 };
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 use x11rb::connection::Connection;
 use x11rb::protocol::randr;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
+
+const WINDOW_STATE_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const WINDOW_STATE_CHANGE_TIMEOUT: Duration = Duration::from_millis(500);
 
 // ---------------------------------------------------------------------------
 // X11 availability check
@@ -72,19 +76,25 @@ fn get_window_list(conn: &RustConnection, window: Window, property: Atom) -> Vec
         .unwrap_or_default()
 }
 
-/// Read an atom-list property (e.g. `_NET_WM_STATE`).
+/// Try to read an atom-list property (e.g. `_NET_WM_STATE`).
+fn try_get_atom_list(conn: &RustConnection, window: Window, property: Atom) -> Option<Vec<Atom>> {
+    let reply = conn
+        .get_property(false, window, property, AtomEnum::ATOM, 0, 64)
+        .ok()?
+        .reply()
+        .ok()?;
+    if reply.format == 0 {
+        return Some(Vec::new());
+    }
+    if reply.format != 32 {
+        return None;
+    }
+    reply.value32().map(|iter| iter.collect())
+}
+
+/// Read an atom-list property, treating unavailable properties as empty.
 fn get_atom_list(conn: &RustConnection, window: Window, property: Atom) -> Vec<Atom> {
-    conn.get_property(false, window, property, AtomEnum::ATOM, 0, 64)
-        .ok()
-        .and_then(|c| c.reply().ok())
-        .and_then(|r| {
-            if r.format == 32 {
-                r.value32().map(|iter| iter.collect())
-            } else {
-                None
-            }
-        })
-        .unwrap_or_default()
+    try_get_atom_list(conn, window, property).unwrap_or_default()
 }
 
 /// Read a UTF-8 string property (e.g. `_NET_WM_NAME`).
@@ -382,11 +392,60 @@ fn get_window_rect(conn: &RustConnection, window: Window, root: Window) -> Optio
     })
 }
 
-/// Remove maximized and fullscreen states from a window before tiling.
-fn unmaximize_window(conn: &RustConnection, root: Window, window: Window) {
+/// Return the managed states currently active on a window.
+fn active_managed_states(current: &[Atom], managed: &[Atom]) -> Vec<Atom> {
+    managed
+        .iter()
+        .copied()
+        .filter(|atom| current.contains(atom))
+        .collect()
+}
+
+/// Wait until the window manager confirms that managed states were removed.
+fn wait_for_managed_states_removed(
+    conn: &RustConnection,
+    window: Window,
+    net_wm_state: Atom,
+    managed: &[Atom],
+) -> bool {
+    let started = Instant::now();
+    loop {
+        let current = match try_get_atom_list(conn, window, net_wm_state) {
+            Some(states) => states,
+            None => {
+                log::warn!(
+                    "tiling: failed to read _NET_WM_STATE while restoring window 0x{:x}",
+                    window
+                );
+                return false;
+            }
+        };
+        if active_managed_states(&current, managed).is_empty() {
+            return true;
+        }
+        if started.elapsed() >= WINDOW_STATE_CHANGE_TIMEOUT {
+            log::warn!(
+                "tiling: timed out waiting for window 0x{:x} to leave maximized/fullscreen state",
+                window
+            );
+            return false;
+        }
+        std::thread::sleep(WINDOW_STATE_POLL_INTERVAL);
+    }
+}
+
+/// Remove maximized and fullscreen states and wait for restored geometry.
+fn normalize_window_state_before_tiling(
+    conn: &RustConnection,
+    root: Window,
+    window: Window,
+) -> bool {
     let net_wm_state = match intern_atom(conn, "_NET_WM_STATE") {
         Some(a) => a,
-        None => return,
+        None => {
+            log::warn!("tiling: failed to intern _NET_WM_STATE");
+            return false;
+        }
     };
 
     let state_names = [
@@ -394,19 +453,35 @@ fn unmaximize_window(conn: &RustConnection, root: Window, window: Window) {
         "_NET_WM_STATE_MAXIMIZED_VERT",
         "_NET_WM_STATE_FULLSCREEN",
     ];
-    let atoms: Vec<Atom> = state_names
-        .iter()
-        .filter_map(|name| intern_atom(conn, name))
-        .collect();
-
-    let current = get_atom_list(conn, window, net_wm_state);
-    let needs_change = atoms.iter().any(|a| current.contains(a));
-    if !needs_change {
-        return;
+    let mut managed_states = Vec::with_capacity(state_names.len());
+    for name in state_names {
+        let atom = match intern_atom(conn, name) {
+            Some(atom) => atom,
+            None => {
+                log::warn!("tiling: failed to intern {}", name);
+                return false;
+            }
+        };
+        managed_states.push(atom);
     }
 
-    // Send _NET_WM_STATE client messages to remove states (two atoms per message)
-    for chunk in atoms.chunks(2) {
+    let current = match try_get_atom_list(conn, window, net_wm_state) {
+        Some(states) => states,
+        None => {
+            log::warn!(
+                "tiling: failed to read _NET_WM_STATE for window 0x{:x}",
+                window
+            );
+            return false;
+        }
+    };
+    let active_states = active_managed_states(&current, &managed_states);
+    if active_states.is_empty() {
+        return true;
+    }
+
+    // EWMH carries at most two state atoms per client message.
+    for chunk in active_states.chunks(2) {
         let a1 = chunk[0];
         let a2 = chunk.get(1).copied().unwrap_or(0);
         let event = ClientMessageEvent::new(
@@ -415,15 +490,30 @@ fn unmaximize_window(conn: &RustConnection, root: Window, window: Window) {
             net_wm_state,
             [0u32, a1, a2, 2, 0], // action=REMOVE(0), source=pager(2)
         );
-        let _ = conn.send_event(
+        if let Err(error) = conn.send_event(
             false,
             root,
             EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
             event,
-        );
+        ) {
+            log::warn!(
+                "tiling: failed to request state removal for window 0x{:x}: {}",
+                window,
+                error
+            );
+            return false;
+        }
     }
-    let _ = conn.flush();
-    std::thread::sleep(std::time::Duration::from_millis(50));
+    if let Err(error) = conn.flush() {
+        log::warn!(
+            "tiling: failed to flush state removal for window 0x{:x}: {}",
+            window,
+            error
+        );
+        return false;
+    }
+
+    wait_for_managed_states_removed(conn, window, net_wm_state, &active_states)
 }
 
 /// Move and resize a window to the given rect, compensating for frame extents.
@@ -433,7 +523,9 @@ fn unmaximize_window(conn: &RustConnection, root: Window, window: Window) {
 fn set_window_rect(conn: &RustConnection, screen_num: usize, window: Window, rect: &Rect) {
     let root = conn.setup().roots[screen_num].root;
 
-    unmaximize_window(conn, root, window);
+    if !normalize_window_state_before_tiling(conn, root, window) {
+        return;
+    }
 
     let (fl, fr, ft, fb) = get_frame_extents(conn, window);
     let client_w = ((rect.width as i32) - fl - fr).max(1) as u32;
@@ -979,6 +1071,10 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
         }
     };
 
+    if !normalize_window_state_before_tiling(&conn, root, window) {
+        return;
+    }
+
     let win_rect = match get_window_rect(&conn, window, root) {
         Some(r) => r,
         None => {
@@ -1238,6 +1334,22 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Managed-state filtering selects maximize/fullscreen without treating minimized as restorable.
+    #[test]
+    fn active_managed_states_excludes_minimized_state() {
+        let maximized_horiz = 10;
+        let maximized_vert = 20;
+        let fullscreen = 30;
+        let minimized = 40;
+        let current = [minimized, maximized_horiz, fullscreen];
+        let managed = [maximized_horiz, maximized_vert, fullscreen];
+
+        assert_eq!(
+            active_managed_states(&current, &managed),
+            vec![maximized_horiz, fullscreen]
+        );
+    }
 
     #[test]
     fn test_is_x11_available_returns_bool() {
