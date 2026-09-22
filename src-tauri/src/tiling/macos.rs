@@ -11,7 +11,11 @@
 use std::ffi::{c_char, c_void, CString};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::{AppHandle, Manager};
+
+const NATIVE_FULLSCREEN_EXIT_SETTLE_DELAY: Duration = Duration::from_millis(800);
+const PSEUDO_FULLSCREEN_EXIT_SETTLE_DELAY: Duration = Duration::from_millis(350);
 
 /// Idempotence guard for `start_tile_snap`.
 ///
@@ -807,6 +811,10 @@ unsafe fn set_window_size(window: &CfRef, w: f64, h: f64) -> bool {
 /// final position+size pair landed successfully — i.e. the window is in the
 /// requested rect.
 unsafe fn set_window_rect(window: &CfRef, rect: &Rect) -> bool {
+    if let Some(settle_delay) = exit_native_fullscreen_before_resize(window) {
+        std::thread::sleep(settle_delay);
+    }
+
     let _ = set_window_position(window, rect.x, rect.y);
     let size_ok = set_window_size(window, rect.width, rect.height);
     // Re-set position: some apps shift after resize
@@ -885,13 +893,23 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     // user just won't be able to "restore" this specific tile. Previously this
     // path bailed early, making Ctrl+Shift+Arrow silently no-op on Brave.
     let (window, window_id_opt, win_rect) = unsafe {
-        let window = match get_focused_window() {
+        let mut window = match get_focused_window() {
             Some(w) => w,
             None => {
                 log::info!("tiling: no focused window");
                 return;
             }
         };
+        if let Some(settle_delay) = exit_fullscreen_before_tiling(&window) {
+            std::thread::sleep(settle_delay);
+            if let Some(refreshed_window) = get_focused_window() {
+                window = refreshed_window;
+            } else {
+                log::warn!(
+                    "tiling: fullscreen exited but focused window could not be refreshed"
+                );
+            }
+        }
         let wid_opt = get_window_id(&window);
         if wid_opt.is_none() {
             log::warn!(
@@ -1735,6 +1753,38 @@ unsafe fn set_window_fullscreen(ax_win: &CfRef, fullscreen: bool) -> bool {
         kCFBooleanFalse
     };
     AXUIElementSetAttributeValue(ax_win.as_ptr(), attr.as_ptr(), val) == K_AX_ERROR_SUCCESS
+}
+
+/// Exit native fullscreen before any AX move/resize operation.
+/// Returns the delay needed for the fullscreen transition to settle.
+unsafe fn exit_native_fullscreen_before_resize(ax_win: &CfRef) -> Option<Duration> {
+    if is_window_fullscreen(ax_win) {
+        if set_window_fullscreen(ax_win, false) {
+            log::info!("tiling: exited native fullscreen before resize");
+            return Some(NATIVE_FULLSCREEN_EXIT_SETTLE_DELAY);
+        }
+        log::warn!("tiling: failed to exit native fullscreen before resize");
+    }
+    None
+}
+
+/// Exit native or browser/video fullscreen before focused-window tiling.
+/// Returns the delay needed before the caller re-reads the focused window.
+unsafe fn exit_fullscreen_before_tiling(ax_win: &CfRef) -> Option<Duration> {
+    if let Some(settle_delay) = exit_native_fullscreen_before_resize(ax_win) {
+        return Some(settle_delay);
+    }
+
+    let Some(bounds) = get_window_rect(ax_win) else {
+        return None;
+    };
+    if !is_pseudo_fullscreen(&bounds, &get_display_full_frames()) {
+        return None;
+    }
+
+    send_escape_key();
+    log::info!("tiling: sent Escape to exit pseudo-fullscreen before tiling");
+    Some(PSEUDO_FULLSCREEN_EXIT_SETTLE_DELAY)
 }
 
 /// Get all AX windows for a given app PID. Returns (window_element, window_id) pairs.
@@ -3397,6 +3447,15 @@ mod tests {
     fn test_ax_error_description_unknown_code() {
         assert_eq!(ax_error_description(12345), "unknown");
         assert_eq!(ax_error_description(-1), "unknown");
+    }
+
+    /// Pseudo-fullscreen detection recognizes exact full-display coverage.
+    #[test]
+    fn test_is_pseudo_fullscreen_matches_full_display_bounds() {
+        let frames = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
+
+        assert!(is_pseudo_fullscreen(&rect(0.0, 0.0, 1920.0, 1080.0), &frames));
+        assert!(!is_pseudo_fullscreen(&rect(0.0, 25.0, 1920.0, 1055.0), &frames));
     }
 
     // --- is_window_move tests ---

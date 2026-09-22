@@ -136,6 +136,27 @@ fn get_foreground_hwnd() -> Option<HWND> {
     }
 }
 
+/// Return whether ordinary tiling should restore this window before resizing it.
+fn should_restore_before_tiling(is_minimized: bool, is_maximized: bool) -> bool {
+    !is_minimized && is_maximized
+}
+
+/// Restore a maximized window to its normal placement before move/resize.
+/// Minimized windows stay minimized; Exposé owns the separate unminimize flow.
+fn restore_maximized_window(hwnd: HWND) -> bool {
+    let should_restore = unsafe {
+        should_restore_before_tiling(IsIconic(hwnd).as_bool(), IsZoomed(hwnd).as_bool())
+    };
+    if !should_restore {
+        return false;
+    }
+
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_RESTORE);
+    }
+    true
+}
+
 /// Get the visible frame position and size of a window.
 /// Prefers DWM extended frame bounds (which exclude invisible DWM borders)
 /// over `GetWindowRect` (which includes them). This ensures that
@@ -213,6 +234,8 @@ fn get_dwm_border(hwnd: HWND) -> (i32, i32, i32, i32) {
 /// the window may land on a different-DPI display where DWM borders differ.
 /// A second corrective SetWindowPos aligns the visible frame to the target rect.
 fn set_hwnd_rect(hwnd: HWND, rect: &Rect) {
+    restore_maximized_window(hwnd);
+
     let (bl, _bt, br, bb) = get_dwm_border(hwnd);
     // Expand outward by the border amount on each side.
     // Top border (bt) is typically 0 on Windows 10/11 (title bar has no invisible border).
@@ -749,6 +772,10 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
         }
     };
 
+    if restore_maximized_window(hwnd) {
+        dbg_log(app, "tiling_win: restored maximized focused window before tiling");
+    }
+
     let win_rect = match get_hwnd_rect(hwnd) {
         Some(r) => r,
         None => {
@@ -868,7 +895,7 @@ pub fn execute_expose(app: &AppHandle) {
         )
     };
 
-    restore_minimized_windows();
+    restore_windows_for_expose();
 
     let all_windows = get_all_windows();
     if all_windows.is_empty() {
@@ -984,7 +1011,7 @@ pub fn execute_expose_app(app: &AppHandle) {
     }
     let target_app = get_process_name(hwnd);
 
-    restore_minimized_windows();
+    restore_windows_for_expose();
 
     let mut all_windows = get_all_windows();
     if all_windows.is_empty() {
@@ -1077,7 +1104,7 @@ pub fn execute_expose_app(app: &AppHandle) {
 /// Minimized windows need to be restored so they appear in the grid.
 /// Maximized windows need to be restored because SetWindowPos behaves
 /// differently for maximized windows and their bounds span the full work area.
-fn restore_minimized_windows() {
+fn restore_windows_for_expose() {
     unsafe {
         unsafe extern "system" fn restore_callback(hwnd: HWND, _lparam: LPARAM) -> BOOL {
             if (IsIconic(hwnd).as_bool() || IsZoomed(hwnd).as_bool()) && IsWindowVisible(hwnd).as_bool() {
@@ -1134,3 +1161,16 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::should_restore_before_tiling;
+
+    /// Focused tiling restores maximized windows but never unminimizes them.
+    #[test]
+    fn test_should_restore_before_tiling_only_for_maximized_windows() {
+        assert!(!should_restore_before_tiling(false, false));
+        assert!(!should_restore_before_tiling(true, false));
+        assert!(!should_restore_before_tiling(true, true));
+        assert!(should_restore_before_tiling(false, true));
+    }
+}

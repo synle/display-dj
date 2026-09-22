@@ -474,7 +474,7 @@ impl Default for Preferences {
                     key: "Shift+Ctrl+Down".into(),
                     command: CommandValue::Single("command/tile/rightTwoThirds".into()),
                 },
-                // Tiling: thirds via D/C/G
+                // Tiling: thirds via D/C
                 KeyBinding {
                     key: "Shift+Ctrl+D".into(),
                     command: CommandValue::Single("command/tile/leftThird".into()),
@@ -482,10 +482,6 @@ impl Default for Preferences {
                 KeyBinding {
                     key: "Shift+Ctrl+C".into(),
                     command: CommandValue::Single("command/tile/centerThird".into()),
-                },
-                KeyBinding {
-                    key: "Shift+Ctrl+G".into(),
-                    command: CommandValue::Single("command/tile/rightThird".into()),
                 },
                 // Tiling: quarters via I/O/K/L (keyboard layout)
                 KeyBinding {
@@ -716,10 +712,27 @@ pub fn load_preferences() -> Preferences {
     };
     migrate_monitor_configs_if_needed(&mut prefs);
     migrate_expose_grid_if_needed(&mut prefs);
+    let removed_conflicting_keybinding = migrate_legacy_ctrl_shift_g_binding(&mut prefs);
     // Runs after the migrations so migrated values are bounded too (e.g. a
     // legacy `exposeMaxWindows` that squares out to an absurd grid).
     prefs.sanitize();
+    if removed_conflicting_keybinding {
+        save_preferences_to_disk(&prefs);
+    }
     prefs
+}
+
+/// Remove the retired default Ctrl+Shift+G mapping while preserving custom commands.
+fn migrate_legacy_ctrl_shift_g_binding(prefs: &mut Preferences) -> bool {
+    let original_len = prefs.key_bindings.len();
+    prefs.key_bindings.retain(|binding| {
+        !(binding.key == "Shift+Ctrl+G"
+            && matches!(
+                &binding.command,
+                CommandValue::Single(command) if command == "command/tile/rightThird"
+            ))
+    });
+    prefs.key_bindings.len() != original_len
 }
 
 /// Serializes preferences to pretty JSON and writes to disk.
@@ -1032,12 +1045,13 @@ pub fn get_about_info() -> std::collections::HashMap<String, String> {
 mod tests {
     use super::*;
 
+    /// Defaults expose the expected base controls and conflict-free shortcut set.
     #[test]
     fn test_default_preferences() {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.min_brightness, 10);
-        assert_eq!(prefs.key_bindings.len(), 28);
+        assert_eq!(prefs.key_bindings.len(), 27);
     }
 
     #[test]
@@ -1146,6 +1160,49 @@ mod tests {
         assert_eq!(keys[1], "Shift+F1");
         assert_eq!(keys[7], "Shift+F11");
         assert_eq!(keys[8], "Shift+F12");
+    }
+
+    /// Default shortcuts avoid Ctrl+Shift+G because Windows reserves it in common apps.
+    #[test]
+    fn test_default_keybindings_omit_ctrl_shift_g() {
+        let prefs = Preferences::default();
+        let keys: Vec<&str> = prefs.key_bindings.iter().map(|kb| kb.key.as_str()).collect();
+
+        assert!(!keys.contains(&"Shift+Ctrl+G"));
+        assert!(keys.contains(&"Shift+Ctrl+Right"));
+    }
+
+    /// Legacy persisted defaults drop Ctrl+Shift+G so upgrades stop registering the conflict.
+    #[test]
+    fn test_migrate_legacy_ctrl_shift_g_binding_removes_default_command() {
+        let mut prefs = Preferences::default();
+        prefs.key_bindings.push(KeyBinding {
+            key: "Shift+Ctrl+G".into(),
+            command: CommandValue::Single("command/tile/rightThird".into()),
+        });
+
+        assert!(migrate_legacy_ctrl_shift_g_binding(&mut prefs));
+        assert!(!prefs.key_bindings.iter().any(|binding| binding.key == "Shift+Ctrl+G"));
+        assert!(!migrate_legacy_ctrl_shift_g_binding(&mut prefs));
+    }
+
+    /// A user-defined Ctrl+Shift+G command is not mistaken for the retired default mapping.
+    #[test]
+    fn test_migrate_legacy_ctrl_shift_g_binding_preserves_custom_command() {
+        let mut prefs = Preferences::default();
+        prefs.key_bindings.push(KeyBinding {
+            key: "Shift+Ctrl+G".into(),
+            command: CommandValue::Single("command/changeVolume/50".into()),
+        });
+
+        assert!(!migrate_legacy_ctrl_shift_g_binding(&mut prefs));
+        assert!(prefs.key_bindings.iter().any(|binding| {
+            binding.key == "Shift+Ctrl+G"
+                && matches!(
+                    &binding.command,
+                    CommandValue::Single(command) if command == "command/changeVolume/50"
+                )
+        }));
     }
 
     #[test]
@@ -1393,6 +1450,7 @@ mod tests {
         assert!(prefs.monitor_configs.is_empty());
     }
 
+    /// Preferences preserve every default shortcut through JSON serialization.
     #[test]
     fn test_preferences_file_roundtrip() {
         let dir = std::env::temp_dir().join("display-dj-test-prefs");
@@ -1406,7 +1464,7 @@ mod tests {
         let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(loaded.min_brightness, 10);
-        assert_eq!(loaded.key_bindings.len(), 28);
+        assert_eq!(loaded.key_bindings.len(), 27);
 
         std::fs::remove_dir_all(&dir).ok();
     }

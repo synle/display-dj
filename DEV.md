@@ -42,6 +42,12 @@ Raising: measure current %, set floor ~10pp below, update both files. Never lowe
 
 Code: `src-tauri/src/tiling/macos.rs`. Verify live: focus Brave, hit Ctrl+Shift+Right, expect a log line like `AXFocusedApplication failed with AXError=-25212 … falling back to NSWorkspace.frontmostApplication`. If you instead see `set AXPosition(…) failed`, the lookup worked but the app refused the move (fullscreen-locked or undecorated window) — different problem.
 
+### Windows maximized / macOS fullscreen tiling
+
+Focused-window tiling normalizes OS-managed window states before reading the original bounds or applying `AXPosition` / `AXSize` / `SetWindowPos`. Windows checks `IsZoomed` and calls `ShowWindow(SW_RESTORE)` without touching minimized windows. macOS clears native `AXFullScreen`, or sends Escape for browser/video pseudo-fullscreen, waits for the transition, reacquires the focused AX window, and then records its restored bounds.
+
+Code: `src-tauri/src/tiling/{windows,macos}.rs`. Exposé keeps its broader behavior and may also unminimize windows because every visible window must join the grid.
+
 ### Linux — running locally & first-build notes (verified on Mint 22.2 / XFCE / X11)
 
 **Running the binary from a terminal or agent shell:** the app is a tray daemon with no window. A plain `./target/release/display-dj &` dies when the parent shell/session closes (no crash in the log — it just vanishes). Run fully detached:

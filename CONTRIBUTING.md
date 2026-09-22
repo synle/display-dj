@@ -174,3 +174,4 @@ Verify: `node --version`, `rustc --version`, and on Linux `ddcutil detect`.
 - **"No displays found"** — Linux: `ddcutil detect` as your user; check `i2c` group membership. Windows: enable DDC/CI in the monitor OSD. macOS: try USB-C/DP instead of HDMI.
 - **Dark mode does nothing on Linux** — requires GNOME (`echo $XDG_CURRENT_DESKTOP`).
 - **Tile shortcuts silently no-op on Chromium apps (macOS)** — known AX limitation; fixed since v7.0.24 via NSWorkspace fallback. Details in [DEV.md](DEV.md).
+- **Maximized/fullscreen window does not resize when tiled** — focused tiling restores Windows maximized windows and exits macOS native or browser/video fullscreen before applying the layout. Minimized windows remain untouched outside Exposé.

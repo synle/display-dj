@@ -147,7 +147,7 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 | Ctrl + Shift + Right  | Right Third                      |
 | Ctrl + Shift + Up     | Left Two-Thirds                  |
 | Ctrl + Shift + Down   | Right Two-Thirds                 |
-| Ctrl + Shift + D/C/G  | Left/Center/Right Third          |
+| Ctrl + Shift + D/C    | Left/Center Third                |
 | Ctrl + Shift + I/O    | Top-Left/Top-Right Quarter       |
 | Ctrl + Shift + K/L    | Bottom-Left/Bottom-Right Quarter |
 | Ctrl + Shift + M or / | Maximize                         |
@@ -168,6 +168,8 @@ The main config file is **`preferences.json`** -- it holds keyboard shortcuts, m
 ## Window Tiling (macOS + Windows + Linux/X11)
 
 Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or maximize using keyboard shortcuts or the **Tiling** submenu in the tray icon's right-click menu. All 19 layouts, restore, Exposé, and App Exposé work on macOS, Windows, and Linux (X11). Tile Snap (mouse edge snapping) is currently macOS-only.
+
+Before a focused window is tiled, Windows restores it from maximized state and macOS exits native or browser/video fullscreen. Display DJ then reads the normal window bounds and applies the requested layout; minimized windows remain minimized outside Exposé.
 
 ### Exposé
 
