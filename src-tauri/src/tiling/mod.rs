@@ -13,7 +13,7 @@ mod macos;
 mod windows;
 #[cfg(target_os = "linux")]
 mod linux;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 mod snap_overlay;
 
 // ---------------------------------------------------------------------------
@@ -1459,12 +1459,14 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
 }
 
 /// Start Tile Snap monitoring for the active desktop platform.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub fn start_tile_snap(app: AppHandle) {
     #[cfg(target_os = "macos")]
     macos::start_tile_snap(app);
     #[cfg(target_os = "windows")]
     windows::start_tile_snap(app);
+    #[cfg(target_os = "linux")]
+    linux::start_tile_snap(app);
 }
 
 // ---------------------------------------------------------------------------

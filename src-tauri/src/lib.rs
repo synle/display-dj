@@ -771,6 +771,16 @@ pub fn run() {
                 tiling::start_tile_snap(app.handle().clone());
             }
 
+            // Linux/X11 uses a lightweight pointer/window-geometry poller.
+            // Keep it alive regardless of the current preference so toggling
+            // Tile Snap in Settings takes effect without an app restart.
+            #[cfg(target_os = "linux")]
+            {
+                if tiling::get_tiling_supported() {
+                    tiling::start_tile_snap(app.handle().clone());
+                }
+            }
+
             // Z-order self-test (debug aid — opt-in via env var).
             // When DISPLAY_DJ_ZORDER_SELFTEST=1, spawn a background thread
             // that runs `run_zorder_selftest`. The routine sleeps 5s before

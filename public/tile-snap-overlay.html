@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Display DJ Tile Snap</title>
+    <style>
+      html,
+      body,
+      #zones {
+        position: fixed;
+        inset: 0;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      .zone,
+      #preview {
+        position: absolute;
+        box-sizing: border-box;
+        pointer-events: none;
+      }
+
+      .zone {
+        opacity: 0.28;
+      }
+
+      .topEdge {
+        z-index: 1;
+        background: #33cc4d;
+      }
+
+      .sideEdge {
+        z-index: 1;
+        background: #ff991a;
+      }
+
+      .bottomRow {
+        z-index: 2;
+        background: #00bfb3;
+      }
+
+      .corner {
+        z-index: 3;
+        background: #994de6;
+      }
+
+      #preview {
+        z-index: 4;
+        display: none;
+        background: rgba(51, 128, 255, 0.22);
+        border: 2px solid rgba(102, 166, 255, 0.9);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="zones"></div>
+    <div id="preview"></div>
+    <script>
+      (function () {
+        var zonesRoot = document.getElementById('zones');
+        var preview = document.getElementById('preview');
+        var tauri = window.__TAURI__;
+
+        function setRect(element, rect) {
+          element.style.left = rect.x + 'px';
+          element.style.top = rect.y + 'px';
+          element.style.width = rect.width + 'px';
+          element.style.height = rect.height + 'px';
+        }
+
+        function render(payload) {
+          zonesRoot.replaceChildren();
+          (payload.zones || []).forEach(function (zone) {
+            var element = document.createElement('div');
+            element.className = 'zone ' + zone.kind;
+            setRect(element, zone.rect);
+            zonesRoot.appendChild(element);
+          });
+
+          if (payload.preview) {
+            setRect(preview, payload.preview);
+            preview.style.display = 'block';
+          } else {
+            preview.style.display = 'none';
+          }
+        }
+
+        if (tauri && tauri.event && tauri.event.listen) {
+          tauri.event.listen('set-tile-snap-overlay', function (event) {
+            render((event && event.payload) || {});
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>

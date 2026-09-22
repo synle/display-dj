@@ -4,11 +4,13 @@
 //! move/resize windows. Requires an X11 session (`$DISPLAY` set).
 //! Not supported on Wayland-only sessions — `is_x11_available()` returns false.
 
+use super::snap_overlay::TileSnapOverlay;
 use super::{
-    build_sorted_window_list, calculate_target_rect, find_display_for_window,
-    layout_across_displays, layout_grid_on_display, plan_expose, plan_expose_app,
-    plan_layout_preset, Rect, TilingLayout, WindowInfo, WindowState,
+    build_snap_zones, calculate_target_rect, detect_snap_zone_with_toggles,
+    find_display_for_window, plan_expose, plan_expose_app, plan_layout_preset, Rect,
+    SnapZoneToggles, TilingLayout, WindowInfo, WindowState,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 use x11rb::connection::Connection;
@@ -18,6 +20,13 @@ use x11rb::rust_connection::RustConnection;
 
 const WINDOW_STATE_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const WINDOW_STATE_CHANGE_TIMEOUT: Duration = Duration::from_millis(500);
+const TILE_SNAP_POLL_INTERVAL: Duration = Duration::from_millis(16);
+const TILE_SNAP_IDLE_INTERVAL: Duration = Duration::from_millis(50);
+const TILE_SNAP_DISABLED_INTERVAL: Duration = Duration::from_millis(100);
+const TILE_SNAP_MOVE_THRESHOLD: f64 = 10.0;
+const TILE_SNAP_STABLE_MOVE_SAMPLES: u8 = 2;
+
+static TILE_SNAP_STARTED: AtomicBool = AtomicBool::new(false);
 
 // ---------------------------------------------------------------------------
 // X11 availability check
@@ -1011,6 +1020,454 @@ pub fn toggle_app_front_back(app: &AppHandle) {
 }
 
 // ---------------------------------------------------------------------------
+// Tile Snap -- X11 pointer and window-geometry polling
+// ---------------------------------------------------------------------------
+
+/// One root-pointer sample used to track the left-button drag lifecycle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PointerSample {
+    x: i16,
+    y: i16,
+    left_down: bool,
+}
+
+/// Window motion classification for one Tile Snap polling interval.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GestureMotion {
+    Idle,
+    Moving,
+    Resizing,
+}
+
+/// Active Tile Snap state after a title-bar move has been confirmed.
+struct LinuxTileSnapDrag {
+    displays: Vec<Rect>,
+    half_ratio: u32,
+    third_ratio: u32,
+    gap: u32,
+    side_edge_trigger: f64,
+    top_edge_trigger: f64,
+    corner_trigger: f64,
+    toggles: SnapZoneToggles,
+    current_layout: Option<TilingLayout>,
+    current_display: usize,
+    current_target: Option<Rect>,
+}
+
+/// Candidate left-button gesture, retained until release or resize rejection.
+struct TileSnapGesture {
+    window: Window,
+    press_cursor: (i16, i16),
+    original_rect: Rect,
+    previous_rect: Rect,
+    started_maximized: bool,
+    stable_move_samples: u8,
+    drag: Option<LinuxTileSnapDrag>,
+}
+
+/// Start the Linux/X11 Tile Snap monitor once for the process lifetime.
+///
+/// The monitor polls only X11 state and remains dormant while Tile Snap is
+/// disabled. This keeps Settings changes live without restarting the app.
+pub fn start_tile_snap(app: AppHandle) {
+    if TILE_SNAP_STARTED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        log::info!("tile_snap_x11: already started");
+        return;
+    }
+
+    match std::thread::Builder::new()
+        .name("display-dj-tile-snap-x11".into())
+        .spawn(move || run_tile_snap_monitor(app))
+    {
+        Ok(_) => log::info!("tile_snap_x11: monitor thread started"),
+        Err(error) => log::warn!("tile_snap_x11: failed to start monitor thread: {}", error),
+    }
+}
+
+/// Poll the root pointer and focused-window geometry for move gestures.
+fn run_tile_snap_monitor(app: AppHandle) {
+    let (conn, screen_num) = match connect() {
+        Some(connection) => connection,
+        None => {
+            log::warn!("tile_snap_x11: failed to connect to X11");
+            return;
+        }
+    };
+    let root = conn.setup().roots[screen_num].root;
+    let mut overlay = TileSnapOverlay::new(app.clone());
+    let mut gesture: Option<TileSnapGesture> = None;
+    let mut left_was_down = false;
+
+    loop {
+        let enabled = match tile_snap_enabled(&app) {
+            Some(enabled) => enabled,
+            None => {
+                std::thread::sleep(TILE_SNAP_IDLE_INTERVAL);
+                continue;
+            }
+        };
+        if !enabled {
+            if gesture.take().is_some() {
+                overlay.hide();
+            }
+            left_was_down = false;
+            std::thread::sleep(TILE_SNAP_DISABLED_INTERVAL);
+            continue;
+        }
+
+        let sample = match query_pointer_sample(&conn, root) {
+            Some(sample) => sample,
+            None => {
+                overlay.hide();
+                log::warn!("tile_snap_x11: QueryPointer failed; monitor stopped");
+                return;
+            }
+        };
+
+        if sample.left_down && !left_was_down {
+            gesture = begin_pointer_gesture(&conn, root, sample);
+        }
+
+        if sample.left_down {
+            let keep_gesture = gesture
+                .as_mut()
+                .map(|active| {
+                    update_pointer_gesture(&app, &conn, root, &mut overlay, active, sample)
+                })
+                .unwrap_or(true);
+            if !keep_gesture {
+                overlay.hide();
+                gesture = None;
+            }
+        } else if left_was_down {
+            if let Some(mut active) = gesture.take() {
+                if let Some(drag) = active.drag.as_mut() {
+                    if !update_active_snap(&app, &overlay, drag, sample.x, sample.y) {
+                        active.drag = None;
+                    }
+                }
+                finish_pointer_gesture(&app, &conn, screen_num, active);
+            }
+            overlay.hide();
+        }
+
+        left_was_down = sample.left_down;
+        std::thread::sleep(if sample.left_down {
+            TILE_SNAP_POLL_INTERVAL
+        } else {
+            TILE_SNAP_IDLE_INTERVAL
+        });
+    }
+}
+
+/// Read the root cursor position and current left-button state.
+fn query_pointer_sample(conn: &RustConnection, root: Window) -> Option<PointerSample> {
+    let reply = conn.query_pointer(root).ok()?.reply().ok()?;
+    let left_down = u16::from(reply.mask) & u16::from(KeyButMask::BUTTON1) != 0;
+    Some(PointerSample {
+        x: reply.root_x,
+        y: reply.root_y,
+        left_down,
+    })
+}
+
+/// Capture the focused window at the start of a left-button gesture.
+fn begin_pointer_gesture(
+    conn: &RustConnection,
+    root: Window,
+    sample: PointerSample,
+) -> Option<TileSnapGesture> {
+    let window = get_focused_window(conn, root)?;
+    if !is_normal_window(conn, window) || is_window_hidden(conn, window) {
+        return None;
+    }
+    let rect = get_window_rect(conn, window, root)?;
+    Some(TileSnapGesture {
+        window,
+        press_cursor: (sample.x, sample.y),
+        original_rect: rect.clone(),
+        previous_rect: rect,
+        started_maximized: is_window_maximized(conn, window),
+        stable_move_samples: 0,
+        drag: None,
+    })
+}
+
+/// Advance one candidate gesture and update overlays after move confirmation.
+///
+/// Returns `false` when a resize or invalid window cancels the gesture.
+fn update_pointer_gesture(
+    app: &AppHandle,
+    conn: &RustConnection,
+    root: Window,
+    overlay: &mut TileSnapOverlay,
+    gesture: &mut TileSnapGesture,
+    sample: PointerSample,
+) -> bool {
+    if gesture.drag.is_none() {
+        if let Some(focused) = get_focused_window(conn, root) {
+            if focused != gesture.window
+                && is_normal_window(conn, focused)
+                && !is_window_hidden(conn, focused)
+            {
+                let rect = match get_window_rect(conn, focused, root) {
+                    Some(rect) => rect,
+                    None => return false,
+                };
+                gesture.window = focused;
+                gesture.original_rect = rect.clone();
+                gesture.previous_rect = rect;
+                gesture.started_maximized = is_window_maximized(conn, focused);
+                gesture.stable_move_samples = 0;
+            }
+        }
+    }
+
+    let current_rect = match get_window_rect(conn, gesture.window, root) {
+        Some(rect) => rect,
+        None => return false,
+    };
+    let motion = classify_gesture_motion(
+        gesture.press_cursor,
+        (sample.x, sample.y),
+        &gesture.original_rect,
+        &gesture.previous_rect,
+        &current_rect,
+    );
+
+    if motion == GestureMotion::Resizing {
+        if gesture.started_maximized && gesture.drag.is_none() {
+            // Dragging a maximized xfwm4 window first restores it to normal
+            // bounds. Treat those size transitions as the new restore rect;
+            // a normal-window resize remains rejected below.
+            gesture.original_rect = current_rect.clone();
+            gesture.previous_rect = current_rect;
+            gesture.stable_move_samples = 0;
+            return true;
+        }
+        return false;
+    }
+
+    gesture.previous_rect = current_rect;
+    if motion == GestureMotion::Moving && gesture.drag.is_none() {
+        gesture.stable_move_samples = gesture.stable_move_samples.saturating_add(1);
+        if gesture.stable_move_samples >= TILE_SNAP_STABLE_MOVE_SAMPLES {
+            gesture.started_maximized = false;
+            gesture.drag = begin_active_snap(app, overlay);
+            if gesture.drag.is_none() {
+                return false;
+            }
+        }
+    } else if motion == GestureMotion::Idle && gesture.drag.is_none() {
+        gesture.stable_move_samples = 0;
+    }
+
+    if let Some(drag) = gesture.drag.as_mut() {
+        return update_active_snap(app, overlay, drag, sample.x, sample.y);
+    }
+    true
+}
+
+/// Snapshot preferences and show all enabled zones after a move is confirmed.
+fn begin_active_snap(app: &AppHandle, overlay: &mut TileSnapOverlay) -> Option<LinuxTileSnapDrag> {
+    let prefs = {
+        let state = app.try_state::<crate::AppState>()?;
+        let prefs = state.preferences.try_lock().ok()?;
+        if !prefs.tiling.enabled || !prefs.tiling.tile_snap_enabled {
+            return None;
+        }
+        prefs.tiling.clone()
+    };
+    let displays = get_display_work_areas();
+    if displays.is_empty() {
+        log::warn!("tile_snap_x11: no displays found");
+        return None;
+    }
+    let toggles = SnapZoneToggles::from_prefs(&prefs);
+    let zones = build_snap_zones(
+        &displays,
+        prefs.side_edge_trigger as f64,
+        prefs.top_edge_trigger as f64,
+        prefs.corner_trigger as f64,
+        &toggles,
+    );
+    if let Err(error) = overlay.show_zones(&displays, &zones) {
+        log::warn!("{}", error);
+        overlay.hide();
+        return None;
+    }
+    log::info!(
+        "tile_snap_x11: move confirmed, displays={}, zones={}",
+        displays.len(),
+        zones.len()
+    );
+    Some(LinuxTileSnapDrag {
+        displays,
+        half_ratio: prefs.half_ratio,
+        third_ratio: prefs.third_ratio,
+        gap: prefs.gap,
+        side_edge_trigger: prefs.side_edge_trigger as f64,
+        top_edge_trigger: prefs.top_edge_trigger as f64,
+        corner_trigger: prefs.corner_trigger as f64,
+        toggles,
+        current_layout: None,
+        current_display: 0,
+        current_target: None,
+    })
+}
+
+/// Update the active layout preview from one root cursor position.
+fn update_active_snap(
+    app: &AppHandle,
+    overlay: &TileSnapOverlay,
+    drag: &mut LinuxTileSnapDrag,
+    cursor_x: i16,
+    cursor_y: i16,
+) -> bool {
+    if tile_snap_enabled(app) == Some(false) {
+        return false;
+    }
+    let zone = detect_snap_zone_with_toggles(
+        cursor_x as f64,
+        cursor_y as f64,
+        &drag.displays,
+        drag.side_edge_trigger,
+        drag.top_edge_trigger,
+        drag.corner_trigger,
+        &drag.toggles,
+    );
+
+    match zone {
+        Some((layout, display_index))
+            if drag.current_layout != Some(layout) || drag.current_display != display_index =>
+        {
+            let display = match drag.displays.get(display_index) {
+                Some(display) => display,
+                None => return false,
+            };
+            let target =
+                calculate_target_rect(layout, display, drag.half_ratio, drag.third_ratio, drag.gap);
+            if let Err(error) = overlay.show_preview(display_index, &target) {
+                log::warn!("{}", error);
+                return false;
+            }
+            drag.current_layout = Some(layout);
+            drag.current_display = display_index;
+            drag.current_target = Some(target);
+        }
+        Some(_) => {}
+        None if drag.current_layout.is_some() => {
+            if let Err(error) = overlay.clear_preview() {
+                log::warn!("{}", error);
+                return false;
+            }
+            drag.current_layout = None;
+            drag.current_target = None;
+        }
+        None => {}
+    }
+    true
+}
+
+/// Apply the exact preview rectangle and preserve restore state on release.
+fn finish_pointer_gesture(
+    app: &AppHandle,
+    conn: &RustConnection,
+    screen_num: usize,
+    gesture: TileSnapGesture,
+) {
+    let drag = match gesture.drag {
+        Some(drag) => drag,
+        None => return,
+    };
+    let (layout, target) = match (drag.current_layout, drag.current_target) {
+        (Some(layout), Some(target)) => (layout, target),
+        _ => return,
+    };
+    let window_key = gesture.window as i64;
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        if let Ok(mut tiling_state) = state.tiling_state.lock() {
+            let entry = tiling_state
+                .windows
+                .entry(window_key)
+                .or_insert(WindowState {
+                    original: gesture.original_rect,
+                    layout,
+                    display_index: drag.current_display,
+                });
+            entry.layout = layout;
+            entry.display_index = drag.current_display;
+        }
+    }
+    log::info!(
+        "tile_snap_x11: drop window=0x{:x}, layout={:?}, display={}, target=({:.0},{:.0} {:.0}x{:.0})",
+        gesture.window,
+        layout,
+        drag.current_display,
+        target.x,
+        target.y,
+        target.width,
+        target.height
+    );
+    set_window_rect(conn, screen_num, gesture.window, &target);
+}
+
+/// Return whether Tile Snap is currently enabled, or `None` while locked.
+fn tile_snap_enabled(app: &AppHandle) -> Option<bool> {
+    app.try_state::<crate::AppState>().and_then(|state| {
+        state
+            .preferences
+            .try_lock()
+            .ok()
+            .map(|prefs| prefs.tiling.enabled && prefs.tiling.tile_snap_enabled)
+    })
+}
+
+/// Return whether either EWMH maximized state is active.
+fn is_window_maximized(conn: &RustConnection, window: Window) -> bool {
+    let state_atom = match intern_atom(conn, "_NET_WM_STATE") {
+        Some(atom) => atom,
+        None => return false,
+    };
+    let horizontal = intern_atom(conn, "_NET_WM_STATE_MAXIMIZED_HORZ");
+    let vertical = intern_atom(conn, "_NET_WM_STATE_MAXIMIZED_VERT");
+    let states = get_atom_list(conn, window, state_atom);
+    states
+        .iter()
+        .any(|state| Some(*state) == horizontal || Some(*state) == vertical)
+}
+
+/// Classify pointer/window changes as idle, moving, or resizing.
+fn classify_gesture_motion(
+    press_cursor: (i16, i16),
+    current_cursor: (i16, i16),
+    original_rect: &Rect,
+    previous_rect: &Rect,
+    current_rect: &Rect,
+) -> GestureMotion {
+    let size_changed = (current_rect.width - previous_rect.width).abs() > 1.0
+        || (current_rect.height - previous_rect.height).abs() > 1.0;
+    if size_changed {
+        return GestureMotion::Resizing;
+    }
+
+    let cursor_dx = current_cursor.0 as f64 - press_cursor.0 as f64;
+    let cursor_dy = current_cursor.1 as f64 - press_cursor.1 as f64;
+    let cursor_moved =
+        cursor_dx * cursor_dx + cursor_dy * cursor_dy >= TILE_SNAP_MOVE_THRESHOLD.powi(2);
+    let window_moved = (current_rect.x - original_rect.x).abs() > 1.0
+        || (current_rect.y - original_rect.y).abs() > 1.0;
+    if cursor_moved && window_moved {
+        GestureMotion::Moving
+    } else {
+        GestureMotion::Idle
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -1334,6 +1791,80 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Stable size plus pointer and position movement confirms a window move.
+    #[test]
+    fn gesture_motion_classifies_title_bar_move() {
+        let original = Rect {
+            x: 100.0,
+            y: 100.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        let previous = Rect {
+            x: 120.0,
+            y: 110.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        let current = Rect {
+            x: 140.0,
+            y: 125.0,
+            width: 800.0,
+            height: 600.0,
+        };
+
+        assert_eq!(
+            classify_gesture_motion((300, 200), (340, 225), &original, &previous, &current),
+            GestureMotion::Moving
+        );
+    }
+
+    /// Any size delta rejects a resize even when position also changes.
+    #[test]
+    fn gesture_motion_classifies_border_resize() {
+        let original = Rect {
+            x: 100.0,
+            y: 100.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        let previous = original.clone();
+        let current = Rect {
+            x: 90.0,
+            y: 90.0,
+            width: 810.0,
+            height: 610.0,
+        };
+
+        assert_eq!(
+            classify_gesture_motion((100, 100), (80, 80), &original, &previous, &current),
+            GestureMotion::Resizing
+        );
+    }
+
+    /// Pointer movement below the drag threshold does not activate Tile Snap.
+    #[test]
+    fn gesture_motion_ignores_small_pointer_movement() {
+        let original = Rect {
+            x: 100.0,
+            y: 100.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        let previous = original.clone();
+        let current = Rect {
+            x: 104.0,
+            y: 103.0,
+            width: 800.0,
+            height: 600.0,
+        };
+
+        assert_eq!(
+            classify_gesture_motion((200, 200), (205, 204), &original, &previous, &current),
+            GestureMotion::Idle
+        );
+    }
 
     /// Managed-state filtering selects maximize/fullscreen without treating minimized as restorable.
     #[test]

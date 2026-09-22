@@ -90,8 +90,8 @@ Inline `#[cfg(test)]` modules cover:
 - `tiling/mod.rs` (shared): `TilingLayout` parsing, all 19 layouts, gap/padding math, shared Tile Snap zone building/hit-testing, `layout_across_displays` overflow + min cell size + DPI scaling, layout preset resolution + rule matching, `plan_expose` / `plan_expose_app` / `plan_layout_preset`, smart-restore helpers (`is_rect_oversized`, `calculate_smart_restore_rect`, `calculate_smart_restore_rect_at_cursor`), grid-aligned oversized placement (`find_free_cell`, `find_free_block`, `mark_block`), `parse_zorder_command` (all 6 variants), `is_window_at_front` pure helper.
 - `tiling/macos.rs` (macOS only): `is_window_move`, `build_snap_zones` / `detect_snap_zone_macos`, `get_display_full_frames`, `is_pseudo_fullscreen` / `send_escape_key`, `get_all_gui_app_pids`, `move_all_windows_to_current_space`, `ax_error_description`.
 - `tiling/windows.rs` (Windows only): `should_skip_system_window`, DPI border correction, `dbg_log`, expose debounce, WinEvent Tile Snap move/resize filtering, signed cursor packing.
-- `tiling/snap_overlay.rs` (Windows): reusable per-display transparent Tauri windows that draw Tile Snap zones and the active target preview from `public/tile-snap-overlay.html`.
-- `tiling/linux.rs` (Linux only): X11 availability check, strut-to-work-area math, process name resolution, managed-state filtering for maximize/fullscreen normalization.
+- `tiling/snap_overlay.rs` (Windows + Linux): reusable per-display transparent Tauri windows that draw Tile Snap zones and the active target preview from `public/tile-snap-overlay.html`.
+- `tiling/linux.rs` (Linux only): X11 availability check, strut-to-work-area math, process name resolution, managed-state filtering for maximize/fullscreen normalization, Tile Snap move/resize classification.
 - `wallpaper.rs`: image validation, MD5 path hashing, content hash comparison, fit/slideshow arg parsing, `WallpaperPreferences` serde, remote pack URL/folder validation.
 - `overlay.rs`: brightness-to-alpha math, label generation, monitor-rect → window-position math.
 - `sidecar_cache.rs`: TTL freshness, write/refresh invalidation, per-entry race-free reads.
@@ -168,6 +168,14 @@ Windows Tile Snap uses `SetWinEventHook(EVENT_SYSTEM_MOVESIZESTART..=EVENT_SYSTE
 - The WinEvent callback catches panics and only sends the HWND lifecycle event through a channel; no Tauri or blocking work runs across the FFI boundary.
 - The monitor starts at launch but remains dormant while `tileSnapEnabled` is false, so the Windows-default-off setting can be enabled without restarting.
 - Native Windows Snap competes for the same edges. README documents **Settings → System → Multitasking → Snap windows → Off** plus the `WindowArrangementActive=0` command-line alternative.
+
+### Linux/X11 (pointer + geometry poller)
+
+Linux Tile Snap runs a dedicated X11 thread that polls `QueryPointer` and `_NET_ACTIVE_WINDOW` geometry. A drag activates only after the left button moves at least 10px and the window position changes across two stable-size samples; any normal-window size change rejects the gesture as a border resize. xfwm4 maximize-to-normal transitions update the restore baseline before move confirmation.
+
+- The monitor starts only when `$DISPLAY` is available and remains dormant while Tile Snap is disabled.
+- Windows and Linux share `tiling/snap_overlay.rs`, so both draw the same zones and apply the exact preview rectangle on release.
+- On XFCE, disable **Window Manager Tweaks → Accessibility → Automatically tile windows when moving toward the screen edge** if native tiling competes with Display DJ.
 
 ## Soft-Overlay Brightness Fallback
 
@@ -261,7 +269,7 @@ The shared `layout_across_displays` in `tiling/mod.rs` handles overflow for all 
 
 - **macOS**: AX API (`AXUIElement`) for move/resize. Requires Accessibility. Focused tiling exits native `AXFullScreen` or browser/video pseudo-fullscreen before reading restored bounds. State per CGWindowID in `AppState.tiling_state`. Uses `_AXUIElementGetWindow` (private but stable since 10.6) to bridge AX → CGWindowID. NSScreen visible frames for display bounds — must use `screens[0]` (primary) not `mainScreen` for coord conversion. Tile Snap via `NSEvent.addGlobalMonitorForEvents` (10px move threshold; drop-zone overlays via `build_snap_zones` / `detect_snap_zone_macos`: per display, 4 corner quarters, top-edge maximize, left/right-edge halves, three 1/3 markers + two 2/3 markers on the bottom row; on mouse_up move to pre-calculated target). Crates: `objc` v0.2 + `block` v0.1; AX is raw `extern "C"`. Chromium apps need a `NSWorkspace.frontmostApplication` fallback — see DEV.md.
 - **Windows**: Win32 (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`) via `windows` crate v0.58. Focused tiling calls `ShowWindow(SW_RESTORE)` for maximized windows before reading normal bounds or resizing; minimized windows stay minimized outside Exposé. No special permissions. All 19 layouts + restore + Exposé + App Exposé. Tile Snap uses `SetWinEventHook` plus per-display click-through Tauri overlays; it defaults off because native Windows Snap uses the same edges.
-- **Linux/X11**: `x11rb` (pure Rust X11 client) + EWMH. Focused window via `_NET_ACTIVE_WINDOW`; move/resize via `_NET_MOVERESIZE_WINDOW`; enumeration via `_NET_CLIENT_LIST`; geometry via XRandr. Focused tiling removes horizontal maximize, vertical maximize, and fullscreen states, waits for `_NET_WM_STATE` confirmation, then records restored bounds; minimized state is untouched. Panels respected via `_NET_WM_STRUT_PARTIAL` / `_NET_WM_STRUT` with `_NET_WORKAREA` fallback. Frame decoration via `_NET_FRAME_EXTENTS`. Runtime-gated: `get_tiling_supported` checks `$DISPLAY` (false on Wayland-only). Tile Snap not implemented. Tested on Linux Mint with XFCE (xfwm4).
+- **Linux/X11**: `x11rb` (pure Rust X11 client) + EWMH. Focused window via `_NET_ACTIVE_WINDOW`; move/resize via `_NET_MOVERESIZE_WINDOW`; enumeration via `_NET_CLIENT_LIST`; geometry via XRandr. Focused tiling removes horizontal maximize, vertical maximize, and fullscreen states, waits for `_NET_WM_STATE` confirmation, then records restored bounds; minimized state is untouched. Panels respected via `_NET_WM_STRUT_PARTIAL` / `_NET_WM_STRUT` with `_NET_WORKAREA` fallback. Frame decoration via `_NET_FRAME_EXTENTS`. Tile Snap polls root pointer state plus focused-window geometry and renders through the shared per-display overlays. Runtime-gated: `get_tiling_supported` checks `$DISPLAY` (false on Wayland-only). Core X11 tiling tested on Linux Mint with XFCE (xfwm4).
 
 ### Preferences
 

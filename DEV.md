@@ -69,13 +69,19 @@ Logs go to stdout (plus `debug.log` in the config dir when enabled). A clean sta
 
 **Brightness paths on Linux (`core::linux.rs`):** built-in panels write `/sys/class/backlight/<device>/brightness` directly, falling back to the `brightnessctl` CLI on permission failure (user needs the `video` group); external monitors shell out to `ddcutil` over `i2c-dev` (needs `ddcutil`, `i2c-tools`, `i2c-dev` loaded + user in `i2c` group); gamma dimming uses `xrandr` on X11. Full setup + verify commands in CONTRIBUTING "Platform Setup".
 
-**Linux verification status (as of v7.2.0):** build (`.deb` + `.AppImage`), global shortcuts, tray icon, z-order commands, and Exposé layout math all pass on Mint 22.2/XFCE/X11 with only a built-in eDP panel. DDC/CI against real external monitors and Tile Snap are untested on Linux (Tile Snap currently runs on macOS and Windows).
+**Linux verification status (as of v7.2.0):** build (`.deb` + `.AppImage`), global shortcuts, tray icon, z-order commands, and Exposé layout math all pass on Mint 22.2/XFCE/X11 with only a built-in eDP panel. DDC/CI against real external monitors remains untested. Linux Tile Snap now has X11 pointer/geometry polling plus shared WebView overlays; runtime verification on a real XFCE/X11 desktop remains required.
 
 ### Windows Tile Snap
 
 `tiling/windows.rs` installs a `SetWinEventHook` listener for system move/size start and end events. Resize-border gestures are rejected with `WM_NCHITTEST`; title-bar moves poll the physical cursor, use shared zone geometry from `tiling/mod.rs`, and render through one transparent `tiling/snap_overlay.rs` WebView per display. Releasing inside a zone applies the exact preview rectangle to the original HWND.
 
 Windows defaults `tileSnapEnabled` to false because native Windows Snap competes for the same edges. Users should disable **Settings → System → Multitasking → Snap windows** before opting in; README carries both UI and registry-command instructions.
+
+### Linux/X11 Tile Snap
+
+`tiling/linux.rs` polls `QueryPointer` and `_NET_ACTIVE_WINDOW` geometry on a dedicated thread. Left-button gestures become Tile Snap drags only after 10px of cursor movement and two stable-size position samples; normal-window size changes reject border resizes. Maximized xfwm4 windows may resize once while restoring to normal bounds, so those pre-confirmation changes update the saved restore rectangle instead of cancelling the drag.
+
+The monitor reuses `tiling/snap_overlay.rs` and shared geometry from `tiling/mod.rs`; release applies the exact preview via `_NET_MOVERESIZE_WINDOW`. It starts only with `$DISPLAY` and stays dormant when preferences disable Tile Snap. Wayland-only sessions remain unsupported.
 
 ## Crash Logging
 
