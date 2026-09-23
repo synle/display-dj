@@ -15,7 +15,7 @@ interface VolumeControlProps {
 
 type EditLocation = 'active' | 'list';
 
-/** System volume slider with editable active-output label and expanded endpoint controls. */
+/** System volume slider with readonly active-output section label and expanded endpoint controls. */
 export default function VolumeControl({
   value,
   onChange,
@@ -35,6 +35,8 @@ export default function VolumeControl({
   const selectedDevice = outputState?.devices.find(
     (device) => device.id === outputState.selectedDeviceId,
   );
+  const enabledOutputCount =
+    outputState?.devices.filter((device) => device.state === 'enabled').length ?? 0;
   const hiddenOutputCount =
     outputState?.devices.filter((device) => device.state === 'hidden').length ?? 0;
   const visibleDevices =
@@ -75,8 +77,15 @@ export default function VolumeControl({
 
   return (
     <div className='volume-section'>
-      {selectedDevice ? (
-        editingDeviceId === selectedDevice.id && editingLocation === 'active' ? (
+      <span className='section-label audio-output-active-name'>
+        {`Output Speakers (${enabledOutputCount})`}
+        {!expanded && selectedDevice
+          ? ` - ${selectedDevice.name || selectedDevice.originalName}`
+          : ''}
+      </span>
+      {expanded &&
+        selectedDevice &&
+        (editingDeviceId === selectedDevice.id && editingLocation === 'active' ? (
           <input
             ref={inputRef}
             className='monitor-name-input audio-output-active-name-input'
@@ -88,15 +97,12 @@ export default function VolumeControl({
           />
         ) : (
           <button
-            className='section-label audio-output-active-name'
+            className='monitor-name audio-output-active-rename'
             onClick={() => startEditing(selectedDevice, 'active')}
             title={`Rename active output ${selectedDevice.originalName}`}>
             {selectedDevice.name || selectedDevice.originalName}
           </button>
-        )
-      ) : (
-        <span className='section-label audio-output-active-name'>Audio Output</span>
-      )}
+        ))}
       <Slider
         icon={value === 0 ? '\uD83D\uDD07' : '\uD83D\uDD0A'}
         value={value}

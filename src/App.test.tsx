@@ -233,9 +233,7 @@ describe('App smoke test', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByTitle('Rename active output MacBook Pro Speakers')).toHaveTextContent(
-        'Desk Speakers',
-      );
+      expect(screen.getByText('Output Speakers (2) - Desk Speakers')).toHaveClass('section-label');
     });
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
@@ -263,7 +261,7 @@ describe('App smoke test', () => {
     });
 
     render(<App />);
-    await screen.findByTitle('Rename active output MacBook Pro Speakers');
+    await screen.findByText('Output Speakers (2) - Desk Speakers');
 
     act(() => {
       audioOutputHandler!({
@@ -282,29 +280,18 @@ describe('App smoke test', () => {
       });
     });
 
-    expect(screen.getByTitle('Rename active output USB Headphones')).toHaveTextContent(
-      'Headphones',
-    );
+    expect(screen.getByText('Output Speakers (1) - Headphones')).toBeInTheDocument();
   });
 
-  it('renames the active audio output from collapsed mode', async () => {
+  it('keeps the collapsed audio output heading readonly', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(await screen.findByTitle('Rename active output MacBook Pro Speakers'));
-    const input = screen.getByRole('textbox');
-    await user.clear(input);
-    await user.type(input, 'Studio Speakers{Enter}');
+    const heading = await screen.findByText('Output Speakers (2) - Desk Speakers');
+    await user.click(heading);
 
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('rename_audio_output_device', {
-        id: 'speakers',
-        label: 'Studio Speakers',
-      });
-      expect(screen.getByTitle('Rename active output MacBook Pro Speakers')).toHaveTextContent(
-        'Studio Speakers',
-      );
-    });
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(mockInvoke).not.toHaveBeenCalledWith('rename_audio_output_device', expect.anything());
   });
 
   it('selects and renames audio outputs from expanded mode', async () => {
@@ -313,7 +300,7 @@ describe('App smoke test', () => {
 
     await waitFor(() => {
       expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
-      expect(screen.getByText('Desk Speakers')).toBeInTheDocument();
+      expect(screen.getByText(/Desk Speakers/)).toBeInTheDocument();
     });
     await user.click(screen.getByTitle('Show individual monitors'));
     await user.click(screen.getByRole('radio', { name: 'Select Headphones' }));
