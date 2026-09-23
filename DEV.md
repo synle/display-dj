@@ -17,6 +17,38 @@ cd src-tauri && cargo llvm-cov --lib --summary-only   # Backend coverage
 npm run tauri build     # Production build (.dmg / .exe / .deb / .AppImage)
 ```
 
+## Development TODO
+
+### Replace the temporary macOS 27 tray patch with Tauri 2.12.0
+
+Display DJ currently patches the published Tauri 2.11.5 crate so it can use `tray-icon` 0.25.1
+and `muda` 0.20.0. This fixes macOS 27 left-click events while keeping the existing Tauri tray
+and menu integration.
+
+Upstream status as of 2026-09-22:
+
+- The Tauri issue is closed: https://github.com/tauri-apps/tauri/issues/16035.
+- The integration PR remains open, requires maintainer review, and has two failing Linux jobs:
+  https://github.com/tauri-apps/tauri/pull/16088.
+- Tauri release automation assigns this change to Tauri 2.12.0.
+- Latest stable Tauri 2.11.6 still depends on `tray-icon` 0.24 and `muda` 0.19.
+- No official merge or release date is published. If review and Linux fixes move promptly, merge
+  may take days to a few weeks. Earliest plausible release is October 2026; use October-November
+  2026 as the safer planning window. This is an estimate, not an upstream commitment.
+
+Do not replace this with Tauri 3 alpha or a direct second `tray-icon` dependency. Tauri 3 is an
+unstable major upgrade, while a direct dependency would not replace the version used internally by
+Tauri 2.
+
+Removal trigger: `cargo info tauri@2.12.0 --verbose` must show `tray-icon@0.25.1` or newer. Then:
+
+1. Pin normal and dev Tauri dependencies to the published 2.12.0 release.
+2. Align `@tauri-apps/api` and `@tauri-apps/cli` with the published 2.12 release.
+3. Remove `[patch.crates-io]` and delete `src-tauri/vendor/tauri/`.
+4. Remove vendor-specific formatter, linter, `.gitattributes`, and vendoring-documentation entries.
+5. Regenerate Cargo/npm lockfiles and Tauri schemas.
+6. Run the complete frontend, Rust, release-build, and tray-click validation gates.
+
 ## Coverage thresholds
 
 CI enforces floors that trail main-branch measurement by ~10pp. Actual numbers are NOT mirrored here — read from source of truth:
