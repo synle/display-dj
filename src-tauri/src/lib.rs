@@ -360,15 +360,34 @@ fn check_night_mode_schedule(app: &tauri::AppHandle) {
 mod tests {
     use super::*;
 
-    /// Windows builds request elevation and preserve Tauri's Common Controls v6 dependency.
+    /// Windows builds stay at caller integrity so Tile Snap can monitor ordinary app windows.
     #[test]
-    fn windows_manifest_supports_elevated_window_tiling() {
+    fn windows_manifest_runs_at_invoker_integrity() {
         let manifest = include_str!("../windows-app-manifest.xml");
 
-        assert!(manifest.contains("level=\"requireAdministrator\""));
+        assert!(manifest.contains("level=\"asInvoker\""));
         assert!(manifest.contains("uiAccess=\"false\""));
+        assert!(!manifest.contains("level=\"requireAdministrator\""));
         assert!(manifest.contains("name=\"Microsoft.Windows.Common-Controls\""));
         assert!(manifest.contains("version=\"6.0.0.0\""));
+    }
+
+    /// Dynamic overlay WebViews must receive event-listen permission from Tauri.
+    #[test]
+    fn dynamic_overlay_labels_have_tauri_capabilities() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json"))
+                .expect("default capability must be valid JSON");
+        let windows = capability["windows"]
+            .as_array()
+            .expect("default capability must declare windows");
+
+        for required_label in ["tile-snap-overlay-*", "overlay-*"] {
+            assert!(
+                windows.iter().any(|label| label == required_label),
+                "missing Tauri capability for {required_label}"
+            );
+        }
     }
 
     // -- parse_time_minutes --

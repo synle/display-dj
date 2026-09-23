@@ -529,12 +529,12 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                   <label className='settings-checkbox-row'>
                     <input
                       type='checkbox'
-                      checked={tiling?.tileSnapEnabled ?? true}
+                      checked={tiling.tileSnapEnabled}
                       onChange={(e) => updateTiling('tileSnapEnabled', e.target.checked)}
                     />
                     <span>Enable Tile Snap (drag to edge)</span>
                   </label>
-                  {(tiling?.tileSnapEnabled ?? true) && !accessibilityTrusted && (
+                  {tiling.tileSnapEnabled && !accessibilityTrusted && (
                     <div
                       style={{
                         fontSize: '11px',
@@ -564,7 +564,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                   )}
                 </div>
 
-                {(tiling?.tileSnapEnabled ?? true) && (
+                {tiling.tileSnapEnabled && (
                   <div className='settings-section'>
                     <label className='settings-label'>Snap Zones</label>
                     <div style={{ marginTop: '4px' }}>

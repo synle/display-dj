@@ -39,7 +39,7 @@ core/ (vendored platform code)
 - `src-tauri/src/{display,dark_mode,volume,wallpaper}.rs` — thin async Tauri-command wrappers around `core::*`. Every command taking `State<'_, AppState>` must be `async fn`, and CPU-bound work runs in `spawn_blocking` (macOS tray starvation pitfall — see AGENTS.md).
 - `src-tauri/src/core/` — platform implementations (`macos`/`windows`/`linux`, `theme`, `volume`, `audio_output`, `wallpaper`, `display`). Most are vendored; `audio_output` is display-dj-local. See [VENDORING.md](VENDORING.md).
 - Other backend modules: `config.rs` (preferences), `tray.rs` (tray menu + shortcut dispatch), `tray_icon.rs`, `keep_awake.rs`, `sidecar_cache.rs` (5-min TTL cache), `overlay.rs` (soft-overlay brightness fallback), `crash_log.rs`, `tiling/`.
-- Windows builds embed `windows-app-manifest.xml` through `build.rs` and request administrator privileges so Win32 tiling APIs can control elevated windows. Preserve the Common Controls v6 dependency when editing the manifest.
+- Windows builds embed `windows-app-manifest.xml` through `build.rs` at `asInvoker` integrity. Preserve the Common Controls v6 dependency, and keep `tile-snap-overlay-*` plus `overlay-*` covered by Tauri capabilities so their event listeners can receive render state.
 
 ### Frontend ↔ Backend
 

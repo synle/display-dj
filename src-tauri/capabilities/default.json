@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capabilities for Display DJ",
-  "windows": ["main"],
+  "windows": ["main", "tile-snap-overlay-*", "overlay-*"],
   "permissions": [
     "core:default",
     "core:window:default",

@@ -468,6 +468,24 @@ describe('SettingsPanel', () => {
     expect(screen.getByLabelText('Enable Exposé')).toBeInTheDocument();
   });
 
+  it('renders saved Tile Snap disabled state without showing snap zones', async () => {
+    setupInvoke({
+      prefs: buildPrefs({
+        tiling: {
+          ...buildPrefs().tiling,
+          tileSnapEnabled: false,
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tiling' })).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Tiling' }));
+    expect(screen.getByLabelText('Enable Tile Snap (drag to edge)')).not.toBeChecked();
+    expect(screen.queryByText('Snap Zones')).not.toBeInTheDocument();
+  });
+
   it('uses a 2x3 Exposé grid when saved grid fields are missing', async () => {
     setupInvoke({
       prefs: buildPrefs({
