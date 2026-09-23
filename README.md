@@ -169,7 +169,7 @@ Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or 
 
 Before a focused window is tiled, Windows restores it from maximized state, macOS exits native or browser/video fullscreen, and Linux/X11 removes EWMH maximize/fullscreen state. Display DJ then reads the normal window bounds and applies the requested layout; minimized windows remain minimized outside Exposé.
 
-On Windows, Display DJ normally runs without administrator privileges so Tile Snap can monitor ordinary application drags without a UAC prompt. Windows does not allow a normal-integrity process to move or resize a window opened with **Run as administrator**; explicitly launch Display DJ as administrator only when tiling elevated windows is required.
+On Windows, Display DJ normally runs without administrator privileges so Tile Snap can monitor ordinary application drags without a UAC prompt. Windows does not allow a normal-integrity process to move or resize a window opened with **Run as administrator**; the Tiling settings show a non-blocking warning with restart guidance in standard mode. Explicitly launch Display DJ as administrator only when tiling elevated windows is required. If the optional elevation check fails, the app keeps running normally and omits the warning.
 
 ### Windows Tile Snap setup
 
@@ -311,7 +311,7 @@ macOS requires Accessibility permission for tiling to move/resize other apps' wi
 
 #### Windows
 
-No special permissions are needed. Tiling works out of the box using Win32 APIs.
+No special permissions are needed for normal windows. Tiling works out of the box using Win32 APIs, and a failed elevation-status probe does not block the app. To control windows opened with **Run as administrator**, close Display DJ and restart it with **Run as administrator**; Settings shows this guidance while Display DJ runs at standard integrity.
 
 #### Linux (X11)
 

@@ -1263,6 +1263,29 @@ pub fn get_tiling_supported() -> bool {
     }
 }
 
+/// Tauri command: report Windows process elevation without gating app startup.
+///
+/// Returns `Some(true)` for an elevated Windows process, `Some(false)` for a
+/// standard Windows process, and `None` on other platforms or when the optional
+/// Windows token query fails.
+#[tauri::command]
+pub fn get_windows_elevation_status() -> Option<bool> {
+    #[cfg(target_os = "windows")]
+    {
+        match windows::is_process_elevated() {
+            Ok(elevated) => Some(elevated),
+            Err(error) => {
+                log::warn!("windows elevation check failed: {error}");
+                None
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
 /// Non-Tauri helper: returns whether the OS-level Accessibility permission is
 /// granted. On Windows and Linux (X11), there is no analogous permission, so
 /// this is always `true`. Used at startup (before `AppState` exists) and
@@ -1735,6 +1758,13 @@ pub(crate) fn should_skip_system_window(process_name: &str, title: &str) -> bool
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Non-Windows builds treat elevation as not applicable instead of failing.
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn windows_elevation_status_is_optional_off_windows() {
+        assert_eq!(get_windows_elevation_status(), None);
+    }
 
     fn display(x: f64, y: f64, w: f64, h: f64) -> Rect {
         Rect {

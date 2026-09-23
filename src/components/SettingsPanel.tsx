@@ -23,6 +23,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   const labelInputRef = useRef<HTMLInputElement>(null);
   const [tilingSupported, setTilingSupported] = useState(false);
   const [accessibilityTrusted, setAccessibilityTrusted] = useState(true);
+  const [windowsElevated, setWindowsElevated] = useState<boolean | null>(null);
   const initialLoadRef = useRef(true);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -42,6 +43,9 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     invoke<boolean>('get_accessibility_trusted')
       .then(setAccessibilityTrusted)
       .catch(() => setAccessibilityTrusted(true));
+    invoke<boolean | null>('get_windows_elevation_status')
+      .then(setWindowsElevated)
+      .catch((error) => console.error('Failed to check Windows elevation:', error));
   }, []);
 
   /** Auto-save preferences after each change with debounce. */
@@ -519,6 +523,19 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 />
                 <span>Enable Window Tiling</span>
               </label>
+              {tiling.enabled && windowsElevated === false && (
+                <div
+                  role='status'
+                  style={{
+                    fontSize: '11px',
+                    color: '#e67700',
+                    marginTop: '4px',
+                    paddingLeft: '22px',
+                  }}>
+                  ⚠ Standard mode controls normal windows. To control elevated windows, quit Display
+                  DJ. Restart Display DJ with Run as administrator.
+                </div>
+              )}
             </div>
 
             {tiling?.enabled && (

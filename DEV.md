@@ -123,6 +123,8 @@ Logs go to stdout (plus `debug.log` in the config dir when enabled). A clean sta
 
 `windows-app-manifest.xml` declares `asInvoker` with `uiAccess="false"`, embedded by `build.rs` through `tauri_build::WindowsAttributes`. Keeping the app at normal user integrity lets the global WinEvent monitor observe ordinary application drag events without a UAC prompt. Windows blocks normal-integrity processes from moving elevated windows, so users must explicitly run Display DJ as administrator when that behavior is required. Do not use `uiAccess="true"`: unsigned/current-user bundles do not meet Windows UIAccess signing and secure-install-location requirements. The manifest must retain Tauri's Common Controls v6 dependency.
 
+`tiling::get_windows_elevation_status()` queries the current process token only when Settings opens. It returns `Some(true|false)` on Windows and `None` on other platforms or query failure; failures are logged and never gate startup, tiling, or Settings. Standard-integrity Windows sessions show restart-as-administrator guidance while retaining all normal-window controls.
+
 Windows defaults `tileSnapEnabled` to false because native Windows Snap competes for the same edges. Users should disable **Settings → System → Multitasking → Snap windows** before opting in; README carries both UI and registry-command instructions.
 
 Dynamic overlay labels must stay covered by `src-tauri/capabilities/default.json`: `tile-snap-overlay-*` for Tile Snap and `overlay-*` for brightness fallback. Tauri denies `event.listen` when a WebView label matches no capability, which leaves the window visible but unable to draw emitted state.

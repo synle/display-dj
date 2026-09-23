@@ -83,6 +83,12 @@ mod tiling_stubs {
         false
     }
 
+    /// Windows elevation status is not applicable on this platform.
+    #[tauri::command]
+    pub fn get_windows_elevation_status() -> Option<bool> {
+        None
+    }
+
     /// Accessibility recheck is not applicable on this platform.
     #[tauri::command]
     pub fn recheck_accessibility_trusted() -> bool {
@@ -701,6 +707,8 @@ pub fn run() {
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling::get_accessibility_trusted,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            tiling::get_windows_elevation_status,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling::recheck_accessibility_trusted,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling::open_accessibility_settings,
@@ -708,6 +716,8 @@ pub fn run() {
             tiling_stubs::get_tiling_supported,
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             tiling_stubs::get_accessibility_trusted,
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            tiling_stubs::get_windows_elevation_status,
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             tiling_stubs::recheck_accessibility_trusted,
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]

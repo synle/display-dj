@@ -2,7 +2,8 @@
 //!
 //! Provides window tiling (halves, thirds, quarters, maximize, restore, exposé)
 //! using `GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, and
-//! `EnumWindows`. No special permissions are required on Windows.
+//! `EnumWindows`. Normal windows need no special permissions; controlling an
+//! elevated target requires launching Display DJ as administrator.
 
 use super::snap_overlay::TileSnapOverlay;
 use super::{
@@ -21,6 +22,47 @@ fn dbg_log(app: &AppHandle, msg: &str) {
         crate::config::write_debug_log(&state, msg);
     }
 }
+
+/// Return whether the current Windows process runs with an elevated token.
+pub(super) fn is_process_elevated() -> Result<bool, String> {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    let mut token = HANDLE::default();
+    unsafe {
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)
+            .map_err(|error| format!("OpenProcessToken failed: {error}"))?;
+    }
+
+    let mut elevation = TOKEN_ELEVATION::default();
+    let mut returned_length = 0;
+    let query_result = unsafe {
+        GetTokenInformation(
+            token,
+            TokenElevation,
+            Some((&mut elevation as *mut TOKEN_ELEVATION).cast()),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut returned_length,
+        )
+    };
+    unsafe {
+        let _ = CloseHandle(token);
+    }
+    query_result.map_err(|error| format!("GetTokenInformation(TokenElevation) failed: {error}"))?;
+
+    let expected_length = std::mem::size_of::<TOKEN_ELEVATION>() as u32;
+    if returned_length < expected_length {
+        return Err(format!(
+            "GetTokenInformation(TokenElevation) returned {returned_length} bytes; expected {expected_length}"
+        ));
+    }
+
+    Ok(elevation.TokenIsElevated != 0)
+}
+
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, RECT, TRUE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,

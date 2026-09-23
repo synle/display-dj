@@ -170,6 +170,7 @@ Windows runs at the invoking user's normal integrity (`asInvoker`, `uiAccess="fa
 
 - The WinEvent callback catches panics and only sends the HWND lifecycle event through a channel; no Tauri or blocking work runs across the FFI boundary.
 - `capabilities/default.json` must match `tile-snap-overlay-*` and `overlay-*`; otherwise the overlay pages cannot call `event.listen`, so zones and brightness dimming render nothing.
+- `get_windows_elevation_status` is advisory only: token-query errors log and return `None`; they never block startup or disable tiling. Settings warns standard-integrity Windows users that elevated target windows require restarting Display DJ with **Run as administrator**.
 - The monitor starts at launch but remains dormant while `tileSnapEnabled` is false, so the Windows-default-off setting can be enabled without restarting.
 - Native Windows Snap competes for the same edges. README documents **Settings → System → Multitasking → Snap windows → Off** plus the `WindowArrangementActive=0` command-line alternative.
 

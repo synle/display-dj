@@ -62,9 +62,11 @@ function setupInvoke(opts: {
   prefs?: ReturnType<typeof buildPrefs>;
   tilingSupported?: boolean;
   accessibilityTrusted?: boolean;
+  windowsElevated?: boolean | null;
   prefsRejects?: boolean;
   tilingRejects?: boolean;
   accessRejects?: boolean;
+  elevationRejects?: boolean;
 }) {
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
@@ -79,6 +81,10 @@ function setupInvoke(opts: {
     if (cmd === 'get_accessibility_trusted') {
       if (opts.accessRejects) return Promise.reject(new Error('boom'));
       return Promise.resolve(opts.accessibilityTrusted ?? true);
+    }
+    if (cmd === 'get_windows_elevation_status') {
+      if (opts.elevationRejects) return Promise.reject(new Error('boom'));
+      return Promise.resolve(opts.windowsElevated ?? null);
     }
     if (cmd === 'save_preferences') return Promise.resolve(undefined);
     if (cmd === 'open_accessibility_settings') return Promise.resolve(undefined);
@@ -484,6 +490,42 @@ describe('SettingsPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Tiling' }));
     expect(screen.getByLabelText('Enable Tile Snap (drag to edge)')).not.toBeChecked();
     expect(screen.queryByText('Snap Zones')).not.toBeInTheDocument();
+  });
+
+  it('warns standard Windows sessions that elevated windows need an administrator restart', async () => {
+    setupInvoke({ windowsElevated: false });
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tiling' })).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Tiling' }));
+    expect(screen.getByText(/Restart Display DJ with Run as administrator/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Enable Window Tiling')).toBeEnabled();
+  });
+
+  it('omits the administrator restart warning when Windows is already elevated', async () => {
+    setupInvoke({ windowsElevated: true });
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tiling' })).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Tiling' }));
+    expect(
+      screen.queryByText(/Restart Display DJ with Run as administrator/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps Settings usable when the optional Windows elevation check fails', async () => {
+    setupInvoke({ elevationRejects: true });
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('get_windows_elevation_status');
+    });
+    expect(screen.getByText('Settings')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Restart Display DJ with Run as administrator/),
+    ).not.toBeInTheDocument();
   });
 
   it('uses a 2x3 Exposé grid when saved grid fields are missing', async () => {
