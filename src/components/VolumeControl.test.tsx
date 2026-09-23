@@ -71,18 +71,47 @@ describe('VolumeControl', () => {
   it('shows the selected output name in collapsed mode without device controls', () => {
     renderVolumeControl();
 
-    expect(screen.getByText('Desk Speakers')).toBeInTheDocument();
+    expect(screen.getByTitle('Rename active output MacBook Pro Speakers')).toHaveTextContent(
+      'Desk Speakers',
+    );
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Rename MacBook Pro Speakers')).not.toBeInTheDocument();
+  });
+
+  it('renames the active output from its collapsed heading', async () => {
+    const user = userEvent.setup();
+    const onRenameOutput = vi.fn();
+    renderVolumeControl({ onRenameOutput });
+
+    await user.click(screen.getByTitle('Rename active output MacBook Pro Speakers'));
+    const input = screen.getByRole('textbox');
+    await user.clear(input);
+    await user.type(input, 'Office Speakers{Enter}');
+
+    expect(onRenameOutput).toHaveBeenCalledWith('speakers', 'Office Speakers');
   });
 
   it('shows radio-button device rows only in expanded mode', () => {
     renderVolumeControl({ expanded: true });
 
+    expect(screen.getByTitle('Rename active output MacBook Pro Speakers')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Select Headphones' })).not.toBeChecked();
     expect(screen.getByTitle('Rename MacBook Pro Speakers')).toBeInTheDocument();
     expect(screen.getByTitle('Rename USB Headphones')).toBeInTheDocument();
+  });
+
+  it('renames the active output from its expanded heading', async () => {
+    const user = userEvent.setup();
+    const onRenameOutput = vi.fn();
+    renderVolumeControl({ expanded: true, onRenameOutput });
+
+    await user.click(screen.getByTitle('Rename active output MacBook Pro Speakers'));
+    const input = screen.getByRole('textbox');
+    await user.clear(input);
+    await user.type(input, 'Conference Speakers{Enter}');
+
+    expect(onRenameOutput).toHaveBeenCalledWith('speakers', 'Conference Speakers');
   });
 
   it('selects an output from its dedicated radio button', async () => {

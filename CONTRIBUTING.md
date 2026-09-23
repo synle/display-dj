@@ -71,7 +71,7 @@ Events (`monitors-changed`, `dark-mode-changed`, `volume-changed`) fire when key
 
 ### Frontend state
 
-`App.tsx` holds all UI state (monitors, darkMode, volume, audio outputs, profiles, expanded view); no state library. On mount it fetches via `fetch_all_state` + `get_preferences`; event listeners and a `visibilitychange` listener trigger refetches. Audio outputs use a separate 5-second main-view poll so hot-plug changes appear without adding slow endpoint enumeration to `fetch_all_state`. Collapsed view shows averages across visible monitors and the active output name; expanded view adds output radio rows and inline aliases. `SettingsPanel.tsx` auto-saves with a 300ms debounce.
+`App.tsx` holds all UI state (monitors, darkMode, volume, audio outputs, profiles, expanded view); no state library. On mount it fetches via `fetch_all_state` + `get_preferences`; event listeners and a `visibilitychange` listener trigger refetches. Audio outputs use a separate 5-second main-view poll so hot-plug changes appear without adding slow endpoint enumeration to `fetch_all_state`. Both collapsed and expanded views allow inline editing of the active output name; expanded view also adds padded output radio targets and per-row aliases. `SettingsPanel.tsx` auto-saves with a 300ms debounce.
 
 ## Configuration
 

@@ -205,9 +205,31 @@ describe('App smoke test', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Desk Speakers')).toBeInTheDocument();
+      expect(screen.getByTitle('Rename active output MacBook Pro Speakers')).toHaveTextContent(
+        'Desk Speakers',
+      );
     });
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+  });
+
+  it('renames the active audio output from collapsed mode', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByTitle('Rename active output MacBook Pro Speakers'));
+    const input = screen.getByRole('textbox');
+    await user.clear(input);
+    await user.type(input, 'Studio Speakers{Enter}');
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('rename_audio_output_device', {
+        id: 'speakers',
+        label: 'Studio Speakers',
+      });
+      expect(screen.getByTitle('Rename active output MacBook Pro Speakers')).toHaveTextContent(
+        'Studio Speakers',
+      );
+    });
   });
 
   it('selects and renames audio outputs from expanded mode', async () => {

@@ -12,7 +12,9 @@ interface VolumeControlProps {
   onRenameOutput: (id: string, label: string) => void;
 }
 
-/** System volume slider with active-output label and expanded endpoint controls. */
+type EditLocation = 'active' | 'list';
+
+/** System volume slider with editable active-output label and expanded endpoint controls. */
 export default function VolumeControl({
   value,
   onChange,
@@ -23,6 +25,7 @@ export default function VolumeControl({
   onRenameOutput,
 }: VolumeControlProps) {
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [editingLocation, setEditingLocation] = useState<EditLocation | null>(null);
   const [editName, setEditName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const cancelEditingRef = useRef(false);
@@ -31,9 +34,10 @@ export default function VolumeControl({
   );
 
   /** Enters inline alias editing for one audio output. */
-  const startEditing = (device: AudioOutputDevice) => {
+  const startEditing = (device: AudioOutputDevice, location: EditLocation) => {
     cancelEditingRef.current = false;
     setEditingDeviceId(device.id);
+    setEditingLocation(location);
     setEditName(device.name);
     setTimeout(() => inputRef.current?.focus(), 0);
   };
@@ -41,6 +45,7 @@ export default function VolumeControl({
   /** Commits an alias change; empty input clears the saved alias. */
   const finishEditing = (device: AudioOutputDevice) => {
     setEditingDeviceId(null);
+    setEditingLocation(null);
     if (cancelEditingRef.current) {
       cancelEditingRef.current = false;
       setEditName(device.name);
@@ -63,7 +68,28 @@ export default function VolumeControl({
 
   return (
     <div className='volume-section'>
-      <span className='section-label'>{selectedDevice?.name ?? 'Audio Output'}</span>
+      {selectedDevice ? (
+        editingDeviceId === selectedDevice.id && editingLocation === 'active' ? (
+          <input
+            ref={inputRef}
+            className='monitor-name-input audio-output-active-name-input'
+            value={editName}
+            placeholder={selectedDevice.originalName}
+            onChange={(event) => setEditName(event.target.value)}
+            onBlur={() => finishEditing(selectedDevice)}
+            onKeyDown={handleEditKeyDown}
+          />
+        ) : (
+          <button
+            className='section-label audio-output-active-name'
+            onClick={() => startEditing(selectedDevice, 'active')}
+            title={`Rename active output ${selectedDevice.originalName}`}>
+            {selectedDevice.name || selectedDevice.originalName}
+          </button>
+        )
+      ) : (
+        <span className='section-label audio-output-active-name'>Audio Output</span>
+      )}
       <Slider
         icon={value === 0 ? '\uD83D\uDD07' : '\uD83D\uDD0A'}
         value={value}
@@ -77,15 +103,17 @@ export default function VolumeControl({
           ) : (
             outputState.devices.map((device) => (
               <div className='audio-output-row' key={device.id}>
-                <input
-                  type='radio'
-                  name='audio-output-device'
-                  aria-label={`Select ${device.name}`}
-                  checked={device.id === outputState.selectedDeviceId}
-                  disabled={selectingDeviceId !== null}
-                  onChange={() => onSelectOutput(device.id)}
-                />
-                {editingDeviceId === device.id ? (
+                <label className='audio-output-selector' data-disabled={selectingDeviceId !== null}>
+                  <input
+                    type='radio'
+                    name='audio-output-device'
+                    aria-label={`Select ${device.name}`}
+                    checked={device.id === outputState.selectedDeviceId}
+                    disabled={selectingDeviceId !== null}
+                    onChange={() => onSelectOutput(device.id)}
+                  />
+                </label>
+                {editingDeviceId === device.id && editingLocation === 'list' ? (
                   <input
                     ref={inputRef}
                     className='monitor-name-input audio-output-name-input'
@@ -98,7 +126,7 @@ export default function VolumeControl({
                 ) : (
                   <button
                     className='monitor-name audio-output-name'
-                    onClick={() => startEditing(device)}
+                    onClick={() => startEditing(device, 'list')}
                     title={`Rename ${device.originalName}`}>
                     {device.name || device.originalName}
                   </button>

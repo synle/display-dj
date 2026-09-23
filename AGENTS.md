@@ -237,7 +237,7 @@ States are cached on `AppState` (`is_dark_mode`, `is_muted`); `update_tray_icon(
 
 ## Audio Output Selection
 
-- `VolumeControl.tsx` always shows the current playback-device name above the volume slider. Collapsed mode is read-only; expanded monitor mode adds one radio row per output and click-to-edit names using the monitor rename styling.
+- `VolumeControl.tsx` always shows the current playback-device name above the volume slider. The active name preserves native casing and is click-to-edit in both collapsed and expanded modes. Expanded monitor mode adds one padded radio target per output plus click-to-edit row names using the monitor rename styling.
 - `App.tsx` polls `get_audio_output_devices` immediately and every 5 seconds only while the visible main panel is active. Settings, About, the Accessibility gate, hidden documents, and unmount stop polling. An in-flight guard prevents overlapping OS probes, and failures preserve the last successful snapshot.
 - Device IDs must remain stable: CoreAudio UID on macOS, `IMMDevice::GetId` on Windows, and the `pactl` sink name on Linux. The operating system owns the selected default; Display DJ never persists it.
 - User aliases live in `preferences.audioOutputConfigs` as `{ id, label }`. `originalName` always retains the native OS name, and saving an empty alias removes the metadata entry.

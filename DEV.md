@@ -36,7 +36,7 @@ Raising: measure current %, set floor ~10pp below, update both files. Never lowe
 
 `src-tauri/src/volume.rs` exposes `get_audio_output_devices`, `set_audio_output_device`, and `rename_audio_output_device`. Enumeration and switching run in `spawn_blocking`; aliases are overlaid after the OS result. Aliases persist in `Preferences.audio_output_configs`, keyed by stable platform ID, while the selected device remains OS-owned.
 
-`App.tsx` keeps output state separate from `fetch_all_state`. It fetches immediately and every 5 seconds only while the visible main panel is active, prevents overlapping probes, and keeps the last successful state on errors. `VolumeControl.tsx` renders the active name in collapsed and expanded layouts; only expanded mode renders radio-button endpoint rows and inline alias editing.
+`App.tsx` keeps output state separate from `fetch_all_state`. It fetches immediately and every 5 seconds only while the visible main panel is active, prevents overlapping probes, and keeps the last successful state on errors. `VolumeControl.tsx` renders a native-case, click-to-edit active name in collapsed and expanded layouts; expanded mode also renders padded radio-button endpoint rows with inline alias editing.
 
 ## Platform pitfalls
 

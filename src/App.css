@@ -368,33 +368,84 @@ body,
   gap: 8px;
 }
 
+.audio-output-active-name {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-transform: none;
+  transition: text-decoration-color 0.2s;
+}
+
+.audio-output-active-name:hover {
+  text-decoration-color: var(--text-secondary);
+}
+
+.audio-output-active-name-input {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .audio-output-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
   padding-left: 2px;
 }
 
 .audio-output-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  min-height: 32px;
   min-width: 0;
 }
 
-.audio-output-row input[type='radio'] {
+.audio-output-selector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 5px 6px 5px 2px;
+  cursor: pointer;
+}
+
+.audio-output-selector[data-disabled='true'] {
+  cursor: default;
+}
+
+.audio-output-selector input[type='radio'] {
   accent-color: var(--accent);
   cursor: pointer;
   flex-shrink: 0;
+  width: 20px;
+  height: 20px;
   margin: 0;
 }
 
-.audio-output-row input[type='radio']:disabled {
+.audio-output-selector input[type='radio']:disabled {
   cursor: default;
   opacity: 0.5;
 }
 
 .audio-output-name {
+  padding: 3px 0;
+  font-size: 14px;
+  line-height: 1.25;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -403,6 +454,7 @@ body,
 
 .audio-output-name-input {
   flex: 1;
+  font-size: 14px;
   min-width: 0;
 }
 
