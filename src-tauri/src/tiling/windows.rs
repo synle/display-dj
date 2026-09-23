@@ -960,6 +960,12 @@ fn begin_tile_snap_drag(
         }
         prefs.tiling.clone()
     };
+    if restore_maximized_window(hwnd) {
+        dbg_log(
+            app,
+            "tile_snap_win: restored maximized window before drag tracking",
+        );
+    }
     let original_rect = get_hwnd_rect(hwnd)?;
     let displays: Vec<Rect> = get_display_work_areas()
         .into_iter()

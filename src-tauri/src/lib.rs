@@ -396,6 +396,27 @@ mod tests {
         }
     }
 
+    /// Windows Tile Snap restores a maximized window before saving drag bounds.
+    #[test]
+    fn windows_tile_snap_restores_maximized_window_before_reading_bounds() {
+        let source = include_str!("tiling/windows.rs");
+        let begin_drag = source
+            .split("fn begin_tile_snap_drag")
+            .nth(1)
+            .expect("Windows Tile Snap drag initializer must exist")
+            .split("fn update_tile_snap_drag")
+            .next()
+            .expect("Windows Tile Snap drag initializer must have a bounded body");
+        let restore = begin_drag
+            .find("restore_maximized_window(hwnd)")
+            .expect("maximized Tile Snap drags must restore the window");
+        let read_bounds = begin_drag
+            .find("get_hwnd_rect(hwnd)")
+            .expect("Tile Snap must read original window bounds");
+
+        assert!(restore < read_bounds);
+    }
+
     // -- parse_time_minutes --
 
     #[test]
