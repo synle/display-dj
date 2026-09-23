@@ -64,6 +64,7 @@ rows="$(awk -F'|' '
     gsub(/^ +| +$/, "", v); gsub(/^`|`$/, "", v)
     gsub(/^ +| +$/, "", u); gsub(/^`|`$/, "", u)
     gsub(/^ +| +$/, "", s); gsub(/^`|`$/, "", s)
+    if (u == "_(local)_" || s == "_n/a_") next
     print v "\t" u "\t" s
   }
 ' "$VENDORING_MD")"

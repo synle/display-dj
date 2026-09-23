@@ -363,6 +363,52 @@ body,
 
 /* Volume section */
 .volume-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.audio-output-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 2px;
+}
+
+.audio-output-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.audio-output-row input[type='radio'] {
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.audio-output-row input[type='radio']:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.audio-output-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-output-name-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.audio-output-empty {
+  color: var(--text-secondary);
+  font-size: 11px;
 }
 
 /* Dark mode toggle */

@@ -6,9 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 
-#[cfg(target_os = "windows")]
-use super::win_cmd::hidden_command;
-
 /// System audio volume state.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct VolumeInfo {
@@ -57,47 +54,42 @@ pub fn set_mute(mute: bool) -> bool {
         .unwrap_or(false)
 }
 
-// --- Windows volume: AudioDeviceCmdlets PowerShell module ---
-// Requires one-time setup: Install-Module -Name AudioDeviceCmdlets
-// https://www.powershellgallery.com/packages/AudioDeviceCmdlets
+// --- Windows volume: native Core Audio endpoint-volume API ---
 
-/// Get current volume and mute state on Windows via AudioDeviceCmdlets PowerShell module.
-/// Reads both playback volume and mute state in a single PowerShell invocation.
+/// Gets current volume and mute state from the selected Windows playback endpoint.
 #[cfg(target_os = "windows")]
 pub fn get_volume() -> Option<VolumeInfo> {
-    let output = hidden_command("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command",
-            "Import-Module AudioDeviceCmdlets; $v = Get-AudioDevice -PlaybackVolume; $m = Get-AudioDevice -PlaybackMute; Write-Output \"$v,$m\""])
-        .output().ok()?;
-    if !output.status.success() { return None; }
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let mut parts = stdout.split(',');
-    let volume: f64 = parts.next()?.parse().ok()?;
-    let muted = parts.next()?.trim().to_lowercase() == "true";
-    Some(VolumeInfo { volume: volume.round() as u32, muted })
+    match super::audio_output::get_default_volume() {
+        Ok((volume, muted)) => Some(VolumeInfo { volume, muted }),
+        Err(error) => {
+            log::warn!("get Windows volume failed: {}", error);
+            None
+        }
+    }
 }
 
-/// Set system volume on Windows via AudioDeviceCmdlets. Level is 0-100.
+/// Sets volume on the selected Windows playback endpoint.
 #[cfg(target_os = "windows")]
 pub fn set_volume(level: u16) -> bool {
-    hidden_command("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command",
-            &format!("Import-Module AudioDeviceCmdlets; Set-AudioDevice -PlaybackVolume {}", level)])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    match super::audio_output::set_default_volume(level) {
+        Ok(()) => true,
+        Err(error) => {
+            log::warn!("set Windows volume failed: {}", error);
+            false
+        }
+    }
 }
 
-/// Toggle mute on Windows via AudioDeviceCmdlets. Uses 1/0 instead of true/false.
+/// Sets mute state on the selected Windows playback endpoint.
 #[cfg(target_os = "windows")]
 pub fn set_mute(mute: bool) -> bool {
-    let val = if mute { "1" } else { "0" };
-    hidden_command("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command",
-            &format!("Import-Module AudioDeviceCmdlets; Set-AudioDevice -PlaybackMute {}", val)])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    match super::audio_output::set_default_mute(mute) {
+        Ok(()) => true,
+        Err(error) => {
+            log::warn!("set Windows mute failed: {}", error);
+            false
+        }
+    }
 }
 
 // --- Linux volume: pactl (PulseAudio/PipeWire) with amixer (ALSA) fallback ---

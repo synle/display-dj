@@ -333,6 +333,16 @@ impl Default for LayoutPreset {
     }
 }
 
+/// User-defined label for a stable platform audio-output device identifier.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioOutputMetadata {
+    /// Stable platform identifier for the audio output.
+    pub id: String,
+    /// Optional user-defined label. Empty labels are removed instead of persisted.
+    pub label: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Preferences {
@@ -345,6 +355,8 @@ pub struct Preferences {
     pub debug_logging: bool,
     pub launch_at_login: bool,
     pub monitor_configs: Vec<MonitorMetadata>,
+    /// User-defined labels for audio output devices, keyed by stable platform ID.
+    pub audio_output_configs: Vec<AudioOutputMetadata>,
     pub tiling: TilingPreferences,
     /// Named window layout presets. Each preset contains rules that match windows
     /// by app name and apply tiling layouts. Triggered via `command/layout/{name_or_index}`.
@@ -569,6 +581,7 @@ impl Default for Preferences {
             debug_logging: false,
             launch_at_login: false,
             monitor_configs: Vec::new(),
+            audio_output_configs: Vec::new(),
             tiling: TilingPreferences::default(),
             layout_presets: Vec::new(),
             wallpaper: WallpaperPreferences::default(),
@@ -1428,10 +1441,36 @@ mod tests {
         assert!(json.contains("minBrightness"));
         assert!(json.contains("keyBindings"));
         assert!(json.contains("monitorConfigs"));
+        assert!(json.contains("audioOutputConfigs"));
         // Should NOT contain snake_case
         assert!(!json.contains("show_individual_displays"));
         assert!(!json.contains("min_brightness"));
         assert!(!json.contains("monitor_configs"));
+        assert!(!json.contains("audio_output_configs"));
+    }
+
+    /// Verifies audio-output aliases use camelCase and survive preference roundtrips.
+    #[test]
+    fn test_audio_output_metadata_roundtrip() {
+        let mut prefs = Preferences::default();
+        prefs.audio_output_configs.push(AudioOutputMetadata {
+            id: "device-1".into(),
+            label: "Desk Speakers".into(),
+        });
+
+        let json = serde_json::to_string(&prefs).unwrap();
+        assert!(json.contains("\"audioOutputConfigs\""));
+        assert!(json.contains("\"Desk Speakers\""));
+
+        let restored: Preferences = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.audio_output_configs, prefs.audio_output_configs);
+    }
+
+    /// Verifies older preference files default the new audio-output aliases to empty.
+    #[test]
+    fn test_preferences_missing_audio_output_configs_defaults() {
+        let prefs: Preferences = serde_json::from_str("{}").unwrap();
+        assert!(prefs.audio_output_configs.is_empty());
     }
 
     #[test]

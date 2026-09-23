@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-Cross-platform desktop system tray application for controlling monitor brightness, contrast, dark mode, volume, keep-awake (sleep prevention), and **window tiling** (macOS + Windows + Linux/X11). Built with **Tauri v2** (Rust backend) + **React 19** (TypeScript frontend) + **Vite 6**.
+Cross-platform desktop system tray application for controlling monitor brightness, contrast, dark mode, volume and audio output, keep-awake (sleep prevention), and **window tiling** (macOS + Windows + Linux/X11). Built with **Tauri v2** (Rust backend) + **React 19** (TypeScript frontend) + **Vite 6**.
 
-All platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, wallpaper, slideshow) is **vendored in-process** under `src-tauri/src/core/`. There is no sidecar process and no runtime dependency on the display-dj-cli repo — Tauri commands call `core::*` functions directly. See [`VENDORING.md`](VENDORING.md) for the upstream→vendored file map and `./scripts/check-vendor-drift.sh` for drift detection.
+All platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, audio-output selection, wallpaper, slideshow) runs **in-process** under `src-tauri/src/core/`. Most modules are vendored from display-dj-cli; audio-output selection is display-dj-local. There is no sidecar process and no runtime dependency on the display-dj-cli repo — Tauri commands call `core::*` functions directly. See [`VENDORING.md`](VENDORING.md) for the upstream→vendored file map and `./scripts/check-vendor-drift.sh` for drift detection.
 
 For full architecture details, request lifecycle, layer-by-layer breakdown, data flow diagrams, and "where to edit" reference, see **[DEV.md](DEV.md)**.
 
@@ -17,6 +17,7 @@ The Rust backend is split into two layers:
   - `core::macos`, `core::windows`, `core::linux` — per-OS display implementations (DDC/CI, gamma, DisplayServices, WMI, brightnessctl/ddcutil).
   - `core::theme` — system dark mode read/write.
   - `core::volume` — system volume get/set.
+  - `core::audio_output` — playback-device enumeration and default selection (CoreAudio on macOS, MMDevice/PolicyConfig on Windows, `pactl` on Linux).
   - `core::wallpaper` — wallpaper set + slideshow timer/state/cycling (all in-process).
   - `core::display` — high-level helpers (`set_all_brightness`, `set_one_brightness`, contrast variants) that fan out to `PlatformImpl`.
 - **`src-tauri/src/{display,dark_mode,volume,wallpaper}.rs`** — thin Tauri-command wrappers around `core::*`. CPU-bound work is wrapped in `tauri::async_runtime::spawn_blocking` because every Tauri command taking `State<'_, AppState>` must be `async fn` (see "macOS Tray Icon Pitfall" below).
@@ -126,7 +127,7 @@ After modifying frontend code (`src/`), config, or docs, always run `npm run for
 
 **Every Windows child spawn from `#[cfg(target_os = "windows")]` must go through `core::win_cmd::hidden_command(...)`.** That helper pre-applies `CREATE_NO_WINDOW` (`0x08000000`) so the short-lived `powershell` / `reg` child doesn't flash a console — the GUI parent has `windows_subsystem = "windows"` and no console to share.
 
-- **Matters in**: `core/{windows,volume,theme,wallpaper}.rs`. Regression test `no_bare_powershell_or_reg_spawns_in_core` in `lib.rs` fails the build on bare spawns.
+- **Matters in**: `core/{windows,theme,wallpaper}.rs`. Regression test `no_bare_powershell_or_reg_spawns_in_core` in `lib.rs` fails the build on bare spawns. Windows volume uses `IAudioEndpointVolume` and spawns no child process.
 - **N/A on macOS/Linux** — no Win32-PE-subsystem concept; GUI parents launched from `.desktop` / Finder inherit null stdio.
 - **The `windows_subsystem` attribute** must live on `main.rs`, never `lib.rs` (silently ignored — release `.exe` ships as console-subsystem and `CREATE_NO_WINDOW` on children can't fix it).
 - **Vendor refresh**: `core/*` is vendored from `display-dj-cli` (a CLI, doesn't need this). The `hidden_command` substitution is display-dj-local; re-apply on refresh.
@@ -233,6 +234,14 @@ Drawn programmatically at 128x128 from percentage-based layout constants (no PNG
 - **Muted (volume=0)**: red X drawn over the icon.
 
 States are cached on `AppState` (`is_dark_mode`, `is_muted`); `update_tray_icon()` regenerates on change. Initial state is fetched in-process from `core::theme` and `core::volume` at startup via `fetch_initial_tray_state()`.
+
+## Audio Output Selection
+
+- `VolumeControl.tsx` always shows the current playback-device name above the volume slider. Collapsed mode is read-only; expanded monitor mode adds one radio row per output and click-to-edit names using the monitor rename styling.
+- `App.tsx` polls `get_audio_output_devices` immediately and every 5 seconds only while the visible main panel is active. Settings, About, the Accessibility gate, hidden documents, and unmount stop polling. An in-flight guard prevents overlapping OS probes, and failures preserve the last successful snapshot.
+- Device IDs must remain stable: CoreAudio UID on macOS, `IMMDevice::GetId` on Windows, and the `pactl` sink name on Linux. The operating system owns the selected default; Display DJ never persists it.
+- User aliases live in `preferences.audioOutputConfigs` as `{ id, label }`. `originalName` always retains the native OS name, and saving an empty alias removes the metadata entry.
+- Windows volume get/set/mute uses `IAudioEndpointVolume`, so output switching and the volume slider share the same selected MMDevice without requiring the AudioDeviceCmdlets PowerShell module.
 
 ## Settings & About
 

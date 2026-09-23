@@ -33,6 +33,28 @@ export interface MonitorMetadata {
   brightnessMode: BrightnessMode;
 }
 
+/** Selectable system playback endpoint. */
+export interface AudioOutputDevice {
+  /** Stable platform identifier used for selection and persisted aliases. */
+  id: string;
+  /** Display DJ label after applying a saved alias. */
+  name: string;
+  /** Native operating-system endpoint name. */
+  originalName: string;
+}
+
+/** Current playback endpoints and the operating system's selected default. */
+export interface AudioOutputState {
+  devices: AudioOutputDevice[];
+  selectedDeviceId: string | null;
+}
+
+/** User-defined label for a stable audio-output device identifier. */
+export interface AudioOutputMetadata {
+  id: string;
+  label: string;
+}
+
 export interface NightModeSchedule {
   enabled: boolean;
   nightStart: string;
@@ -132,6 +154,8 @@ export interface Preferences {
   debugLogging: boolean;
   launchAtLogin: boolean;
   monitorConfigs: MonitorMetadata[];
+  /** User-defined labels for audio output devices. */
+  audioOutputConfigs: AudioOutputMetadata[];
   tiling: TilingPreferences;
   layoutPresets: LayoutPreset[];
   /** Wallpaper preferences: fit mode and current wallpaper path. */

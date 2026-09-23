@@ -1,29 +1,61 @@
+import type { ComponentProps } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 import VolumeControl from './VolumeControl';
 
+const outputState = {
+  devices: [
+    {
+      id: 'speakers',
+      name: 'Desk Speakers',
+      originalName: 'MacBook Pro Speakers',
+    },
+    {
+      id: 'headphones',
+      name: 'Headphones',
+      originalName: 'USB Headphones',
+    },
+  ],
+  selectedDeviceId: 'speakers',
+};
+
+/** Renders the volume control with complete default props. */
+function renderVolumeControl(overrides: Partial<ComponentProps<typeof VolumeControl>> = {}) {
+  const props: ComponentProps<typeof VolumeControl> = {
+    value: 50,
+    onChange: vi.fn(),
+    outputState,
+    expanded: false,
+    selectingDeviceId: null,
+    onSelectOutput: vi.fn(),
+    onRenameOutput: vi.fn(),
+    ...overrides,
+  };
+  return { ...render(<VolumeControl {...props} />), props };
+}
+
 describe('VolumeControl', () => {
   it('renders a slider with the given volume value', () => {
-    render(<VolumeControl value={75} onChange={() => {}} />);
+    renderVolumeControl({ value: 75 });
     const slider = screen.getByRole('slider');
     expect(slider).toHaveValue('75');
   });
 
   it('shows muted icon when volume is 0', () => {
-    render(<VolumeControl value={0} onChange={() => {}} />);
+    renderVolumeControl({ value: 0 });
     expect(screen.getByText('\uD83D\uDD07')).toBeInTheDocument();
   });
 
   it('shows speaker icon when volume is above 0', () => {
-    render(<VolumeControl value={50} onChange={() => {}} />);
+    renderVolumeControl();
     expect(screen.getByText('\uD83D\uDD0A')).toBeInTheDocument();
   });
 
   it('mutes (calls onChange with 0) when icon clicked at non-zero volume', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
-    render(<VolumeControl value={50} onChange={onChange} />);
+    renderVolumeControl({ onChange });
     await user.click(screen.getByText('\uD83D\uDD0A'));
     expect(onChange).toHaveBeenCalledWith(0);
   });
@@ -31,8 +63,67 @@ describe('VolumeControl', () => {
   it('unmutes (calls onChange with 100) when icon clicked at zero volume', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
-    render(<VolumeControl value={0} onChange={onChange} />);
+    renderVolumeControl({ value: 0, onChange });
     await user.click(screen.getByText('\uD83D\uDD07'));
     expect(onChange).toHaveBeenCalledWith(100);
+  });
+
+  it('shows the selected output name in collapsed mode without device controls', () => {
+    renderVolumeControl();
+
+    expect(screen.getByText('Desk Speakers')).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Rename MacBook Pro Speakers')).not.toBeInTheDocument();
+  });
+
+  it('shows radio-button device rows only in expanded mode', () => {
+    renderVolumeControl({ expanded: true });
+
+    expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Select Headphones' })).not.toBeChecked();
+    expect(screen.getByTitle('Rename MacBook Pro Speakers')).toBeInTheDocument();
+    expect(screen.getByTitle('Rename USB Headphones')).toBeInTheDocument();
+  });
+
+  it('selects an output from its dedicated radio button', async () => {
+    const user = userEvent.setup();
+    const onSelectOutput = vi.fn();
+    renderVolumeControl({ expanded: true, onSelectOutput });
+
+    await user.click(screen.getByRole('radio', { name: 'Select Headphones' }));
+
+    expect(onSelectOutput).toHaveBeenCalledWith('headphones');
+  });
+
+  it('renames an output by clicking its name and committing the textbox', async () => {
+    const user = userEvent.setup();
+    const onRenameOutput = vi.fn();
+    renderVolumeControl({ expanded: true, onRenameOutput });
+
+    await user.click(screen.getByTitle('Rename MacBook Pro Speakers'));
+    const input = screen.getByRole('textbox');
+    await user.clear(input);
+    await user.type(input, 'Office Speakers{Enter}');
+
+    expect(onRenameOutput).toHaveBeenCalledWith('speakers', 'Office Speakers');
+  });
+
+  it('cancels an output rename on Escape', async () => {
+    const user = userEvent.setup();
+    const onRenameOutput = vi.fn();
+    renderVolumeControl({ expanded: true, onRenameOutput });
+
+    await user.click(screen.getByTitle('Rename MacBook Pro Speakers'));
+    await user.type(screen.getByRole('textbox'), ' changed{Escape}');
+
+    expect(onRenameOutput).not.toHaveBeenCalled();
+    expect(screen.getByTitle('Rename MacBook Pro Speakers')).toBeInTheDocument();
+  });
+
+  it('disables output selection while another output switch is in progress', () => {
+    renderVolumeControl({ expanded: true, selectingDeviceId: 'headphones' });
+
+    expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: 'Select Headphones' })).toBeDisabled();
   });
 });

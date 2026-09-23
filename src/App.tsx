@@ -12,7 +12,7 @@ import KeepAwakeToggle from './components/KeepAwakeToggle';
 import SettingsPanel from './components/SettingsPanel';
 import AboutPanel from './components/AboutPanel';
 import AccessibilityGate from './components/AccessibilityGate';
-import { Monitor, Preferences, Profile } from './types';
+import { AudioOutputState, Monitor, Preferences, Profile } from './types';
 
 const ABSOLUTE_MIN_BRIGHTNESS = 5;
 
@@ -32,7 +32,13 @@ function App() {
   const [version, setVersion] = useState('');
   const [isMac, setIsMac] = useState(false);
   const [accessibilityTrusted, setAccessibilityTrusted] = useState(true);
+  const [audioOutputState, setAudioOutputState] = useState<AudioOutputState | null>(null);
+  const [selectingAudioOutputId, setSelectingAudioOutputId] = useState<string | null>(null);
   const appRef = useRef<HTMLDivElement>(null);
+  const audioOutputFetchInFlight = useRef(false);
+  const audioOutputStateVersion = useRef(0);
+  const showAccessibilityGate = isMac && !accessibilityTrusted;
+  const mainViewVisible = !showAccessibilityGate && !aboutOpen && !settingsOpen;
 
   /** Merges refetched monitors with the current state, preserving client-side
    * brightness/contrast values. The client is the source of truth for these —
@@ -79,6 +85,23 @@ function App() {
       setVolume(v);
     } catch (e) {
       console.error('Failed to get volume:', e);
+    }
+  }, []);
+
+  /** Fetches selectable audio outputs without overlapping slow platform probes. */
+  const fetchAudioOutputs = useCallback(async () => {
+    if (audioOutputFetchInFlight.current) return;
+    audioOutputFetchInFlight.current = true;
+    const requestVersion = audioOutputStateVersion.current;
+    try {
+      const outputState = await invoke<AudioOutputState>('get_audio_output_devices');
+      if (requestVersion === audioOutputStateVersion.current) {
+        setAudioOutputState(outputState);
+      }
+    } catch (e) {
+      console.error('Failed to get audio output devices:', e);
+    } finally {
+      audioOutputFetchInFlight.current = false;
     }
   }, []);
 
@@ -192,6 +215,49 @@ function App() {
       window.removeEventListener('blur', handleBlur);
     };
   }, [fetchAllState, fetchMonitors, fetchDarkMode, fetchVolume, fetchPreferences, fetchKeepAwake]);
+
+  // Audio endpoints can hot-plug independently from monitor/volume state. Poll
+  // only while the main panel is visible; retain the last successful snapshot
+  // when a platform probe fails.
+  useEffect(() => {
+    if (!mainViewVisible) return;
+
+    let intervalId: number | null = null;
+    const stopInterval = () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+    const startInterval = () => {
+      if (document.visibilityState !== 'visible') {
+        stopInterval();
+        return;
+      }
+      void fetchAudioOutputs();
+      if (intervalId === null) {
+        intervalId = window.setInterval(() => {
+          if (document.visibilityState === 'visible') {
+            void fetchAudioOutputs();
+          }
+        }, 5_000);
+      }
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        startInterval();
+      } else {
+        stopInterval();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    startInterval();
+    return () => {
+      stopInterval();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [fetchAudioOutputs, mainViewVisible]);
 
   // Auto-resize window to fit content
   useEffect(() => {
@@ -318,6 +384,43 @@ function App() {
     }
   };
 
+  /** Selects a system audio output with optimistic radio-button feedback. */
+  const handleAudioOutputSelect = async (id: string) => {
+    const previousState = audioOutputState;
+    audioOutputStateVersion.current += 1;
+    setSelectingAudioOutputId(id);
+    setAudioOutputState((current) => (current ? { ...current, selectedDeviceId: id } : current));
+    try {
+      const outputState = await invoke<AudioOutputState>('set_audio_output_device', { id });
+      setAudioOutputState(outputState);
+      await fetchVolume();
+    } catch (e) {
+      setAudioOutputState(previousState);
+      console.error('Failed to set audio output device:', e);
+    } finally {
+      setSelectingAudioOutputId(null);
+    }
+  };
+
+  /** Saves or clears a Display DJ alias for one audio output. */
+  const handleAudioOutputRename = async (id: string, label: string) => {
+    audioOutputStateVersion.current += 1;
+    try {
+      await invoke('rename_audio_output_device', { id, label });
+      setAudioOutputState((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          devices: current.devices.map((device) =>
+            device.id === id ? { ...device, name: label.trim() || device.originalName } : device,
+          ),
+        };
+      });
+    } catch (e) {
+      console.error('Failed to rename audio output device:', e);
+    }
+  };
+
   /** Toggles the keep-awake state (prevents system from sleeping). */
   const handleKeepAwake = async (enabled: boolean) => {
     try {
@@ -345,8 +448,6 @@ function App() {
   // z-order commands all no-op without it; surfacing the fix in the popup
   // (rather than only auto-opening System Settings on launch) makes the
   // recovery loop a single round-trip.
-  const showAccessibilityGate = isMac && !accessibilityTrusted;
-
   // Only show non-hidden monitors in the main UI
   const visibleMonitors = monitors.filter((m) => !m.hidden);
 
@@ -423,7 +524,15 @@ function App() {
               </div>
             ))}
 
-          <VolumeControl value={volume} onChange={handleVolume} />
+          <VolumeControl
+            value={volume}
+            onChange={handleVolume}
+            outputState={audioOutputState}
+            expanded={expanded}
+            selectingDeviceId={selectingAudioOutputId}
+            onSelectOutput={handleAudioOutputSelect}
+            onRenameOutput={handleAudioOutputRename}
+          />
           <DarkModeToggle isDarkMode={darkMode} onChange={handleDarkMode} />
           <ProfileButtons profiles={profiles} onActivate={handleProfile} />
           <KeepAwakeToggle isActive={keepAwake} onChange={handleKeepAwake} />

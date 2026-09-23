@@ -1,6 +1,6 @@
 # display-dj
 
-Cross-platform desktop app for monitor brightness, contrast, dark mode, volume, and window tiling control. Built with Tauri v2 (Rust backend) + React 19 + TypeScript + Vite 6 (WebView frontend). All platform code (DDC/CI, gamma, WMI, DisplayServices, wallpaper) is vendored in-process under `src-tauri/src/core/`.
+Cross-platform desktop app for monitor brightness, contrast, dark mode, volume and audio-output selection, and window tiling control. Built with Tauri v2 (Rust backend) + React 19 + TypeScript + Vite 6 (WebView frontend). Platform code (DDC/CI, gamma, WMI, DisplayServices, audio, wallpaper) runs in-process under `src-tauri/src/core/`.
 
 ## Quick Start
 
@@ -25,6 +25,18 @@ CI enforces floors that trail main-branch measurement by ~10pp. Actual numbers a
 - **Backend** → `.github/workflows/build.yml`, `Rust coverage` step (`--fail-under-lines/-functions/-regions`). HTML in `src-tauri/target/llvm-cov-target/html/`.
 
 Raising: measure current %, set floor ~10pp below, update both files. Never lower without keeping the ~10pp gap.
+
+## Audio output selection
+
+`src-tauri/src/core/audio_output/` owns the platform layer:
+
+- macOS uses CoreAudio device UIDs, output-stream capability checks, and the default output/system-output properties.
+- Windows uses MMDevice for active render endpoints, `IPolicyConfig` for console/multimedia/communications defaults, and `IAudioEndpointVolume` for native volume and mute.
+- Linux uses `pactl` sink names, `set-default-sink`, and best-effort migration of active sink inputs.
+
+`src-tauri/src/volume.rs` exposes `get_audio_output_devices`, `set_audio_output_device`, and `rename_audio_output_device`. Enumeration and switching run in `spawn_blocking`; aliases are overlaid after the OS result. Aliases persist in `Preferences.audio_output_configs`, keyed by stable platform ID, while the selected device remains OS-owned.
+
+`App.tsx` keeps output state separate from `fetch_all_state`. It fetches immediately and every 5 seconds only while the visible main panel is active, prevents overlapping probes, and keeps the last successful state on errors. `VolumeControl.tsx` renders the active name in collapsed and expanded layouts; only expanded mode renders radio-button endpoint rows and inline alias editing.
 
 ## Platform pitfalls
 

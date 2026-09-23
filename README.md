@@ -35,7 +35,7 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Brightness control** -- a single slider to adjust all monitors at once, or expand to control each monitor individually
 - **Contrast control** -- DDC/CI contrast adjustment for external monitors (enable in Settings)
 - **Dark mode toggle** -- system-wide dark/light mode switch
-- **Volume control** -- system volume slider with mute indicator
+- **Volume and output control** -- system volume slider with mute indicator, current speaker name in collapsed mode, and an expanded radio-button list for switching and renaming playback devices
 - **Keep Awake** -- prevent your system from sleeping with a single toggle (macOS, Windows, Linux)
 - **Night mode schedule** -- automatically set brightness and dark/light mode on a time-based schedule (e.g., dim at 9 PM, bright at 7 AM). Supports custom commands (`nightCommands`/`dayCommands`) to run arbitrary actions on schedule (volume changes, profile activation, per-monitor brightness)
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
@@ -358,7 +358,7 @@ This recursively clears the quarantine flag so macOS allows the app to run. You 
 
 [Tauri v2](https://v2.tauri.app/) (Rust) + React 19 + TypeScript + Vite 6.
 
-All platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, wallpaper) lives in-process inside the Rust backend under `src-tauri/src/core/`. There is no external sidecar or helper binary -- macOS and Windows need no extra tools installed; Linux needs the system packages listed in the install section above.
+All platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, audio-output selection, wallpaper) lives in-process inside the Rust backend under `src-tauri/src/core/`. There is no external sidecar or helper binary -- macOS and Windows need no extra tools installed; Linux needs the system packages listed in the install section above.
 
 ## Contributing
 

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -46,6 +46,38 @@ beforeEach(() => {
         return Promise.resolve(false);
       case 'get_volume':
         return Promise.resolve(50);
+      case 'get_audio_output_devices':
+        return Promise.resolve({
+          devices: [
+            {
+              id: 'speakers',
+              name: 'Desk Speakers',
+              originalName: 'MacBook Pro Speakers',
+            },
+            {
+              id: 'headphones',
+              name: 'Headphones',
+              originalName: 'USB Headphones',
+            },
+          ],
+          selectedDeviceId: 'speakers',
+        });
+      case 'set_audio_output_device':
+        return Promise.resolve({
+          devices: [
+            {
+              id: 'speakers',
+              name: 'Desk Speakers',
+              originalName: 'MacBook Pro Speakers',
+            },
+            {
+              id: 'headphones',
+              name: 'Headphones',
+              originalName: 'USB Headphones',
+            },
+          ],
+          selectedDeviceId: 'headphones',
+        });
       case 'get_preferences':
         return Promise.resolve({
           showIndividualDisplays: false,
@@ -87,6 +119,7 @@ beforeEach(() => {
           debugLogging: false,
           launchAtLogin: false,
           monitorConfigs: [],
+          audioOutputConfigs: [],
         });
       case 'get_app_version':
         return Promise.resolve('2.1.0');
@@ -166,6 +199,107 @@ describe('App smoke test', () => {
     await waitFor(() => {
       expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
     });
+  });
+
+  it('shows the active audio output in collapsed mode without device rows', async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Desk Speakers')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+  });
+
+  it('selects and renames audio outputs from expanded mode', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
+      expect(screen.getByText('Desk Speakers')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTitle('Show individual monitors'));
+    await user.click(screen.getByRole('radio', { name: 'Select Headphones' }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_audio_output_device', {
+        id: 'headphones',
+      });
+      expect(screen.getAllByText('Headphones')).toHaveLength(2);
+    });
+
+    await user.click(screen.getByTitle('Rename USB Headphones'));
+    const input = screen.getByRole('textbox');
+    await user.clear(input);
+    await user.type(input, 'Studio Headphones{Enter}');
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('rename_audio_output_device', {
+        id: 'headphones',
+        label: 'Studio Headphones',
+      });
+      expect(screen.getAllByText('Studio Headphones')).toHaveLength(2);
+    });
+  });
+
+  it('polls audio outputs only while the visible main panel is active', async () => {
+    vi.useFakeTimers();
+    let visibility: DocumentVisibilityState = 'visible';
+    const visibilitySpy = vi
+      .spyOn(document, 'visibilityState', 'get')
+      .mockImplementation(() => visibility);
+
+    try {
+      render(<App />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      const initialCalls = mockInvoke.mock.calls.filter(
+        ([command]) => command === 'get_audio_output_devices',
+      ).length;
+      expect(initialCalls).toBe(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+        await Promise.resolve();
+      });
+      const polledCalls = mockInvoke.mock.calls.filter(
+        ([command]) => command === 'get_audio_output_devices',
+      ).length;
+      expect(polledCalls).toBe(2);
+
+      visibility = 'hidden';
+      fireEvent(document, new Event('visibilitychange'));
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+        await Promise.resolve();
+      });
+      expect(
+        mockInvoke.mock.calls.filter(([command]) => command === 'get_audio_output_devices'),
+      ).toHaveLength(2);
+
+      visibility = 'visible';
+      fireEvent(document, new Event('visibilitychange'));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(
+        mockInvoke.mock.calls.filter(([command]) => command === 'get_audio_output_devices'),
+      ).toHaveLength(3);
+
+      fireEvent.click(screen.getByTitle('Settings'));
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+        await Promise.resolve();
+      });
+      expect(
+        mockInvoke.mock.calls.filter(([command]) => command === 'get_audio_output_devices'),
+      ).toHaveLength(3);
+    } finally {
+      visibilitySpy.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it('handles backend errors gracefully without crashing', async () => {

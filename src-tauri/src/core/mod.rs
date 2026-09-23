@@ -18,6 +18,7 @@ pub mod theme;
 pub mod volume;
 pub mod wallpaper;
 pub mod display;
+pub mod audio_output;
 
 use serde::{Deserialize, Serialize};
 

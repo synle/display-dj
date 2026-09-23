@@ -37,7 +37,7 @@ core/ (vendored platform code)
 ```
 
 - `src-tauri/src/{display,dark_mode,volume,wallpaper}.rs` — thin async Tauri-command wrappers around `core::*`. Every command taking `State<'_, AppState>` must be `async fn`, and CPU-bound work runs in `spawn_blocking` (macOS tray starvation pitfall — see AGENTS.md).
-- `src-tauri/src/core/` — vendored platform implementations (`macos`/`windows`/`linux`, `theme`, `volume`, `wallpaper`, `display`). See [VENDORING.md](VENDORING.md).
+- `src-tauri/src/core/` — platform implementations (`macos`/`windows`/`linux`, `theme`, `volume`, `audio_output`, `wallpaper`, `display`). Most are vendored; `audio_output` is display-dj-local. See [VENDORING.md](VENDORING.md).
 - Other backend modules: `config.rs` (preferences), `tray.rs` (tray menu + shortcut dispatch), `tray_icon.rs`, `keep_awake.rs`, `sidecar_cache.rs` (5-min TTL cache), `overlay.rs` (soft-overlay brightness fallback), `crash_log.rs`, `tiling/`.
 
 ### Frontend ↔ Backend
@@ -62,7 +62,7 @@ Events (`monitors-changed`, `dark-mode-changed`, `volume-changed`) fire when key
 | `lib`        | `fetch_all_state`                                                                                                                                            |
 | `display`    | `get_monitors`, `set_brightness`, `set_all_brightness`, `set_contrast`, `set_all_contrast`, `rename_monitor`, `save_monitor_order`, `set_monitor_visibility` |
 | `dark_mode`  | `get_dark_mode`, `set_dark_mode`                                                                                                                             |
-| `volume`     | `get_volume`, `set_volume`                                                                                                                                   |
+| `volume`     | `get_volume`, `set_volume`, `get_audio_output_devices`, `set_audio_output_device`, `rename_audio_output_device`                                              |
 | `config`     | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `open_app_folder`, `get_app_version`, `get_about_info`                     |
 | `crash_log`  | `get_crash_log`, `open_crash_log`                                                                                                                            |
 | `keep_awake` | `get_keep_awake`, `set_keep_awake`                                                                                                                           |
@@ -71,17 +71,19 @@ Events (`monitors-changed`, `dark-mode-changed`, `volume-changed`) fire when key
 
 ### Frontend state
 
-`App.tsx` holds all UI state (monitors, darkMode, volume, profiles, expanded view); no state library. On mount it fetches via `fetch_all_state` + `get_preferences`; event listeners and a `visibilitychange` listener trigger refetches. Collapsed view shows averages across visible monitors. `SettingsPanel.tsx` auto-saves with a 300ms debounce.
+`App.tsx` holds all UI state (monitors, darkMode, volume, audio outputs, profiles, expanded view); no state library. On mount it fetches via `fetch_all_state` + `get_preferences`; event listeners and a `visibilitychange` listener trigger refetches. Audio outputs use a separate 5-second main-view poll so hot-plug changes appear without adding slow endpoint enumeration to `fetch_all_state`. Collapsed view shows averages across visible monitors and the active output name; expanded view adds output radio rows and inline aliases. `SettingsPanel.tsx` auto-saves with a 300ms debounce.
 
 ## Configuration
 
 Config lives in the platform config dir (`config_dir()` in `config.rs`): `~/Library/Application Support/display-dj` (macOS), `%APPDATA%/display-dj` (Windows), `~/.config/display-dj` (Linux). Main file: `preferences.json` — deserialized into `Preferences` with `#[serde(default)]`, so missing fields fall back to defaults.
 
-Top-level fields: `showIndividualDisplays`, `minBrightness` (default 10, absolute floor 5), `keyBindings`, `profiles`, `nightModeSchedule` (21:00–07:00 default, disabled), `showContrast`, `debugLogging`, `launchAtLogin`, `monitorConfigs`, `tiling`, `layoutPresets`, `wallpaper`.
+Top-level fields: `showIndividualDisplays`, `minBrightness` (default 10, absolute floor 5), `keyBindings`, `profiles`, `nightModeSchedule` (21:00–07:00 default, disabled), `showContrast`, `debugLogging`, `launchAtLogin`, `monitorConfigs`, `audioOutputConfigs`, `tiling`, `layoutPresets`, `wallpaper`.
 
 Key bindings pair a `key` (e.g. `"Shift+F1"`) with a `command` string or array of strings: `command/changeBrightness/{v}`, `command/changeContrast/{v}`, `command/changeDarkMode/{toggle,dark,light}`, `command/changeVolume/{v}`, `command/changeProfile/{index}` — plus the tile/wallpaper/layout/z-order commands documented in AGENTS.md.
 
 `monitorConfigs[]` stores per-monitor metadata keyed by a stable composite UID (`{api_id}::{api_model_name}`): `label`, `sortOrder`, `hidden`. Unplugged monitors keep their entry.
+
+`audioOutputConfigs[]` stores only Display DJ aliases as `{ id, label }`, keyed by the platform's stable endpoint ID. Empty labels clear the alias. Never persist the selected output; macOS, Windows, and Linux remain the source of truth.
 
 ## Conventions
 
