@@ -76,7 +76,7 @@ describe('VolumeControl', () => {
   it('shows the selected output name in collapsed mode without device controls', () => {
     renderVolumeControl();
 
-    expect(screen.getByText('Output Speakers (2) - Desk Speakers')).toHaveClass('section-label');
+    expect(screen.getByText('All Speakers (2) - Desk Speakers')).toHaveClass('section-label');
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Rename MacBook Pro Speakers')).not.toBeInTheDocument();
   });
@@ -86,7 +86,7 @@ describe('VolumeControl', () => {
     const onRenameOutput = vi.fn();
     renderVolumeControl({ onRenameOutput });
 
-    await user.click(screen.getByText('Output Speakers (2) - Desk Speakers'));
+    await user.click(screen.getByText('All Speakers (2) - Desk Speakers'));
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(onRenameOutput).not.toHaveBeenCalled();
   });
@@ -94,7 +94,7 @@ describe('VolumeControl', () => {
   it('shows radio-button device rows only in expanded mode', () => {
     renderVolumeControl({ expanded: true });
 
-    expect(screen.getByText('Output Speakers (2)')).toHaveClass('section-label');
+    expect(screen.getByText('All Speakers (2)')).toHaveClass('section-label');
     expect(screen.getByTitle('Rename active output MacBook Pro Speakers')).toHaveTextContent(
       'Desk Speakers',
     );

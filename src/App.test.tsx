@@ -233,7 +233,7 @@ describe('App smoke test', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Output Speakers (2) - Desk Speakers')).toHaveClass('section-label');
+      expect(screen.getByText('All Speakers (2) - Desk Speakers')).toHaveClass('section-label');
     });
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
@@ -261,7 +261,7 @@ describe('App smoke test', () => {
     });
 
     render(<App />);
-    await screen.findByText('Output Speakers (2) - Desk Speakers');
+    await screen.findByText('All Speakers (2) - Desk Speakers');
 
     act(() => {
       audioOutputHandler!({
@@ -280,14 +280,14 @@ describe('App smoke test', () => {
       });
     });
 
-    expect(screen.getByText('Output Speakers (1) - Headphones')).toBeInTheDocument();
+    expect(screen.getByText('All Speakers (1) - Headphones')).toBeInTheDocument();
   });
 
   it('keeps the collapsed audio output heading readonly', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const heading = await screen.findByText('Output Speakers (2) - Desk Speakers');
+    const heading = await screen.findByText('All Speakers (2) - Desk Speakers');
     await user.click(heading);
 
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();

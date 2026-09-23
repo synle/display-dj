@@ -78,7 +78,7 @@ export default function VolumeControl({
   return (
     <div className='volume-section'>
       <span className='section-label audio-output-active-name'>
-        {`Output Speakers (${enabledOutputCount})`}
+        {`All Speakers (${enabledOutputCount})`}
         {!expanded && selectedDevice
           ? ` - ${selectedDevice.name || selectedDevice.originalName}`
           : ''}

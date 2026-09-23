@@ -70,7 +70,7 @@ Raising: measure current %, set floor ~10pp below, update both files. Never lowe
 
 `AppState.audio_output_state` caches the effective output snapshot. A backend refresh thread probes every 5 seconds, emits `audio-output-changed`, and rebuilds the tray menu only when that snapshot changes. `App.tsx` keeps output state separate from `fetch_all_state`; its visible-main-panel poll reads the shared cache as a fallback, prevents overlapping requests, and keeps the last successful state on errors.
 
-`VolumeControl.tsx` renders a readonly `Output Speakers (<enabled non-hidden count>)` section label (collapsed appends `- <selected name>`); expanded mode shows the selected name below the count as an editable blue link plus padded radio-button endpoint rows, inline alias editing, and a tri-state selector. Enabled devices sort first with built-in outputs leading, disabled devices follow, and hidden devices appear only after clicking "Show hidden outputs". The tray's **Output Device** submenu lists enabled outputs only and marks the selected endpoint with `●`.
+`VolumeControl.tsx` renders a readonly `All Speakers (<enabled non-hidden count>)` section label (collapsed appends `- <selected name>`); expanded mode shows the selected name below the count as an editable blue link plus padded radio-button endpoint rows, inline alias editing, and a tri-state selector. Enabled devices sort first with built-in outputs leading, disabled devices follow, and hidden devices appear only after clicking "Show hidden outputs". The tray's **Output Device** submenu lists enabled outputs only and marks the selected endpoint with `●`.
 
 ## Platform pitfalls
 
