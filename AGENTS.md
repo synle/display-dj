@@ -63,7 +63,7 @@ The **single source of truth** is `src-tauri/tauri.conf.json` → `"version"`. T
 
 Other version fields (`package.json`, `Cargo.toml`) are pinned at `0.0.0` and unused — the npm package and crate are not published. Release versioning is driven by git tags (`v*` triggers `release-official.yml`).
 
-`build.rs` is `tauri_build::build()` plus the `expose_app_version()` helper that emits `APP_VERSION` and `BUILD_DATE` env vars.
+`build.rs` calls `tauri_build::try_build()` with `WindowsAttributes` plus the `expose_app_version()` helper that emits `APP_VERSION` and `BUILD_DATE` env vars. The custom `windows-app-manifest.xml` requests administrator privileges so Windows tiling can control both normal and elevated windows; it must retain the Common Controls v6 dependency.
 
 ## Testing
 
@@ -165,6 +165,8 @@ Tile Snap uses `NSEvent.addGlobalMonitorForEvents(matching:handler:)` to observe
 ### Windows (WinEvent move monitor)
 
 Windows Tile Snap uses `SetWinEventHook(EVENT_SYSTEM_MOVESIZESTART..=EVENT_SYSTEM_MOVESIZEEND)` on a dedicated message-pump thread. `WM_NCHITTEST` rejects resize-border gestures; active title-bar moves poll `GetCursorPos` and render one transparent, click-through Tauri overlay per display. Lazy WebView creation must dispatch through `run_on_main_thread`; Win32 polling remains on the monitor thread. On move end, the exact rectangle shown in the preview is applied with `SetWindowPos`.
+
+Windows UAC blocks a medium-integrity process from moving elevated windows. `windows-app-manifest.xml` therefore uses `requireAdministrator` with `uiAccess="false"`, making Display DJ elevate at startup and allowing every tiling path to control both normal and **Run as administrator** windows. Manual launch shows a UAC prompt; Windows may suppress the autostart plugin's elevated startup entry, so Launch at Login is best-effort. Do not switch to `uiAccess="true"`: unsigned/current-user builds fail Windows signing and secure-location requirements.
 
 - The WinEvent callback catches panics and only sends the HWND lifecycle event through a channel; no Tauri or blocking work runs across the FFI boundary.
 - The monitor starts at launch but remains dormant while `tileSnapEnabled` is false, so the Windows-default-off setting can be enabled without restarting.

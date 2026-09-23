@@ -3,7 +3,11 @@ use std::time::SystemTime;
 
 fn main() {
     expose_app_version();
-    tauri_build::build();
+    let windows = tauri_build::WindowsAttributes::new()
+        .app_manifest(include_str!("windows-app-manifest.xml"));
+    let attributes = tauri_build::Attributes::new().windows_attributes(windows);
+    tauri_build::try_build(attributes).expect("failed to run Tauri build script");
+    println!("cargo:rerun-if-changed=windows-app-manifest.xml");
 }
 
 /// Read the version from tauri.conf.json (the single source of truth) and
@@ -16,7 +20,9 @@ fn expose_app_version() {
         &std::fs::read_to_string(&conf_path).expect("failed to read tauri.conf.json"),
     )
     .expect("failed to parse tauri.conf.json");
-    let version = conf["version"].as_str().expect("version missing in tauri.conf.json");
+    let version = conf["version"]
+        .as_str()
+        .expect("version missing in tauri.conf.json");
 
     // Detect if this is a release build (tagged) or dev build.
     // Release builds (CI) set TAURI_RELEASE=true; local/dev builds don't.

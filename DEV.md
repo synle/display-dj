@@ -121,6 +121,8 @@ Logs go to stdout (plus `debug.log` in the config dir when enabled). A clean sta
 
 `tiling/windows.rs` installs a `SetWinEventHook` listener for system move/size start and end events. Resize-border gestures are rejected with `WM_NCHITTEST`; title-bar moves poll the physical cursor, use shared zone geometry from `tiling/mod.rs`, and render through one transparent `tiling/snap_overlay.rs` WebView per display. Lazy WebView creation dispatches to Tauri's main thread while Win32 polling stays on its monitor thread. Releasing inside a zone applies the exact preview rectangle to the original HWND.
 
+`windows-app-manifest.xml` declares `requireAdministrator`, embedded by `build.rs` through `tauri_build::WindowsAttributes`. Windows UAC blocks medium-integrity processes from moving high-integrity windows, so the Windows app elevates at startup and can tile both normal and **Run as administrator** windows. Keep `uiAccess="false"`; unsigned/current-user bundles do not meet Windows UIAccess signing and secure-install-location requirements. The manifest must retain Tauri's Common Controls v6 dependency. Manual launch shows a UAC prompt; Windows may suppress the plugin's elevated startup entry, so Launch at Login is best-effort on Windows.
+
 Windows defaults `tileSnapEnabled` to false because native Windows Snap competes for the same edges. Users should disable **Settings → System → Multitasking → Snap windows** before opting in; README carries both UI and registry-command instructions.
 
 ### Linux/X11 Tile Snap

@@ -360,6 +360,17 @@ fn check_night_mode_schedule(app: &tauri::AppHandle) {
 mod tests {
     use super::*;
 
+    /// Windows builds request elevation and preserve Tauri's Common Controls v6 dependency.
+    #[test]
+    fn windows_manifest_supports_elevated_window_tiling() {
+        let manifest = include_str!("../windows-app-manifest.xml");
+
+        assert!(manifest.contains("level=\"requireAdministrator\""));
+        assert!(manifest.contains("uiAccess=\"false\""));
+        assert!(manifest.contains("name=\"Microsoft.Windows.Common-Controls\""));
+        assert!(manifest.contains("version=\"6.0.0.0\""));
+    }
+
     // -- parse_time_minutes --
 
     #[test]
