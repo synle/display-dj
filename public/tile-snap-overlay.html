@@ -64,6 +64,7 @@
         var zonesRoot = document.getElementById('zones');
         var preview = document.getElementById('preview');
         var tauri = window.__TAURI__;
+        var eventName = new URL(window.location.href).searchParams.get('event');
 
         function setRect(element, rect) {
           element.style.left = rect.x + 'px';
@@ -89,8 +90,8 @@
           }
         }
 
-        if (tauri && tauri.event && tauri.event.listen) {
-          tauri.event.listen('set-tile-snap-overlay', function (event) {
+        if (eventName && tauri && tauri.event && tauri.event.listen) {
+          tauri.event.listen(eventName, function (event) {
             render((event && event.payload) || {});
           });
         }

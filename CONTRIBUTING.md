@@ -132,7 +132,7 @@ Tauri APIs are mocked globally in `src/test/setup.ts`, so tests run without a ba
 All platforms: Git, Node.js 20+, Rust stable.
 
 - **macOS**: `xcode-select --install`; Node/Rust via Homebrew or rustup.
-- **Windows**: Node LTS (+ C++ build tools), Rustup, WebView2 (preinstalled on Win11). Tile Snap defaults off; for manual testing, disable **Settings → System → Multitasking → Snap windows** first so the native preview does not compete with Display DJ's drop zones. Test both standard launch (normal windows work and Settings shows advisory elevation guidance) and **Run as administrator** launch (normal and elevated windows work). Elevation-status query failure must not block the app or Settings.
+- **Windows**: Node LTS (+ C++ build tools), Rustup, WebView2 (preinstalled on Win11). Tile Snap defaults off; for manual testing, disable **Settings → System → Multitasking → Snap windows** first so the native preview does not compete with Display DJ's drop zones. With multiple monitors, verify the blue preview appears only on the display containing the active snap zone. Test both standard launch (normal windows work and Settings shows advisory elevation guidance) and **Run as administrator** launch (normal and elevated windows work). Elevation-status query failure must not block the app or Settings.
 - **Linux (Ubuntu/Debian)** -- Tauri v2 GUI build dependencies:
 
   ```bash

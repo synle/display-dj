@@ -10,7 +10,7 @@ use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
 };
 
-const OVERLAY_EVENT: &str = "set-tile-snap-overlay";
+const OVERLAY_EVENT_PREFIX: &str = "set-tile-snap-overlay";
 const OVERLAY_LABEL_PREFIX: &str = "tile-snap-overlay";
 const MAIN_THREAD_WINDOW_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
@@ -151,10 +151,9 @@ impl TileSnapOverlay {
             None => {
                 let app = self.app.clone();
                 let main_thread_app = app.clone();
-                let main_thread_label = label.clone();
                 let (result_sender, result_receiver) = std::sync::mpsc::sync_channel(1);
                 app.run_on_main_thread(move || {
-                    let result = create_overlay_window(&main_thread_app, &main_thread_label);
+                    let result = create_overlay_window(&main_thread_app, display_index);
                     let _ = result_sender.send(result);
                 })
                 .map_err(|error| {
@@ -190,10 +189,11 @@ impl TileSnapOverlay {
     /// Emit one display's current zone and preview state.
     fn emit_state(&self, display_index: usize, preview: Option<OverlayRect>) -> Result<(), String> {
         let zones = self.zones.get(display_index).cloned().unwrap_or_default();
+        let event = overlay_event(display_index);
         self.app
             .emit_to(
                 overlay_label(display_index),
-                OVERLAY_EVENT,
+                &event,
                 OverlayState { zones, preview },
             )
             .map_err(|error| format!("tile_snap_overlay: emit failed: {error}"))
@@ -201,21 +201,22 @@ impl TileSnapOverlay {
 }
 
 /// Creates one Tile Snap WebView on Tauri's main thread.
-fn create_overlay_window(app: &AppHandle, label: &str) -> Result<(), String> {
-    let builder =
-        WebviewWindowBuilder::new(app, label, WebviewUrl::App("tile-snap-overlay.html".into()))
-            .title("Display DJ Tile Snap")
-            .inner_size(1.0, 1.0)
-            .position(0.0, 0.0)
-            .decorations(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .shadow(false)
-            .resizable(false)
-            .maximizable(false)
-            .minimizable(false)
-            .focused(false)
-            .visible(false);
+fn create_overlay_window(app: &AppHandle, display_index: usize) -> Result<(), String> {
+    let label = overlay_label(display_index);
+    let page = overlay_page_url(display_index);
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(page.into()))
+        .title("Display DJ Tile Snap")
+        .inner_size(1.0, 1.0)
+        .position(0.0, 0.0)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .shadow(false)
+        .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .focused(false)
+        .visible(false);
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     let builder = builder.transparent(true);
     let window = builder
@@ -231,6 +232,19 @@ fn overlay_label(display_index: usize) -> String {
     format!("{OVERLAY_LABEL_PREFIX}-{display_index}")
 }
 
+/// Build the event name consumed by one display overlay.
+fn overlay_event(display_index: usize) -> String {
+    format!("{OVERLAY_EVENT_PREFIX}-{display_index}")
+}
+
+/// Build the local page URL with the display-scoped event name.
+fn overlay_page_url(display_index: usize) -> String {
+    format!(
+        "tile-snap-overlay.html?event={}",
+        overlay_event(display_index)
+    )
+}
+
 /// Convert a global screen rectangle into display-local overlay coordinates.
 fn relative_rect(rect: &Rect, display: &Rect) -> OverlayRect {
     OverlayRect {
@@ -244,6 +258,23 @@ fn relative_rect(rect: &Rect, display: &Rect) -> OverlayRect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Each display must receive an isolated event stream.
+    #[test]
+    fn overlay_events_are_scoped_to_display() {
+        assert_eq!(overlay_event(0), "set-tile-snap-overlay-0");
+        assert_eq!(overlay_event(1), "set-tile-snap-overlay-1");
+        assert_ne!(overlay_event(0), overlay_event(1));
+    }
+
+    /// Each page receives the event name for its own overlay window.
+    #[test]
+    fn overlay_page_url_carries_scoped_event() {
+        assert_eq!(
+            overlay_page_url(2),
+            "tile-snap-overlay.html?event=set-tile-snap-overlay-2"
+        );
+    }
 
     /// Global screen coordinates become local coordinates without changing size.
     #[test]

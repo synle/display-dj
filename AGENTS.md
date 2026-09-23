@@ -164,7 +164,7 @@ Tile Snap uses `NSEvent.addGlobalMonitorForEvents(matching:handler:)` to observe
 
 ### Windows (WinEvent move monitor)
 
-Windows Tile Snap uses `SetWinEventHook(EVENT_SYSTEM_MOVESIZESTART..=EVENT_SYSTEM_MOVESIZEEND)` on a dedicated message-pump thread. `WM_NCHITTEST` rejects resize-border gestures; active title-bar moves poll `GetCursorPos` and render one transparent, click-through Tauri overlay per display. Lazy WebView creation must dispatch through `run_on_main_thread`; Win32 polling remains on the monitor thread. On move end, the exact rectangle shown in the preview is applied with `SetWindowPos`.
+Windows Tile Snap uses `SetWinEventHook(EVENT_SYSTEM_MOVESIZESTART..=EVENT_SYSTEM_MOVESIZEEND)` on a dedicated message-pump thread. `WM_NCHITTEST` rejects resize-border gestures; active title-bar moves poll `GetCursorPos` and render one transparent, click-through Tauri overlay per display. Each overlay listens on a display-scoped event name passed in its page URL, so multi-monitor previews cannot overwrite or duplicate each other. Lazy WebView creation must dispatch through `run_on_main_thread`; Win32 polling remains on the monitor thread. On move end, the exact rectangle shown in the preview is applied with `SetWindowPos`.
 
 Windows runs at the invoking user's normal integrity (`asInvoker`, `uiAccess="false"`) so the global WinEvent monitor receives ordinary application drag events without forcing a UAC prompt. Windows blocks normal-integrity processes from moving **Run as administrator** windows; users who need that case must explicitly launch Display DJ as administrator. Do not switch to `uiAccess="true"`: unsigned/current-user builds fail Windows signing and secure-location requirements.
 
