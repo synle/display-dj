@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-Prerequisites: [Node.js](https://nodejs.org) 20+, [Rust](https://www.rust-lang.org/tools/install) 1.77+ (stable). No external binaries — platform code is compiled in.
+Prerequisites: [Node.js](https://nodejs.org) 20+, [Rust](https://www.rust-lang.org/tools/install) 1.92+ (stable). No external binaries — platform code is compiled in.
 
 ```bash
 git clone https://github.com/synle/display-dj

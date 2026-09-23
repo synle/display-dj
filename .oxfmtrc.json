@@ -26,6 +26,7 @@
     "dist",
     "node_modules",
     "public/vs",
-    "src-tauri/gen"
+    "src-tauri/gen",
+    "src-tauri/vendor"
   ]
 }

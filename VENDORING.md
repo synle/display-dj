@@ -1,5 +1,20 @@
 # Vendoring: `src-tauri/src/core/` ← `synle/display-dj-cli`
 
+## Patched Tauri crate
+
+`src-tauri/vendor/tauri/` contains the published `tauri` 2.11.5 crate with only the dependency
+changes from https://github.com/tauri-apps/tauri/pull/16088:
+
+- `tray-icon` 0.24 to 0.25
+- `muda` 0.19 to 0.20
+- matching renamed feature flags
+
+This selects `tray-icon` 0.25.1, which fixes macOS 27 left-click events being swallowed while a
+tray menu is attached: https://github.com/tauri-apps/tray-icon/pull/365.
+
+Remove the local Cargo patch and this directory after a stable Tauri release includes
+`tray-icon` 0.25.1 or newer.
+
 Most files under `src-tauri/src/core/` are vendored (copied) from
 [`synle/display-dj-cli`](https://github.com/synle/display-dj-cli),
 adapted to fit display-dj's `crate::AppState` + `core::PlatformImpl`
