@@ -1,20 +1,20 @@
 //! Windows Core Audio playback-endpoint support.
 
 use super::{AudioOutputDevice, AudioOutputDeviceState, AudioOutputState};
-use ::windows::core::{IUnknown, IUnknown_Vtbl, Interface, GUID, HRESULT, PCWSTR, PWSTR};
-use ::windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
-use ::windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
-use ::windows::Win32::Media::Audio::{
+use std::ffi::c_void;
+use std::ops::Deref;
+use windows::core::{IUnknown, IUnknown_Vtbl, Interface, GUID, HRESULT, PCWSTR, PWSTR};
+use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
+use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
+use windows::Win32::Media::Audio::{
     eCommunications, eConsole, eMultimedia, eRender, ERole, IMMDevice, IMMDeviceEnumerator,
     MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
 };
-use ::windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc;
-use ::windows::Win32::System::Com::{
+use windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc;
+use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL,
     COINIT_MULTITHREADED, STGM_READ,
 };
-use std::ffi::c_void;
-use std::ops::Deref;
 
 const CLSID_POLICY_CONFIG_CLIENT: GUID = GUID::from_u128(0x870af99c_171d_4f9e_af0d_e63df40c2bc9);
 const RPC_E_CHANGED_MODE: HRESULT = HRESULT(0x8001_0106_u32 as i32);

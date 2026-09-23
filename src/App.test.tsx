@@ -309,10 +309,12 @@ describe('App smoke test', () => {
       expect(mockInvoke).toHaveBeenCalledWith('set_audio_output_device', {
         id: 'headphones',
       });
-      expect(screen.getAllByText('Headphones')).toHaveLength(2);
+      expect(screen.getByText('Headphones')).toBeInTheDocument();
+      expect(screen.queryByRole('radio', { name: 'Select Headphones' })).not.toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByTitle('Rename USB Headphones'));
+    await user.click(screen.getByTitle('Rename active output USB Headphones'));
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, 'Studio Headphones{Enter}');
@@ -322,7 +324,7 @@ describe('App smoke test', () => {
         id: 'headphones',
         label: 'Studio Headphones',
       });
-      expect(screen.getAllByText('Studio Headphones')).toHaveLength(2);
+      expect(screen.getByText('Studio Headphones')).toBeInTheDocument();
     });
   });
 

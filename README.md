@@ -35,7 +35,7 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Brightness control** -- a single slider to adjust all monitors at once, or expand to control each monitor individually
 - **Contrast control** -- DDC/CI contrast adjustment for external monitors (enable in Settings)
 - **Dark mode toggle** -- system-wide dark/light mode switch
-- **Volume and output control** -- system volume slider with mute indicator, click-to-rename active speaker name, an expanded list with large radio targets plus enabled/disabled/hidden controls, and an **Output Device** tray submenu for fast switching. Enabled built-in speakers sort first; hidden devices remain recoverable through a "Show hidden outputs" control.
+- **Volume and output control** -- system volume slider with mute indicator, click-to-rename active speaker name, an expanded list of other available outputs with enabled/disabled/hidden controls, and an **Output Device** tray submenu for fast switching. Enabled built-in speakers sort first; known Steam Streaming endpoints are hidden automatically, and hidden devices remain recoverable through a "Show hidden outputs" control.
 - **Keep Awake** -- prevent your system from sleeping with a single toggle (macOS, Windows, Linux)
 - **Night mode schedule** -- automatically set brightness and dark/light mode on a time-based schedule (e.g., dim at 9 PM, bright at 7 AM). Supports custom commands (`nightCommands`/`dayCommands`) to run arbitrary actions on schedule (volume changes, profile activation, per-monitor brightness)
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume

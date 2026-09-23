@@ -38,9 +38,15 @@ export default function VolumeControl({
   const enabledOutputCount =
     outputState?.devices.filter((device) => device.state === 'enabled').length ?? 0;
   const hiddenOutputCount =
-    outputState?.devices.filter((device) => device.state === 'hidden').length ?? 0;
+    outputState?.devices.filter(
+      (device) => device.id !== outputState.selectedDeviceId && device.state === 'hidden',
+    ).length ?? 0;
   const visibleDevices =
-    outputState?.devices.filter((device) => showHiddenOutputs || device.state !== 'hidden') ?? [];
+    outputState?.devices.filter(
+      (device) =>
+        device.id !== outputState.selectedDeviceId &&
+        (showHiddenOutputs || device.state !== 'hidden'),
+    ) ?? [];
 
   /** Enters inline alias editing for one audio output. */
   const startEditing = (device: AudioOutputDevice, location: EditLocation) => {
@@ -111,8 +117,8 @@ export default function VolumeControl({
       />
       {expanded && outputState && (
         <div className='audio-output-list'>
-          {outputState.devices.length === 0 ? (
-            <span className='audio-output-empty'>No audio outputs found</span>
+          {visibleDevices.length === 0 && hiddenOutputCount === 0 ? (
+            <span className='audio-output-empty'>No other audio outputs found</span>
           ) : (
             <>
               {visibleDevices.map((device) => {

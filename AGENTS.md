@@ -164,7 +164,7 @@ Tile Snap uses `NSEvent.addGlobalMonitorForEvents(matching:handler:)` to observe
 
 ### Windows (WinEvent move monitor)
 
-Windows Tile Snap uses `SetWinEventHook(EVENT_SYSTEM_MOVESIZESTART..=EVENT_SYSTEM_MOVESIZEEND)` on a dedicated message-pump thread. `WM_NCHITTEST` rejects resize-border gestures; active title-bar moves poll `GetCursorPos` and render one transparent, click-through Tauri overlay per display. On move end, the exact rectangle shown in the preview is applied with `SetWindowPos`.
+Windows Tile Snap uses `SetWinEventHook(EVENT_SYSTEM_MOVESIZESTART..=EVENT_SYSTEM_MOVESIZEEND)` on a dedicated message-pump thread. `WM_NCHITTEST` rejects resize-border gestures; active title-bar moves poll `GetCursorPos` and render one transparent, click-through Tauri overlay per display. Lazy WebView creation must dispatch through `run_on_main_thread`; Win32 polling remains on the monitor thread. On move end, the exact rectangle shown in the preview is applied with `SetWindowPos`.
 
 - The WinEvent callback catches panics and only sends the HWND lifecycle event through a channel; no Tauri or blocking work runs across the FFI boundary.
 - The monitor starts at launch but remains dormant while `tileSnapEnabled` is false, so the Windows-default-off setting can be enabled without restarting.
@@ -237,11 +237,11 @@ States are cached on `AppState` (`is_dark_mode`, `is_muted`); `update_tray_icon(
 
 ## Audio Output Selection
 
-- `VolumeControl.tsx` always shows a readonly `All Speakers (<enabled non-hidden count>)` section label above the volume slider; collapsed mode appends `- <selected name>` inline, expanded mode shows the selected name below the count as an editable blue link. Expanded monitor mode adds one padded radio target per output, click-to-edit row names, and one `enabled` / `disabled` / `hidden` selector. Hidden outputs stay out of the normal list but remain recoverable through "Show hidden outputs".
+- `VolumeControl.tsx` always shows a readonly `All Speakers (<enabled non-hidden count>)` section label above the volume slider; collapsed mode appends `- <selected name>` inline, expanded mode shows the selected name below the count as an editable blue link. Expanded mode lists only other outputs using monitor-name font sizing, with one padded radio target, click-to-edit name, and `enabled` / `disabled` / `hidden` selector per row. Hidden outputs stay out of the normal list but remain recoverable through "Show hidden outputs".
 - A backend refresh thread probes audio outputs every 5 seconds, updates `AppState.audio_output_state`, rebuilds the tray menu only when the snapshot changes, and emits `audio-output-changed` for the popup. `App.tsx` keeps its visible-main-panel poll as a cached fallback, with an in-flight guard and last-successful-state behavior.
 - The tray menu exposes an **Output Device** submenu containing enabled outputs only. The selected endpoint has a `●` marker; disabled and hidden outputs remain manageable from the expanded popup but cannot be selected from the tray.
 - Device IDs must remain stable: CoreAudio UID on macOS, `IMMDevice::GetId` on Windows, and the `pactl` sink name on Linux. The operating system owns the selected default; Display DJ never persists it.
-- User output settings live in `preferences.audioOutputConfigs` as `{ id, label, state }`; missing `state` values default to `enabled`. `originalName` always retains the native OS name, and a metadata entry is removed when both label and state return to defaults. Ordering is enabled first, then disabled, then hidden; built-in outputs lead each group.
+- User output settings live in `preferences.audioOutputConfigs` as `{ id, label, state }`; missing `state` values default to `enabled`. `originalName` always retains the native OS name, and a metadata entry is removed when both label and state return to defaults. Native names containing `Steam Streaming` are forced hidden. Ordering is enabled first, then disabled, then hidden; built-in outputs lead each group.
 - macOS excludes CoreAudio devices that are dead or cannot become the default output. `UNSUPPORTED_OUTPUT_DEVICE_UIDS` also always rejects known conference-app loopback endpoints such as Microsoft Teams Audio and ZoomAudioDevice, even if a future driver reports different capability flags.
 - Windows volume get/set/mute uses `IAudioEndpointVolume`, so output switching and the volume slider share the same selected MMDevice without requiring the AudioDeviceCmdlets PowerShell module.
 

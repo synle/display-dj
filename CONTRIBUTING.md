@@ -71,7 +71,7 @@ Events (`monitors-changed`, `dark-mode-changed`, `volume-changed`, `audio-output
 
 ### Frontend state
 
-`App.tsx` holds all UI state (monitors, darkMode, volume, audio outputs, profiles, expanded view); no state library. On mount it fetches via `fetch_all_state` + `get_preferences`; event listeners and a `visibilitychange` listener trigger refetches. A backend 5-second audio refresh owns OS enumeration and updates the tray submenu; the main-view poll reads that shared cache as a fallback. Both collapsed and expanded views allow inline editing of the active output name; expanded view also adds padded output radio targets, per-row aliases, and an enabled/disabled/hidden selector with hidden-output recovery. `SettingsPanel.tsx` auto-saves with a 300ms debounce.
+`App.tsx` holds all UI state (monitors, darkMode, volume, audio outputs, profiles, expanded view); no state library. On mount it fetches via `fetch_all_state` + `get_preferences`; event listeners and a `visibilitychange` listener trigger refetches. A backend 5-second audio refresh owns OS enumeration and updates the tray submenu; the main-view poll reads that shared cache as a fallback. Both collapsed and expanded views allow inline editing of the active output name; expanded view lists only other endpoints with padded output radio targets, per-row aliases, and an enabled/disabled/hidden selector with hidden-output recovery. `SettingsPanel.tsx` auto-saves with a 300ms debounce.
 
 ## Configuration
 
@@ -83,7 +83,7 @@ Key bindings pair a `key` (e.g. `"Shift+F1"`) with a `command` string or array o
 
 `monitorConfigs[]` stores per-monitor metadata keyed by a stable composite UID (`{api_id}::{api_model_name}`): `label`, `sortOrder`, `hidden`. Unplugged monitors keep their entry.
 
-`audioOutputConfigs[]` stores Display DJ settings as `{ id, label, state }`, keyed by the platform's stable endpoint ID. `state` is `enabled`, `disabled`, or `hidden` and defaults to `enabled` for older files. Empty labels clear only the alias; entries disappear when both label and state return to defaults. Never persist the selected output; macOS, Windows, and Linux remain the source of truth.
+`audioOutputConfigs[]` stores Display DJ settings as `{ id, label, state }`, keyed by the platform's stable endpoint ID. `state` is `enabled`, `disabled`, or `hidden` and defaults to `enabled` for older files. Empty labels clear only the alias; entries disappear when both label and state return to defaults. Native endpoint names containing `Steam Streaming` are always treated as hidden. Never persist the selected output; macOS, Windows, and Linux remain the source of truth.
 
 ## Conventions
 

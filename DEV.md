@@ -62,7 +62,7 @@ Raising: measure current %, set floor ~10pp below, update both files. Never lowe
 
 `src-tauri/src/core/audio_output/` owns the platform layer:
 
-- macOS uses CoreAudio device UIDs, output-stream/alive/default-output capability checks, built-in transport metadata, and the default output/system-output properties. Devices listed in `UNSUPPORTED_OUTPUT_DEVICE_UIDS` (Microsoft Teams Audio and ZoomAudioDevice loopback endpoints) are always hidden and rejected.
+- macOS uses CoreAudio device UIDs, output-stream/alive/default-output capability checks, built-in transport metadata, and the default output/system-output properties. Devices listed in `UNSUPPORTED_OUTPUT_DEVICE_UIDS` (Microsoft Teams Audio and ZoomAudioDevice loopback endpoints) are always hidden and rejected. Shared preference application also forces native endpoint names containing `Steam Streaming` into the hidden group on every platform.
 - Windows uses MMDevice for active render endpoints, `IPolicyConfig` for console/multimedia/communications defaults, and `IAudioEndpointVolume` for native volume and mute.
 - Linux uses `pactl` sink names, `set-default-sink`, and best-effort migration of active sink inputs.
 
@@ -70,7 +70,7 @@ Raising: measure current %, set floor ~10pp below, update both files. Never lowe
 
 `AppState.audio_output_state` caches the effective output snapshot. A backend refresh thread probes every 5 seconds, emits `audio-output-changed`, and rebuilds the tray menu only when that snapshot changes. `App.tsx` keeps output state separate from `fetch_all_state`; its visible-main-panel poll reads the shared cache as a fallback, prevents overlapping requests, and keeps the last successful state on errors.
 
-`VolumeControl.tsx` renders a readonly `All Speakers (<enabled non-hidden count>)` section label (collapsed appends `- <selected name>`); expanded mode shows the selected name below the count as an editable blue link plus padded radio-button endpoint rows, inline alias editing, and a tri-state selector. Enabled devices sort first with built-in outputs leading, disabled devices follow, and hidden devices appear only after clicking "Show hidden outputs". The tray's **Output Device** submenu lists enabled outputs only and marks the selected endpoint with `●`.
+`VolumeControl.tsx` renders a readonly `All Speakers (<enabled non-hidden count>)` section label (collapsed appends `- <selected name>`); expanded mode shows the selected name below the count as an editable blue link, then lists only other endpoints with padded radio targets, inline alias editing, and a tri-state selector. Output names share the monitor-name font size. Enabled devices sort first with built-in outputs leading, disabled devices follow, and hidden devices appear only after clicking "Show hidden outputs". The tray's **Output Device** submenu lists enabled outputs only and marks the selected endpoint with `●`.
 
 ## Platform pitfalls
 
@@ -119,7 +119,7 @@ Logs go to stdout (plus `debug.log` in the config dir when enabled). A clean sta
 
 ### Windows Tile Snap
 
-`tiling/windows.rs` installs a `SetWinEventHook` listener for system move/size start and end events. Resize-border gestures are rejected with `WM_NCHITTEST`; title-bar moves poll the physical cursor, use shared zone geometry from `tiling/mod.rs`, and render through one transparent `tiling/snap_overlay.rs` WebView per display. Releasing inside a zone applies the exact preview rectangle to the original HWND.
+`tiling/windows.rs` installs a `SetWinEventHook` listener for system move/size start and end events. Resize-border gestures are rejected with `WM_NCHITTEST`; title-bar moves poll the physical cursor, use shared zone geometry from `tiling/mod.rs`, and render through one transparent `tiling/snap_overlay.rs` WebView per display. Lazy WebView creation dispatches to Tauri's main thread while Win32 polling stays on its monitor thread. Releasing inside a zone applies the exact preview rectangle to the original HWND.
 
 Windows defaults `tileSnapEnabled` to false because native Windows Snap competes for the same edges. Users should disable **Settings → System → Multitasking → Snap windows** before opting in; README carries both UI and registry-command instructions.
 

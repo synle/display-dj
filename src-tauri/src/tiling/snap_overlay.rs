@@ -12,6 +12,7 @@ use tauri::{
 
 const OVERLAY_EVENT: &str = "set-tile-snap-overlay";
 const OVERLAY_LABEL_PREFIX: &str = "tile-snap-overlay";
+const MAIN_THREAD_WINDOW_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Rectangle relative to one overlay window's display work area.
 #[derive(Clone, Debug, Serialize)]
@@ -148,30 +149,24 @@ impl TileSnapOverlay {
         let (window, created) = match self.app.get_webview_window(&label) {
             Some(window) => (window, false),
             None => {
-                let builder = WebviewWindowBuilder::new(
-                    &self.app,
-                    &label,
-                    WebviewUrl::App("tile-snap-overlay.html".into()),
-                )
-                .title("Display DJ Tile Snap")
-                .inner_size(1.0, 1.0)
-                .position(0.0, 0.0)
-                .decorations(false)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .shadow(false)
-                .resizable(false)
-                .maximizable(false)
-                .minimizable(false)
-                .focused(false)
-                .visible(false);
-                #[cfg(any(target_os = "windows", target_os = "linux"))]
-                let builder = builder.transparent(true);
-                let window = builder
-                    .build()
-                    .map_err(|error| format!("tile_snap_overlay: build failed: {error}"))?;
-                window.set_ignore_cursor_events(true).map_err(|error| {
-                    format!("tile_snap_overlay: click-through setup failed: {error}")
+                let app = self.app.clone();
+                let main_thread_app = app.clone();
+                let main_thread_label = label.clone();
+                let (result_sender, result_receiver) = std::sync::mpsc::sync_channel(1);
+                app.run_on_main_thread(move || {
+                    let result = create_overlay_window(&main_thread_app, &main_thread_label);
+                    let _ = result_sender.send(result);
+                })
+                .map_err(|error| {
+                    format!("tile_snap_overlay: main-thread dispatch failed: {error}")
+                })?;
+                result_receiver
+                    .recv_timeout(MAIN_THREAD_WINDOW_TIMEOUT)
+                    .map_err(|error| {
+                        format!("tile_snap_overlay: main-thread build timed out: {error}")
+                    })??;
+                let window = self.app.get_webview_window(&label).ok_or_else(|| {
+                    "tile_snap_overlay: built window was not registered".to_string()
                 })?;
                 (window, true)
             }
@@ -203,6 +198,32 @@ impl TileSnapOverlay {
             )
             .map_err(|error| format!("tile_snap_overlay: emit failed: {error}"))
     }
+}
+
+/// Creates one Tile Snap WebView on Tauri's main thread.
+fn create_overlay_window(app: &AppHandle, label: &str) -> Result<(), String> {
+    let builder =
+        WebviewWindowBuilder::new(app, label, WebviewUrl::App("tile-snap-overlay.html".into()))
+            .title("Display DJ Tile Snap")
+            .inner_size(1.0, 1.0)
+            .position(0.0, 0.0)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .shadow(false)
+            .resizable(false)
+            .maximizable(false)
+            .minimizable(false)
+            .focused(false)
+            .visible(false);
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    let builder = builder.transparent(true);
+    let window = builder
+        .build()
+        .map_err(|error| format!("tile_snap_overlay: build failed: {error}"))?;
+    window
+        .set_ignore_cursor_events(true)
+        .map_err(|error| format!("tile_snap_overlay: click-through setup failed: {error}"))
 }
 
 /// Build a stable Tauri label for one display overlay.

@@ -434,7 +434,7 @@ body,
 .audio-output-name {
   flex: 1;
   padding: 3px 0;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.25;
   min-width: 0;
@@ -458,7 +458,7 @@ body,
 
 .audio-output-name-input {
   flex: 1;
-  font-size: 14px;
+  font-size: 12px;
   min-width: 0;
 }
 

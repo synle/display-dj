@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Native endpoint-name fragments for virtual outputs that cannot play normal system audio.
+const UNSUPPORTED_OUTPUT_NAME_FRAGMENTS: &[&str] = &["Steam Streaming"];
+
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]
@@ -54,7 +57,7 @@ pub fn get_audio_output_state() -> Result<AudioOutputState, String> {
     #[cfg(target_os = "linux")]
     let state = linux::get_audio_output_state()?;
 
-    Ok(sort_audio_output_state(state))
+    Ok(sort_audio_output_state(hide_unsupported_outputs(state)))
 }
 
 /// Verifies that an exact stable audio-output identifier currently exists.
@@ -124,7 +127,20 @@ pub fn apply_preferences(
             device.state = *device_state;
         }
     }
-    sort_audio_output_state(state)
+    sort_audio_output_state(hide_unsupported_outputs(state))
+}
+
+/// Forces known virtual streaming endpoints out of normal output choices.
+fn hide_unsupported_outputs(mut state: AudioOutputState) -> AudioOutputState {
+    for device in &mut state.devices {
+        if UNSUPPORTED_OUTPUT_NAME_FRAGMENTS
+            .iter()
+            .any(|fragment| device.original_name.contains(fragment))
+        {
+            device.state = AudioOutputDeviceState::Hidden;
+        }
+    }
+    state
 }
 
 /// Finds an endpoint by exact stable identifier.
@@ -259,5 +275,29 @@ mod tests {
 
         assert_eq!(state.devices[0].name, "MacBook Pro Speakers");
         assert_eq!(state.devices[0].state, AudioOutputDeviceState::Hidden);
+    }
+
+    /// Steam Streaming microphone and speaker endpoints stay hidden even with saved overrides.
+    #[test]
+    fn hides_steam_streaming_outputs_by_native_name() {
+        let state = apply_preferences(
+            AudioOutputState {
+                devices: vec![
+                    device("steam-mic", "Speakers (Steam Streaming Microphone)"),
+                    device("steam-speakers", "Speakers (Steam Streaming Speakers)"),
+                    device("desk", "Desk Speakers"),
+                ],
+                selected_device_id: Some("desk".into()),
+            },
+            &[(
+                "steam-speakers".into(),
+                "Living Room".into(),
+                AudioOutputDeviceState::Enabled,
+            )],
+        );
+
+        assert_eq!(state.devices[0].id, "desk");
+        assert_eq!(state.devices[1].state, AudioOutputDeviceState::Hidden);
+        assert_eq!(state.devices[2].state, AudioOutputDeviceState::Hidden);
     }
 }

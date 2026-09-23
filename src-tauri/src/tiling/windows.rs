@@ -21,20 +21,19 @@ fn dbg_log(app: &AppHandle, msg: &str) {
         crate::config::write_debug_log(&state, msg);
     }
 }
-use ::windows::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, RECT, TRUE, WPARAM};
-use ::windows::Win32::Graphics::Gdi::{
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, RECT, TRUE, WPARAM};
+use windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
 };
-use ::windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
-use ::windows::Win32::UI::WindowsAndMessaging::{
+use windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
+use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, DispatchMessageW, EnumWindows, GetCursorPos, GetForegroundWindow,
-    GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow,
-    IsWindowVisible, IsZoomed, PeekMessageW, SendMessageTimeoutW, SetForegroundWindow,
-    SetWindowPos, ShowWindow, TranslateMessage, EVENT_SYSTEM_MOVESIZEEND,
-    EVENT_SYSTEM_MOVESIZESTART, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTLEFT, HTRIGHT,
-    HTTOP, HTTOPLEFT, HTTOPRIGHT, MSG, OBJID_WINDOW, PM_REMOVE, SMTO_ABORTIFHUNG,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_RESTORE, WINEVENT_OUTOFCONTEXT,
-    WINEVENT_SKIPOWNPROCESS, WM_NCHITTEST, HWND_BOTTOM, HWND_TOP,
+    GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible,
+    IsZoomed, PeekMessageW, SendMessageTimeoutW, SetForegroundWindow, SetWindowPos, ShowWindow,
+    TranslateMessage, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART, HTBOTTOM, HTBOTTOMLEFT,
+    HTBOTTOMRIGHT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HWND_BOTTOM, HWND_TOP, MSG,
+    OBJID_WINDOW, PM_REMOVE, SMTO_ABORTIFHUNG, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SWP_NOZORDER, SW_RESTORE, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_NCHITTEST,
 };
 
 // ---------------------------------------------------------------------------
@@ -71,7 +70,7 @@ fn get_display_work_areas() -> Vec<(Rect, f64)> {
                 let fm = info.rcMonitor;
 
                 // Query effective DPI for this monitor (96 = 1x, 192 = 2x, 240 = 2.5x)
-                use ::windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+                use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
                 let mut dpi_x: u32 = 96;
                 let mut dpi_y: u32 = 96;
                 let _ = GetDpiForMonitor(hmonitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y);
@@ -106,9 +105,16 @@ fn get_display_work_areas() -> Vec<(Rect, f64)> {
 
     // Sort left-to-right, then top-to-bottom
     infos.sort_by(|a, b| {
-        a.work.x.partial_cmp(&b.work.x)
+        a.work
+            .x
+            .partial_cmp(&b.work.x)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then(a.work.y.partial_cmp(&b.work.y).unwrap_or(std::cmp::Ordering::Equal))
+            .then(
+                a.work
+                    .y
+                    .partial_cmp(&b.work.y)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
     });
 
     // Log full vs work area + DPI for each display (helps debug gap issues)
@@ -117,8 +123,14 @@ fn get_display_work_areas() -> Vec<(Rect, f64)> {
             "tiling_win: display[{}] — full=({},{} {}x{}), work_area=({},{} {}x{}), \
              dpi_scale={:.2}, taskbar_insets=(left={}, top={}, right={}, bottom={})",
             i,
-            info.full.x as i32, info.full.y as i32, info.full.width as i32, info.full.height as i32,
-            info.work.x as i32, info.work.y as i32, info.work.width as i32, info.work.height as i32,
+            info.full.x as i32,
+            info.full.y as i32,
+            info.full.width as i32,
+            info.full.height as i32,
+            info.work.x as i32,
+            info.work.y as i32,
+            info.work.width as i32,
+            info.work.height as i32,
             info.dpi_scale,
             (info.work.x - info.full.x) as i32,
             (info.work.y - info.full.y) as i32,
@@ -152,9 +164,8 @@ fn should_restore_before_tiling(is_minimized: bool, is_maximized: bool) -> bool 
 /// Restore a maximized window to its normal placement before move/resize.
 /// Minimized windows stay minimized; Exposé owns the separate unminimize flow.
 fn restore_maximized_window(hwnd: HWND) -> bool {
-    let should_restore = unsafe {
-        should_restore_before_tiling(IsIconic(hwnd).as_bool(), IsZoomed(hwnd).as_bool())
-    };
+    let should_restore =
+        unsafe { should_restore_before_tiling(IsIconic(hwnd).as_bool(), IsZoomed(hwnd).as_bool()) };
     if !should_restore {
         return false;
     }
@@ -170,7 +181,7 @@ fn restore_maximized_window(hwnd: HWND) -> bool {
 /// over `GetWindowRect` (which includes them). This ensures that
 /// `find_display_for_window` and restore use the actual visible frame.
 fn get_hwnd_rect(hwnd: HWND) -> Option<Rect> {
-    use ::windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
     let mut rc = RECT::default();
     unsafe {
         // Try DWM extended frame bounds first (visible frame without invisible borders)
@@ -210,7 +221,7 @@ fn get_hwnd_rect(hwnd: HWND) -> Option<Rect> {
 /// difference between the full window rect and the visible (extended) frame
 /// so callers can compensate. Returns (0, 0, 0, 0) if DWM info is unavailable.
 fn get_dwm_border(hwnd: HWND) -> (i32, i32, i32, i32) {
-    use ::windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
     let mut window_rect = RECT::default();
     let mut frame_rect = RECT::default();
     unsafe {
@@ -229,9 +240,9 @@ fn get_dwm_border(hwnd: HWND) -> (i32, i32, i32, i32) {
         }
     }
     (
-        frame_rect.left - window_rect.left,    // left border
-        frame_rect.top - window_rect.top,      // top border
-        window_rect.right - frame_rect.right,  // right border
+        frame_rect.left - window_rect.left,     // left border
+        frame_rect.top - window_rect.top,       // top border
+        window_rect.right - frame_rect.right,   // right border
         window_rect.bottom - frame_rect.bottom, // bottom border
     )
 }
@@ -252,15 +263,7 @@ fn set_hwnd_rect(hwnd: HWND, rect: &Rect) {
     let mut swp_w = rect.width as i32 + bl + br;
     let mut swp_h = rect.height as i32 + bb; // expand bottom only
     unsafe {
-        let _ = SetWindowPos(
-            hwnd,
-            HWND_TOP,
-            swp_x,
-            swp_y,
-            swp_w,
-            swp_h,
-            SWP_NOZORDER,
-        );
+        let _ = SetWindowPos(hwnd, HWND_TOP, swp_x, swp_y, swp_w, swp_h, SWP_NOZORDER);
     }
 
     // Post-move correction for mixed-DPI setups.
@@ -278,22 +281,17 @@ fn set_hwnd_rect(hwnd: HWND, rect: &Rect) {
         if dx != 0 || dy != 0 || dw != 0 || dh != 0 {
             log::info!(
                 "tiling_win: post-move correction — delta=(dx={}, dy={}, dw={}, dh={})",
-                dx, dy, dw, dh,
+                dx,
+                dy,
+                dw,
+                dh,
             );
             swp_x -= dx;
             swp_y -= dy;
             swp_w -= dw;
             swp_h -= dh;
             unsafe {
-                let _ = SetWindowPos(
-                    hwnd,
-                    HWND_TOP,
-                    swp_x,
-                    swp_y,
-                    swp_w,
-                    swp_h,
-                    SWP_NOZORDER,
-                );
+                let _ = SetWindowPos(hwnd, HWND_TOP, swp_x, swp_y, swp_w, swp_h, SWP_NOZORDER);
             }
         }
     }
@@ -303,7 +301,10 @@ fn set_hwnd_rect(hwnd: HWND, rect: &Rect) {
         log::info!(
             "tiling_win: after SetWindowPos — actual_visible=({},{} {}x{}), \
              delta=(dx={}, dy={}, dw={}, dh={})",
-            final_rect.x as i32, final_rect.y as i32, final_rect.width as i32, final_rect.height as i32,
+            final_rect.x as i32,
+            final_rect.y as i32,
+            final_rect.width as i32,
+            final_rect.height as i32,
             final_rect.x as i32 - rect.x as i32,
             final_rect.y as i32 - rect.y as i32,
             final_rect.width as i32 - rect.width as i32,
@@ -334,8 +335,9 @@ fn get_process_name(hwnd: HWND) -> String {
     }
 
     // Open the process and query the image name
-    use ::windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
+        PROCESS_QUERY_LIMITED_INFORMATION,
     };
     unsafe {
         let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
@@ -372,7 +374,7 @@ fn get_process_name(hwnd: HWND) -> String {
 
 /// Query the minimum window size via WM_GETMINMAXINFO.
 fn get_window_min_size(hwnd: HWND) -> Option<(f64, f64)> {
-    use ::windows::Win32::UI::WindowsAndMessaging::{SendMessageW, MINMAXINFO, WM_GETMINMAXINFO};
+    use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, MINMAXINFO, WM_GETMINMAXINFO};
     let mut info = MINMAXINFO::default();
     unsafe {
         SendMessageW(
@@ -475,8 +477,9 @@ fn get_process_name_from_pid(pid: u32) -> String {
     if pid == 0 {
         return String::new();
     }
-    use ::windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
+        PROCESS_QUERY_LIMITED_INFORMATION,
     };
     unsafe {
         let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
@@ -1181,7 +1184,10 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     };
 
     if restore_maximized_window(hwnd) {
-        dbg_log(app, "tiling_win: restored maximized focused window before tiling");
+        dbg_log(
+            app,
+            "tiling_win: restored maximized focused window before tiling",
+        );
     }
 
     let win_rect = match get_hwnd_rect(hwnd) {
@@ -1193,7 +1199,10 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     };
 
     // Get displays (unpack work areas, discard DPI for tiling)
-    let displays: Vec<Rect> = get_display_work_areas().into_iter().map(|(r, _)| r).collect();
+    let displays: Vec<Rect> = get_display_work_areas()
+        .into_iter()
+        .map(|(r, _)| r)
+        .collect();
     if displays.is_empty() {
         log::warn!("tiling: no displays found");
         return;
@@ -1203,16 +1212,39 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     let title = get_window_title(hwnd);
     let process = get_process_name(hwnd);
     let (bl, bt, br, bb) = get_dwm_border(hwnd);
-    let display_info: Vec<String> = displays.iter().enumerate().map(|(i, d)| {
-        format!("D{}({},{} {}x{})", i, d.x as i32, d.y as i32, d.width as i32, d.height as i32)
-    }).collect();
-    dbg_log(app, &format!(
-        "tiling_win: tile '{}' — layout={}, displays=[{}], window='{}' ({}), \
+    let display_info: Vec<String> = displays
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            format!(
+                "D{}({},{} {}x{})",
+                i, d.x as i32, d.y as i32, d.width as i32, d.height as i32
+            )
+        })
+        .collect();
+    dbg_log(
+        app,
+        &format!(
+            "tiling_win: tile '{}' — layout={}, displays=[{}], window='{}' ({}), \
          visible_rect=({},{} {}x{}), dwm_border=({},{},{},{}), prefs=(half={}, third={}, gap={})",
-        layout_str, layout_str, display_info.join(", "), title, process,
-        win_rect.x as i32, win_rect.y as i32, win_rect.width as i32, win_rect.height as i32,
-        bl, bt, br, bb, half_ratio, third_ratio, gap,
-    ));
+            layout_str,
+            layout_str,
+            display_info.join(", "),
+            title,
+            process,
+            win_rect.x as i32,
+            win_rect.y as i32,
+            win_rect.width as i32,
+            win_rect.height as i32,
+            bl,
+            bt,
+            br,
+            bb,
+            half_ratio,
+            third_ratio,
+            gap,
+        ),
+    );
 
     // Tile on the display the window is currently on
     let target_display = find_display_for_window(&win_rect, &displays);
@@ -1232,12 +1264,25 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     }
 
     // Calculate and apply target rect
-    let target = calculate_target_rect(layout, &displays[target_display], half_ratio, third_ratio, gap);
-    dbg_log(app, &format!(
-        "tiling_win: target_rect — display={}, layout={}, rect=({},{} {}x{})",
-        target_display, layout_str,
-        target.x as i32, target.y as i32, target.width as i32, target.height as i32,
-    ));
+    let target = calculate_target_rect(
+        layout,
+        &displays[target_display],
+        half_ratio,
+        third_ratio,
+        gap,
+    );
+    dbg_log(
+        app,
+        &format!(
+            "tiling_win: target_rect — display={}, layout={}, rect=({},{} {}x{})",
+            target_display,
+            layout_str,
+            target.x as i32,
+            target.y as i32,
+            target.width as i32,
+            target.height as i32,
+        ),
+    );
     set_hwnd_rect(hwnd, &target);
 }
 
@@ -1259,7 +1304,10 @@ fn execute_restore(app: &AppHandle) {
     if let Some(rect) = original {
         log::info!(
             "tiling: restore -> ({}, {}, {}x{})",
-            rect.x, rect.y, rect.width, rect.height,
+            rect.x,
+            rect.y,
+            rect.width,
+            rect.height,
         );
         set_hwnd_rect(hwnd, &rect);
     } else {
@@ -1330,50 +1378,96 @@ pub fn execute_expose(app: &AppHandle) {
         .collect();
 
     // Log display work areas for debugging gap issues
-    let display_info: Vec<String> = display_infos.iter().enumerate().map(|(i, (d, scale))| {
-        format!("D{}({},{} {}x{} @{:.1}x)", i, d.x as i32, d.y as i32, d.width as i32, d.height as i32, scale)
-    }).collect();
+    let display_info: Vec<String> = display_infos
+        .iter()
+        .enumerate()
+        .map(|(i, (d, scale))| {
+            format!(
+                "D{}({},{} {}x{} @{:.1}x)",
+                i, d.x as i32, d.y as i32, d.width as i32, d.height as i32, scale
+            )
+        })
+        .collect();
     let total_cap = max_per_display * displays.len();
     let cols = (max_per_display as f64).sqrt().ceil() as usize;
-    let rows = if cols > 0 { (max_per_display + cols - 1) / cols } else { 0 };
+    let rows = if cols > 0 {
+        (max_per_display + cols - 1) / cols
+    } else {
+        0
+    };
     dbg_log(app, &format!(
         "tiling_win: expose — {} windows (cap={}), {} displays=[{}], grid={}x{} (max_per_display={}), gap={}, spread={}, min_cell={}x{}",
         all_windows.len(), total_cap, displays.len(), display_info.join(", "),
         cols, rows, max_per_display, gap, spread, expose_min_w as i32, expose_min_h as i32,
     ));
     for (i, w) in all_windows.iter().enumerate() {
-        let min_str = w.min_size.map_or("none".to_string(), |(mw, mh)| format!("{}x{}", mw as i32, mh as i32));
-        dbg_log(app, &format!(
-            "tiling_win: expose_window[{}] — '{}' (pid={}), bounds=({},{} {}x{}), min_size={}",
-            i, w.owner_name, w.owner_pid,
-            w.bounds.x as i32, w.bounds.y as i32, w.bounds.width as i32, w.bounds.height as i32,
-            min_str,
-        ));
+        let min_str = w.min_size.map_or("none".to_string(), |(mw, mh)| {
+            format!("{}x{}", mw as i32, mh as i32)
+        });
+        dbg_log(
+            app,
+            &format!(
+                "tiling_win: expose_window[{}] — '{}' (pid={}), bounds=({},{} {}x{}), min_size={}",
+                i,
+                w.owner_name,
+                w.owner_pid,
+                w.bounds.x as i32,
+                w.bounds.y as i32,
+                w.bounds.width as i32,
+                w.bounds.height as i32,
+                min_str,
+            ),
+        );
     }
 
-    let placements = plan_expose(&all_windows, &displays, max_per_display, gap as f64, spread, &min_cell_sizes);
+    let placements = plan_expose(
+        &all_windows,
+        &displays,
+        max_per_display,
+        gap as f64,
+        spread,
+        &min_cell_sizes,
+    );
     for (i, p) in placements.iter().enumerate() {
         let hwnd = HWND(p.window_id as isize as *mut _);
         let title = get_window_title(hwnd);
         let process = get_process_name(hwnd);
         // Determine which display and grid position
-        let display_idx = displays.iter().position(|d| {
-            p.target.x >= d.x && p.target.x < d.x + d.width
-        }).unwrap_or(0);
-        dbg_log(app, &format!(
-            "tiling_win: expose_place[{}] — '{}' ({}), display={}, target=({},{} {}x{})",
-            i, title, process, display_idx,
-            p.target.x as i32, p.target.y as i32, p.target.width as i32, p.target.height as i32,
-        ));
+        let display_idx = displays
+            .iter()
+            .position(|d| p.target.x >= d.x && p.target.x < d.x + d.width)
+            .unwrap_or(0);
+        dbg_log(
+            app,
+            &format!(
+                "tiling_win: expose_place[{}] — '{}' ({}), display={}, target=({},{} {}x{})",
+                i,
+                title,
+                process,
+                display_idx,
+                p.target.x as i32,
+                p.target.y as i32,
+                p.target.width as i32,
+                p.target.height as i32,
+            ),
+        );
         set_hwnd_rect(hwnd, &p.target);
-        unsafe { let _ = BringWindowToTop(hwnd); }
+        unsafe {
+            let _ = BringWindowToTop(hwnd);
+        }
     }
     let placed = placements.len();
     let capped = all_windows.len().saturating_sub(placed);
-    dbg_log(app, &format!(
-        "tiling_win: expose_done — placed={}, capped={} (total_windows={}), displays={}",
-        placed, capped, all_windows.len(), displays.len(),
-    ));
+    dbg_log(
+        app,
+        &format!(
+            "tiling_win: expose_done — placed={}, capped={} (total_windows={}), displays={}",
+            placed,
+            capped,
+            all_windows.len(),
+            displays.len(),
+        ),
+    );
 }
 
 /// App Exposé: target app's windows on first displays, others on remaining.
@@ -1441,45 +1535,84 @@ pub fn execute_expose_app(app: &AppHandle) {
         .collect();
 
     // Log display work areas for debugging gap issues
-    let display_info: Vec<String> = display_infos.iter().enumerate().map(|(i, (d, scale))| {
-        format!("D{}({},{} {}x{} @{:.1}x)", i, d.x as i32, d.y as i32, d.width as i32, d.height as i32, scale)
-    }).collect();
-    let app_window_count = all_windows.iter().filter(|w| w.owner_pid == target_pid as i32).count();
+    let display_info: Vec<String> = display_infos
+        .iter()
+        .enumerate()
+        .map(|(i, (d, scale))| {
+            format!(
+                "D{}({},{} {}x{} @{:.1}x)",
+                i, d.x as i32, d.y as i32, d.width as i32, d.height as i32, scale
+            )
+        })
+        .collect();
+    let app_window_count = all_windows
+        .iter()
+        .filter(|w| w.owner_pid == target_pid as i32)
+        .count();
     let other_window_count = all_windows.len() - app_window_count;
     let total_cap = max_per_display * displays.len();
-    dbg_log(app, &format!(
+    dbg_log(
+        app,
+        &format!(
         "tiling_win: app_expose — app='{}' (pid={}), app_windows={}, other_windows={}, cap={}, \
          {} displays=[{}], max_per_display={}, gap={}, spread={}, min_cell={}x{}",
         target_app, target_pid, app_window_count, other_window_count, total_cap,
         displays.len(), display_info.join(", "), max_per_display, gap, spread,
         expose_min_w as i32, expose_min_h as i32,
-    ));
+    ),
+    );
     for (i, w) in all_windows.iter().enumerate() {
-        let is_target = if w.owner_pid == target_pid as i32 { "TARGET" } else { "other" };
-        dbg_log(app, &format!(
-            "tiling_win: app_expose_window[{}] — [{}] '{}' (pid={}), bounds=({},{} {}x{})",
-            i, is_target, w.owner_name, w.owner_pid,
-            w.bounds.x as i32, w.bounds.y as i32, w.bounds.width as i32, w.bounds.height as i32,
-        ));
+        let is_target = if w.owner_pid == target_pid as i32 {
+            "TARGET"
+        } else {
+            "other"
+        };
+        dbg_log(
+            app,
+            &format!(
+                "tiling_win: app_expose_window[{}] — [{}] '{}' (pid={}), bounds=({},{} {}x{})",
+                i,
+                is_target,
+                w.owner_name,
+                w.owner_pid,
+                w.bounds.x as i32,
+                w.bounds.y as i32,
+                w.bounds.width as i32,
+                w.bounds.height as i32,
+            ),
+        );
     }
 
     // How many displays the app's windows will consume
     let app_displays_needed = if max_per_display > 0 {
         (app_window_count + max_per_display - 1) / max_per_display
-    } else { 0 };
+    } else {
+        0
+    };
     let app_displays_used = app_displays_needed.min(displays.len());
     let displays_for_others = displays.len() - app_displays_used;
     let app_slots_total = app_displays_used * max_per_display;
     let app_slots_unused = app_slots_total.saturating_sub(app_window_count);
     let other_slots_total = displays_for_others * max_per_display;
-    dbg_log(app, &format!(
+    dbg_log(
+        app,
+        &format!(
         "tiling_win: app_expose_plan — app_windows={} → uses {} display(s) ({} slots, {} unused), \
          other_windows={} → {} display(s) remaining ({} slots)",
         app_window_count, app_displays_used, app_slots_total, app_slots_unused,
         other_window_count, displays_for_others, other_slots_total,
-    ));
+    ),
+    );
 
-    let placements = plan_expose_app(&all_windows, target_pid as i32, &displays, max_per_display, gap as f64, spread, &min_cell_sizes);
+    let placements = plan_expose_app(
+        &all_windows,
+        target_pid as i32,
+        &displays,
+        max_per_display,
+        gap as f64,
+        spread,
+        &min_cell_sizes,
+    );
     let mut app_placed = 0;
     let mut other_placed = 0;
     for (i, p) in placements.iter().enumerate() {
@@ -1488,24 +1621,41 @@ pub fn execute_expose_app(app: &AppHandle) {
         let process = get_process_name(hwnd);
         let is_app = p.owner_pid == target_pid as i32;
         let tag = if is_app { "APP" } else { "other" };
-        if is_app { app_placed += 1; } else { other_placed += 1; }
-        let display_idx = displays.iter().position(|d| {
-            p.target.x >= d.x && p.target.x < d.x + d.width
-        }).unwrap_or(0);
-        dbg_log(app, &format!(
+        if is_app {
+            app_placed += 1;
+        } else {
+            other_placed += 1;
+        }
+        let display_idx = displays
+            .iter()
+            .position(|d| p.target.x >= d.x && p.target.x < d.x + d.width)
+            .unwrap_or(0);
+        dbg_log(
+            app,
+            &format!(
             "tiling_win: app_expose_place[{}] — [{}] '{}' ({}), display={}, target=({},{} {}x{})",
             i, tag, title, process, display_idx,
             p.target.x as i32, p.target.y as i32, p.target.width as i32, p.target.height as i32,
-        ));
+        ),
+        );
         set_hwnd_rect(hwnd, &p.target);
-        unsafe { let _ = BringWindowToTop(hwnd); }
+        unsafe {
+            let _ = BringWindowToTop(hwnd);
+        }
     }
-    dbg_log(app, &format!(
-        "tiling_win: app_expose_done — placed={} (app={}, other={}), \
+    dbg_log(
+        app,
+        &format!(
+            "tiling_win: app_expose_done — placed={} (app={}, other={}), \
          displays={} (app_used={}, other_used={})",
-        placements.len(), app_placed, other_placed,
-        displays.len(), app_displays_used, displays_for_others,
-    ));
+            placements.len(),
+            app_placed,
+            other_placed,
+            displays.len(),
+            app_displays_used,
+            displays_for_others,
+        ),
+    );
 }
 
 /// Restore all minimized and maximized windows before exposé layout.
@@ -1515,7 +1665,9 @@ pub fn execute_expose_app(app: &AppHandle) {
 fn restore_windows_for_expose() {
     unsafe {
         unsafe extern "system" fn restore_callback(hwnd: HWND, _lparam: LPARAM) -> BOOL {
-            if (IsIconic(hwnd).as_bool() || IsZoomed(hwnd).as_bool()) && IsWindowVisible(hwnd).as_bool() {
+            if (IsIconic(hwnd).as_bool() || IsZoomed(hwnd).as_bool())
+                && IsWindowVisible(hwnd).as_bool()
+            {
                 let _ = ShowWindow(hwnd, SW_RESTORE);
             }
             TRUE
@@ -1545,7 +1697,12 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
                 return;
             }
         };
-        (preset, prefs.tiling.half_ratio, prefs.tiling.third_ratio, prefs.tiling.gap)
+        (
+            preset,
+            prefs.tiling.half_ratio,
+            prefs.tiling.third_ratio,
+            prefs.tiling.gap,
+        )
     };
 
     let windows = get_all_windows();
@@ -1554,14 +1711,21 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
         return;
     }
 
-    let displays: Vec<Rect> = get_display_work_areas().into_iter().map(|(r, _)| r).collect();
+    let displays: Vec<Rect> = get_display_work_areas()
+        .into_iter()
+        .map(|(r, _)| r)
+        .collect();
     if displays.is_empty() {
         log::warn!("layout_preset: no displays found");
         return;
     }
 
     let placements = plan_layout_preset(&windows, &preset, &displays, half_ratio, third_ratio, gap);
-    log::info!("layout_preset: '{}' placing {} windows", preset.name, placements.len());
+    log::info!(
+        "layout_preset: '{}' placing {} windows",
+        preset.name,
+        placements.len()
+    );
     for p in &placements {
         unsafe {
             set_hwnd_rect(HWND(p.window_id as isize as *mut _), &p.target);
@@ -1572,8 +1736,8 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
 #[cfg(test)]
 mod tests {
     use super::{is_resize_hit_test, point_to_lparam, should_restore_before_tiling};
-    use ::windows::Win32::Foundation::POINT;
-    use ::windows::Win32::UI::WindowsAndMessaging::{
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::UI::WindowsAndMessaging::{
         HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
         HTTOPLEFT, HTTOPRIGHT,
     };

@@ -91,16 +91,16 @@ describe('VolumeControl', () => {
     expect(onRenameOutput).not.toHaveBeenCalled();
   });
 
-  it('shows radio-button device rows only in expanded mode', () => {
+  it('shows only non-selected device rows in expanded mode', () => {
     renderVolumeControl({ expanded: true });
 
     expect(screen.getByText('All Speakers (2)')).toHaveClass('section-label');
     expect(screen.getByTitle('Rename active output MacBook Pro Speakers')).toHaveTextContent(
       'Desk Speakers',
     );
-    expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Select Headphones' })).not.toBeChecked();
-    expect(screen.getByTitle('Rename MacBook Pro Speakers')).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Select Desk Speakers' })).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Rename MacBook Pro Speakers')).not.toBeInTheDocument();
     expect(screen.getByTitle('Rename USB Headphones')).toBeInTheDocument();
   });
 
@@ -127,17 +127,17 @@ describe('VolumeControl', () => {
     expect(onSelectOutput).toHaveBeenCalledWith('headphones');
   });
 
-  it('renames an output by clicking its name and committing the textbox', async () => {
+  it('renames an available output by clicking its name and committing the textbox', async () => {
     const user = userEvent.setup();
     const onRenameOutput = vi.fn();
     renderVolumeControl({ expanded: true, onRenameOutput });
 
-    await user.click(screen.getByTitle('Rename MacBook Pro Speakers'));
+    await user.click(screen.getByTitle('Rename USB Headphones'));
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, 'Office Speakers{Enter}');
 
-    expect(onRenameOutput).toHaveBeenCalledWith('speakers', 'Office Speakers');
+    expect(onRenameOutput).toHaveBeenCalledWith('headphones', 'Office Speakers');
   });
 
   it('cancels an output rename on Escape', async () => {
@@ -145,17 +145,16 @@ describe('VolumeControl', () => {
     const onRenameOutput = vi.fn();
     renderVolumeControl({ expanded: true, onRenameOutput });
 
-    await user.click(screen.getByTitle('Rename MacBook Pro Speakers'));
+    await user.click(screen.getByTitle('Rename USB Headphones'));
     await user.type(screen.getByRole('textbox'), ' changed{Escape}');
 
     expect(onRenameOutput).not.toHaveBeenCalled();
-    expect(screen.getByTitle('Rename MacBook Pro Speakers')).toBeInTheDocument();
+    expect(screen.getByTitle('Rename USB Headphones')).toBeInTheDocument();
   });
 
   it('disables output selection while another output switch is in progress', () => {
     renderVolumeControl({ expanded: true, updatingDeviceId: 'headphones' });
 
-    expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeDisabled();
     expect(screen.getByRole('radio', { name: 'Select Headphones' })).toBeDisabled();
   });
 
