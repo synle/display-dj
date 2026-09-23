@@ -267,9 +267,9 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
                 .preferences
                 .lock()
                 .map(|p| (p.tiling.expose_columns, p.tiling.expose_rows, p.tiling.expose_layout_strategy.clone()))
-                .unwrap_or((3, 3, "fill".into()))
+                .unwrap_or((2, 3, "fill".into()))
         } else {
-            (3, 3, "fill".into())
+            (2, 3, "fill".into())
         };
         let fill_check = if cur_strategy == "fill" { "● " } else { "   " };
         let spread_check = if cur_strategy == "spread" { "● " } else { "   " };

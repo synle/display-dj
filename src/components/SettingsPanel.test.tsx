@@ -37,7 +37,7 @@ function buildPrefs(overrides: Record<string, unknown> = {}) {
       topEdgeTrigger: 18,
       cornerTrigger: 30,
       exposeEnabled: true,
-      exposeColumns: 3,
+      exposeColumns: 2,
       exposeRows: 3,
       exposeLayoutStrategy: 'spread',
       exposeMinWidth: 400,
@@ -466,6 +466,23 @@ describe('SettingsPanel', () => {
     expect(screen.getByLabelText('Enable Window Tiling')).toBeInTheDocument();
     expect(screen.getByLabelText('Enable Tile Snap (drag to edge)')).toBeInTheDocument();
     expect(screen.getByLabelText('Enable Exposé')).toBeInTheDocument();
+  });
+
+  it('uses a 2x3 Exposé grid when saved grid fields are missing', async () => {
+    setupInvoke({
+      prefs: buildPrefs({
+        tiling: {
+          enabled: true,
+          exposeEnabled: true,
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tiling' })).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Tiling' }));
+    expect(screen.getByText('2 × 3 = 6 windows per screen')).toBeInTheDocument();
   });
 
   it('shows accessibility warning when tile snap is on but not trusted', async () => {

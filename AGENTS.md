@@ -282,7 +282,7 @@ The shared `layout_across_displays` in `tiling/mod.rs` handles overflow for all 
 
 ### Preferences
 
-`tiling.{enabled, halfRatio=50, thirdRatio=33, gap=0, sideEdgeTrigger=18, topEdgeTrigger=18, cornerTrigger=50, exposeEnabled=true, exposeColumns=3, exposeRows=3, exposeMinWidth=400, exposeMinHeight=300}`. `exposeMinWidth/Height` are logical pixels — DPI-scaled on Windows.
+`tiling.{enabled, halfRatio=50, thirdRatio=33, gap=0, sideEdgeTrigger=18, topEdgeTrigger=18, cornerTrigger=50, exposeEnabled=true, exposeColumns=2, exposeRows=3, exposeMinWidth=400, exposeMinHeight=300}`. `exposeMinWidth/Height` are logical pixels — DPI-scaled on Windows.
 
 ### UI
 

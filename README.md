@@ -208,7 +208,7 @@ Restore XFCE edge tiling later with the same command using `-s true`.
 - **Exposé** (Ctrl+Up or Ctrl+Shift+E) -- spreads all on-screen windows into a deterministic alphabetical grid, filling the first display and overflowing to the next. Windows with minimum size constraints (e.g., Steam, Chrome) that don't fit overflow to displays with larger cells.
 - **App Exposé** (Ctrl+Down or Ctrl+Shift+A) -- grids the frontmost app's windows, then fills remaining cells with other apps' windows.
 
-Both modes normalize windows first (unminimize, exit fullscreen), then lay out a grid; each invocation re-lays out everything (no toggle/restore). Grid size (1-5 columns/rows, default 3x3) and layout strategy ("spread" evenly across displays vs "fill" each to capacity) are in Settings (Tiling tab). The tray has a separate Exposé submenu: enable/disable, both actions, and grid presets (2x2 through 5x5).
+Both modes normalize windows first (unminimize, exit fullscreen), then lay out a grid; each invocation re-lays out everything (no toggle/restore). Grid size (1-5 columns/rows, default 2x3) and layout strategy ("spread" evenly across displays vs "fill" each to capacity) are in Settings (Tiling tab). The tray has a separate Exposé submenu: enable/disable, both actions, and grid presets (2x2 through 5x5).
 
 ### Layout Presets
 
@@ -330,7 +330,7 @@ Tiling settings are stored in `preferences.json` under the `tiling` key. They ca
 | `topEdgeTrigger`       | `10`       | 10-50 px   | Tile Snap: height of top edge zone (maximize)                                                                                        |
 | `cornerTrigger`        | `50`       | 25-150 px  | Tile Snap: size of corner zone (quarter tiles)                                                                                       |
 | `exposeEnabled`        | `true`     | --         | Master toggle for Exposé features                                                                                                    |
-| `exposeColumns`        | `3`        | 1-5        | Number of columns in the Exposé grid per display                                                                                     |
+| `exposeColumns`        | `2`        | 1-5        | Number of columns in the Exposé grid per display                                                                                     |
 | `exposeRows`           | `3`        | 1-5        | Number of rows in the Exposé grid per display                                                                                        |
 | `exposeLayoutStrategy` | `"spread"` | --         | `"spread"` distributes windows evenly across displays; `"fill"` packs each display to capacity before using the next                 |
 | `exposeMinWidth`       | `400`      | 100-800 px | Minimum grid cell width in logical pixels. Cells smaller than this cause overflow to less-crowded displays. Scaled by DPI on Windows |
