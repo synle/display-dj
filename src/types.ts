@@ -33,6 +33,9 @@ export interface MonitorMetadata {
   brightnessMode: BrightnessMode;
 }
 
+/** Display DJ availability for one system playback endpoint. */
+export type AudioOutputDeviceState = 'enabled' | 'disabled' | 'hidden';
+
 /** Selectable system playback endpoint. */
 export interface AudioOutputDevice {
   /** Stable platform identifier used for selection and persisted aliases. */
@@ -41,6 +44,10 @@ export interface AudioOutputDevice {
   name: string;
   /** Native operating-system endpoint name. */
   originalName: string;
+  /** User-controlled availability in Display DJ. */
+  state: AudioOutputDeviceState;
+  /** Whether the operating system identifies this as an integrated output. */
+  isBuiltIn: boolean;
 }
 
 /** Current playback endpoints and the operating system's selected default. */
@@ -49,10 +56,11 @@ export interface AudioOutputState {
   selectedDeviceId: string | null;
 }
 
-/** User-defined label for a stable audio-output device identifier. */
+/** User-defined settings for a stable audio-output device identifier. */
 export interface AudioOutputMetadata {
   id: string;
   label: string;
+  state: AudioOutputDeviceState;
 }
 
 export interface NightModeSchedule {

@@ -415,6 +415,15 @@ body,
   min-width: 0;
 }
 
+.audio-output-row[data-state='disabled'] .audio-output-name,
+.audio-output-row[data-state='hidden'] .audio-output-name {
+  color: var(--text-secondary);
+}
+
+.audio-output-row[data-state='hidden'] {
+  opacity: 0.7;
+}
+
 .audio-output-selector {
   display: flex;
   align-items: center;
@@ -443,6 +452,7 @@ body,
 }
 
 .audio-output-name {
+  flex: 1;
   padding: 3px 0;
   font-size: 14px;
   line-height: 1.25;
@@ -450,12 +460,48 @@ body,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  width: auto;
 }
 
 .audio-output-name-input {
   flex: 1;
   font-size: 14px;
   min-width: 0;
+}
+
+.audio-output-state {
+  flex-shrink: 0;
+  min-width: 76px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  padding: 3px 4px;
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.audio-output-state:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.audio-output-hidden-toggle {
+  align-self: flex-start;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  padding: 3px 2px;
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+}
+
+.audio-output-hidden-toggle:hover {
+  text-decoration-color: var(--text-secondary);
 }
 
 .audio-output-empty {

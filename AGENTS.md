@@ -237,10 +237,11 @@ States are cached on `AppState` (`is_dark_mode`, `is_muted`); `update_tray_icon(
 
 ## Audio Output Selection
 
-- `VolumeControl.tsx` always shows the current playback-device name above the volume slider. The active name preserves native casing and is click-to-edit in both collapsed and expanded modes. Expanded monitor mode adds one padded radio target per output plus click-to-edit row names using the monitor rename styling.
+- `VolumeControl.tsx` always shows the current playback-device name above the volume slider. The active name preserves native casing and is click-to-edit in both collapsed and expanded modes. Expanded monitor mode adds one padded radio target per output, click-to-edit row names, and one `enabled` / `disabled` / `hidden` selector. Hidden outputs stay out of the normal list but remain recoverable through "Show hidden outputs".
 - `App.tsx` polls `get_audio_output_devices` immediately and every 5 seconds only while the visible main panel is active. Settings, About, the Accessibility gate, hidden documents, and unmount stop polling. An in-flight guard prevents overlapping OS probes, and failures preserve the last successful snapshot.
 - Device IDs must remain stable: CoreAudio UID on macOS, `IMMDevice::GetId` on Windows, and the `pactl` sink name on Linux. The operating system owns the selected default; Display DJ never persists it.
-- User aliases live in `preferences.audioOutputConfigs` as `{ id, label }`. `originalName` always retains the native OS name, and saving an empty alias removes the metadata entry.
+- User output settings live in `preferences.audioOutputConfigs` as `{ id, label, state }`; missing `state` values default to `enabled`. `originalName` always retains the native OS name, and a metadata entry is removed when both label and state return to defaults. Ordering is enabled first, then disabled, then hidden; built-in outputs lead each group.
+- macOS excludes CoreAudio devices that are dead or cannot become the default output. `UNSUPPORTED_OUTPUT_DEVICE_UIDS` also always rejects known conference-app loopback endpoints such as Microsoft Teams Audio and ZoomAudioDevice, even if a future driver reports different capability flags.
 - Windows volume get/set/mute uses `IAudioEndpointVolume`, so output switching and the volume slider share the same selected MMDevice without requiring the AudioDeviceCmdlets PowerShell module.
 
 ## Settings & About

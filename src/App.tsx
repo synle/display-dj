@@ -12,7 +12,7 @@ import KeepAwakeToggle from './components/KeepAwakeToggle';
 import SettingsPanel from './components/SettingsPanel';
 import AboutPanel from './components/AboutPanel';
 import AccessibilityGate from './components/AccessibilityGate';
-import { AudioOutputState, Monitor, Preferences, Profile } from './types';
+import { AudioOutputDeviceState, AudioOutputState, Monitor, Preferences, Profile } from './types';
 
 const ABSOLUTE_MIN_BRIGHTNESS = 5;
 
@@ -33,7 +33,7 @@ function App() {
   const [isMac, setIsMac] = useState(false);
   const [accessibilityTrusted, setAccessibilityTrusted] = useState(true);
   const [audioOutputState, setAudioOutputState] = useState<AudioOutputState | null>(null);
-  const [selectingAudioOutputId, setSelectingAudioOutputId] = useState<string | null>(null);
+  const [updatingAudioOutputId, setUpdatingAudioOutputId] = useState<string | null>(null);
   const appRef = useRef<HTMLDivElement>(null);
   const audioOutputFetchInFlight = useRef(false);
   const audioOutputStateVersion = useRef(0);
@@ -388,7 +388,7 @@ function App() {
   const handleAudioOutputSelect = async (id: string) => {
     const previousState = audioOutputState;
     audioOutputStateVersion.current += 1;
-    setSelectingAudioOutputId(id);
+    setUpdatingAudioOutputId(id);
     setAudioOutputState((current) => (current ? { ...current, selectedDeviceId: id } : current));
     try {
       const outputState = await invoke<AudioOutputState>('set_audio_output_device', { id });
@@ -398,7 +398,7 @@ function App() {
       setAudioOutputState(previousState);
       console.error('Failed to set audio output device:', e);
     } finally {
-      setSelectingAudioOutputId(null);
+      setUpdatingAudioOutputId(null);
     }
   };
 
@@ -418,6 +418,25 @@ function App() {
       });
     } catch (e) {
       console.error('Failed to rename audio output device:', e);
+    }
+  };
+
+  /** Persists one audio output's enabled, disabled, or hidden state. */
+  const handleAudioOutputState = async (id: string, deviceState: AudioOutputDeviceState) => {
+    const previousState = audioOutputState;
+    audioOutputStateVersion.current += 1;
+    setUpdatingAudioOutputId(id);
+    try {
+      const outputState = await invoke<AudioOutputState>('set_audio_output_device_state', {
+        id,
+        deviceState,
+      });
+      setAudioOutputState(outputState);
+    } catch (e) {
+      setAudioOutputState(previousState);
+      console.error('Failed to update audio output device state:', e);
+    } finally {
+      setUpdatingAudioOutputId(null);
     }
   };
 
@@ -529,9 +548,10 @@ function App() {
             onChange={handleVolume}
             outputState={audioOutputState}
             expanded={expanded}
-            selectingDeviceId={selectingAudioOutputId}
+            updatingDeviceId={updatingAudioOutputId}
             onSelectOutput={handleAudioOutputSelect}
             onRenameOutput={handleAudioOutputRename}
+            onSetOutputState={handleAudioOutputState}
           />
           <DarkModeToggle isDarkMode={darkMode} onChange={handleDarkMode} />
           <ProfileButtons profiles={profiles} onActivate={handleProfile} />

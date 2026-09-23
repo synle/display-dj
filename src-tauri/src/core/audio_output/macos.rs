@@ -1,6 +1,6 @@
 //! macOS CoreAudio playback-endpoint support.
 
-use super::{AudioOutputDevice, AudioOutputState};
+use super::{AudioOutputDevice, AudioOutputDeviceState, AudioOutputState};
 use std::ffi::{c_char, c_void, CStr};
 use std::mem::size_of;
 use std::ptr;
@@ -25,8 +25,15 @@ const PROPERTY_DEFAULT_SYSTEM_OUTPUT: AudioObjectPropertySelector = four_cc(*b"s
 const PROPERTY_DEVICE_UID: AudioObjectPropertySelector = four_cc(*b"uid ");
 const PROPERTY_STREAMS: AudioObjectPropertySelector = four_cc(*b"stm#");
 const PROPERTY_NAME: AudioObjectPropertySelector = four_cc(*b"lnam");
+const PROPERTY_DEVICE_IS_ALIVE: AudioObjectPropertySelector = four_cc(*b"livn");
+const PROPERTY_DEVICE_CAN_BE_DEFAULT: AudioObjectPropertySelector = four_cc(*b"dflt");
+const PROPERTY_TRANSPORT_TYPE: AudioObjectPropertySelector = four_cc(*b"tran");
+const TRANSPORT_BUILT_IN: u32 = four_cc(*b"bltn");
 const SCOPE_GLOBAL: AudioObjectPropertyScope = four_cc(*b"glob");
 const SCOPE_OUTPUT: AudioObjectPropertyScope = four_cc(*b"outp");
+/// Stable loopback endpoint UIDs that cannot route macOS system playback.
+const UNSUPPORTED_OUTPUT_DEVICE_UIDS: &[&str] =
+    &["MSLoopbackDriverDevice_UID", "zoom.us.zoomaudiodevice.001"];
 
 #[repr(C)]
 struct AudioObjectPropertyAddress {
@@ -81,16 +88,28 @@ pub fn get_audio_output_state() -> Result<AudioOutputState, String> {
     let mut devices = Vec::new();
 
     for device_id in read_u32_list(AUDIO_SYSTEM_OBJECT, PROPERTY_DEVICES, SCOPE_GLOBAL)? {
-        if !has_output_streams(device_id)? {
+        let id = read_cf_string(device_id, PROPERTY_DEVICE_UID, SCOPE_GLOBAL)?;
+        if is_unsupported_output_uid(&id) {
             continue;
         }
 
-        let id = read_cf_string(device_id, PROPERTY_DEVICE_UID, SCOPE_GLOBAL)?;
+        let has_output_streams = has_output_streams(device_id)?;
+        let is_alive = read_u32(device_id, PROPERTY_DEVICE_IS_ALIVE, SCOPE_GLOBAL)? != 0;
+        let can_be_default =
+            read_u32(device_id, PROPERTY_DEVICE_CAN_BE_DEFAULT, SCOPE_OUTPUT)? != 0;
+        if !should_list_output(has_output_streams, is_alive, can_be_default) {
+            continue;
+        }
+
         let name = read_cf_string(device_id, PROPERTY_NAME, SCOPE_GLOBAL)?;
+        let is_built_in =
+            read_u32(device_id, PROPERTY_TRANSPORT_TYPE, SCOPE_GLOBAL)? == TRANSPORT_BUILT_IN;
         devices.push(AudioOutputDevice {
             id,
             name: name.clone(),
             original_name: name,
+            state: AudioOutputDeviceState::Enabled,
+            is_built_in,
         });
     }
 
@@ -106,6 +125,13 @@ pub fn get_audio_output_state() -> Result<AudioOutputState, String> {
 
 /// Changes the macOS default output device by stable CoreAudio UID.
 pub fn set_audio_output_device(device_uid: &str) -> Result<(), String> {
+    if is_unsupported_output_uid(device_uid) {
+        return Err(format!(
+            "unsupported audio output device cannot be selected: {}",
+            device_uid
+        ));
+    }
+
     let device_id = read_u32_list(AUDIO_SYSTEM_OBJECT, PROPERTY_DEVICES, SCOPE_GLOBAL)?
         .into_iter()
         .find(|device_id| {
@@ -279,6 +305,16 @@ fn has_output_streams(device_id: AudioDeviceId) -> Result<bool, String> {
     Ok(property_data_size(device_id, PROPERTY_STREAMS, SCOPE_OUTPUT)? > 0)
 }
 
+/// Includes only live output devices CoreAudio allows as the default output.
+fn should_list_output(has_output_streams: bool, is_alive: bool, can_be_default: bool) -> bool {
+    has_output_streams && is_alive && can_be_default
+}
+
+/// Matches stable CoreAudio UIDs known to be non-playback loopback endpoints.
+fn is_unsupported_output_uid(device_uid: &str) -> bool {
+    UNSUPPORTED_OUTPUT_DEVICE_UIDS.contains(&device_uid)
+}
+
 /// Writes one `u32` CoreAudio property.
 fn write_u32(
     object_id: AudioObjectId,
@@ -320,10 +356,34 @@ mod tests {
         assert_eq!(four_cc(*b"dOut"), 0x644f_7574);
     }
 
-    /// Read-only enumeration must not panic even when CI has no audio devices.
+    /// Virtual loopback endpoints that cannot become defaults stay out of the UI.
+    #[test]
+    fn excludes_outputs_that_cannot_become_default() {
+        assert!(should_list_output(true, true, true));
+        assert!(!should_list_output(true, true, false));
+        assert!(!should_list_output(true, false, true));
+        assert!(!should_list_output(false, true, true));
+    }
+
+    /// Known conference-app loopback endpoints remain hidden and rejected.
+    #[test]
+    fn identifies_unsupported_output_device_uids() {
+        assert!(is_unsupported_output_uid("MSLoopbackDriverDevice_UID"));
+        assert!(is_unsupported_output_uid("zoom.us.zoomaudiodevice.001"));
+        assert!(!is_unsupported_output_uid("BuiltInSpeakerDevice"));
+        assert!(set_audio_output_device("MSLoopbackDriverDevice_UID")
+            .unwrap_err()
+            .contains("unsupported audio output device"));
+    }
+
+    /// Read-only enumeration never surfaces explicitly unsupported endpoints.
     #[test]
     fn enumerates_audio_outputs_without_mutation() {
-        let result = get_audio_output_state();
-        assert!(result.is_ok() || result.is_err());
+        if let Ok(state) = get_audio_output_state() {
+            assert!(state
+                .devices
+                .iter()
+                .all(|device| !is_unsupported_output_uid(&device.id)));
+        }
     }
 }

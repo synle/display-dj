@@ -53,11 +53,15 @@ beforeEach(() => {
               id: 'speakers',
               name: 'Desk Speakers',
               originalName: 'MacBook Pro Speakers',
+              state: 'enabled',
+              isBuiltIn: true,
             },
             {
               id: 'headphones',
               name: 'Headphones',
               originalName: 'USB Headphones',
+              state: 'enabled',
+              isBuiltIn: false,
             },
           ],
           selectedDeviceId: 'speakers',
@@ -69,14 +73,38 @@ beforeEach(() => {
               id: 'speakers',
               name: 'Desk Speakers',
               originalName: 'MacBook Pro Speakers',
+              state: 'enabled',
+              isBuiltIn: true,
             },
             {
               id: 'headphones',
               name: 'Headphones',
               originalName: 'USB Headphones',
+              state: 'enabled',
+              isBuiltIn: false,
             },
           ],
           selectedDeviceId: 'headphones',
+        });
+      case 'set_audio_output_device_state':
+        return Promise.resolve({
+          devices: [
+            {
+              id: 'speakers',
+              name: 'Desk Speakers',
+              originalName: 'MacBook Pro Speakers',
+              state: 'enabled',
+              isBuiltIn: true,
+            },
+            {
+              id: 'headphones',
+              name: 'Headphones',
+              originalName: 'USB Headphones',
+              state: 'disabled',
+              isBuiltIn: false,
+            },
+          ],
+          selectedDeviceId: 'speakers',
         });
       case 'get_preferences':
         return Promise.resolve({
@@ -261,6 +289,25 @@ describe('App smoke test', () => {
         label: 'Studio Headphones',
       });
       expect(screen.getAllByText('Studio Headphones')).toHaveLength(2);
+    });
+  });
+
+  it('persists a disabled audio output from expanded mode', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByTitle('Show individual monitors'));
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'State for Headphones' }),
+      'disabled',
+    );
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_audio_output_device_state', {
+        id: 'headphones',
+        deviceState: 'disabled',
+      });
+      expect(screen.getByRole('radio', { name: 'Select Headphones' })).toBeDisabled();
     });
   });
 

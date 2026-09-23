@@ -9,6 +9,16 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
+/// Display DJ availability state for one selectable playback endpoint.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioOutputDeviceState {
+    #[default]
+    Enabled,
+    Disabled,
+    Hidden,
+}
+
 /// Playback endpoint exposed to the frontend.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -19,6 +29,12 @@ pub struct AudioOutputDevice {
     pub name: String,
     /// Native operating-system endpoint name.
     pub original_name: String,
+    /// User-controlled availability in Display DJ.
+    #[serde(default)]
+    pub state: AudioOutputDeviceState,
+    /// Whether the operating system identifies this as an integrated output.
+    #[serde(default)]
+    pub is_built_in: bool,
 }
 
 /// Current playback endpoints and the operating system's selected default.
@@ -60,7 +76,10 @@ pub fn set_audio_output_device(device_id: &str) -> Result<AudioOutputState, Stri
     }
 
     let current = get_audio_output_state()?;
-    resolve_device(&current.devices, device_id)?;
+    let device = resolve_device(&current.devices, device_id)?;
+    if device.state != AudioOutputDeviceState::Enabled {
+        return Err(format!("audio output device is not enabled: {}", device_id));
+    }
 
     #[cfg(target_os = "macos")]
     macos::set_audio_output_device(device_id)?;
@@ -90,20 +109,22 @@ pub fn set_default_mute(mute: bool) -> Result<(), String> {
     windows::set_default_mute(mute)
 }
 
-/// Applies saved aliases while preserving each native endpoint name.
-pub fn apply_aliases(
+/// Applies saved labels and availability while preserving native endpoint data.
+pub fn apply_preferences(
     mut state: AudioOutputState,
-    aliases: &[(String, String)],
+    preferences: &[(String, String, AudioOutputDeviceState)],
 ) -> AudioOutputState {
     for device in &mut state.devices {
-        if let Some((_, label)) = aliases
-            .iter()
-            .find(|(id, label)| id == &device.id && !label.trim().is_empty())
+        if let Some((_, label, device_state)) =
+            preferences.iter().find(|(id, _, _)| id == &device.id)
         {
-            device.name = label.clone();
+            if !label.trim().is_empty() {
+                device.name = label.clone();
+            }
+            device.state = *device_state;
         }
     }
-    state
+    sort_audio_output_state(state)
 }
 
 /// Finds an endpoint by exact stable identifier.
@@ -119,10 +140,15 @@ fn resolve_device<'a>(
 
 /// Keeps polling snapshots stable across platform enumeration order changes.
 fn sort_audio_output_state(mut state: AudioOutputState) -> AudioOutputState {
+    let selected_device_id = state.selected_device_id.as_deref();
     state.devices.sort_by(|left, right| {
-        left.name
-            .to_lowercase()
-            .cmp(&right.name.to_lowercase())
+        let left_selected = Some(left.id.as_str()) == selected_device_id;
+        let right_selected = Some(right.id.as_str()) == selected_device_id;
+        left.state
+            .cmp(&right.state)
+            .then(right.is_built_in.cmp(&left.is_built_in))
+            .then(right_selected.cmp(&left_selected))
+            .then(left.name.to_lowercase().cmp(&right.name.to_lowercase()))
             .then(left.id.cmp(&right.id))
     });
     state
@@ -138,6 +164,8 @@ mod tests {
             id: id.into(),
             name: name.into(),
             original_name: name.into(),
+            state: AudioOutputDeviceState::Enabled,
+            is_built_in: false,
         }
     }
 
@@ -152,6 +180,8 @@ mod tests {
         let json = serde_json::to_string(&state).unwrap();
 
         assert!(json.contains("\"originalName\":\"Speakers\""));
+        assert!(json.contains("\"state\":\"enabled\""));
+        assert!(json.contains("\"isBuiltIn\":false"));
         assert!(json.contains("\"selectedDeviceId\":\"speaker\""));
         assert_eq!(
             serde_json::from_str::<AudioOutputState>(&json).unwrap(),
@@ -159,16 +189,18 @@ mod tests {
         );
     }
 
-    /// Endpoint ordering stays deterministic when platform order changes.
+    /// Enabled built-in outputs lead disabled and hidden outputs deterministically.
     #[test]
-    fn sorts_by_name_then_stable_id() {
+    fn sorts_by_state_built_in_selected_name_and_stable_id() {
+        let mut built_in = device("built-in", "MacBook Pro Speakers");
+        built_in.is_built_in = true;
+        let mut disabled = device("teams", "Microsoft Teams Audio");
+        disabled.state = AudioOutputDeviceState::Disabled;
+        let mut hidden = device("zoom", "ZoomAudioDevice");
+        hidden.state = AudioOutputDeviceState::Hidden;
         let state = sort_audio_output_state(AudioOutputState {
-            devices: vec![
-                device("z", "Speakers"),
-                device("a", "speakers"),
-                device("b", "AirPods"),
-            ],
-            selected_device_id: None,
+            devices: vec![hidden, disabled, device("dock", "TYPEC"), built_in],
+            selected_device_id: Some("dock".into()),
         });
 
         assert_eq!(
@@ -177,7 +209,7 @@ mod tests {
                 .iter()
                 .map(|item| item.id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["b", "a", "z"]
+            vec!["built-in", "dock", "teams", "zoom"]
         );
     }
 
@@ -190,32 +222,42 @@ mod tests {
         assert!(resolve_device(&devices, "RIGHT").is_err());
     }
 
-    /// Saved aliases replace only display names and retain native names.
+    /// Saved output preferences replace labels and state while retaining native names.
     #[test]
-    fn applies_non_empty_aliases() {
-        let state = apply_aliases(
+    fn applies_non_empty_output_preferences() {
+        let state = apply_preferences(
             AudioOutputState {
                 devices: vec![device("speaker", "MacBook Pro Speakers")],
                 selected_device_id: Some("speaker".into()),
             },
-            &[("speaker".into(), "Desk".into())],
+            &[(
+                "speaker".into(),
+                "Desk".into(),
+                AudioOutputDeviceState::Disabled,
+            )],
         );
 
         assert_eq!(state.devices[0].name, "Desk");
         assert_eq!(state.devices[0].original_name, "MacBook Pro Speakers");
+        assert_eq!(state.devices[0].state, AudioOutputDeviceState::Disabled);
     }
 
-    /// Empty aliases fall back to the native endpoint name.
+    /// Empty saved labels retain the native endpoint name while applying state.
     #[test]
-    fn ignores_empty_aliases() {
-        let state = apply_aliases(
+    fn ignores_empty_labels() {
+        let state = apply_preferences(
             AudioOutputState {
                 devices: vec![device("speaker", "MacBook Pro Speakers")],
                 selected_device_id: Some("speaker".into()),
             },
-            &[("speaker".into(), "  ".into())],
+            &[(
+                "speaker".into(),
+                "  ".into(),
+                AudioOutputDeviceState::Hidden,
+            )],
         );
 
         assert_eq!(state.devices[0].name, "MacBook Pro Speakers");
+        assert_eq!(state.devices[0].state, AudioOutputDeviceState::Hidden);
     }
 }

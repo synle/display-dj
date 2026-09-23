@@ -30,13 +30,13 @@ Raising: measure current %, set floor ~10pp below, update both files. Never lowe
 
 `src-tauri/src/core/audio_output/` owns the platform layer:
 
-- macOS uses CoreAudio device UIDs, output-stream capability checks, and the default output/system-output properties.
+- macOS uses CoreAudio device UIDs, output-stream/alive/default-output capability checks, built-in transport metadata, and the default output/system-output properties. Devices listed in `UNSUPPORTED_OUTPUT_DEVICE_UIDS` (Microsoft Teams Audio and ZoomAudioDevice loopback endpoints) are always hidden and rejected.
 - Windows uses MMDevice for active render endpoints, `IPolicyConfig` for console/multimedia/communications defaults, and `IAudioEndpointVolume` for native volume and mute.
 - Linux uses `pactl` sink names, `set-default-sink`, and best-effort migration of active sink inputs.
 
-`src-tauri/src/volume.rs` exposes `get_audio_output_devices`, `set_audio_output_device`, and `rename_audio_output_device`. Enumeration and switching run in `spawn_blocking`; aliases are overlaid after the OS result. Aliases persist in `Preferences.audio_output_configs`, keyed by stable platform ID, while the selected device remains OS-owned.
+`src-tauri/src/volume.rs` exposes `get_audio_output_devices`, `set_audio_output_device`, `set_audio_output_device_state`, and `rename_audio_output_device`. Enumeration and switching run in `spawn_blocking`; saved labels and `enabled` / `disabled` / `hidden` states are overlaid after the OS result. Settings persist in `Preferences.audio_output_configs`, keyed by stable platform ID, while the selected device remains OS-owned. Missing state values from older preference files default to `enabled`.
 
-`App.tsx` keeps output state separate from `fetch_all_state`. It fetches immediately and every 5 seconds only while the visible main panel is active, prevents overlapping probes, and keeps the last successful state on errors. `VolumeControl.tsx` renders a native-case, click-to-edit active name in collapsed and expanded layouts; expanded mode also renders padded radio-button endpoint rows with inline alias editing.
+`App.tsx` keeps output state separate from `fetch_all_state`. It fetches immediately and every 5 seconds only while the visible main panel is active, prevents overlapping probes, and keeps the last successful state on errors. `VolumeControl.tsx` renders a native-case, click-to-edit active name in collapsed and expanded layouts; expanded mode also renders padded radio-button endpoint rows, inline alias editing, and a tri-state selector. Enabled devices sort first with built-in outputs leading, disabled devices follow, and hidden devices appear only after clicking "Show hidden outputs".
 
 ## Platform pitfalls
 

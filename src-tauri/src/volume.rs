@@ -1,7 +1,10 @@
+use crate::core::audio_output::AudioOutputDeviceState;
 use tauri::{Emitter, Manager};
 
-/// Returns audio-output aliases as owned pairs so no preferences lock crosses an await.
-fn audio_output_aliases(state: &crate::AppState) -> Result<Vec<(String, String)>, String> {
+/// Returns audio-output preferences as owned values so no lock crosses an await.
+fn audio_output_preferences(
+    state: &crate::AppState,
+) -> Result<Vec<(String, String, AudioOutputDeviceState)>, String> {
     state
         .preferences
         .lock()
@@ -9,41 +12,69 @@ fn audio_output_aliases(state: &crate::AppState) -> Result<Vec<(String, String)>
             preferences
                 .audio_output_configs
                 .iter()
-                .map(|config| (config.id.clone(), config.label.clone()))
+                .map(|config| (config.id.clone(), config.label.clone(), config.state))
                 .collect()
         })
         .map_err(|_| "preferences lock poisoned".to_string())
 }
 
-/// Replaces one saved audio-output alias; empty labels clear the saved entry.
+/// Drops no-op entries and keeps persisted audio-output IDs deterministic.
+fn normalize_audio_output_configs(configs: &mut Vec<crate::config::AudioOutputMetadata>) {
+    configs.retain(|config| {
+        !config.label.trim().is_empty() || config.state != AudioOutputDeviceState::Enabled
+    });
+    configs.sort_by(|left, right| left.id.cmp(&right.id));
+}
+
+/// Replaces one saved alias; empty labels preserve only non-default states.
 fn update_audio_output_alias(
     configs: &mut Vec<crate::config::AudioOutputMetadata>,
     id: String,
     label: &str,
 ) {
-    configs.retain(|config| config.id != id);
-    if !label.is_empty() {
+    if let Some(config) = configs.iter_mut().find(|config| config.id == id) {
+        config.label = label.to_string();
+    } else if !label.is_empty() {
         configs.push(crate::config::AudioOutputMetadata {
             id,
             label: label.to_string(),
+            state: AudioOutputDeviceState::Enabled,
         });
-        configs.sort_by(|left, right| left.id.cmp(&right.id));
     }
+    normalize_audio_output_configs(configs);
 }
 
-/// Lists selectable audio outputs and overlays persisted user-defined labels.
+/// Replaces one saved audio-output state while preserving any alias.
+fn update_audio_output_state(
+    configs: &mut Vec<crate::config::AudioOutputMetadata>,
+    id: String,
+    device_state: AudioOutputDeviceState,
+) {
+    if let Some(config) = configs.iter_mut().find(|config| config.id == id) {
+        config.state = device_state;
+    } else if device_state != AudioOutputDeviceState::Enabled {
+        configs.push(crate::config::AudioOutputMetadata {
+            id,
+            label: String::new(),
+            state: device_state,
+        });
+    }
+    normalize_audio_output_configs(configs);
+}
+
+/// Lists configurable audio outputs and overlays persisted labels and states.
 #[tauri::command]
 pub async fn get_audio_output_devices(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<crate::core::audio_output::AudioOutputState, String> {
-    let aliases = audio_output_aliases(&state)?;
+    let preferences = audio_output_preferences(&state)?;
     let output_state =
         tauri::async_runtime::spawn_blocking(crate::core::audio_output::get_audio_output_state)
             .await
             .map_err(|error| format!("get_audio_output_devices task join failed: {}", error))??;
-    Ok(crate::core::audio_output::apply_aliases(
+    Ok(crate::core::audio_output::apply_preferences(
         output_state,
-        &aliases,
+        &preferences,
     ))
 }
 
@@ -53,6 +84,19 @@ pub async fn set_audio_output_device(
     id: String,
     app: tauri::AppHandle,
 ) -> Result<crate::core::audio_output::AudioOutputState, String> {
+    let preferences = app
+        .try_state::<crate::AppState>()
+        .ok_or_else(|| "app state unavailable before audio output selection".to_string())
+        .and_then(|state| audio_output_preferences(&state))?;
+    if let Some((_, _, device_state)) = preferences
+        .iter()
+        .find(|(device_id, _, _)| device_id == &id)
+    {
+        if *device_state != AudioOutputDeviceState::Enabled {
+            return Err(format!("audio output device is not enabled: {}", id));
+        }
+    }
+
     let id_for_switch = id.clone();
     let output_state = tauri::async_runtime::spawn_blocking(move || {
         crate::core::audio_output::set_audio_output_device(&id_for_switch)
@@ -78,13 +122,9 @@ pub async fn set_audio_output_device(
         }
     }
     log::info!("audio output selected: id={}", id);
-    let aliases = app
-        .try_state::<crate::AppState>()
-        .ok_or_else(|| "app state unavailable after audio output selection".to_string())
-        .and_then(|state| audio_output_aliases(&state))?;
-    Ok(crate::core::audio_output::apply_aliases(
+    Ok(crate::core::audio_output::apply_preferences(
         output_state,
-        &aliases,
+        &preferences,
     ))
 }
 
@@ -110,6 +150,55 @@ pub async fn rename_audio_output_device(
     update_audio_output_alias(&mut preferences.audio_output_configs, id, trimmed_label);
     crate::config::save_preferences_to_disk(&preferences);
     Ok(())
+}
+
+/// Persists one audio-output enabled, disabled, or hidden state.
+#[tauri::command]
+pub async fn set_audio_output_device_state(
+    id: String,
+    device_state: AudioOutputDeviceState,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<crate::core::audio_output::AudioOutputState, String> {
+    let id_for_validation = id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::core::audio_output::ensure_device_exists(&id_for_validation)
+    })
+    .await
+    .map_err(|error| format!("set_audio_output_device_state task join failed: {}", error))??;
+
+    let saved_preferences = {
+        let mut preferences = state
+            .preferences
+            .lock()
+            .map_err(|_| "preferences lock poisoned".to_string())?;
+        update_audio_output_state(
+            &mut preferences.audio_output_configs,
+            id.clone(),
+            device_state,
+        );
+        crate::config::save_preferences_to_disk(&preferences);
+        preferences
+            .audio_output_configs
+            .iter()
+            .map(|config| (config.id.clone(), config.label.clone(), config.state))
+            .collect::<Vec<_>>()
+    };
+
+    let output_state =
+        tauri::async_runtime::spawn_blocking(crate::core::audio_output::get_audio_output_state)
+            .await
+            .map_err(|error| {
+                format!("set_audio_output_device_state refresh failed: {}", error)
+            })??;
+    log::info!(
+        "audio output state updated: id={} state={:?}",
+        id,
+        device_state
+    );
+    Ok(crate::core::audio_output::apply_preferences(
+        output_state,
+        &saved_preferences,
+    ))
 }
 
 /// Returns the current system volume (0-100) via the in-process platform layer.
@@ -192,10 +281,12 @@ mod tests {
             crate::config::AudioOutputMetadata {
                 id: "z-device".into(),
                 label: "Z".into(),
+                state: AudioOutputDeviceState::Disabled,
             },
             crate::config::AudioOutputMetadata {
                 id: "a-device".into(),
                 label: "Old".into(),
+                state: AudioOutputDeviceState::Hidden,
             },
         ];
 
@@ -207,10 +298,12 @@ mod tests {
                 crate::config::AudioOutputMetadata {
                     id: "a-device".into(),
                     label: "Desk".into(),
+                    state: AudioOutputDeviceState::Hidden,
                 },
                 crate::config::AudioOutputMetadata {
                     id: "z-device".into(),
                     label: "Z".into(),
+                    state: AudioOutputDeviceState::Disabled,
                 },
             ]
         );
@@ -222,10 +315,39 @@ mod tests {
         let mut configs = vec![crate::config::AudioOutputMetadata {
             id: "device".into(),
             label: "Desk".into(),
+            state: AudioOutputDeviceState::Enabled,
         }];
 
         update_audio_output_alias(&mut configs, "device".into(), "");
 
+        assert!(configs.is_empty());
+    }
+
+    /// Changing state preserves aliases and removes restored defaults without aliases.
+    #[test]
+    fn update_audio_output_state_preserves_alias_and_prunes_defaults() {
+        let mut configs = vec![crate::config::AudioOutputMetadata {
+            id: "speaker".into(),
+            label: "Desk".into(),
+            state: AudioOutputDeviceState::Enabled,
+        }];
+
+        update_audio_output_state(
+            &mut configs,
+            "speaker".into(),
+            AudioOutputDeviceState::Hidden,
+        );
+        assert_eq!(configs[0].label, "Desk");
+        assert_eq!(configs[0].state, AudioOutputDeviceState::Hidden);
+
+        update_audio_output_alias(&mut configs, "speaker".into(), "");
+        assert_eq!(configs[0].state, AudioOutputDeviceState::Hidden);
+
+        update_audio_output_state(
+            &mut configs,
+            "speaker".into(),
+            AudioOutputDeviceState::Enabled,
+        );
         assert!(configs.is_empty());
     }
 }

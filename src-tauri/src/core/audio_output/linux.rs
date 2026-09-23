@@ -1,6 +1,6 @@
 //! Linux PulseAudio/PipeWire playback-endpoint support through `pactl`.
 
-use super::{AudioOutputDevice, AudioOutputState};
+use super::{AudioOutputDevice, AudioOutputDeviceState, AudioOutputState};
 use serde::Deserialize;
 use std::process::{Command, Output};
 
@@ -81,6 +81,8 @@ fn parse_sinks(bytes: &[u8]) -> Result<Vec<AudioOutputDevice>, String> {
                 id: sink.name,
                 name: name.clone(),
                 original_name: name,
+                state: AudioOutputDeviceState::Enabled,
+                is_built_in: false,
             }
         })
         .collect())
@@ -144,11 +146,15 @@ mod tests {
                     id: "alsa_output.usb".into(),
                     name: "USB Speakers".into(),
                     original_name: "USB Speakers".into(),
+                    state: AudioOutputDeviceState::Enabled,
+                    is_built_in: false,
                 },
                 AudioOutputDevice {
                     id: "bluez_output.headset".into(),
                     name: "bluez_output.headset".into(),
                     original_name: "bluez_output.headset".into(),
+                    state: AudioOutputDeviceState::Enabled,
+                    is_built_in: false,
                 },
             ]
         );

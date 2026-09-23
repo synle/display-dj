@@ -10,11 +10,15 @@ const outputState = {
       id: 'speakers',
       name: 'Desk Speakers',
       originalName: 'MacBook Pro Speakers',
+      state: 'enabled' as const,
+      isBuiltIn: true,
     },
     {
       id: 'headphones',
       name: 'Headphones',
       originalName: 'USB Headphones',
+      state: 'enabled' as const,
+      isBuiltIn: false,
     },
   ],
   selectedDeviceId: 'speakers',
@@ -27,9 +31,10 @@ function renderVolumeControl(overrides: Partial<ComponentProps<typeof VolumeCont
     onChange: vi.fn(),
     outputState,
     expanded: false,
-    selectingDeviceId: null,
+    updatingDeviceId: null,
     onSelectOutput: vi.fn(),
     onRenameOutput: vi.fn(),
+    onSetOutputState: vi.fn(),
     ...overrides,
   };
   return { ...render(<VolumeControl {...props} />), props };
@@ -150,9 +155,61 @@ describe('VolumeControl', () => {
   });
 
   it('disables output selection while another output switch is in progress', () => {
-    renderVolumeControl({ expanded: true, selectingDeviceId: 'headphones' });
+    renderVolumeControl({ expanded: true, updatingDeviceId: 'headphones' });
 
     expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeDisabled();
     expect(screen.getByRole('radio', { name: 'Select Headphones' })).toBeDisabled();
+  });
+
+  it('updates an output through the tri-state selector', async () => {
+    const user = userEvent.setup();
+    const onSetOutputState = vi.fn();
+    renderVolumeControl({ expanded: true, onSetOutputState });
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'State for Headphones' }), [
+      'disabled',
+    ]);
+
+    expect(onSetOutputState).toHaveBeenCalledWith('headphones', 'disabled');
+  });
+
+  it('disables disabled outputs and hides hidden outputs until requested', async () => {
+    const user = userEvent.setup();
+    renderVolumeControl({
+      expanded: true,
+      outputState: {
+        devices: [
+          {
+            id: 'speakers',
+            name: 'MacBook Pro Speakers',
+            originalName: 'MacBook Pro Speakers',
+            state: 'enabled',
+            isBuiltIn: true,
+          },
+          {
+            id: 'teams',
+            name: 'Microsoft Teams Audio',
+            originalName: 'Microsoft Teams Audio',
+            state: 'disabled',
+            isBuiltIn: false,
+          },
+          {
+            id: 'zoom',
+            name: 'ZoomAudioDevice',
+            originalName: 'ZoomAudioDevice',
+            state: 'hidden',
+            isBuiltIn: false,
+          },
+        ],
+        selectedDeviceId: 'speakers',
+      },
+    });
+
+    expect(screen.getByRole('radio', { name: 'Select Microsoft Teams Audio' })).toBeDisabled();
+    expect(screen.queryByRole('radio', { name: 'Select ZoomAudioDevice' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show hidden outputs (1)' }));
+
+    expect(screen.getByRole('radio', { name: 'Select ZoomAudioDevice' })).toBeDisabled();
   });
 });

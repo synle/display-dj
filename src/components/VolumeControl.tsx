@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { AudioOutputDevice, AudioOutputState } from '../types';
+import { AudioOutputDevice, AudioOutputDeviceState, AudioOutputState } from '../types';
 import Slider from './Slider';
 
 interface VolumeControlProps {
@@ -7,9 +7,10 @@ interface VolumeControlProps {
   onChange: (value: number) => void;
   outputState: AudioOutputState | null;
   expanded: boolean;
-  selectingDeviceId: string | null;
+  updatingDeviceId: string | null;
   onSelectOutput: (id: string) => void;
   onRenameOutput: (id: string, label: string) => void;
+  onSetOutputState: (id: string, state: AudioOutputDeviceState) => void;
 }
 
 type EditLocation = 'active' | 'list';
@@ -20,18 +21,24 @@ export default function VolumeControl({
   onChange,
   outputState,
   expanded,
-  selectingDeviceId,
+  updatingDeviceId,
   onSelectOutput,
   onRenameOutput,
+  onSetOutputState,
 }: VolumeControlProps) {
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
   const [editingLocation, setEditingLocation] = useState<EditLocation | null>(null);
   const [editName, setEditName] = useState('');
+  const [showHiddenOutputs, setShowHiddenOutputs] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const cancelEditingRef = useRef(false);
   const selectedDevice = outputState?.devices.find(
     (device) => device.id === outputState.selectedDeviceId,
   );
+  const hiddenOutputCount =
+    outputState?.devices.filter((device) => device.state === 'hidden').length ?? 0;
+  const visibleDevices =
+    outputState?.devices.filter((device) => showHiddenOutputs || device.state !== 'hidden') ?? [];
 
   /** Enters inline alias editing for one audio output. */
   const startEditing = (device: AudioOutputDevice, location: EditLocation) => {
@@ -101,38 +108,71 @@ export default function VolumeControl({
           {outputState.devices.length === 0 ? (
             <span className='audio-output-empty'>No audio outputs found</span>
           ) : (
-            outputState.devices.map((device) => (
-              <div className='audio-output-row' key={device.id}>
-                <label className='audio-output-selector' data-disabled={selectingDeviceId !== null}>
-                  <input
-                    type='radio'
-                    name='audio-output-device'
-                    aria-label={`Select ${device.name}`}
-                    checked={device.id === outputState.selectedDeviceId}
-                    disabled={selectingDeviceId !== null}
-                    onChange={() => onSelectOutput(device.id)}
-                  />
-                </label>
-                {editingDeviceId === device.id && editingLocation === 'list' ? (
-                  <input
-                    ref={inputRef}
-                    className='monitor-name-input audio-output-name-input'
-                    value={editName}
-                    placeholder={device.originalName}
-                    onChange={(event) => setEditName(event.target.value)}
-                    onBlur={() => finishEditing(device)}
-                    onKeyDown={handleEditKeyDown}
-                  />
-                ) : (
-                  <button
-                    className='monitor-name audio-output-name'
-                    onClick={() => startEditing(device, 'list')}
-                    title={`Rename ${device.originalName}`}>
-                    {device.name || device.originalName}
-                  </button>
-                )}
-              </div>
-            ))
+            <>
+              {visibleDevices.map((device) => {
+                const selectionDisabled = updatingDeviceId !== null || device.state !== 'enabled';
+                return (
+                  <div className='audio-output-row' data-state={device.state} key={device.id}>
+                    <label
+                      className='audio-output-selector'
+                      data-disabled={selectionDisabled}
+                      title={
+                        device.state === 'enabled'
+                          ? `Select ${device.name}`
+                          : `${device.name} is ${device.state}`
+                      }>
+                      <input
+                        type='radio'
+                        name='audio-output-device'
+                        aria-label={`Select ${device.name}`}
+                        checked={device.id === outputState.selectedDeviceId}
+                        disabled={selectionDisabled}
+                        onChange={() => onSelectOutput(device.id)}
+                      />
+                    </label>
+                    {editingDeviceId === device.id && editingLocation === 'list' ? (
+                      <input
+                        ref={inputRef}
+                        className='monitor-name-input audio-output-name-input'
+                        value={editName}
+                        placeholder={device.originalName}
+                        onChange={(event) => setEditName(event.target.value)}
+                        onBlur={() => finishEditing(device)}
+                        onKeyDown={handleEditKeyDown}
+                      />
+                    ) : (
+                      <button
+                        className='monitor-name audio-output-name'
+                        onClick={() => startEditing(device, 'list')}
+                        title={`Rename ${device.originalName}`}>
+                        {device.name || device.originalName}
+                      </button>
+                    )}
+                    <select
+                      className='audio-output-state'
+                      aria-label={`State for ${device.name}`}
+                      value={device.state}
+                      disabled={updatingDeviceId !== null}
+                      onChange={(event) =>
+                        onSetOutputState(device.id, event.target.value as AudioOutputDeviceState)
+                      }>
+                      <option value='enabled'>Enabled</option>
+                      <option value='disabled'>Disabled</option>
+                      <option value='hidden'>Hidden</option>
+                    </select>
+                  </div>
+                );
+              })}
+              {hiddenOutputCount > 0 && (
+                <button
+                  className='audio-output-hidden-toggle'
+                  onClick={() => setShowHiddenOutputs((current) => !current)}>
+                  {showHiddenOutputs
+                    ? 'Hide hidden outputs'
+                    : `Show hidden outputs (${hiddenOutputCount})`}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

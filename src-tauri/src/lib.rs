@@ -648,6 +648,7 @@ pub fn run() {
             volume::set_volume,
             volume::get_audio_output_devices,
             volume::set_audio_output_device,
+            volume::set_audio_output_device_state,
             volume::rename_audio_output_device,
             config::get_preferences,
             config::save_preferences,

@@ -1,6 +1,6 @@
 //! Windows Core Audio playback-endpoint support.
 
-use super::{AudioOutputDevice, AudioOutputState};
+use super::{AudioOutputDevice, AudioOutputDeviceState, AudioOutputState};
 use ::windows::core::{IUnknown, IUnknown_Vtbl, Interface, GUID, HRESULT, PCWSTR, PWSTR};
 use ::windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use ::windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
@@ -125,6 +125,8 @@ pub fn get_audio_output_state() -> Result<AudioOutputState, String> {
             id,
             name: name.clone(),
             original_name: name,
+            state: AudioOutputDeviceState::Enabled,
+            is_built_in: false,
         });
     }
 

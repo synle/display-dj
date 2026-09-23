@@ -333,14 +333,17 @@ impl Default for LayoutPreset {
     }
 }
 
-/// User-defined label for a stable platform audio-output device identifier.
+/// User-defined settings for a stable platform audio-output device identifier.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioOutputMetadata {
     /// Stable platform identifier for the audio output.
     pub id: String,
-    /// Optional user-defined label. Empty labels are removed instead of persisted.
+    /// Optional user-defined label. Empty labels persist only with a non-default state.
     pub label: String,
+    /// Display DJ availability state. Older preferences default to enabled.
+    #[serde(default)]
+    pub state: crate::core::audio_output::AudioOutputDeviceState,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -1456,6 +1459,7 @@ mod tests {
         prefs.audio_output_configs.push(AudioOutputMetadata {
             id: "device-1".into(),
             label: "Desk Speakers".into(),
+            state: crate::core::audio_output::AudioOutputDeviceState::Disabled,
         });
 
         let json = serde_json::to_string(&prefs).unwrap();
@@ -1464,6 +1468,18 @@ mod tests {
 
         let restored: Preferences = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.audio_output_configs, prefs.audio_output_configs);
+    }
+
+    /// Verifies older alias entries without state remain enabled.
+    #[test]
+    fn test_audio_output_metadata_missing_state_defaults_enabled() {
+        let metadata: AudioOutputMetadata =
+            serde_json::from_str(r#"{"id":"device-1","label":"Desk Speakers"}"#).unwrap();
+
+        assert_eq!(
+            metadata.state,
+            crate::core::audio_output::AudioOutputDeviceState::Enabled
+        );
     }
 
     /// Verifies older preference files default the new audio-output aliases to empty.

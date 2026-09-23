@@ -62,7 +62,7 @@ Events (`monitors-changed`, `dark-mode-changed`, `volume-changed`) fire when key
 | `lib`        | `fetch_all_state`                                                                                                                                            |
 | `display`    | `get_monitors`, `set_brightness`, `set_all_brightness`, `set_contrast`, `set_all_contrast`, `rename_monitor`, `save_monitor_order`, `set_monitor_visibility` |
 | `dark_mode`  | `get_dark_mode`, `set_dark_mode`                                                                                                                             |
-| `volume`     | `get_volume`, `set_volume`, `get_audio_output_devices`, `set_audio_output_device`, `rename_audio_output_device`                                              |
+| `volume`     | `get_volume`, `set_volume`, `get_audio_output_devices`, `set_audio_output_device`, `set_audio_output_device_state`, `rename_audio_output_device`             |
 | `config`     | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `open_app_folder`, `get_app_version`, `get_about_info`                     |
 | `crash_log`  | `get_crash_log`, `open_crash_log`                                                                                                                            |
 | `keep_awake` | `get_keep_awake`, `set_keep_awake`                                                                                                                           |
@@ -71,7 +71,7 @@ Events (`monitors-changed`, `dark-mode-changed`, `volume-changed`) fire when key
 
 ### Frontend state
 
-`App.tsx` holds all UI state (monitors, darkMode, volume, audio outputs, profiles, expanded view); no state library. On mount it fetches via `fetch_all_state` + `get_preferences`; event listeners and a `visibilitychange` listener trigger refetches. Audio outputs use a separate 5-second main-view poll so hot-plug changes appear without adding slow endpoint enumeration to `fetch_all_state`. Both collapsed and expanded views allow inline editing of the active output name; expanded view also adds padded output radio targets and per-row aliases. `SettingsPanel.tsx` auto-saves with a 300ms debounce.
+`App.tsx` holds all UI state (monitors, darkMode, volume, audio outputs, profiles, expanded view); no state library. On mount it fetches via `fetch_all_state` + `get_preferences`; event listeners and a `visibilitychange` listener trigger refetches. Audio outputs use a separate 5-second main-view poll so hot-plug changes appear without adding slow endpoint enumeration to `fetch_all_state`. Both collapsed and expanded views allow inline editing of the active output name; expanded view also adds padded output radio targets, per-row aliases, and an enabled/disabled/hidden selector with hidden-output recovery. `SettingsPanel.tsx` auto-saves with a 300ms debounce.
 
 ## Configuration
 
@@ -83,7 +83,7 @@ Key bindings pair a `key` (e.g. `"Shift+F1"`) with a `command` string or array o
 
 `monitorConfigs[]` stores per-monitor metadata keyed by a stable composite UID (`{api_id}::{api_model_name}`): `label`, `sortOrder`, `hidden`. Unplugged monitors keep their entry.
 
-`audioOutputConfigs[]` stores only Display DJ aliases as `{ id, label }`, keyed by the platform's stable endpoint ID. Empty labels clear the alias. Never persist the selected output; macOS, Windows, and Linux remain the source of truth.
+`audioOutputConfigs[]` stores Display DJ settings as `{ id, label, state }`, keyed by the platform's stable endpoint ID. `state` is `enabled`, `disabled`, or `hidden` and defaults to `enabled` for older files. Empty labels clear only the alias; entries disappear when both label and state return to defaults. Never persist the selected output; macOS, Windows, and Linux remain the source of truth.
 
 ## Conventions
 
