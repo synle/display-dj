@@ -6,6 +6,8 @@ https://github.com/tauri-apps/tauri/pull/16088:
 - `tray-icon` 0.24 to 0.25
 - `muda` 0.19 to 0.20
 - matching renamed feature flags
+- local patch: enables `tray-icon/libappindicator` (tray-icon 0.25.x made the tray
+  backend a required opt-in feature on Linux/BSD; upstream tauri 2.11.5 omits it)
 
 The update selects `tray-icon` 0.25.1, which fixes macOS 27 left-click events being swallowed while
 a tray menu is attached:
