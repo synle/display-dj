@@ -182,7 +182,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   };
 
   const tiling = prefs.tiling;
-  const exposeCols = tiling?.exposeColumns ?? 3;
+  const exposeCols = tiling?.exposeColumns ?? 2;
   const exposeRows = tiling?.exposeRows ?? 3;
 
   return (

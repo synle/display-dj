@@ -160,7 +160,7 @@ impl Default for TilingPreferences {
             snap_bottom_thirds_enabled: true,
             snap_bottom_two_thirds_enabled: true,
             expose_enabled: true,
-            expose_columns: 3,
+            expose_columns: 2,
             expose_rows: 3,
             expose_layout_strategy: "fill".into(),
             expose_min_width: 400,
@@ -1747,9 +1747,9 @@ mod tests {
     }
 
     #[test]
-    fn test_default_expose_grid_is_3x3() {
+    fn test_default_expose_grid_is_2x3() {
         let prefs = Preferences::default();
-        assert_eq!(prefs.tiling.expose_columns, 3);
+        assert_eq!(prefs.tiling.expose_columns, 2);
         assert_eq!(prefs.tiling.expose_rows, 3);
         assert_eq!(prefs.tiling.expose_max_windows, 0);
     }
@@ -1784,7 +1784,7 @@ mod tests {
         // Old field is deserialized for migration
         assert_eq!(prefs.tiling.expose_max_windows, 25);
         // New fields get defaults since they're missing from the JSON
-        assert_eq!(prefs.tiling.expose_columns, 3);
+        assert_eq!(prefs.tiling.expose_columns, 2);
         assert_eq!(prefs.tiling.expose_rows, 3);
     }
 
@@ -1792,7 +1792,7 @@ mod tests {
     fn test_migrate_expose_grid_from_old_config() {
         let mut prefs = Preferences::default();
         prefs.tiling.expose_max_windows = 25; // old 5x5
-        prefs.tiling.expose_columns = 3; // still at default
+        prefs.tiling.expose_columns = 2; // still at default
         prefs.tiling.expose_rows = 3; // still at default
         migrate_expose_grid_if_needed(&mut prefs);
         assert_eq!(prefs.tiling.expose_columns, 5);
@@ -1817,7 +1817,7 @@ mod tests {
         let mut prefs = Preferences::default();
         // expose_max_windows defaults to 0 (not present in new configs)
         migrate_expose_grid_if_needed(&mut prefs);
-        assert_eq!(prefs.tiling.expose_columns, 3);
+        assert_eq!(prefs.tiling.expose_columns, 2);
         assert_eq!(prefs.tiling.expose_rows, 3);
     }
 
