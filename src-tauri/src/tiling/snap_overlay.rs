@@ -44,6 +44,7 @@ struct OverlayState {
 pub(super) struct TileSnapOverlay {
     app: AppHandle,
     displays: Vec<Rect>,
+    scale_factors: Vec<f64>,
     zones: Vec<Vec<OverlayZone>>,
     window_count: usize,
 }
@@ -54,6 +55,7 @@ impl TileSnapOverlay {
         Self {
             app,
             displays: Vec::new(),
+            scale_factors: Vec::new(),
             zones: Vec::new(),
             window_count: 0,
         }
@@ -64,17 +66,24 @@ impl TileSnapOverlay {
         &mut self,
         displays: &[Rect],
         snap_zones: &[SnapZone],
+        scale_factors: &[f64],
     ) -> Result<(), String> {
         self.displays = displays.to_vec();
+        self.scale_factors = displays
+            .iter()
+            .enumerate()
+            .map(|(index, _)| normalized_scale_factor(scale_factors.get(index).copied()))
+            .collect();
         self.zones = displays
             .iter()
             .enumerate()
             .map(|(display_index, display)| {
+                let scale_factor = self.scale_factors[display_index];
                 snap_zones
                     .iter()
                     .filter(|zone| zone.display_index == display_index)
                     .map(|zone| OverlayZone {
-                        rect: relative_rect(&zone.rect, display),
+                        rect: relative_css_rect(&zone.rect, display, scale_factor),
                         kind: zone.visual_kind,
                     })
                     .collect()
@@ -113,9 +122,11 @@ impl TileSnapOverlay {
     pub(super) fn show_preview(&self, display_index: usize, target: &Rect) -> Result<(), String> {
         for index in 0..self.displays.len() {
             let preview = if index == display_index {
-                self.displays
-                    .get(index)
-                    .map(|display| relative_rect(target, display))
+                self.displays.get(index).map(|display| {
+                    let scale_factor =
+                        normalized_scale_factor(self.scale_factors.get(index).copied());
+                    relative_css_rect(target, display, scale_factor)
+                })
             } else {
                 None
             };
@@ -245,13 +256,22 @@ fn overlay_page_url(display_index: usize) -> String {
     )
 }
 
-/// Convert a global screen rectangle into display-local overlay coordinates.
-fn relative_rect(rect: &Rect, display: &Rect) -> OverlayRect {
+/// Return a safe CSS-to-physical scale, defaulting invalid values to 1.
+fn normalized_scale_factor(scale_factor: Option<f64>) -> f64 {
+    match scale_factor {
+        Some(scale_factor) if scale_factor.is_finite() && scale_factor > 0.0 => scale_factor,
+        _ => 1.0,
+    }
+}
+
+/// Convert physical display coordinates into WebView CSS pixels.
+fn relative_css_rect(rect: &Rect, display: &Rect, scale_factor: f64) -> OverlayRect {
+    let scale_factor = normalized_scale_factor(Some(scale_factor));
     OverlayRect {
-        x: rect.x - display.x,
-        y: rect.y - display.y,
-        width: rect.width,
-        height: rect.height,
+        x: (rect.x - display.x) / scale_factor,
+        y: (rect.y - display.y) / scale_factor,
+        width: rect.width / scale_factor,
+        height: rect.height / scale_factor,
     }
 }
 
@@ -278,7 +298,7 @@ mod tests {
 
     /// Global screen coordinates become local coordinates without changing size.
     #[test]
-    fn relative_rect_offsets_by_display_origin() {
+    fn relative_css_rect_offsets_by_display_origin_at_default_scale() {
         let display = Rect {
             x: -1920.0,
             y: 40.0,
@@ -292,11 +312,60 @@ mod tests {
             height: 520.0,
         };
 
-        let local = relative_rect(&rect, &display);
+        let local = relative_css_rect(&rect, &display, 1.0);
 
         assert_eq!(local.x, 960.0);
         assert_eq!(local.y, 20.0);
         assert_eq!(local.width, 960.0);
         assert_eq!(local.height, 520.0);
+    }
+
+    /// DPI-scaled displays keep bottom zones inside the WebView viewport.
+    #[test]
+    fn relative_css_rect_converts_physical_pixels_to_css_pixels() {
+        let display = Rect {
+            x: 1920.0,
+            y: 0.0,
+            width: 2560.0,
+            height: 1392.0,
+        };
+        let bottom_zone = Rect {
+            x: 2880.0,
+            y: 1372.0,
+            width: 640.0,
+            height: 20.0,
+        };
+
+        let local = relative_css_rect(&bottom_zone, &display, 1.25);
+
+        assert_eq!(local.x, 768.0);
+        assert_eq!(local.y, 1097.6);
+        assert_eq!(local.width, 512.0);
+        assert_eq!(local.height, 16.0);
+        assert!(local.y + local.height <= display.height / 1.25);
+    }
+
+    /// Invalid monitor scale values preserve the unscaled overlay behavior.
+    #[test]
+    fn relative_css_rect_defaults_invalid_scale_to_one() {
+        let display = Rect {
+            x: 100.0,
+            y: 200.0,
+            width: 800.0,
+            height: 600.0,
+        };
+        let rect = Rect {
+            x: 300.0,
+            y: 400.0,
+            width: 400.0,
+            height: 300.0,
+        };
+
+        let local = relative_css_rect(&rect, &display, 0.0);
+
+        assert_eq!(local.x, 200.0);
+        assert_eq!(local.y, 200.0);
+        assert_eq!(local.width, 400.0);
+        assert_eq!(local.height, 300.0);
     }
 }

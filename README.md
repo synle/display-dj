@@ -42,7 +42,7 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Global keyboard shortcuts** -- work even when the app isn't focused; fully configurable
 - **Monitor renaming** -- click any display name to give it a custom label
 - **Window tiling** (macOS + Windows + Linux/X11) -- tile windows to halves, thirds, two-thirds, quarters, or maximize via keyboard shortcuts or tray menu
-- **Tile Snap** (macOS + Windows + Linux/X11) -- drag a normal or maximized window to a screen edge to draw drop zones, preview the target on only that display, and snap it into a tiled layout. Enable/disable via the Tile Snap toggle in Settings; Windows defaults it off to avoid conflicting with Windows Snap
+- **Tile Snap** (macOS + Windows + Linux/X11) -- drag a normal or maximized window to a screen edge to draw DPI-correct drop zones, preview the target on only that display, and snap it into a tiled layout. Enable/disable via the Tile Snap toggle in Settings; Windows defaults it off to avoid conflicting with Windows Snap
 - **Exposé** (macOS + Windows + Linux/X11) -- spread all windows into a grid overview, or just the current app's windows. Deterministic alphabetical layout with configurable multi-display strategy (spread evenly or fill each display). Has its own tray submenu with enable/disable toggle and grid size presets (2x2 through 5x5)
 - **App Exposé** -- grids the frontmost app's windows and fills remaining grid cells with other apps' windows
 - **Layout Presets** -- named presets that automatically tile specific apps to specific layouts. Triggered via keyboard shortcuts, profiles, or the tray menu

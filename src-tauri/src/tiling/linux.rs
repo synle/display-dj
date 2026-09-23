@@ -1294,7 +1294,8 @@ fn begin_active_snap(app: &AppHandle, overlay: &mut TileSnapOverlay) -> Option<L
         prefs.corner_trigger as f64,
         &toggles,
     );
-    if let Err(error) = overlay.show_zones(&displays, &zones) {
+    let scale_factors = vec![1.0; displays.len()];
+    if let Err(error) = overlay.show_zones(&displays, &zones, &scale_factors) {
         log::warn!("{}", error);
         overlay.hide();
         return None;
