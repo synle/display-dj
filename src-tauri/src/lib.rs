@@ -180,6 +180,8 @@ pub struct AppState {
     pub is_dark_mode: std::sync::Mutex<bool>,
     /// Cached tray icon state: true when volume is 0 (muted).
     pub is_muted: std::sync::Mutex<bool>,
+    /// Last audio-output snapshot used by the popup and tray submenu.
+    pub audio_output_state: std::sync::Mutex<Option<core::audio_output::AudioOutputState>>,
     /// Per-window tiling state (original positions, current layout, display index).
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     pub tiling_state: std::sync::Mutex<tiling::TilingState>,
@@ -199,6 +201,7 @@ impl Default for AppState {
             keep_awake: std::sync::Mutex::new(None),
             is_dark_mode: std::sync::Mutex::new(false),
             is_muted: std::sync::Mutex::new(false),
+            audio_output_state: std::sync::Mutex::new(None),
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling_state: std::sync::Mutex::new(tiling::TilingState::default()),
             sidecar_cache: sidecar_cache::SidecarCache::default(),
@@ -628,6 +631,7 @@ pub fn run() {
             keep_awake: std::sync::Mutex::new(None),
             is_dark_mode: std::sync::Mutex::new(false),
             is_muted: std::sync::Mutex::new(false),
+            audio_output_state: std::sync::Mutex::new(None),
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling_state: std::sync::Mutex::new(tiling::TilingState::new()),
             sidecar_cache: sidecar_cache::SidecarCache::new(),
@@ -717,6 +721,7 @@ pub fn run() {
 
             // Set up system tray
             tray::setup_tray(app)?;
+            tray::start_audio_output_refresh(app.handle().clone());
 
             // Register global shortcuts from saved preferences
             let handle = app.handle().clone();

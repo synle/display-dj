@@ -240,6 +240,53 @@ describe('App smoke test', () => {
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
 
+  it('updates the active output when the tray selection event arrives', async () => {
+    let audioOutputHandler:
+      | ((event: {
+          payload: {
+            devices: Array<{
+              id: string;
+              name: string;
+              originalName: string;
+              state: 'enabled' | 'disabled' | 'hidden';
+              isBuiltIn: boolean;
+            }>;
+            selectedDeviceId: string;
+          };
+        }) => void)
+      | null = null;
+    mockListen.mockImplementation((event: string, handler: (event: { payload: never }) => void) => {
+      if (event === 'audio-output-changed') {
+        audioOutputHandler = handler;
+      }
+      return Promise.resolve(() => {});
+    });
+
+    render(<App />);
+    await screen.findByTitle('Rename active output MacBook Pro Speakers');
+
+    act(() => {
+      audioOutputHandler!({
+        payload: {
+          devices: [
+            {
+              id: 'headphones',
+              name: 'Headphones',
+              originalName: 'USB Headphones',
+              state: 'enabled',
+              isBuiltIn: false,
+            },
+          ],
+          selectedDeviceId: 'headphones',
+        },
+      });
+    });
+
+    expect(screen.getByTitle('Rename active output USB Headphones')).toHaveTextContent(
+      'Headphones',
+    );
+  });
+
   it('renames the active audio output from collapsed mode', async () => {
     const user = userEvent.setup();
     render(<App />);

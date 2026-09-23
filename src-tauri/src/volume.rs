@@ -1,6 +1,21 @@
 use crate::core::audio_output::AudioOutputDeviceState;
 use tauri::{Emitter, Manager};
 
+static AUDIO_OUTPUT_PLATFORM_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Acquires the platform-operation gate shared by enumeration and switching.
+fn lock_audio_output_platform() -> Result<std::sync::MutexGuard<'static, ()>, String> {
+    AUDIO_OUTPUT_PLATFORM_LOCK
+        .lock()
+        .map_err(|_| "audio output platform lock poisoned".to_string())
+}
+
+/// Serializes one platform-only operation.
+fn run_audio_output_operation<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let _guard = lock_audio_output_platform()?;
+    operation()
+}
+
 /// Returns audio-output preferences as owned values so no lock crosses an await.
 fn audio_output_preferences(
     state: &crate::AppState,
@@ -18,6 +33,75 @@ fn audio_output_preferences(
         .map_err(|_| "preferences lock poisoned".to_string())
 }
 
+/// Loads a platform snapshot and overlays persisted labels and states.
+fn load_audio_output_state_unlocked(
+    app: &tauri::AppHandle,
+) -> Result<crate::core::audio_output::AudioOutputState, String> {
+    let state = app
+        .try_state::<crate::AppState>()
+        .ok_or_else(|| "app state unavailable before audio output refresh".to_string())?;
+    let preferences = audio_output_preferences(&state)?;
+    let output_state = crate::core::audio_output::get_audio_output_state()?;
+    Ok(crate::core::audio_output::apply_preferences(
+        output_state,
+        &preferences,
+    ))
+}
+
+/// Replaces the shared audio-output snapshot and reports whether it changed.
+pub(crate) fn cache_audio_output_state(
+    app: &tauri::AppHandle,
+    output_state: &crate::core::audio_output::AudioOutputState,
+) -> Result<bool, String> {
+    let state = app
+        .try_state::<crate::AppState>()
+        .ok_or_else(|| "app state unavailable before audio output cache update".to_string())?;
+    let mut cached = state
+        .audio_output_state
+        .lock()
+        .map_err(|_| "audio output state lock poisoned".to_string())?;
+    if cached.as_ref() == Some(output_state) {
+        return Ok(false);
+    }
+    *cached = Some(output_state.clone());
+    Ok(true)
+}
+
+/// Refreshes and commits one snapshot while holding the platform-operation gate.
+pub(crate) fn refresh_audio_output_state(
+    app: &tauri::AppHandle,
+) -> Result<(crate::core::audio_output::AudioOutputState, bool), String> {
+    let _guard = lock_audio_output_platform()?;
+    let output_state = load_audio_output_state_unlocked(app)?;
+    let changed = cache_audio_output_state(app, &output_state)?;
+    Ok((output_state, changed))
+}
+
+/// Updates tray and popup consumers after an audio-output snapshot changes.
+pub(crate) fn notify_audio_output_state_changed(
+    app: &tauri::AppHandle,
+    output_state: &crate::core::audio_output::AudioOutputState,
+) {
+    let snapshot_is_current = app
+        .try_state::<crate::AppState>()
+        .and_then(|state| {
+            state
+                .audio_output_state
+                .lock()
+                .ok()
+                .map(|cached| cached.as_ref() == Some(output_state))
+        })
+        .unwrap_or(false);
+    if !snapshot_is_current {
+        return;
+    }
+
+    crate::tray::schedule_tray_menu_rebuild(app);
+    if let Err(error) = app.emit("audio-output-changed", output_state.clone()) {
+        log::warn!("failed to emit audio-output-changed: {}", error);
+    }
+}
+
 /// Drops no-op entries and keeps persisted audio-output IDs deterministic.
 fn normalize_audio_output_configs(configs: &mut Vec<crate::config::AudioOutputMetadata>) {
     configs.retain(|config| {
@@ -26,7 +110,7 @@ fn normalize_audio_output_configs(configs: &mut Vec<crate::config::AudioOutputMe
     configs.sort_by(|left, right| left.id.cmp(&right.id));
 }
 
-/// Replaces one saved alias; empty labels preserve only non-default states.
+/// Replaces one saved audio-output alias; empty labels clear the saved entry.
 fn update_audio_output_alias(
     configs: &mut Vec<crate::config::AudioOutputMetadata>,
     id: String,
@@ -65,22 +149,29 @@ fn update_audio_output_state(
 /// Lists configurable audio outputs and overlays persisted labels and states.
 #[tauri::command]
 pub async fn get_audio_output_devices(
-    state: tauri::State<'_, crate::AppState>,
+    app: tauri::AppHandle,
 ) -> Result<crate::core::audio_output::AudioOutputState, String> {
-    let preferences = audio_output_preferences(&state)?;
-    let output_state =
-        tauri::async_runtime::spawn_blocking(crate::core::audio_output::get_audio_output_state)
-            .await
-            .map_err(|error| format!("get_audio_output_devices task join failed: {}", error))??;
-    Ok(crate::core::audio_output::apply_preferences(
-        output_state,
-        &preferences,
-    ))
+    if let Some(cached) = app
+        .try_state::<crate::AppState>()
+        .and_then(|state| state.audio_output_state.lock().ok()?.clone())
+    {
+        return Ok(cached);
+    }
+
+    let app_for_refresh = app.clone();
+    let (output_state, changed) = tauri::async_runtime::spawn_blocking(move || {
+        refresh_audio_output_state(&app_for_refresh)
+    })
+    .await
+    .map_err(|error| format!("get_audio_output_devices task join failed: {}", error))??;
+    if changed {
+        notify_audio_output_state_changed(&app, &output_state);
+    }
+    Ok(output_state)
 }
 
 /// Selects the system audio output, then refreshes volume and tray mute state.
-#[tauri::command]
-pub async fn set_audio_output_device(
+pub(crate) async fn select_audio_output_device(
     id: String,
     app: tauri::AppHandle,
 ) -> Result<crate::core::audio_output::AudioOutputState, String> {
@@ -88,9 +179,7 @@ pub async fn set_audio_output_device(
         .try_state::<crate::AppState>()
         .ok_or_else(|| "app state unavailable before audio output selection".to_string())
         .and_then(|state| audio_output_preferences(&state))?;
-    if let Some((_, _, device_state)) = preferences
-        .iter()
-        .find(|(device_id, _, _)| device_id == &id)
+    if let Some((_, _, device_state)) = preferences.iter().find(|(device_id, _, _)| device_id == &id)
     {
         if *device_state != AudioOutputDeviceState::Enabled {
             return Err(format!("audio output device is not enabled: {}", id));
@@ -98,8 +187,14 @@ pub async fn set_audio_output_device(
     }
 
     let id_for_switch = id.clone();
-    let output_state = tauri::async_runtime::spawn_blocking(move || {
-        crate::core::audio_output::set_audio_output_device(&id_for_switch)
+    let app_for_switch = app.clone();
+    let (output_state, output_state_changed) = tauri::async_runtime::spawn_blocking(move || {
+        let _guard = lock_audio_output_platform()?;
+        let output_state = crate::core::audio_output::set_audio_output_device(&id_for_switch)?;
+        let output_state =
+            crate::core::audio_output::apply_preferences(output_state, &preferences);
+        let changed = cache_audio_output_state(&app_for_switch, &output_state)?;
+        Ok::<_, String>((output_state, changed))
     })
     .await
     .map_err(|error| format!("set_audio_output_device task join failed: {}", error))??;
@@ -122,10 +217,19 @@ pub async fn set_audio_output_device(
         }
     }
     log::info!("audio output selected: id={}", id);
-    Ok(crate::core::audio_output::apply_preferences(
-        output_state,
-        &preferences,
-    ))
+    if output_state_changed {
+        notify_audio_output_state_changed(&app, &output_state);
+    }
+    Ok(output_state)
+}
+
+/// Selects the system audio output from the popup UI.
+#[tauri::command]
+pub async fn set_audio_output_device(
+    id: String,
+    app: tauri::AppHandle,
+) -> Result<crate::core::audio_output::AudioOutputState, String> {
+    select_audio_output_device(id, app).await
 }
 
 /// Persists or clears a user-defined audio-output label after validating the device ID.
@@ -133,22 +237,37 @@ pub async fn set_audio_output_device(
 pub async fn rename_audio_output_device(
     id: String,
     label: String,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     let id_for_validation = id.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        crate::core::audio_output::ensure_device_exists(&id_for_validation)
+        run_audio_output_operation(|| {
+            crate::core::audio_output::ensure_device_exists(&id_for_validation)
+        })
     })
     .await
     .map_err(|error| format!("rename_audio_output_device task join failed: {}", error))??;
 
-    let trimmed_label = label.trim();
-    let mut preferences = state
-        .preferences
-        .lock()
-        .map_err(|_| "preferences lock poisoned".to_string())?;
-    update_audio_output_alias(&mut preferences.audio_output_configs, id, trimmed_label);
-    crate::config::save_preferences_to_disk(&preferences);
+    {
+        let trimmed_label = label.trim();
+        let mut preferences = state
+            .preferences
+            .lock()
+            .map_err(|_| "preferences lock poisoned".to_string())?;
+        update_audio_output_alias(&mut preferences.audio_output_configs, id, trimmed_label);
+        crate::config::save_preferences_to_disk(&preferences);
+    }
+
+    let app_for_refresh = app.clone();
+    let (output_state, changed) = tauri::async_runtime::spawn_blocking(move || {
+        refresh_audio_output_state(&app_for_refresh)
+    })
+    .await
+    .map_err(|error| format!("rename_audio_output_device refresh failed: {}", error))??;
+    if changed {
+        notify_audio_output_state_changed(&app, &output_state);
+    }
     Ok(())
 }
 
@@ -157,16 +276,19 @@ pub async fn rename_audio_output_device(
 pub async fn set_audio_output_device_state(
     id: String,
     device_state: AudioOutputDeviceState,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<crate::core::audio_output::AudioOutputState, String> {
     let id_for_validation = id.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        crate::core::audio_output::ensure_device_exists(&id_for_validation)
+        run_audio_output_operation(|| {
+            crate::core::audio_output::ensure_device_exists(&id_for_validation)
+        })
     })
     .await
     .map_err(|error| format!("set_audio_output_device_state task join failed: {}", error))??;
 
-    let saved_preferences = {
+    {
         let mut preferences = state
             .preferences
             .lock()
@@ -177,28 +299,23 @@ pub async fn set_audio_output_device_state(
             device_state,
         );
         crate::config::save_preferences_to_disk(&preferences);
-        preferences
-            .audio_output_configs
-            .iter()
-            .map(|config| (config.id.clone(), config.label.clone(), config.state))
-            .collect::<Vec<_>>()
-    };
+    }
 
-    let output_state =
-        tauri::async_runtime::spawn_blocking(crate::core::audio_output::get_audio_output_state)
-            .await
-            .map_err(|error| {
-                format!("set_audio_output_device_state refresh failed: {}", error)
-            })??;
+    let app_for_refresh = app.clone();
+    let (output_state, changed) = tauri::async_runtime::spawn_blocking(move || {
+        refresh_audio_output_state(&app_for_refresh)
+    })
+    .await
+    .map_err(|error| format!("set_audio_output_device_state refresh failed: {}", error))??;
     log::info!(
         "audio output state updated: id={} state={:?}",
         id,
         device_state
     );
-    Ok(crate::core::audio_output::apply_preferences(
-        output_state,
-        &saved_preferences,
-    ))
+    if changed {
+        notify_audio_output_state_changed(&app, &output_state);
+    }
+    Ok(output_state)
 }
 
 /// Returns the current system volume (0-100) via the in-process platform layer.

@@ -165,11 +165,14 @@ function App() {
       .then(setVersion)
       .catch(() => {});
 
-    // Listen for backend events (from keyboard shortcuts)
+    // Listen for backend events from shortcuts, tray actions, and refresh workers.
     const unlisten1 = listen('monitors-changed', () => fetchMonitors());
     const unlisten2 = listen('dark-mode-changed', () => fetchDarkMode());
     const unlisten3 = listen('volume-changed', () => fetchVolume());
-    const unlisten4 = listen('show-about', () => {
+    const unlisten4 = listen<AudioOutputState>('audio-output-changed', (event) => {
+      setAudioOutputState(event.payload);
+    });
+    const unlisten5 = listen('show-about', () => {
       setAboutOpen(true);
       setSettingsOpen(false);
     });
@@ -211,14 +214,14 @@ function App() {
       unlisten2.then((f) => f());
       unlisten3.then((f) => f());
       unlisten4.then((f) => f());
+      unlisten5.then((f) => f());
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('blur', handleBlur);
     };
   }, [fetchAllState, fetchMonitors, fetchDarkMode, fetchVolume, fetchPreferences, fetchKeepAwake]);
 
-  // Audio endpoints can hot-plug independently from monitor/volume state. Poll
-  // only while the main panel is visible; retain the last successful snapshot
-  // when a platform probe fails.
+  // The backend owns hot-plug probing. Poll its shared snapshot while the main
+  // panel is visible as a fallback, retaining the last successful state.
   useEffect(() => {
     if (!mainViewVisible) return;
 

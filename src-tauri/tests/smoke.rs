@@ -19,6 +19,7 @@ fn app_state_struct_is_public() {
         keep_awake: std::sync::Mutex::new(None),
         is_dark_mode: std::sync::Mutex::new(false),
         is_muted: std::sync::Mutex::new(false),
+        audio_output_state: std::sync::Mutex::new(None),
         #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         tiling_state: std::sync::Mutex::new(Default::default()),
         sidecar_cache: display_dj_lib::sidecar_cache::SidecarCache::new(),

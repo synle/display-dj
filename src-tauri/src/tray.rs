@@ -6,6 +6,9 @@ use tauri::{
 
 use crate::config::{CommandValue, KeyBinding};
 
+const AUDIO_OUTPUT_MENU_PREFIX: &str = "audio_output_";
+const AUDIO_OUTPUT_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Run a closure on a background thread (so we don't block whatever called us)
 /// and emit a Tauri event on `app` when it returns.
 fn run_then_emit<R: tauri::Runtime, F>(app: AppHandle<R>, event: &'static str, f: F)
@@ -112,6 +115,56 @@ fn show_popup_window(app: &AppHandle) {
     }
 }
 
+/// Encodes arbitrary platform endpoint IDs into menu-safe hexadecimal IDs.
+fn audio_output_menu_id(device_id: &str) -> String {
+    let encoded = device_id
+        .as_bytes()
+        .iter()
+        .map(|byte| format!("{:02x}", byte))
+        .collect::<String>();
+    format!("{}{}", AUDIO_OUTPUT_MENU_PREFIX, encoded)
+}
+
+/// Decodes one audio-output menu ID back into its exact platform endpoint ID.
+fn parse_audio_output_menu_id(menu_id: &str) -> Option<String> {
+    let encoded = menu_id.strip_prefix(AUDIO_OUTPUT_MENU_PREFIX)?;
+    if encoded.is_empty() || encoded.len() % 2 != 0 {
+        return None;
+    }
+
+    let bytes = (0..encoded.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&encoded[index..index + 2], 16))
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
+    String::from_utf8(bytes).ok()
+}
+
+/// Returns enabled tray choices with the selected endpoint marked.
+fn audio_output_menu_entries(
+    output_state: Option<&crate::core::audio_output::AudioOutputState>,
+) -> Vec<(String, String)> {
+    let Some(output_state) = output_state else {
+        return Vec::new();
+    };
+
+    output_state
+        .devices
+        .iter()
+        .filter(|device| {
+            device.state == crate::core::audio_output::AudioOutputDeviceState::Enabled
+        })
+        .map(|device| {
+            let selected = output_state.selected_device_id.as_deref() == Some(device.id.as_str());
+            let marker = if selected { "● " } else { "   " };
+            (
+                audio_output_menu_id(&device.id),
+                format!("{}{}", marker, device.name),
+            )
+        })
+        .collect()
+}
+
 /// Builds the tray context menu from current preferences.
 /// Called on initial setup and after any action that changes the menu (debug toggle, reset).
 fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
@@ -126,6 +179,23 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let show_window = MenuItemBuilder::with_id("show_window", "Show Window").build(app)?;
     let dark_mode = MenuItemBuilder::with_id("dark_mode", "Dark Mode").build(app)?;
     let light_mode = MenuItemBuilder::with_id("light_mode", "Light Mode").build(app)?;
+    let audio_output_state = app
+        .try_state::<crate::AppState>()
+        .and_then(|state| state.audio_output_state.lock().ok()?.clone());
+    let mut audio_output_submenu = SubmenuBuilder::new(app, "Output Device");
+    let output_entries = audio_output_menu_entries(audio_output_state.as_ref());
+    if output_entries.is_empty() {
+        let empty = MenuItemBuilder::with_id("audio_output_empty", "No output devices")
+            .enabled(false)
+            .build(app)?;
+        audio_output_submenu = audio_output_submenu.item(&empty);
+    } else {
+        for (id, label) in output_entries {
+            let item = MenuItemBuilder::with_id(id, label).build(app)?;
+            audio_output_submenu = audio_output_submenu.item(&item);
+        }
+    }
+    let audio_output_submenu = audio_output_submenu.build()?;
 
     // Build profiles submenu from saved preferences
     let profiles = {
@@ -299,6 +369,8 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
         .separator()
         .items(&[&dark_mode, &light_mode])
         .separator()
+        .item(&audio_output_submenu)
+        .separator()
         .item(&profiles_submenu);
 
     // Tiling + Exposé submenus on macOS + Windows + Linux (X11)
@@ -352,6 +424,28 @@ fn rebuild_tray_menu(app: &AppHandle) {
             let _ = tray.set_menu(Some(menu));
         }
     }
+}
+
+/// Schedules a tray-menu rebuild on the runtime main thread.
+pub(crate) fn schedule_tray_menu_rebuild(app: &AppHandle) {
+    let app = app.clone();
+    if let Err(error) = app.clone().run_on_main_thread(move || rebuild_tray_menu(&app)) {
+        log::warn!("failed to schedule tray menu rebuild: {}", error);
+    }
+}
+
+/// Refreshes the tray's audio-output snapshot every five seconds.
+pub fn start_audio_output_refresh(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        match crate::volume::refresh_audio_output_state(&app) {
+            Ok((output_state, true)) => {
+                crate::volume::notify_audio_output_state_changed(&app, &output_state)
+            }
+            Ok((_, false)) => {}
+            Err(error) => log::debug!("failed to refresh audio output devices: {}", error),
+        }
+        std::thread::sleep(AUDIO_OUTPUT_REFRESH_INTERVAL);
+    });
 }
 
 /// Builds the system tray icon, context menu, and event handlers.
@@ -493,7 +587,16 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 app.exit(0);
             }
             other => {
-                if let Some(layout) = other.strip_prefix("tile_") {
+                if let Some(device_id) = parse_audio_output_menu_id(other) {
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(error) =
+                            crate::volume::select_audio_output_device(device_id, app).await
+                        {
+                            log::warn!("failed to select tray audio output: {}", error);
+                        }
+                    });
+                } else if let Some(layout) = other.strip_prefix("tile_") {
                     let cmd = format!("command/tile/{}", layout);
                     execute_command(app, &cmd);
                 } else if let Some(idx_str) = other.strip_prefix("profile_") {
@@ -1397,5 +1500,60 @@ mod tests {
         });
 
         assert_eq!(dispatch_count, 1);
+    }
+
+    /// Platform endpoint IDs survive the menu-safe encoding without loss.
+    #[test]
+    fn audio_output_menu_id_round_trips_platform_identifier() {
+        let device_id = r#"{0.0.0.00000000}.{speaker-guid}\BuiltIn"#;
+        let menu_id = audio_output_menu_id(device_id);
+
+        assert_eq!(parse_audio_output_menu_id(&menu_id).as_deref(), Some(device_id));
+        assert!(parse_audio_output_menu_id("audio_output_not-hex").is_none());
+    }
+
+    /// Tray choices include only enabled outputs and mark the current endpoint.
+    #[test]
+    fn audio_output_menu_entries_filter_and_mark_devices() {
+        use crate::core::audio_output::{
+            AudioOutputDevice, AudioOutputDeviceState, AudioOutputState,
+        };
+
+        let output_state = AudioOutputState {
+            devices: vec![
+                AudioOutputDevice {
+                    id: "built-in".into(),
+                    name: "MacBook Pro Speakers".into(),
+                    original_name: "MacBook Pro Speakers".into(),
+                    state: AudioOutputDeviceState::Enabled,
+                    is_built_in: true,
+                },
+                AudioOutputDevice {
+                    id: "dock".into(),
+                    name: "Dock".into(),
+                    original_name: "Dock".into(),
+                    state: AudioOutputDeviceState::Enabled,
+                    is_built_in: false,
+                },
+                AudioOutputDevice {
+                    id: "teams".into(),
+                    name: "Microsoft Teams Audio".into(),
+                    original_name: "Microsoft Teams Audio".into(),
+                    state: AudioOutputDeviceState::Hidden,
+                    is_built_in: false,
+                },
+            ],
+            selected_device_id: Some("dock".into()),
+        };
+
+        let entries = audio_output_menu_entries(Some(&output_state));
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].1, "   MacBook Pro Speakers");
+        assert_eq!(entries[1].1, "● Dock");
+        assert_eq!(
+            parse_audio_output_menu_id(&entries[1].0).as_deref(),
+            Some("dock")
+        );
     }
 }

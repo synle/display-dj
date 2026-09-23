@@ -36,7 +36,9 @@ Raising: measure current %, set floor ~10pp below, update both files. Never lowe
 
 `src-tauri/src/volume.rs` exposes `get_audio_output_devices`, `set_audio_output_device`, `set_audio_output_device_state`, and `rename_audio_output_device`. Enumeration and switching run in `spawn_blocking`; saved labels and `enabled` / `disabled` / `hidden` states are overlaid after the OS result. Settings persist in `Preferences.audio_output_configs`, keyed by stable platform ID, while the selected device remains OS-owned. Missing state values from older preference files default to `enabled`.
 
-`App.tsx` keeps output state separate from `fetch_all_state`. It fetches immediately and every 5 seconds only while the visible main panel is active, prevents overlapping probes, and keeps the last successful state on errors. `VolumeControl.tsx` renders a native-case, click-to-edit active name in collapsed and expanded layouts; expanded mode also renders padded radio-button endpoint rows, inline alias editing, and a tri-state selector. Enabled devices sort first with built-in outputs leading, disabled devices follow, and hidden devices appear only after clicking "Show hidden outputs".
+`AppState.audio_output_state` caches the effective output snapshot. A backend refresh thread probes every 5 seconds, emits `audio-output-changed`, and rebuilds the tray menu only when that snapshot changes. `App.tsx` keeps output state separate from `fetch_all_state`; its visible-main-panel poll reads the shared cache as a fallback, prevents overlapping requests, and keeps the last successful state on errors.
+
+`VolumeControl.tsx` renders a native-case, click-to-edit active name in collapsed and expanded layouts; expanded mode also renders padded radio-button endpoint rows, inline alias editing, and a tri-state selector. Enabled devices sort first with built-in outputs leading, disabled devices follow, and hidden devices appear only after clicking "Show hidden outputs". The tray's **Output Device** submenu lists enabled outputs only and marks the selected endpoint with `●`.
 
 ## Platform pitfalls
 
