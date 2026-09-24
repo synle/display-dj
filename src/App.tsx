@@ -26,7 +26,8 @@ function App() {
   const [showContrast, setShowContrast] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [keepAwake, setKeepAwake] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [monitorsExpanded, setMonitorsExpanded] = useState(false);
+  const [speakersExpanded, setSpeakersExpanded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [version, setVersion] = useState('');
@@ -506,7 +507,7 @@ function App() {
       ) : (
         <div className='app-content'>
           {visibleMonitors.length > 0 &&
-            (!expanded ? (
+            (!monitorsExpanded ? (
               <AllMonitorsControl
                 brightness={allBrightness}
                 onBrightnessChange={handleAllBrightness}
@@ -515,7 +516,7 @@ function App() {
                 showContrast={showContrast}
                 monitorCount={visibleMonitors.length}
                 minBrightness={minBrightness}
-                onExpand={() => setExpanded(true)}
+                onExpand={() => setMonitorsExpanded(true)}
               />
             ) : (
               <div className='monitors-list'>
@@ -523,7 +524,7 @@ function App() {
                   <span className='section-label'>All Monitors ({visibleMonitors.length})</span>
                   <button
                     className='section-toggle'
-                    onClick={() => setExpanded(false)}
+                    onClick={() => setMonitorsExpanded(false)}
                     title='Show all monitors control'>
                     <span className='chevron expanded'>&#9662;</span>
                   </button>
@@ -550,7 +551,8 @@ function App() {
             value={volume}
             onChange={handleVolume}
             outputState={audioOutputState}
-            expanded={expanded}
+            expanded={speakersExpanded}
+            onToggleExpanded={() => setSpeakersExpanded((current) => !current)}
             updatingDeviceId={updatingAudioOutputId}
             onSelectOutput={handleAudioOutputSelect}
             onRenameOutput={handleAudioOutputRename}

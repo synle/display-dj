@@ -302,21 +302,18 @@ describe('App smoke test', () => {
       expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
       expect(screen.getByText(/Desk Speakers/)).toBeInTheDocument();
     });
-    await user.click(screen.getByTitle('Show individual monitors'));
+    await user.click(screen.getByTitle('Show output speakers'));
     await user.click(screen.getByRole('radio', { name: 'Select Headphones' }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('set_audio_output_device', {
         id: 'headphones',
       });
-      expect(screen.getByTitle('Rename active output USB Headphones')).toHaveTextContent(
-        'Headphones',
-      );
       expect(screen.getByRole('radio', { name: 'Select Headphones' })).toBeChecked();
       expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).not.toBeChecked();
     });
 
-    await user.click(screen.getByTitle('Rename active output USB Headphones'));
+    await user.click(screen.getByTitle('Rename USB Headphones'));
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, 'Studio Headphones{Enter}');
@@ -326,9 +323,7 @@ describe('App smoke test', () => {
         id: 'headphones',
         label: 'Studio Headphones',
       });
-      expect(screen.getByTitle('Rename active output USB Headphones')).toHaveTextContent(
-        'Studio Headphones',
-      );
+      expect(screen.getByTitle('Rename USB Headphones')).toHaveTextContent('Studio Headphones');
     });
   });
 
@@ -336,7 +331,7 @@ describe('App smoke test', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(await screen.findByTitle('Show individual monitors'));
+    await user.click(await screen.findByTitle('Show output speakers'));
     await user.selectOptions(
       screen.getByRole('combobox', { name: 'State for Headphones' }),
       'disabled',
@@ -431,14 +426,27 @@ describe('App smoke test', () => {
       expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
     });
 
-    // Expand to show individual monitors and output speakers.
+    // Expand output speakers; monitor controls stay collapsed.
+    await user.click(screen.getByTitle('Show output speakers'));
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeChecked();
+    });
+    expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
+    expect(screen.queryByText('Built-in Display')).not.toBeInTheDocument();
+
+    // Expand monitor controls; output speakers stay expanded.
     await user.click(screen.getByTitle('Show individual monitors'));
     await waitFor(() => {
       expect(screen.getByText('Built-in Display')).toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeChecked();
     });
+    expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeChecked();
 
-    // Collapse back.
+    // Collapse output speakers; monitor controls stay expanded.
+    await user.click(screen.getByTitle('Hide output speakers'));
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.getByText('Built-in Display')).toBeInTheDocument();
+
+    // Collapse monitor controls.
     await user.click(screen.getByTitle('Show all monitors control'));
     await waitFor(() => {
       expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();

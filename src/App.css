@@ -376,10 +376,6 @@ body,
   white-space: nowrap;
 }
 
-.audio-output-active-name-input {
-  width: 100%;
-}
-
 .audio-output-list {
   display: flex;
   flex-direction: column;

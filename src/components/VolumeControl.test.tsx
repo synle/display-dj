@@ -31,6 +31,7 @@ function renderVolumeControl(overrides: Partial<ComponentProps<typeof VolumeCont
     onChange: vi.fn(),
     outputState,
     expanded: false,
+    onToggleExpanded: vi.fn(),
     updatingDeviceId: null,
     onSelectOutput: vi.fn(),
     onRenameOutput: vi.fn(),
@@ -77,8 +78,20 @@ describe('VolumeControl', () => {
     renderVolumeControl();
 
     expect(screen.getByText('All Speakers (2) - Desk Speakers')).toHaveClass('section-label');
+    expect(screen.getByTitle('Show output speakers')).toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Rename MacBook Pro Speakers')).not.toBeInTheDocument();
+  });
+
+  /** Speaker expansion uses its own section toggle callback. */
+  it('requests speaker expansion from its own toggle', async () => {
+    const user = userEvent.setup();
+    const onToggleExpanded = vi.fn();
+    renderVolumeControl({ onToggleExpanded });
+
+    await user.click(screen.getByTitle('Show output speakers'));
+
+    expect(onToggleExpanded).toHaveBeenCalledOnce();
   });
 
   it('keeps the collapsed heading readonly; renames happen in expanded mode', async () => {
@@ -95,21 +108,22 @@ describe('VolumeControl', () => {
     renderVolumeControl({ expanded: true });
 
     expect(screen.getByText('All Speakers (2)')).toHaveClass('section-label');
-    expect(screen.getByTitle('Rename active output MacBook Pro Speakers')).toHaveTextContent(
-      'Desk Speakers',
-    );
+    expect(screen.getByTitle('Hide output speakers')).toBeInTheDocument();
+    expect(
+      screen.queryByTitle('Rename active output MacBook Pro Speakers'),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Select Headphones' })).not.toBeChecked();
     expect(screen.getByTitle('Rename MacBook Pro Speakers')).toBeInTheDocument();
     expect(screen.getByTitle('Rename USB Headphones')).toBeInTheDocument();
   });
 
-  it('renames the active output from its expanded heading', async () => {
+  it('renames the selected output from its list row', async () => {
     const user = userEvent.setup();
     const onRenameOutput = vi.fn();
     renderVolumeControl({ expanded: true, onRenameOutput });
 
-    await user.click(screen.getByTitle('Rename active output MacBook Pro Speakers'));
+    await user.click(screen.getByTitle('Rename MacBook Pro Speakers'));
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, 'Conference Speakers{Enter}');
