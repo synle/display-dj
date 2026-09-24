@@ -1,6 +1,6 @@
 {
   "name": "display-dj",
-  "version": "0.0.1",
+  "version": "9.14.0",
   "type": "module",
   "description": "Cross-platform desktop app for monitor brightness, contrast, and dark mode control",
   "scripts": {
@@ -12,6 +12,7 @@
     "test:coverage": "vitest run --coverage",
     "tauri": "tauri",
     "format": "oxfmt --write .",
+    "postformat": "node scripts/sync-version.mjs",
     "format:check": "oxfmt --check .",
     "lint": "oxlint . --ignore-pattern=src/binaries --ignore-pattern=src-tauri/vendor"
   },

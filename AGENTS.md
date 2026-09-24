@@ -56,12 +56,15 @@ Run the `*_x64-setup.exe` installer — it handles everything.
 
 ## Versioning
 
-The **single source of truth** is `src-tauri/tauri.conf.json` → `"version"`. This drives:
+The **single source of truth** is root `package.json` → `"version"`. Bump it with
+`npm version <version> --no-git-tag-version`, then run `npm run format`. The `postformat` hook
+runs `scripts/sync-version.mjs`, which mirrors the number into `src-tauri/tauri.conf.json`.
 
-1. **UI header**: `build.rs` reads `tauri.conf.json` and sets compile-time env vars `APP_VERSION` and `BUILD_DATE` (ISO 8601, computed via `SystemTime` + civil date math). Dev/local builds append `[beta - <short_sha>]`; release builds (CI with `TAURI_RELEASE=true`) show clean version. Tauri commands `get_app_version()` and `get_about_info()` (in `config.rs`) expose this; `Header.tsx` renders it.
-2. **Installer/bundle metadata**: Tauri uses this version for `.dmg`, `.exe`, `.deb`, `.AppImage` bundles.
+`build.rs`, Tauri bundle metadata, and `release-official.yml` continue reading the synchronized
+`tauri.conf.json` value, so the UI header, `.dmg`, `.exe`, `.deb`, `.AppImage`, and release tag
+stay aligned without maintaining the number manually in two files.
 
-Other version fields (`package.json`, `Cargo.toml`) are pinned at `0.0.0` and unused — the npm package and crate are not published. Release versioning is driven by git tags (`v*` triggers `release-official.yml`).
+`Cargo.toml` remains pinned at `0.0.0` because the crate is not published. Release versioning is driven by git tags (`v*` triggers `release-official.yml`).
 
 `build.rs` calls `tauri_build::try_build()` with `WindowsAttributes` plus the `expose_app_version()` helper that emits `APP_VERSION` and `BUILD_DATE` env vars. The custom `windows-app-manifest.xml` keeps Windows at `asInvoker` integrity and must retain the Common Controls v6 dependency.
 
