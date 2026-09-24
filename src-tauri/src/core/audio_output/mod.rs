@@ -78,15 +78,30 @@ pub fn set_audio_output_device(device_id: &str) -> Result<AudioOutputState, Stri
         return Err("audio output device id cannot be empty".into());
     }
 
-    log::info!("core::set_audio_output_device: trying to set device={}, mode={}", device_id, cfg!(target_os));
+    log::info!(
+        "core::set_audio_output_device: trying device_id={:?} os={}",
+        device_id,
+        std::env::consts::OS
+    );
     let current = get_audio_output_state()?;
-    log::info!("core::set_audio_output_device: pre-check enumeration found {} devices", current.devices.len());
-    if let Some(dev) = resolve_device(&current.devices, device_id) {
-        log::info!("core::set_audio_output_device: resolved '{}' → name={}, state={}", device_id, dev.name, dev.state);
-    } else {
-        log::warn!("core::set_audio_output_device: device {} NOT FOUND in enumeration", device_id);
-    }
-    let device = resolve_device(&current.devices, device_id)?;
+    log::info!(
+        "core::set_audio_output_device: pre-check enumeration found {} devices",
+        current.devices.len()
+    );
+    let device = resolve_device(&current.devices, device_id).map_err(|error| {
+        log::warn!(
+            "core::set_audio_output_device: device_id={:?} not found: {}",
+            device_id,
+            error
+        );
+        error
+    })?;
+    log::info!(
+        "core::set_audio_output_device: resolved device_id={:?} name={:?} state={:?}",
+        device_id,
+        device.name,
+        device.state
+    );
     if device.state != AudioOutputDeviceState::Enabled {
         return Err(format!("audio output device is not enabled: {}", device_id));
     }
@@ -95,20 +110,31 @@ pub fn set_audio_output_device(device_id: &str) -> Result<AudioOutputState, Stri
     macos::set_audio_output_device(device_id)?;
     #[cfg(target_os = "windows")]
     {
-        log::info!("core::set_audio_output_device: dispatching to windows::set_audio_output_device(%)");
-        let result = windows::set_audio_output_device(device_id);
-        if result.is_ok() {
-            log::info!("core::set_audio_output_device: windows::set_audio_output_device succeeded",);
-        } else {
-            log::error!("core::set_audio_output_device: windows::set_audio_output_device FAILED: {}", result.as_ref().unwrap_err());
-        }
-        result?;
+        log::info!(
+            "core::set_audio_output_device: dispatching Windows selection device_id={:?}",
+            device_id
+        );
+        windows::set_audio_output_device(device_id).map_err(|error| {
+            log::error!(
+                "core::set_audio_output_device: Windows selection failed device_id={:?}: {}",
+                device_id,
+                error
+            );
+            error
+        })?;
+        log::info!(
+            "core::set_audio_output_device: Windows selection succeeded device_id={:?}",
+            device_id
+        );
     }
     #[cfg(target_os = "linux")]
     linux::set_audio_output_device(device_id)?;
 
     let post_state = get_audio_output_state()?;
-    log::info!("core::set_audio_output_device: post-check selected_device={:?}", post_state.selected_device_id);
+    log::info!(
+        "core::set_audio_output_device: post-check selected_device={:?}",
+        post_state.selected_device_id
+    );
     Ok(post_state)
 }
 

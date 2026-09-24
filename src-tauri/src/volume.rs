@@ -205,6 +205,16 @@ pub(crate) async fn select_audio_output_device(
     app: tauri::AppHandle,
 ) -> Result<crate::core::audio_output::AudioOutputState, String> {
     log::info!("select_audio_output_device: entry target_id={}", id);
+    if let Some(cached) = app
+        .try_state::<crate::AppState>()
+        .and_then(|state| state.audio_output_state.lock().ok()?.clone())
+    {
+        log::info!(
+            "{}",
+            audio_output_state_summary("selection before", &cached)
+        );
+    }
+
     let preferences = app
         .try_state::<crate::AppState>()
         .ok_or_else(|| "app state unavailable before audio output selection".to_string())
@@ -224,7 +234,11 @@ pub(crate) async fn select_audio_output_device(
     if let Some((_, _, device_state)) = preferences.iter().find(|(device_id, _, _)| device_id == &id)
     {
         if *device_state != AudioOutputDeviceState::Enabled {
-            log::warn!("select_audio_output_device: device is {} for target_id={}", device_state, id);
+            log::warn!(
+                "select_audio_output_device: device is {:?} for target_id={}",
+                device_state,
+                id
+            );
             return Err(format!("audio output device is not enabled: {}", id));
         }
     }
