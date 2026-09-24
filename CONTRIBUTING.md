@@ -72,7 +72,7 @@ Events (`monitors-changed`, `dark-mode-changed`, `volume-changed`, `audio-output
 
 ### Frontend state
 
-`App.tsx` holds all UI state (monitors, darkMode, volume, audio outputs, profiles, independent monitor/speaker expansion); no state library. On mount it fetches via `fetch_all_state` + `get_preferences`; event listeners and a `visibilitychange` listener trigger refetches. A backend 5-second audio refresh owns OS enumeration and updates the tray submenu; the main-view poll reads that shared cache as a fallback. The speaker section has its own chevron; expanded mode lists every endpoint, including the checked selected output, with padded output radio targets, per-row aliases, and an enabled/disabled/hidden selector with hidden-output recovery. `SettingsPanel.tsx` auto-saves with a 300ms debounce.
+`App.tsx` holds all UI state (monitors, darkMode, volume, audio outputs, profiles, independent monitor/speaker expansion); no state library. On mount it fetches via `fetch_all_state` + `get_preferences`; event listeners and a `visibilitychange` listener trigger refetches. A backend 5-second audio refresh owns OS enumeration and updates the tray submenu; the main-view poll reads that shared cache as a fallback. The speaker section has its own chevron; expanded mode lists every endpoint, including the checked selected output, with padded output radio targets, stable selection-independent ordering, per-row aliases, and an enabled/disabled/hidden selector with hidden-output recovery. `SettingsPanel.tsx` auto-saves with a 300ms debounce.
 
 ## Configuration
 

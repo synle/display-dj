@@ -156,14 +156,10 @@ fn resolve_device<'a>(
 
 /// Keeps polling snapshots stable across platform enumeration order changes.
 fn sort_audio_output_state(mut state: AudioOutputState) -> AudioOutputState {
-    let selected_device_id = state.selected_device_id.as_deref();
     state.devices.sort_by(|left, right| {
-        let left_selected = Some(left.id.as_str()) == selected_device_id;
-        let right_selected = Some(right.id.as_str()) == selected_device_id;
         left.state
             .cmp(&right.state)
             .then(right.is_built_in.cmp(&left.is_built_in))
-            .then(right_selected.cmp(&left_selected))
             .then(left.name.to_lowercase().cmp(&right.name.to_lowercase()))
             .then(left.id.cmp(&right.id))
     });
@@ -207,7 +203,7 @@ mod tests {
 
     /// Enabled built-in outputs lead disabled and hidden outputs deterministically.
     #[test]
-    fn sorts_by_state_built_in_selected_name_and_stable_id() {
+    fn sorts_by_state_built_in_name_and_stable_id() {
         let mut built_in = device("built-in", "MacBook Pro Speakers");
         built_in.is_built_in = true;
         let mut disabled = device("teams", "Microsoft Teams Audio");
@@ -227,6 +223,38 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["built-in", "dock", "teams", "zoom"]
         );
+    }
+
+    /// Changing the selected output never changes endpoint row order.
+    #[test]
+    fn selection_changes_do_not_reorder_outputs() {
+        let mut built_in = device("a", "Built-in Speakers");
+        built_in.is_built_in = true;
+        let devices = vec![
+            built_in,
+            device("b", "Display B"),
+            device("c", "Display C"),
+            device("d", "Display D"),
+        ];
+
+        let selected_b = sort_audio_output_state(AudioOutputState {
+            devices: devices.clone(),
+            selected_device_id: Some("b".into()),
+        });
+        let selected_c = sort_audio_output_state(AudioOutputState {
+            devices,
+            selected_device_id: Some("c".into()),
+        });
+
+        assert_eq!(
+            selected_b
+                .devices
+                .iter()
+                .map(|device| device.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b", "c", "d"]
+        );
+        assert_eq!(selected_c.devices, selected_b.devices);
     }
 
     /// Selection keys use exact IDs even when human-readable names collide.

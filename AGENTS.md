@@ -59,6 +59,8 @@ Run the `*_x64-setup.exe` installer — it handles everything.
 The **single source of truth** is root `package.json` → `"version"`. Bump it with
 `npm version <version> --no-git-tag-version`, then run `npm run format`. The `postformat` hook
 runs `scripts/sync-version.mjs`, which mirrors the number into `src-tauri/tauri.conf.json`.
+`npm run format` is mandatory before every commit, including Rust-only changes; never commit
+while the versions in `package.json` and `src-tauri/tauri.conf.json` differ.
 
 `build.rs`, Tauri bundle metadata, and `release-official.yml` continue reading the synchronized
 `tauri.conf.json` value, so the UI header, `.dmg`, `.exe`, `.deb`, `.AppImage`, and release tag
@@ -117,12 +119,15 @@ When raising thresholds: measure current %, set floor ~10pp below, update both f
 
 ## Formatting
 
-After modifying frontend code (`src/`), config, or docs, always run `npm run format` (oxfmt) on the repo — `npm run format:check` verifies. Config lives in `.oxfmtrc.json`; generated files (`src-tauri/gen/`) are ignored.
+After any repository change, always run `npm run format` (oxfmt) before committing. Its
+`postformat` hook also synchronizes `package.json` into `src-tauri/tauri.conf.json`, making this
+both the formatting gate and version-consistency gate. Run `npm run format:check` afterward to
+verify formatting. Config lives in `.oxfmtrc.json`; generated files (`src-tauri/gen/`) are ignored.
 
 ## Required Steps for Every Feature Change
 
 1. **Tests**: Frontend → `*.test.tsx`, Rust → `#[cfg(test)]` modules. Mock at the API boundary if hardware/platform/external. Run `npm test` and `cd src-tauri && cargo test` before finishing.
-2. **Formatting**: `npm run format` (oxfmt) after changing `src/`, `*.ts`, `*.tsx`, `*.json`, `*.md`.
+2. **Formatting and version sync**: Always run `npm run format` before finishing, regardless of changed file type; `postformat` must leave `package.json` and `src-tauri/tauri.conf.json` versions identical.
 3. **Documentation**: Update `AGENTS.md`, `DEV.md`, `README.md`, and `CONTRIBUTING.md` for new commands, preferences, UI components, architecture changes.
 4. **Method comments**: `///` for Rust, `/** */` JSDoc for TS/React. Every public function, Tauri command, React component, non-trivial helper, and test must have one.
 
@@ -248,7 +253,7 @@ States are cached on `AppState` (`is_dark_mode`, `is_muted`); `update_tray_icon(
 - A backend refresh thread probes audio outputs every 5 seconds, updates `AppState.audio_output_state`, rebuilds the tray menu only when the snapshot changes, and emits `audio-output-changed` for the popup. `App.tsx` keeps its visible-main-panel poll as a cached fallback, with an in-flight guard and last-successful-state behavior.
 - The tray menu exposes an **Output Device** submenu containing enabled outputs only. The selected endpoint has a `●` marker; disabled and hidden outputs remain manageable from the expanded popup but cannot be selected from the tray.
 - Device IDs must remain stable: CoreAudio UID on macOS, `IMMDevice::GetId` on Windows, and the `pactl` sink name on Linux. The operating system owns the selected default; Display DJ never persists it.
-- User output settings live in `preferences.audioOutputConfigs` as `{ id, label, state }`; missing `state` values default to `enabled`. `originalName` always retains the native OS name, and a metadata entry is removed when both label and state return to defaults. Native names containing `Steam Streaming` are forced hidden. Ordering is enabled first, then disabled, then hidden; built-in outputs lead each group.
+- User output settings live in `preferences.audioOutputConfigs` as `{ id, label, state }`; missing `state` values default to `enabled`. `originalName` always retains the native OS name, and a metadata entry is removed when both label and state return to defaults. Native names containing `Steam Streaming` are forced hidden. Ordering is enabled first, then disabled, then hidden; built-in outputs lead each group, then name and stable ID decide order. Changing selection never reorders rows.
 - macOS excludes CoreAudio devices that are dead or cannot become the default output. `UNSUPPORTED_OUTPUT_DEVICE_UIDS` also always rejects known conference-app loopback endpoints such as Microsoft Teams Audio and ZoomAudioDevice, even if a future driver reports different capability flags.
 - Windows volume get/set/mute uses `IAudioEndpointVolume`, so output switching and the volume slider share the same selected MMDevice without requiring the AudioDeviceCmdlets PowerShell module.
 
