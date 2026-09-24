@@ -78,7 +78,14 @@ pub fn set_audio_output_device(device_id: &str) -> Result<AudioOutputState, Stri
         return Err("audio output device id cannot be empty".into());
     }
 
+    log::info!("core::set_audio_output_device: trying to set device={}, mode={}", device_id, cfg!(target_os));
     let current = get_audio_output_state()?;
+    log::info!("core::set_audio_output_device: pre-check enumeration found {} devices", current.devices.len());
+    if let Some(dev) = resolve_device(&current.devices, device_id) {
+        log::info!("core::set_audio_output_device: resolved '{}' → name={}, state={}", device_id, dev.name, dev.state);
+    } else {
+        log::warn!("core::set_audio_output_device: device {} NOT FOUND in enumeration", device_id);
+    }
     let device = resolve_device(&current.devices, device_id)?;
     if device.state != AudioOutputDeviceState::Enabled {
         return Err(format!("audio output device is not enabled: {}", device_id));
@@ -87,11 +94,22 @@ pub fn set_audio_output_device(device_id: &str) -> Result<AudioOutputState, Stri
     #[cfg(target_os = "macos")]
     macos::set_audio_output_device(device_id)?;
     #[cfg(target_os = "windows")]
-    windows::set_audio_output_device(device_id)?;
+    {
+        log::info!("core::set_audio_output_device: dispatching to windows::set_audio_output_device(%)");
+        let result = windows::set_audio_output_device(device_id);
+        if result.is_ok() {
+            log::info!("core::set_audio_output_device: windows::set_audio_output_device succeeded",);
+        } else {
+            log::error!("core::set_audio_output_device: windows::set_audio_output_device FAILED: {}", result.as_ref().unwrap_err());
+        }
+        result?;
+    }
     #[cfg(target_os = "linux")]
     linux::set_audio_output_device(device_id)?;
 
-    get_audio_output_state()
+    let post_state = get_audio_output_state()?;
+    log::info!("core::set_audio_output_device: post-check selected_device={:?}", post_state.selected_device_id);
+    Ok(post_state)
 }
 
 /// Returns volume and mute state for the selected Windows playback endpoint.
