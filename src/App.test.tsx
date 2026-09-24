@@ -309,9 +309,11 @@ describe('App smoke test', () => {
       expect(mockInvoke).toHaveBeenCalledWith('set_audio_output_device', {
         id: 'headphones',
       });
-      expect(screen.getByText('Headphones')).toBeInTheDocument();
-      expect(screen.queryByRole('radio', { name: 'Select Headphones' })).not.toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeInTheDocument();
+      expect(screen.getByTitle('Rename active output USB Headphones')).toHaveTextContent(
+        'Headphones',
+      );
+      expect(screen.getByRole('radio', { name: 'Select Headphones' })).toBeChecked();
+      expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).not.toBeChecked();
     });
 
     await user.click(screen.getByTitle('Rename active output USB Headphones'));
@@ -324,7 +326,9 @@ describe('App smoke test', () => {
         id: 'headphones',
         label: 'Studio Headphones',
       });
-      expect(screen.getByText('Studio Headphones')).toBeInTheDocument();
+      expect(screen.getByTitle('Rename active output USB Headphones')).toHaveTextContent(
+        'Studio Headphones',
+      );
     });
   });
 
@@ -427,17 +431,19 @@ describe('App smoke test', () => {
       expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
     });
 
-    // Expand to show individual monitors
+    // Expand to show individual monitors and output speakers.
     await user.click(screen.getByTitle('Show individual monitors'));
     await waitFor(() => {
       expect(screen.getByText('Built-in Display')).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeChecked();
     });
 
-    // Collapse back
+    // Collapse back.
     await user.click(screen.getByTitle('Show all monitors control'));
     await waitFor(() => {
       expect(screen.getByText('All Monitors (1)')).toBeInTheDocument();
     });
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
 
     // No console.error calls should have occurred
     expect(errorSpy).not.toHaveBeenCalled();

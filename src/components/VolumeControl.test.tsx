@@ -91,16 +91,16 @@ describe('VolumeControl', () => {
     expect(onRenameOutput).not.toHaveBeenCalled();
   });
 
-  it('shows only non-selected device rows in expanded mode', () => {
+  it('shows every output row including the selected device in expanded mode', () => {
     renderVolumeControl({ expanded: true });
 
     expect(screen.getByText('All Speakers (2)')).toHaveClass('section-label');
     expect(screen.getByTitle('Rename active output MacBook Pro Speakers')).toHaveTextContent(
       'Desk Speakers',
     );
+    expect(screen.getByRole('radio', { name: 'Select Desk Speakers' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Select Headphones' })).not.toBeChecked();
-    expect(screen.queryByRole('radio', { name: 'Select Desk Speakers' })).not.toBeInTheDocument();
-    expect(screen.queryByTitle('Rename MacBook Pro Speakers')).not.toBeInTheDocument();
+    expect(screen.getByTitle('Rename MacBook Pro Speakers')).toBeInTheDocument();
     expect(screen.getByTitle('Rename USB Headphones')).toBeInTheDocument();
   });
 

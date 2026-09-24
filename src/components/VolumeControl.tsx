@@ -44,8 +44,9 @@ export default function VolumeControl({
   const visibleDevices =
     outputState?.devices.filter(
       (device) =>
-        device.id !== outputState.selectedDeviceId &&
-        (showHiddenOutputs || device.state !== 'hidden'),
+        device.id === outputState.selectedDeviceId ||
+        showHiddenOutputs ||
+        device.state !== 'hidden',
     ) ?? [];
 
   /** Enters inline alias editing for one audio output. */
@@ -118,7 +119,7 @@ export default function VolumeControl({
       {expanded && outputState && (
         <div className='audio-output-list'>
           {visibleDevices.length === 0 && hiddenOutputCount === 0 ? (
-            <span className='audio-output-empty'>No other audio outputs found</span>
+            <span className='audio-output-empty'>No audio outputs found</span>
           ) : (
             <>
               {visibleDevices.map((device) => {

@@ -1,6 +1,6 @@
 {
   "name": "display-dj",
-  "version": "9.14.0",
+  "version": "9.15.0",
   "type": "module",
   "description": "Cross-platform desktop app for monitor brightness, contrast, and dark mode control",
   "scripts": {
