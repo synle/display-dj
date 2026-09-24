@@ -765,6 +765,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         value={exposeCols}
                         min={1}
                         max={5}
+                        unit=''
                         onChange={(v) => updateTiling('exposeColumns', v)}
                       />
                     </div>
@@ -774,6 +775,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         value={exposeRows}
                         min={1}
                         max={5}
+                        unit=''
                         onChange={(v) => updateTiling('exposeRows', v)}
                       />
                     </div>

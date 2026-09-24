@@ -545,6 +545,20 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('2 × 3 = 6 windows per screen')).toBeInTheDocument();
   });
 
+  /** Exposé grid dimensions are counts, not percentages. */
+  it('renders expose grid dimensions as plain counts', async () => {
+    setupInvoke({});
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tiling' })).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Tiling' }));
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.queryByText('2%')).not.toBeInTheDocument();
+    expect(screen.queryByText('3%')).not.toBeInTheDocument();
+  });
+
   it('shows accessibility warning when tile snap is on but not trusted', async () => {
     setupInvoke({ accessibilityTrusted: false });
     const user = userEvent.setup();
