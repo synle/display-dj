@@ -130,6 +130,8 @@ Config files are stored in:
 
 The main config file is **`preferences.json`** -- it holds keyboard shortcuts, min brightness, night mode schedule, profiles, and per-monitor metadata (labels, sort order).
 
+To diagnose output switching, open the tray menu and choose **Debug → Enable Logging**, reproduce the device change, then choose **Debug → Open Debug Log**. The log lists detected audio endpoints, the requested and active device IDs, post-switch volume, and on Windows the console/multimedia/communications defaults before and after selection. Background refreshes log only when the endpoint snapshot changes.
+
 ### Default Keyboard Shortcuts
 
 | Keys                    | Action                                                 |

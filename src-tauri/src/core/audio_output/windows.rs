@@ -84,15 +84,81 @@ impl Drop for ComApartment {
     }
 }
 
+/// Returns every Windows default-render role updated during output selection.
+fn default_audio_roles() -> [(&'static str, ERole); 3] {
+    [
+        ("console", eConsole),
+        ("multimedia", eMultimedia),
+        ("communications", eCommunications),
+    ]
+}
+
+/// Reads the stable endpoint ID currently assigned to one default-render role.
+fn default_audio_role_id(
+    enumerator: &IMMDeviceEnumerator,
+    role_name: &str,
+    role: ERole,
+) -> Result<String, String> {
+    let device = unsafe {
+        enumerator
+            .GetDefaultAudioEndpoint(eRender, role)
+            .map_err(|error| {
+                format!(
+                    "read Windows {} default audio output failed: {}",
+                    role_name, error
+                )
+            })?
+    };
+    device_id(&device).map_err(|error| {
+        format!(
+            "read Windows {} default audio output id failed: {}",
+            role_name, error
+        )
+    })
+}
+
+/// Logs role-specific defaults before and after a PolicyConfig selection attempt.
+fn log_default_audio_roles(context: &str, enumerator: &IMMDeviceEnumerator) {
+    for (role_name, role) in default_audio_roles() {
+        match default_audio_role_id(enumerator, role_name, role) {
+            Ok(device_id) => log::info!(
+                "Windows audio output {}: role={} device_id={:?}",
+                context,
+                role_name,
+                device_id
+            ),
+            Err(error) => log::warn!(
+                "Windows audio output {}: role={} error={}",
+                context,
+                role_name,
+                error
+            ),
+        }
+    }
+}
+
+/// Creates a fresh enumerator for diagnostics without affecting selection success.
+fn log_current_default_audio_roles(context: &str) {
+    match create_enumerator() {
+        Ok(enumerator) => log_default_audio_roles(context, &enumerator),
+        Err(error) => log::warn!(
+            "Windows audio output {}: default-role probe unavailable: {}",
+            context,
+            error
+        ),
+    }
+}
+
 /// Enumerates active Windows render endpoints and the current multimedia default.
 pub fn get_audio_output_state() -> Result<AudioOutputState, String> {
     let _apartment = ComApartment::initialize()?;
     let enumerator = create_enumerator()?;
-    let default_id = unsafe {
-        enumerator
-            .GetDefaultAudioEndpoint(eRender, eMultimedia)
-            .ok()
-            .and_then(|device| device_id(&device).ok())
+    let default_id = match default_audio_role_id(&enumerator, "multimedia", eMultimedia) {
+        Ok(device_id) => Some(device_id),
+        Err(error) => {
+            log::warn!("Windows audio output enumeration: {}", error);
+            None
+        }
     };
     let collection = unsafe {
         enumerator
@@ -139,26 +205,41 @@ pub fn get_audio_output_state() -> Result<AudioOutputState, String> {
 /// Changes all Windows default render roles through the private PolicyConfig API.
 pub fn set_audio_output_device(device_id: &str) -> Result<(), String> {
     let _apartment = ComApartment::initialize()?;
+    log::info!(
+        "Windows audio output selection requested: device_id={:?}",
+        device_id
+    );
+    log_current_default_audio_roles("before selection");
+
     let policy: IPolicyConfig = unsafe {
         CoCreateInstance(&CLSID_POLICY_CONFIG_CLIENT, None, CLSCTX_ALL)
             .map_err(|error| format!("create Windows PolicyConfig client failed: {}", error))?
     };
     let wide_id: Vec<u16> = device_id.encode_utf16().chain(Some(0)).collect();
-    let roles = [
-        ("console", eConsole),
-        ("multimedia", eMultimedia),
-        ("communications", eCommunications),
-    ];
     let mut failures = Vec::new();
 
-    for (name, role) in roles {
+    for (role_name, role) in default_audio_roles() {
         let result = unsafe {
             (policy.vtable().set_default_endpoint)(policy.as_raw(), PCWSTR(wide_id.as_ptr()), role)
         };
-        if let Err(error) = result.ok() {
-            failures.push(format!("{}: {}", name, error));
+        match result.ok() {
+            Ok(()) => log::info!(
+                "Windows audio output role update succeeded: role={} requested_device_id={:?}",
+                role_name,
+                device_id
+            ),
+            Err(error) => {
+                log::warn!(
+                    "Windows audio output role update failed: role={} requested_device_id={:?} error={}",
+                    role_name,
+                    device_id,
+                    error
+                );
+                failures.push(format!("{}: {}", role_name, error));
+            }
         }
     }
+    log_current_default_audio_roles("after selection");
 
     if failures.is_empty() {
         Ok(())
@@ -292,8 +373,14 @@ mod tests {
     /// PolicyConfig role labels remain complete for all Windows default roles.
     #[test]
     fn windows_default_roles_are_distinct() {
-        assert_ne!(eConsole, eMultimedia);
-        assert_ne!(eMultimedia, eCommunications);
-        assert_ne!(eConsole, eCommunications);
+        let roles = default_audio_roles();
+
+        assert_eq!(
+            roles.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
+            vec!["console", "multimedia", "communications"]
+        );
+        assert_ne!(roles[0].1, roles[1].1);
+        assert_ne!(roles[1].1, roles[2].1);
+        assert_ne!(roles[0].1, roles[2].1);
     }
 }

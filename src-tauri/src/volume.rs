@@ -1,4 +1,4 @@
-use crate::core::audio_output::AudioOutputDeviceState;
+use crate::core::audio_output::{AudioOutputDeviceState, AudioOutputState};
 use tauri::{Emitter, Manager};
 
 static AUDIO_OUTPUT_PLATFORM_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -33,10 +33,33 @@ fn audio_output_preferences(
         .map_err(|_| "preferences lock poisoned".to_string())
 }
 
+/// Formats one audio-output snapshot for bounded, support-friendly debug logs.
+fn audio_output_state_summary(context: &str, output_state: &AudioOutputState) -> String {
+    let mut lines = vec![format!(
+        "audio output snapshot ({}): selected_device_id={:?} device_count={}",
+        context,
+        output_state.selected_device_id,
+        output_state.devices.len()
+    )];
+    for (index, device) in output_state.devices.iter().enumerate() {
+        lines.push(format!(
+            "  [{}] id={:?} name={:?} original_name={:?} state={:?} built_in={} selected={}",
+            index,
+            device.id,
+            device.name,
+            device.original_name,
+            device.state,
+            device.is_built_in,
+            output_state.selected_device_id.as_deref() == Some(device.id.as_str())
+        ));
+    }
+    lines.join("\n")
+}
+
 /// Loads a platform snapshot and overlays persisted labels and states.
 fn load_audio_output_state_unlocked(
     app: &tauri::AppHandle,
-) -> Result<crate::core::audio_output::AudioOutputState, String> {
+) -> Result<AudioOutputState, String> {
     let state = app
         .try_state::<crate::AppState>()
         .ok_or_else(|| "app state unavailable before audio output refresh".to_string())?;
@@ -51,7 +74,7 @@ fn load_audio_output_state_unlocked(
 /// Replaces the shared audio-output snapshot and reports whether it changed.
 pub(crate) fn cache_audio_output_state(
     app: &tauri::AppHandle,
-    output_state: &crate::core::audio_output::AudioOutputState,
+    output_state: &AudioOutputState,
 ) -> Result<bool, String> {
     let state = app
         .try_state::<crate::AppState>()
@@ -70,17 +93,23 @@ pub(crate) fn cache_audio_output_state(
 /// Refreshes and commits one snapshot while holding the platform-operation gate.
 pub(crate) fn refresh_audio_output_state(
     app: &tauri::AppHandle,
-) -> Result<(crate::core::audio_output::AudioOutputState, bool), String> {
+) -> Result<(AudioOutputState, bool), String> {
     let _guard = lock_audio_output_platform()?;
     let output_state = load_audio_output_state_unlocked(app)?;
     let changed = cache_audio_output_state(app, &output_state)?;
+    if changed {
+        log::info!(
+            "{}",
+            audio_output_state_summary("refresh changed", &output_state)
+        );
+    }
     Ok((output_state, changed))
 }
 
 /// Updates tray and popup consumers after an audio-output snapshot changes.
 pub(crate) fn notify_audio_output_state_changed(
     app: &tauri::AppHandle,
-    output_state: &crate::core::audio_output::AudioOutputState,
+    output_state: &AudioOutputState,
 ) {
     let snapshot_is_current = app
         .try_state::<crate::AppState>()
@@ -150,7 +179,7 @@ fn update_audio_output_state(
 #[tauri::command]
 pub async fn get_audio_output_devices(
     app: tauri::AppHandle,
-) -> Result<crate::core::audio_output::AudioOutputState, String> {
+) -> Result<AudioOutputState, String> {
     if let Some(cached) = app
         .try_state::<crate::AppState>()
         .and_then(|state| state.audio_output_state.lock().ok()?.clone())
@@ -204,7 +233,15 @@ pub(crate) async fn select_audio_output_device(
     let app_for_switch = app.clone();
     let (output_state, output_state_changed) = tauri::async_runtime::spawn_blocking(move || {
         let _guard = lock_audio_output_platform()?;
-        let output_state = crate::core::audio_output::set_audio_output_device(&id_for_switch)?;
+        let output_state =
+            crate::core::audio_output::set_audio_output_device(&id_for_switch).map_err(|error| {
+                log::error!(
+                    "audio output selection failed: requested_id={:?} error={}",
+                    id_for_switch,
+                    error
+                );
+                error
+            })?;
         let output_state =
             crate::core::audio_output::apply_preferences(output_state, &preferences);
         let changed = cache_audio_output_state(&app_for_switch, &output_state)?;
@@ -212,6 +249,25 @@ pub(crate) async fn select_audio_output_device(
     })
     .await
     .map_err(|error| format!("set_audio_output_device task join failed: {}", error))??;
+
+    log::info!(
+        "{}",
+        audio_output_state_summary("selection after", &output_state)
+    );
+    match output_state.selected_device_id.as_deref() {
+        Some(selected_id) if selected_id == id => {
+            log::info!("audio output selection confirmed: id={:?}", id)
+        }
+        Some(selected_id) => log::warn!(
+            "audio output selection mismatch: requested_id={:?} active_id={:?}",
+            id,
+            selected_id
+        ),
+        None => log::warn!(
+            "audio output selection mismatch: requested_id={:?} active_id=<none>",
+            id
+        ),
+    }
 
     let volume_info =
         tauri::async_runtime::spawn_blocking(crate::core::volume::get_volume)
@@ -225,12 +281,22 @@ pub(crate) async fn select_audio_output_device(
         }
     }
     if let Some(info) = volume_info {
+        log::info!(
+            "audio output post-selection volume: requested_id={:?} volume={} muted={}",
+            id,
+            info.volume,
+            info.muted
+        );
         crate::tray_icon::set_muted_state(&app, info.muted || info.volume == 0);
         if let Err(error) = app.emit("volume-changed", info.volume) {
             log::warn!("failed to emit volume-changed after output selection: {}", error);
         }
+    } else {
+        log::warn!(
+            "audio output post-selection volume unavailable: requested_id={:?}",
+            id
+        );
     }
-    log::info!("audio output selected: id={}", id);
     if output_state_changed {
         notify_audio_output_state_changed(&app, &output_state);
     }
@@ -242,7 +308,7 @@ pub(crate) async fn select_audio_output_device(
 pub async fn set_audio_output_device(
     id: String,
     app: tauri::AppHandle,
-) -> Result<crate::core::audio_output::AudioOutputState, String> {
+) -> Result<AudioOutputState, String> {
     select_audio_output_device(id, app).await
 }
 
@@ -292,7 +358,7 @@ pub async fn set_audio_output_device_state(
     device_state: AudioOutputDeviceState,
     app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
-) -> Result<crate::core::audio_output::AudioOutputState, String> {
+) -> Result<AudioOutputState, String> {
     let id_for_validation = id.clone();
     tauri::async_runtime::spawn_blocking(move || {
         run_audio_output_operation(|| {
@@ -404,6 +470,35 @@ pub async fn set_volume(value: u32, app: tauri::AppHandle) -> Result<(), String>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Audio-output diagnostics list each endpoint and identify the active one.
+    #[test]
+    fn audio_output_state_summary_lists_devices_and_selection() {
+        let output_state = AudioOutputState {
+            devices: vec![
+                crate::core::audio_output::AudioOutputDevice {
+                    id: "speaker-a".into(),
+                    name: "Desk".into(),
+                    original_name: "Speakers".into(),
+                    state: AudioOutputDeviceState::Enabled,
+                    is_built_in: true,
+                },
+                crate::core::audio_output::AudioOutputDevice {
+                    id: "speaker-b".into(),
+                    name: "Monitor".into(),
+                    original_name: "HDMI".into(),
+                    state: AudioOutputDeviceState::Disabled,
+                    is_built_in: false,
+                },
+            ],
+            selected_device_id: Some("speaker-b".into()),
+        };
+
+        assert_eq!(
+            audio_output_state_summary("test", &output_state),
+            "audio output snapshot (test): selected_device_id=Some(\"speaker-b\") device_count=2\n  [0] id=\"speaker-a\" name=\"Desk\" original_name=\"Speakers\" state=Enabled built_in=true selected=false\n  [1] id=\"speaker-b\" name=\"Monitor\" original_name=\"HDMI\" state=Disabled built_in=false selected=true"
+        );
+    }
 
     /// Saving an audio-output alias replaces its prior value and sorts stable IDs.
     #[test]

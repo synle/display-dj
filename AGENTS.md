@@ -256,6 +256,7 @@ States are cached on `AppState` (`is_dark_mode`, `is_muted`); `update_tray_icon(
 - User output settings live in `preferences.audioOutputConfigs` as `{ id, label, state }`; missing `state` values default to `enabled`. `originalName` always retains the native OS name, and a metadata entry is removed when both label and state return to defaults. Native names containing `Steam Streaming` are forced hidden. Ordering is enabled first, then disabled, then hidden; built-in outputs lead each group, then name and stable ID decide order. Changing selection never reorders rows.
 - macOS excludes CoreAudio devices that are dead or cannot become the default output. `UNSUPPORTED_OUTPUT_DEVICE_UIDS` also always rejects known conference-app loopback endpoints such as Microsoft Teams Audio and ZoomAudioDevice, even if a future driver reports different capability flags.
 - Windows volume get/set/mute uses `IAudioEndpointVolume`, so output switching and the volume slider share the same selected MMDevice without requiring the AudioDeviceCmdlets PowerShell module.
+- With tray **Debug → Enable Logging** active, audio diagnostics record initial and changed endpoint snapshots, every listed device, requested and confirmed active IDs, post-selection volume, and Windows console/multimedia/communications defaults before and after each `IPolicyConfig` call. Unchanged 5-second refreshes stay quiet.
 
 ## Settings & About
 
