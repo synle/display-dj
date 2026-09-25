@@ -389,6 +389,9 @@ pub struct AudioOutputMetadata {
     /// Display DJ availability state. Older preferences default to enabled.
     #[serde(default)]
     pub state: crate::core::audio_output::AudioOutputDeviceState,
+    /// Optional user-defined position in the speaker list.
+    #[serde(default)]
+    pub sort_order: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -1306,6 +1309,7 @@ mod tests {
             id: "device-1".into(),
             label: "Desk Speakers".into(),
             state: crate::core::audio_output::AudioOutputDeviceState::Disabled,
+            sort_order: Some(1),
         });
 
         let json = serde_json::to_string(&prefs).unwrap();

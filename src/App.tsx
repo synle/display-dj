@@ -12,7 +12,7 @@ import KeepAwakeToggle from './components/KeepAwakeToggle';
 import SettingsPanel from './components/SettingsPanel';
 import AboutPanel from './components/AboutPanel';
 import AccessibilityGate from './components/AccessibilityGate';
-import { AudioOutputDeviceState, AudioOutputState, Monitor, Preferences, Profile } from './types';
+import { AudioOutputState, Monitor, Preferences, Profile } from './types';
 
 const ABSOLUTE_MIN_BRIGHTNESS = 5;
 
@@ -425,22 +425,31 @@ function App() {
     }
   };
 
-  /** Persists one audio output's enabled, disabled, or hidden state. */
-  const handleAudioOutputState = async (id: string, deviceState: AudioOutputDeviceState) => {
-    const previousState = audioOutputState;
+  /** Moves one speaker by one row and persists the complete device order. */
+  const handleAudioOutputMove = async (id: string, direction: 'up' | 'down') => {
+    if (!audioOutputState) return;
     audioOutputStateVersion.current += 1;
-    setUpdatingAudioOutputId(id);
+    const visibleDevices = audioOutputState.devices.filter((device) => device.state !== 'hidden');
+    const visibleIndex = visibleDevices.findIndex((device) => device.id === id);
+    const targetVisibleIndex = direction === 'up' ? visibleIndex - 1 : visibleIndex + 1;
+    if (visibleIndex < 0 || targetVisibleIndex < 0 || targetVisibleIndex >= visibleDevices.length)
+      return;
+    const index = audioOutputState.devices.findIndex((device) => device.id === id);
+    const swapIndex = audioOutputState.devices.findIndex(
+      (device) => device.id === visibleDevices[targetVisibleIndex].id,
+    );
+    const devices = [...audioOutputState.devices];
+    [devices[index], devices[swapIndex]] = [devices[swapIndex], devices[index]];
+    const previousState = audioOutputState;
+    setAudioOutputState({ ...audioOutputState, devices });
     try {
-      const outputState = await invoke<AudioOutputState>('set_audio_output_device_state', {
-        id,
-        deviceState,
+      const outputState = await invoke<AudioOutputState>('save_audio_output_order', {
+        orderedIds: devices.map((device) => device.id),
       });
       setAudioOutputState(outputState);
     } catch (e) {
       setAudioOutputState(previousState);
-      console.error('Failed to update audio output device state:', e);
-    } finally {
-      setUpdatingAudioOutputId(null);
+      console.error('Failed to reorder audio output devices:', e);
     }
   };
 
@@ -556,7 +565,7 @@ function App() {
             updatingDeviceId={updatingAudioOutputId}
             onSelectOutput={handleAudioOutputSelect}
             onRenameOutput={handleAudioOutputRename}
-            onSetOutputState={handleAudioOutputState}
+            onMoveOutput={handleAudioOutputMove}
           />
           <DarkModeToggle isDarkMode={darkMode} onChange={handleDarkMode} />
           <ProfileButtons profiles={profiles} onActivate={handleProfile} />

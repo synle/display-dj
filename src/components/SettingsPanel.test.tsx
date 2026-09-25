@@ -27,6 +27,7 @@ function buildPrefs(overrides: Record<string, unknown> = {}) {
     debugLogging: false,
     launchAtLogin: false,
     monitorConfigs: [],
+    audioOutputConfigs: [],
     tiling: {
       enabled: true,
       halfRatio: 50,
@@ -87,6 +88,69 @@ function setupInvoke(opts: {
       return Promise.resolve(opts.windowsElevated ?? null);
     }
     if (cmd === 'save_preferences') return Promise.resolve(undefined);
+    if (cmd === 'get_audio_output_devices') {
+      return Promise.resolve({
+        devices: [
+          {
+            id: 'built-in',
+            name: 'MacBook Pro Speakers',
+            originalName: 'MacBook Pro Speakers',
+            state: 'enabled',
+            isBuiltIn: true,
+          },
+          {
+            id: 'dock',
+            name: 'TYPEC',
+            originalName: 'TYPEC',
+            state: 'enabled',
+            isBuiltIn: false,
+          },
+        ],
+        selectedDeviceId: 'built-in',
+      });
+    }
+    if (cmd === 'set_audio_output_device_state') {
+      return Promise.resolve({
+        devices: [
+          {
+            id: 'built-in',
+            name: 'MacBook Pro Speakers',
+            originalName: 'MacBook Pro Speakers',
+            state: 'enabled',
+            isBuiltIn: true,
+          },
+          {
+            id: 'dock',
+            name: 'TYPEC',
+            originalName: 'TYPEC',
+            state: 'disabled',
+            isBuiltIn: false,
+          },
+        ],
+        selectedDeviceId: 'built-in',
+      });
+    }
+    if (cmd === 'save_audio_output_order') {
+      return Promise.resolve({
+        devices: [
+          {
+            id: 'dock',
+            name: 'TYPEC',
+            originalName: 'TYPEC',
+            state: 'enabled',
+            isBuiltIn: false,
+          },
+          {
+            id: 'built-in',
+            name: 'MacBook Pro Speakers',
+            originalName: 'MacBook Pro Speakers',
+            state: 'enabled',
+            isBuiltIn: true,
+          },
+        ],
+        selectedDeviceId: 'built-in',
+      });
+    }
     if (cmd === 'open_accessibility_settings') return Promise.resolve(undefined);
     return Promise.resolve(undefined);
   });
@@ -294,6 +358,29 @@ describe('SettingsPanel', () => {
         }),
       }),
     );
+  });
+
+  it('manages speaker state and order above Night Mode Schedule', async () => {
+    setupInvoke({});
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+
+    const speakersLabel = await screen.findByText('Speakers');
+    const scheduleLabel = screen.getByText('Night Mode Schedule');
+    expect(
+      speakersLabel.compareDocumentPosition(scheduleLabel) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'State for TYPEC' }), 'disabled');
+    expect(mockInvoke).toHaveBeenCalledWith('set_audio_output_device_state', {
+      id: 'dock',
+      deviceState: 'disabled',
+    });
+
+    await user.click(screen.getByTitle('Move TYPEC up'));
+    expect(mockInvoke).toHaveBeenCalledWith('save_audio_output_order', {
+      orderedIds: ['dock', 'built-in'],
+    });
   });
 
   it('changes a monitor brightnessMode via the dropdown and persists it', async () => {

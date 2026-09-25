@@ -106,6 +106,26 @@ beforeEach(() => {
           ],
           selectedDeviceId: 'speakers',
         });
+      case 'save_audio_output_order':
+        return Promise.resolve({
+          devices: [
+            {
+              id: 'headphones',
+              name: 'Headphones',
+              originalName: 'USB Headphones',
+              state: 'enabled',
+              isBuiltIn: false,
+            },
+            {
+              id: 'speakers',
+              name: 'Desk Speakers',
+              originalName: 'MacBook Pro Speakers',
+              state: 'enabled',
+              isBuiltIn: true,
+            },
+          ],
+          selectedDeviceId: 'speakers',
+        });
       case 'get_preferences':
         return Promise.resolve({
           showIndividualDisplays: false,
@@ -327,22 +347,18 @@ describe('App smoke test', () => {
     });
   });
 
-  it('persists a disabled audio output from expanded mode', async () => {
+  it('persists speaker ordering from expanded mode without state selectors', async () => {
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(await screen.findByTitle('Show output speakers'));
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'State for Headphones' }),
-      'disabled',
-    );
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    await user.click(screen.getByTitle('Move Headphones up'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('set_audio_output_device_state', {
-        id: 'headphones',
-        deviceState: 'disabled',
+      expect(mockInvoke).toHaveBeenCalledWith('save_audio_output_order', {
+        orderedIds: ['headphones', 'speakers'],
       });
-      expect(screen.getByRole('radio', { name: 'Select Headphones' })).toBeDisabled();
     });
   });
 
@@ -399,7 +415,7 @@ describe('App smoke test', () => {
       });
       expect(
         mockInvoke.mock.calls.filter(([command]) => command === 'get_audio_output_devices'),
-      ).toHaveLength(3);
+      ).toHaveLength(4);
     } finally {
       visibilitySpy.mockRestore();
       vi.useRealTimers();

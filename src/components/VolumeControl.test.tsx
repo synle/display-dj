@@ -35,7 +35,7 @@ function renderVolumeControl(overrides: Partial<ComponentProps<typeof VolumeCont
     updatingDeviceId: null,
     onSelectOutput: vi.fn(),
     onRenameOutput: vi.fn(),
-    onSetOutputState: vi.fn(),
+    onMoveOutput: vi.fn(),
     ...overrides,
   };
   return { ...render(<VolumeControl {...props} />), props };
@@ -172,20 +172,21 @@ describe('VolumeControl', () => {
     expect(screen.getByRole('radio', { name: 'Select Headphones' })).toBeDisabled();
   });
 
-  it('updates an output through the tri-state selector', async () => {
+  it('shows reorder controls without state selectors in the main panel', async () => {
     const user = userEvent.setup();
-    const onSetOutputState = vi.fn();
-    renderVolumeControl({ expanded: true, onSetOutputState });
+    const onMoveOutput = vi.fn();
+    renderVolumeControl({ expanded: true, onMoveOutput });
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'State for Headphones' }), [
-      'disabled',
-    ]);
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.getByTitle('Move Desk Speakers up')).toBeDisabled();
+    expect(screen.getByTitle('Move Headphones down')).toBeDisabled();
 
-    expect(onSetOutputState).toHaveBeenCalledWith('headphones', 'disabled');
+    await user.click(screen.getByTitle('Move Headphones up'));
+
+    expect(onMoveOutput).toHaveBeenCalledWith('headphones', 'up');
   });
 
-  it('disables disabled outputs and hides hidden outputs until requested', async () => {
-    const user = userEvent.setup();
+  it('disables disabled outputs and omits hidden outputs', () => {
     renderVolumeControl({
       expanded: true,
       outputState: {
@@ -219,8 +220,6 @@ describe('VolumeControl', () => {
     expect(screen.getByRole('radio', { name: 'Select Microsoft Teams Audio' })).toBeDisabled();
     expect(screen.queryByRole('radio', { name: 'Select ZoomAudioDevice' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Show hidden outputs (1)' }));
-
-    expect(screen.getByRole('radio', { name: 'Select ZoomAudioDevice' })).toBeDisabled();
+    expect(screen.queryByRole('radio', { name: 'Select ZoomAudioDevice' })).not.toBeInTheDocument();
   });
 });

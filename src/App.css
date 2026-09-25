@@ -852,6 +852,17 @@ body,
   min-width: 0;
 }
 
+.settings-audio-output-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .monitor-visibility-btn {
   font-size: 10px;
   font-weight: 600;

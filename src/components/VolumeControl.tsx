@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
-import { AudioOutputDevice, AudioOutputDeviceState, AudioOutputState } from '../types';
-import Dropdown from './Dropdown';
+import { AudioOutputDevice, AudioOutputState } from '../types';
 import Slider from './Slider';
 
 interface VolumeControlProps {
@@ -12,7 +11,7 @@ interface VolumeControlProps {
   updatingDeviceId: string | null;
   onSelectOutput: (id: string) => void;
   onRenameOutput: (id: string, label: string) => void;
-  onSetOutputState: (id: string, state: AudioOutputDeviceState) => void;
+  onMoveOutput: (id: string, direction: 'up' | 'down') => void;
 }
 
 /** System volume slider with independently expandable output controls. */
@@ -25,11 +24,10 @@ export default function VolumeControl({
   updatingDeviceId,
   onSelectOutput,
   onRenameOutput,
-  onSetOutputState,
+  onMoveOutput,
 }: VolumeControlProps) {
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [showHiddenOutputs, setShowHiddenOutputs] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const cancelEditingRef = useRef(false);
   const selectedDevice = outputState?.devices.find(
@@ -37,17 +35,7 @@ export default function VolumeControl({
   );
   const enabledOutputCount =
     outputState?.devices.filter((device) => device.state === 'enabled').length ?? 0;
-  const hiddenOutputCount =
-    outputState?.devices.filter(
-      (device) => device.id !== outputState.selectedDeviceId && device.state === 'hidden',
-    ).length ?? 0;
-  const visibleDevices =
-    outputState?.devices.filter(
-      (device) =>
-        device.id === outputState.selectedDeviceId ||
-        showHiddenOutputs ||
-        device.state !== 'hidden',
-    ) ?? [];
+  const visibleDevices = outputState?.devices.filter((device) => device.state !== 'hidden') ?? [];
 
   /** Enters inline alias editing for one audio output. */
   const startEditing = (device: AudioOutputDevice) => {
@@ -104,7 +92,7 @@ export default function VolumeControl({
       />
       {expanded && outputState && (
         <div className='audio-output-list'>
-          {visibleDevices.length === 0 && hiddenOutputCount === 0 ? (
+          {visibleDevices.length === 0 ? (
             <span className='audio-output-empty'>No audio outputs found</span>
           ) : (
             <>
@@ -147,30 +135,25 @@ export default function VolumeControl({
                         {device.name || device.originalName}
                       </button>
                     )}
-                    <Dropdown
-                      className='audio-output-state'
-                      aria-label={`State for ${device.name}`}
-                      value={device.state}
-                      disabled={updatingDeviceId !== null}
-                      onChange={(event) =>
-                        onSetOutputState(device.id, event.target.value as AudioOutputDeviceState)
-                      }>
-                      <option value='enabled'>Enabled</option>
-                      <option value='disabled'>Disabled</option>
-                      <option value='hidden'>Hidden</option>
-                    </Dropdown>
+                    <div className='monitor-reorder-buttons'>
+                      <button
+                        className='monitor-reorder-btn'
+                        disabled={visibleDevices.indexOf(device) === 0}
+                        onClick={() => onMoveOutput(device.id, 'up')}
+                        title={`Move ${device.name} up`}>
+                        ▲
+                      </button>
+                      <button
+                        className='monitor-reorder-btn'
+                        disabled={visibleDevices.indexOf(device) === visibleDevices.length - 1}
+                        onClick={() => onMoveOutput(device.id, 'down')}
+                        title={`Move ${device.name} down`}>
+                        ▼
+                      </button>
+                    </div>
                   </div>
                 );
               })}
-              {hiddenOutputCount > 0 && (
-                <button
-                  className='audio-output-hidden-toggle'
-                  onClick={() => setShowHiddenOutputs((current) => !current)}>
-                  {showHiddenOutputs
-                    ? 'Hide hidden outputs'
-                    : `Show hidden outputs (${hiddenOutputCount})`}
-                </button>
-              )}
             </>
           )}
         </div>

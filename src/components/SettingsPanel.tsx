@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Preferences,
+  AudioOutputDeviceState,
+  AudioOutputState,
   MonitorMetadata,
   NightModeSchedule,
   TilingPreferences,
@@ -18,6 +20,8 @@ interface SettingsPanelProps {
 /** Settings panel with two tabs: General and Tiling. Auto-saves after each change. */
 export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsPanelProps) {
   const [prefs, setPrefs] = useState<Preferences | null>(null);
+  const [audioOutputState, setAudioOutputState] = useState<AudioOutputState | null>(null);
+  const [updatingAudioOutputId, setUpdatingAudioOutputId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'general' | 'tiling'>('general');
   const [editingUid, setEditingUid] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
@@ -47,6 +51,9 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     invoke<boolean | null>('get_windows_elevation_status')
       .then(setWindowsElevated)
       .catch((error) => console.error('Failed to check Windows elevation:', error));
+    invoke<AudioOutputState>('get_audio_output_devices')
+      .then(setAudioOutputState)
+      .catch((error) => console.error('Failed to get audio output devices:', error));
   }, []);
 
   /** Auto-save preferences after each change with debounce. */
@@ -186,6 +193,52 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     setEditingUid(null);
   };
 
+  /** Moves one speaker by one row and persists the complete device order. */
+  const moveAudioOutput = async (index: number, direction: 'up' | 'down') => {
+    if (!audioOutputState) return;
+    const swapIndex = direction === 'up' ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= audioOutputState.devices.length) return;
+    const devices = [...audioOutputState.devices];
+    [devices[index], devices[swapIndex]] = [devices[swapIndex], devices[index]];
+    setAudioOutputState({ ...audioOutputState, devices });
+    try {
+      const outputState = await invoke<AudioOutputState>('save_audio_output_order', {
+        orderedIds: devices.map((device) => device.id),
+      });
+      setAudioOutputState(outputState);
+      onPreferencesSaved();
+    } catch (error) {
+      setAudioOutputState(audioOutputState);
+      console.error('Failed to reorder audio output devices:', error);
+    }
+  };
+
+  /** Persists one speaker's enabled, disabled, or hidden state. */
+  const updateAudioOutputState = async (id: string, deviceState: AudioOutputDeviceState) => {
+    if (!audioOutputState) return;
+    const previousState = audioOutputState;
+    setUpdatingAudioOutputId(id);
+    setAudioOutputState({
+      ...audioOutputState,
+      devices: audioOutputState.devices.map((device) =>
+        device.id === id ? { ...device, state: deviceState } : device,
+      ),
+    });
+    try {
+      const outputState = await invoke<AudioOutputState>('set_audio_output_device_state', {
+        id,
+        deviceState,
+      });
+      setAudioOutputState(outputState);
+      onPreferencesSaved();
+    } catch (error) {
+      setAudioOutputState(previousState);
+      console.error('Failed to update audio output device state:', error);
+    } finally {
+      setUpdatingAudioOutputId(null);
+    }
+  };
+
   const tiling = prefs.tiling;
   const exposeCols = tiling?.exposeColumns ?? 2;
   const exposeRows = tiling?.exposeRows ?? 3;
@@ -236,6 +289,52 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 />
                 <span>Show Contrast Slider</span>
               </label>
+            </div>
+
+            <div className='settings-divider' />
+
+            <div className='settings-section'>
+              <label className='settings-label'>Speakers</label>
+              <div className='settings-monitors-list'>
+                {audioOutputState?.devices.map((device, index) => (
+                  <div
+                    key={device.id}
+                    className={`settings-monitor-row${device.state === 'hidden' ? ' settings-monitor-hidden' : ''}`}>
+                    <div className='settings-monitor-reorder'>
+                      <button
+                        className='monitor-reorder-btn'
+                        disabled={index === 0}
+                        onClick={() => moveAudioOutput(index, 'up')}
+                        title={`Move ${device.name} up`}>
+                        ▲
+                      </button>
+                      <button
+                        className='monitor-reorder-btn'
+                        disabled={index === audioOutputState.devices.length - 1}
+                        onClick={() => moveAudioOutput(index, 'down')}
+                        title={`Move ${device.name} down`}>
+                        ▼
+                      </button>
+                    </div>
+                    <span className='settings-audio-output-name'>{device.name}</span>
+                    <Dropdown
+                      className='audio-output-state'
+                      aria-label={`State for ${device.name}`}
+                      value={device.state}
+                      disabled={updatingAudioOutputId !== null}
+                      onChange={(event) =>
+                        updateAudioOutputState(
+                          device.id,
+                          event.target.value as AudioOutputDeviceState,
+                        )
+                      }>
+                      <option value='enabled'>Enabled</option>
+                      <option value='disabled'>Disabled</option>
+                      <option value='hidden'>Hidden</option>
+                    </Dropdown>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className='settings-divider' />

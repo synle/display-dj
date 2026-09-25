@@ -159,11 +159,11 @@ pub fn set_default_mute(mute: bool) -> Result<(), String> {
 /// Applies saved labels and availability while preserving native endpoint data.
 pub fn apply_preferences(
     mut state: AudioOutputState,
-    preferences: &[(String, String, AudioOutputDeviceState)],
+    preferences: &[(String, String, AudioOutputDeviceState, Option<usize>)],
 ) -> AudioOutputState {
     for device in &mut state.devices {
-        if let Some((_, label, device_state)) =
-            preferences.iter().find(|(id, _, _)| id == &device.id)
+        if let Some((_, label, device_state, _)) =
+            preferences.iter().find(|(id, _, _, _)| id == &device.id)
         {
             if !label.trim().is_empty() {
                 device.name = label.clone();
@@ -171,7 +171,15 @@ pub fn apply_preferences(
             device.state = *device_state;
         }
     }
-    sort_audio_output_state(hide_unsupported_outputs(state))
+    let mut state = sort_audio_output_state(hide_unsupported_outputs(state));
+    state.devices.sort_by_key(|device| {
+        preferences
+            .iter()
+            .find(|(id, _, _, _)| id == &device.id)
+            .and_then(|(_, _, _, sort_order)| *sort_order)
+            .unwrap_or(usize::MAX)
+    });
+    state
 }
 
 /// Forces known virtual streaming endpoints out of normal output choices.
@@ -322,12 +330,43 @@ mod tests {
                 "speaker".into(),
                 "Desk".into(),
                 AudioOutputDeviceState::Disabled,
+                None,
             )],
         );
 
         assert_eq!(state.devices[0].name, "Desk");
         assert_eq!(state.devices[0].original_name, "MacBook Pro Speakers");
         assert_eq!(state.devices[0].state, AudioOutputDeviceState::Disabled);
+    }
+
+    /// Saved sort positions override the default built-in and alphabetical order.
+    #[test]
+    fn applies_saved_output_order() {
+        let mut built_in = device("built-in", "Built-in Speakers");
+        built_in.is_built_in = true;
+        let state = apply_preferences(
+            AudioOutputState {
+                devices: vec![built_in, device("dock", "Dock")],
+                selected_device_id: Some("built-in".into()),
+            },
+            &[
+                (
+                    "built-in".into(),
+                    String::new(),
+                    AudioOutputDeviceState::Enabled,
+                    Some(1),
+                ),
+                (
+                    "dock".into(),
+                    String::new(),
+                    AudioOutputDeviceState::Enabled,
+                    Some(0),
+                ),
+            ],
+        );
+
+        assert_eq!(state.devices[0].id, "dock");
+        assert_eq!(state.devices[1].id, "built-in");
     }
 
     /// Empty saved labels retain the native endpoint name while applying state.
@@ -342,6 +381,7 @@ mod tests {
                 "speaker".into(),
                 "  ".into(),
                 AudioOutputDeviceState::Hidden,
+                None,
             )],
         );
 
@@ -365,6 +405,7 @@ mod tests {
                 "steam-speakers".into(),
                 "Living Room".into(),
                 AudioOutputDeviceState::Enabled,
+                None,
             )],
         );
 

@@ -19,7 +19,7 @@ fn run_audio_output_operation<T>(operation: impl FnOnce() -> Result<T, String>) 
 /// Returns audio-output preferences as owned values so no lock crosses an await.
 fn audio_output_preferences(
     state: &crate::AppState,
-) -> Result<Vec<(String, String, AudioOutputDeviceState)>, String> {
+) -> Result<Vec<(String, String, AudioOutputDeviceState, Option<usize>)>, String> {
     state
         .preferences
         .lock()
@@ -27,7 +27,14 @@ fn audio_output_preferences(
             preferences
                 .audio_output_configs
                 .iter()
-                .map(|config| (config.id.clone(), config.label.clone(), config.state))
+                .map(|config| {
+                    (
+                        config.id.clone(),
+                        config.label.clone(),
+                        config.state,
+                        config.sort_order,
+                    )
+                })
                 .collect()
         })
         .map_err(|_| "preferences lock poisoned".to_string())
@@ -134,7 +141,9 @@ pub(crate) fn notify_audio_output_state_changed(
 /// Drops no-op entries and keeps persisted audio-output IDs deterministic.
 fn normalize_audio_output_configs(configs: &mut Vec<crate::config::AudioOutputMetadata>) {
     configs.retain(|config| {
-        !config.label.trim().is_empty() || config.state != AudioOutputDeviceState::Enabled
+        !config.label.trim().is_empty()
+            || config.state != AudioOutputDeviceState::Enabled
+            || config.sort_order.is_some()
     });
     configs.sort_by(|left, right| left.id.cmp(&right.id));
 }
@@ -152,6 +161,7 @@ fn update_audio_output_alias(
             id,
             label: label.to_string(),
             state: AudioOutputDeviceState::Enabled,
+            sort_order: None,
         });
     }
     normalize_audio_output_configs(configs);
@@ -170,6 +180,7 @@ fn update_audio_output_state(
             id,
             label: String::new(),
             state: device_state,
+            sort_order: None,
         });
     }
     normalize_audio_output_configs(configs);
@@ -225,13 +236,18 @@ pub(crate) async fn select_audio_output_device(
         id,
         preferences.len()
     );
-    if let Some((_, label, device_state)) = preferences.iter().find(|(device_id, _, _)| device_id == &id) {
+    if let Some((_, label, device_state, _)) = preferences
+        .iter()
+        .find(|(device_id, _, _, _)| device_id == &id)
+    {
         log::info!("select_audio_output_device: preference entry for target_id={}/label={}/state={:?}", id, label, device_state);
     } else {
         log::warn!("select_audio_output_device: NO preference entry found for target_id={}", id);
     }
 
-    if let Some((_, _, device_state)) = preferences.iter().find(|(device_id, _, _)| device_id == &id)
+    if let Some((_, _, device_state, _)) = preferences
+        .iter()
+        .find(|(device_id, _, _, _)| device_id == &id)
     {
         if *device_state != AudioOutputDeviceState::Enabled {
             log::warn!(
@@ -412,6 +428,67 @@ pub async fn set_audio_output_device_state(
     Ok(output_state)
 }
 
+/// Persists the complete user-defined speaker order.
+#[tauri::command]
+pub async fn save_audio_output_order(
+    ordered_ids: Vec<String>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<AudioOutputState, String> {
+    let current_ids = app
+        .try_state::<crate::AppState>()
+        .and_then(|app_state| app_state.audio_output_state.lock().ok()?.clone())
+        .ok_or_else(|| "audio output state unavailable before reorder".to_string())?
+        .devices
+        .into_iter()
+        .map(|device| device.id)
+        .collect::<Vec<_>>();
+    if ordered_ids.len() != current_ids.len()
+        || ordered_ids.iter().any(|id| !current_ids.contains(id))
+        || current_ids.iter().any(|id| !ordered_ids.contains(id))
+    {
+        return Err("audio output order must contain each current device exactly once".into());
+    }
+
+    {
+        let mut preferences = state
+            .preferences
+            .lock()
+            .map_err(|_| "preferences lock poisoned".to_string())?;
+        for (sort_order, id) in ordered_ids.into_iter().enumerate() {
+            if let Some(config) = preferences
+                .audio_output_configs
+                .iter_mut()
+                .find(|config| config.id == id)
+            {
+                config.sort_order = Some(sort_order);
+            } else {
+                preferences
+                    .audio_output_configs
+                    .push(crate::config::AudioOutputMetadata {
+                        id,
+                        label: String::new(),
+                        state: AudioOutputDeviceState::Enabled,
+                        sort_order: Some(sort_order),
+                    });
+            }
+        }
+        normalize_audio_output_configs(&mut preferences.audio_output_configs);
+        crate::config::save_preferences_to_disk(&preferences);
+    }
+
+    let app_for_refresh = app.clone();
+    let (output_state, changed) = tauri::async_runtime::spawn_blocking(move || {
+        refresh_audio_output_state(&app_for_refresh)
+    })
+    .await
+    .map_err(|error| format!("save_audio_output_order refresh failed: {}", error))??;
+    if changed {
+        notify_audio_output_state_changed(&app, &output_state);
+    }
+    Ok(output_state)
+}
+
 /// Returns the current system volume (0-100) via the in-process platform layer.
 /// Uses a 5-minute TTL cache to avoid re-probing on every poll.
 #[tauri::command]
@@ -522,11 +599,13 @@ mod tests {
                 id: "z-device".into(),
                 label: "Z".into(),
                 state: AudioOutputDeviceState::Disabled,
+                sort_order: None,
             },
             crate::config::AudioOutputMetadata {
                 id: "a-device".into(),
                 label: "Old".into(),
                 state: AudioOutputDeviceState::Hidden,
+                sort_order: None,
             },
         ];
 
@@ -539,11 +618,13 @@ mod tests {
                     id: "a-device".into(),
                     label: "Desk".into(),
                     state: AudioOutputDeviceState::Hidden,
+                    sort_order: None,
                 },
                 crate::config::AudioOutputMetadata {
                     id: "z-device".into(),
                     label: "Z".into(),
                     state: AudioOutputDeviceState::Disabled,
+                    sort_order: None,
                 },
             ]
         );
@@ -556,6 +637,7 @@ mod tests {
             id: "device".into(),
             label: "Desk".into(),
             state: AudioOutputDeviceState::Enabled,
+            sort_order: None,
         }];
 
         update_audio_output_alias(&mut configs, "device".into(), "");
@@ -570,6 +652,7 @@ mod tests {
             id: "speaker".into(),
             label: "Desk".into(),
             state: AudioOutputDeviceState::Enabled,
+            sort_order: None,
         }];
 
         update_audio_output_state(
@@ -589,5 +672,21 @@ mod tests {
             AudioOutputDeviceState::Enabled,
         );
         assert!(configs.is_empty());
+    }
+
+    /// Clearing default label and state keeps metadata that owns a custom position.
+    #[test]
+    fn normalize_audio_output_configs_retains_custom_order() {
+        let mut configs = vec![crate::config::AudioOutputMetadata {
+            id: "speaker".into(),
+            label: String::new(),
+            state: AudioOutputDeviceState::Enabled,
+            sort_order: Some(0),
+        }];
+
+        normalize_audio_output_configs(&mut configs);
+
+        assert_eq!(configs.len(), 1);
+        assert_eq!(configs[0].sort_order, Some(0));
     }
 }

@@ -61,6 +61,7 @@ export interface AudioOutputMetadata {
   id: string;
   label: string;
   state: AudioOutputDeviceState;
+  sortOrder: number | null;
 }
 
 export interface NightModeSchedule {
