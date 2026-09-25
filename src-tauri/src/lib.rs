@@ -89,6 +89,12 @@ mod tiling_stubs {
         None
     }
 
+    /// Windows Snap status is not applicable on this platform.
+    #[tauri::command]
+    pub fn get_windows_snap_enabled() -> Option<bool> {
+        None
+    }
+
     /// Accessibility recheck is not applicable on this platform.
     #[tauri::command]
     pub fn recheck_accessibility_trusted() -> bool {
@@ -98,6 +104,10 @@ mod tiling_stubs {
     /// No-op on unsupported platforms.
     #[tauri::command]
     pub fn open_accessibility_settings() {}
+
+    /// No-op on unsupported platforms.
+    #[tauri::command]
+    pub fn open_windows_multitasking_settings() {}
 }
 
 /// Response from `fetch_all_state` — all backend state in one call.
@@ -731,9 +741,13 @@ pub fn run() {
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling::get_windows_elevation_status,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            tiling::get_windows_snap_enabled,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling::recheck_accessibility_trusted,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling::open_accessibility_settings,
+            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            tiling::open_windows_multitasking_settings,
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             tiling_stubs::get_tiling_supported,
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -741,9 +755,13 @@ pub fn run() {
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             tiling_stubs::get_windows_elevation_status,
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            tiling_stubs::get_windows_snap_enabled,
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             tiling_stubs::recheck_accessibility_trusted,
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
             tiling_stubs::open_accessibility_settings,
+            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            tiling_stubs::open_windows_multitasking_settings,
         ])
         .setup(move |app| {
             // Pre-warm the cache and seed the tray icon state in a background

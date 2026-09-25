@@ -7,14 +7,14 @@
 use std::collections::HashMap;
 use tauri::AppHandle;
 
-#[cfg(target_os = "macos")]
-mod macos;
-#[cfg(target_os = "windows")]
-mod windows;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "macos")]
+mod macos;
 #[cfg(any(target_os = "windows", target_os = "linux", test))]
 mod snap_overlay;
+#[cfg(target_os = "windows")]
+mod windows;
 
 // ---------------------------------------------------------------------------
 // Public types (shared across platforms)
@@ -330,7 +330,10 @@ pub(crate) struct WindowInfo {
 pub(crate) fn build_sorted_window_list(windows: &[WindowInfo], max: usize) -> Vec<&WindowInfo> {
     let mut app_groups: Vec<(String, Vec<&WindowInfo>)> = Vec::new();
     for w in windows {
-        if let Some(group) = app_groups.iter_mut().find(|(name, _)| *name == w.owner_name) {
+        if let Some(group) = app_groups
+            .iter_mut()
+            .find(|(name, _)| *name == w.owner_name)
+        {
             group.1.push(w);
         } else {
             app_groups.push((w.owner_name.clone(), vec![w]));
@@ -371,8 +374,7 @@ pub(crate) fn layout_grid_on_display(
     let cols = (n as f64).sqrt().ceil() as usize;
     let initial_rows = (n + cols - 1) / cols;
     let cell_w = (display.width - gap * (cols as f64 + 1.0)) / cols as f64;
-    let initial_cell_h =
-        (display.height - gap * (initial_rows as f64 + 1.0)) / initial_rows as f64;
+    let initial_cell_h = (display.height - gap * (initial_rows as f64 + 1.0)) / initial_rows as f64;
 
     // Classify windows: fits (1×1) vs oversized (multi-cell)
     let mut fits: Vec<&WindowInfo> = Vec::new();
@@ -502,11 +504,7 @@ fn find_free_cell(occupied: &[Vec<bool>]) -> Option<(usize, usize)> {
 
 /// Find the next position where a `span_c × span_r` block of cells is free.
 /// Scans row-major: tries each (row, col) as the top-left corner.
-fn find_free_block(
-    occupied: &[Vec<bool>],
-    span_c: usize,
-    span_r: usize,
-) -> Option<(usize, usize)> {
+fn find_free_block(occupied: &[Vec<bool>], span_c: usize, span_r: usize) -> Option<(usize, usize)> {
     let rows = occupied.len();
     let cols = if rows > 0 { occupied[0].len() } else { 0 };
     for r in 0..rows {
@@ -531,13 +529,7 @@ fn find_free_block(
 }
 
 /// Mark a `span_c × span_r` block of cells as occupied.
-fn mark_block(
-    occupied: &mut [Vec<bool>],
-    r: usize,
-    c: usize,
-    span_c: usize,
-    span_r: usize,
-) {
+fn mark_block(occupied: &mut [Vec<bool>], r: usize, c: usize, span_c: usize, span_r: usize) {
     let rows = occupied.len();
     let cols = if rows > 0 { occupied[0].len() } else { 0 };
     for dr in 0..span_r {
@@ -685,8 +677,7 @@ pub(crate) fn detect_snap_zone(
     let passes: &[bool] = &[false, true]; // false = exact only, true = with margin
     for &allow_overflow in passes {
         for (i, d) in displays.iter().enumerate() {
-            let in_bounds =
-                cx >= d.x && cx < d.x + d.width && cy >= d.y && cy < d.y + d.height;
+            let in_bounds = cx >= d.x && cx < d.x + d.width && cy >= d.y && cy < d.y + d.height;
 
             if !allow_overflow && !in_bounds {
                 continue;
@@ -1097,13 +1088,21 @@ pub(crate) fn plan_expose(
     }
 
     let mut placements = Vec::new();
-    layout_across_displays(&ordered, displays, max_per_display, gap, spread, min_cell_sizes, &mut |win, rect| {
-        placements.push(Placement {
-            window_id: win.window_id,
-            owner_pid: win.owner_pid,
-            target: rect.clone(),
-        });
-    });
+    layout_across_displays(
+        &ordered,
+        displays,
+        max_per_display,
+        gap,
+        spread,
+        min_cell_sizes,
+        &mut |win, rect| {
+            placements.push(Placement {
+                window_id: win.window_id,
+                owner_pid: win.owner_pid,
+                target: rect.clone(),
+            });
+        },
+    );
     placements
 }
 
@@ -1151,13 +1150,21 @@ pub(crate) fn plan_expose_app(
 
     // Place target app's windows — always use fill (not spread) so the app's
     // windows are packed together on the first display(s), not distributed.
-    let placed = layout_across_displays(&app_windows, displays, max_per_display, gap, false, min_cell_sizes, &mut |win, rect| {
-        placements.push(Placement {
-            window_id: win.window_id,
-            owner_pid: win.owner_pid,
-            target: rect.clone(),
-        });
-    });
+    let placed = layout_across_displays(
+        &app_windows,
+        displays,
+        max_per_display,
+        gap,
+        false,
+        min_cell_sizes,
+        &mut |win, rect| {
+            placements.push(Placement {
+                window_id: win.window_id,
+                owner_pid: win.owner_pid,
+                target: rect.clone(),
+            });
+        },
+    );
 
     // Calculate how many displays the app's windows fully occupied
     let displays_consumed = if max_per_display > 0 {
@@ -1234,8 +1241,18 @@ pub(crate) fn plan_layout_preset(
         let display_index = disp_idx
             .unwrap_or_else(|| find_display_for_window(&w.bounds, displays))
             .min(displays.len() - 1);
-        let target = calculate_target_rect(layout, &displays[display_index], half_ratio, third_ratio, gap);
-        placements.push(Placement { window_id: w.window_id, owner_pid: w.owner_pid, target });
+        let target = calculate_target_rect(
+            layout,
+            &displays[display_index],
+            half_ratio,
+            third_ratio,
+            gap,
+        );
+        placements.push(Placement {
+            window_id: w.window_id,
+            owner_pid: w.owner_pid,
+            target,
+        });
     }
 
     placements
@@ -1286,6 +1303,50 @@ pub fn get_windows_elevation_status() -> Option<bool> {
     }
 }
 
+/// Parses the final registry value from `reg query` output.
+#[cfg(any(target_os = "windows", test))]
+fn parse_windows_snap_registry_output(output: &str) -> Option<bool> {
+    match output.split_whitespace().last()? {
+        "0" => Some(false),
+        "1" => Some(true),
+        _ => None,
+    }
+}
+
+/// Tauri command: report whether native Windows Snap is enabled.
+#[tauri::command]
+pub fn get_windows_snap_enabled() -> Option<bool> {
+    #[cfg(target_os = "windows")]
+    {
+        let output = crate::core::win_cmd::hidden_command("reg")
+            .args([
+                "query",
+                r"HKCU\Control Panel\Desktop",
+                "/v",
+                "WindowArrangementActive",
+            ])
+            .output();
+        match output {
+            Ok(output) if output.status.success() => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                parse_windows_snap_registry_output(&stdout)
+            }
+            Ok(output) => {
+                log::warn!("windows snap registry query failed: {}", output.status);
+                None
+            }
+            Err(error) => {
+                log::warn!("windows snap registry query failed: {error}");
+                None
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
 /// Non-Tauri helper: returns whether the OS-level Accessibility permission is
 /// granted. On Windows and Linux (X11), there is no analogous permission, so
 /// this is always `true`. Used at startup (before `AppState` exists) and
@@ -1305,9 +1366,7 @@ pub fn is_accessibility_trusted_now() -> bool {
 /// On Windows and Linux (X11), no special permission is needed — always returns true.
 /// Uses a 2-minute TTL cache to avoid repeated system calls.
 #[tauri::command]
-pub fn get_accessibility_trusted(
-    state: tauri::State<'_, crate::AppState>,
-) -> bool {
+pub fn get_accessibility_trusted(state: tauri::State<'_, crate::AppState>) -> bool {
     let t0 = std::time::Instant::now();
     crate::config::write_debug_log(&state, "benchmark: get_accessibility_trusted — START");
 
@@ -1316,7 +1375,8 @@ pub fn get_accessibility_trusted(
             &state,
             &format!(
                 "benchmark: get_accessibility_trusted — {:.1}ms (cache hit, trusted={})",
-                t0.elapsed().as_secs_f64() * 1000.0, cached,
+                t0.elapsed().as_secs_f64() * 1000.0,
+                cached,
             ),
         );
         return cached;
@@ -1344,7 +1404,8 @@ pub fn get_accessibility_trusted(
         &state,
         &format!(
             "benchmark: get_accessibility_trusted — {:.1}ms (system call, trusted={})",
-            t0.elapsed().as_secs_f64() * 1000.0, result,
+            t0.elapsed().as_secs_f64() * 1000.0,
+            result,
         ),
     );
     result
@@ -1415,7 +1476,18 @@ pub fn recheck_accessibility_trusted(
 pub fn open_accessibility_settings() {
     #[cfg(target_os = "macos")]
     {
-        let _ = open::that("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+        let _ = open::that(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+        );
+    }
+}
+
+/// Tauri command: open Windows System > Multitasking settings.
+#[tauri::command]
+pub fn open_windows_multitasking_settings() {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = open::that("ms-settings:multitasking");
     }
 }
 
@@ -1697,11 +1769,12 @@ pub fn run_zorder_selftest(app: &AppHandle) {
     );
     sleep(Duration::from_secs(5));
 
-    let snapshot = |label: &str| {
-        match focused_window_at_front_snapshot() {
-            Some(at_front) => log::info!("[zorder-selftest] {} :: at_front={}", label, at_front),
-            None => log::info!("[zorder-selftest] {} :: at_front=<unsupported platform>", label),
-        }
+    let snapshot = |label: &str| match focused_window_at_front_snapshot() {
+        Some(at_front) => log::info!("[zorder-selftest] {} :: at_front={}", label, at_front),
+        None => log::info!(
+            "[zorder-selftest] {} :: at_front=<unsupported platform>",
+            label
+        ),
     };
 
     let step = |action: WindowZOrderAction, label: &str| {
@@ -1714,12 +1787,24 @@ pub fn run_zorder_selftest(app: &AppHandle) {
     snapshot("initial");
     step(WindowZOrderAction::WindowToFront, "WindowToFront");
     step(WindowZOrderAction::WindowToBack, "WindowToBack");
-    step(WindowZOrderAction::WindowToggleFrontBack, "WindowToggleFrontBack #1 (back→front)");
-    step(WindowZOrderAction::WindowToggleFrontBack, "WindowToggleFrontBack #2 (front→back)");
+    step(
+        WindowZOrderAction::WindowToggleFrontBack,
+        "WindowToggleFrontBack #1 (back→front)",
+    );
+    step(
+        WindowZOrderAction::WindowToggleFrontBack,
+        "WindowToggleFrontBack #2 (front→back)",
+    );
     step(WindowZOrderAction::AppToFront, "AppToFront");
     step(WindowZOrderAction::AppToBack, "AppToBack");
-    step(WindowZOrderAction::AppToggleFrontBack, "AppToggleFrontBack #1");
-    step(WindowZOrderAction::AppToggleFrontBack, "AppToggleFrontBack #2");
+    step(
+        WindowZOrderAction::AppToggleFrontBack,
+        "AppToggleFrontBack #1",
+    );
+    step(
+        WindowZOrderAction::AppToggleFrontBack,
+        "AppToggleFrontBack #2",
+    );
 
     log::info!("[zorder-selftest] === self-test complete ===");
 }
@@ -1766,6 +1851,20 @@ mod tests {
         assert_eq!(get_windows_elevation_status(), None);
     }
 
+    /// Windows Snap registry output accepts only explicit enabled/disabled values.
+    #[test]
+    fn parses_windows_snap_registry_output() {
+        assert_eq!(
+            parse_windows_snap_registry_output("WindowArrangementActive    REG_SZ    1\r\n"),
+            Some(true)
+        );
+        assert_eq!(
+            parse_windows_snap_registry_output("WindowArrangementActive    REG_SZ    0\r\n"),
+            Some(false)
+        );
+        assert_eq!(parse_windows_snap_registry_output("unexpected"), None);
+    }
+
     fn display(x: f64, y: f64, w: f64, h: f64) -> Rect {
         Rect {
             x,
@@ -1796,25 +1895,79 @@ mod tests {
 
     #[test]
     fn test_parse_all_layouts() {
-        assert_eq!(TilingLayout::parse("leftHalf"), Some(TilingLayout::LeftHalf));
-        assert_eq!(TilingLayout::parse("rightHalf"), Some(TilingLayout::RightHalf));
+        assert_eq!(
+            TilingLayout::parse("leftHalf"),
+            Some(TilingLayout::LeftHalf)
+        );
+        assert_eq!(
+            TilingLayout::parse("rightHalf"),
+            Some(TilingLayout::RightHalf)
+        );
         assert_eq!(TilingLayout::parse("topHalf"), Some(TilingLayout::TopHalf));
-        assert_eq!(TilingLayout::parse("bottomHalf"), Some(TilingLayout::BottomHalf));
-        assert_eq!(TilingLayout::parse("leftThird"), Some(TilingLayout::LeftThird));
-        assert_eq!(TilingLayout::parse("centerThird"), Some(TilingLayout::CenterThird));
-        assert_eq!(TilingLayout::parse("rightThird"), Some(TilingLayout::RightThird));
-        assert_eq!(TilingLayout::parse("topThird"), Some(TilingLayout::TopThird));
-        assert_eq!(TilingLayout::parse("middleThird"), Some(TilingLayout::MiddleThird));
-        assert_eq!(TilingLayout::parse("bottomThird"), Some(TilingLayout::BottomThird));
-        assert_eq!(TilingLayout::parse("leftTwoThirds"), Some(TilingLayout::LeftTwoThirds));
-        assert_eq!(TilingLayout::parse("rightTwoThirds"), Some(TilingLayout::RightTwoThirds));
-        assert_eq!(TilingLayout::parse("topTwoThirds"), Some(TilingLayout::TopTwoThirds));
-        assert_eq!(TilingLayout::parse("bottomTwoThirds"), Some(TilingLayout::BottomTwoThirds));
-        assert_eq!(TilingLayout::parse("topLeftQuarter"), Some(TilingLayout::TopLeftQuarter));
-        assert_eq!(TilingLayout::parse("topRightQuarter"), Some(TilingLayout::TopRightQuarter));
-        assert_eq!(TilingLayout::parse("bottomLeftQuarter"), Some(TilingLayout::BottomLeftQuarter));
-        assert_eq!(TilingLayout::parse("bottomRightQuarter"), Some(TilingLayout::BottomRightQuarter));
-        assert_eq!(TilingLayout::parse("maximize"), Some(TilingLayout::Maximize));
+        assert_eq!(
+            TilingLayout::parse("bottomHalf"),
+            Some(TilingLayout::BottomHalf)
+        );
+        assert_eq!(
+            TilingLayout::parse("leftThird"),
+            Some(TilingLayout::LeftThird)
+        );
+        assert_eq!(
+            TilingLayout::parse("centerThird"),
+            Some(TilingLayout::CenterThird)
+        );
+        assert_eq!(
+            TilingLayout::parse("rightThird"),
+            Some(TilingLayout::RightThird)
+        );
+        assert_eq!(
+            TilingLayout::parse("topThird"),
+            Some(TilingLayout::TopThird)
+        );
+        assert_eq!(
+            TilingLayout::parse("middleThird"),
+            Some(TilingLayout::MiddleThird)
+        );
+        assert_eq!(
+            TilingLayout::parse("bottomThird"),
+            Some(TilingLayout::BottomThird)
+        );
+        assert_eq!(
+            TilingLayout::parse("leftTwoThirds"),
+            Some(TilingLayout::LeftTwoThirds)
+        );
+        assert_eq!(
+            TilingLayout::parse("rightTwoThirds"),
+            Some(TilingLayout::RightTwoThirds)
+        );
+        assert_eq!(
+            TilingLayout::parse("topTwoThirds"),
+            Some(TilingLayout::TopTwoThirds)
+        );
+        assert_eq!(
+            TilingLayout::parse("bottomTwoThirds"),
+            Some(TilingLayout::BottomTwoThirds)
+        );
+        assert_eq!(
+            TilingLayout::parse("topLeftQuarter"),
+            Some(TilingLayout::TopLeftQuarter)
+        );
+        assert_eq!(
+            TilingLayout::parse("topRightQuarter"),
+            Some(TilingLayout::TopRightQuarter)
+        );
+        assert_eq!(
+            TilingLayout::parse("bottomLeftQuarter"),
+            Some(TilingLayout::BottomLeftQuarter)
+        );
+        assert_eq!(
+            TilingLayout::parse("bottomRightQuarter"),
+            Some(TilingLayout::BottomRightQuarter)
+        );
+        assert_eq!(
+            TilingLayout::parse("maximize"),
+            Some(TilingLayout::Maximize)
+        );
     }
 
     #[test]
@@ -2224,20 +2377,14 @@ mod tests {
         // 4 windows on 1000×800: 2×2 grid, cell ~500×400
         // Window 4 has min_size 600×500 → needs 2 cols × 2 rows = 4 cells
         // Total cells = 3 + 4 = 7, grid becomes 3×3 (ceil(sqrt(7))=3)
-        let ws = vec![
-            win(1, "A"),
-            win(2, "B"),
-            win(3, "C"),
-        ];
+        let ws = vec![win(1, "A"), win(2, "B"), win(3, "C")];
         let big = win_with_min(4, "Big", 600.0, 500.0);
         let mut all: Vec<&WindowInfo> = ws.iter().collect();
         all.push(&big);
         let d = display(0.0, 0.0, 1000.0, 800.0);
         let ids_and_rects = std::cell::RefCell::new(Vec::new());
         let count = layout_grid_on_display(&all, &d, 0.0, &mut |w, rect| {
-            ids_and_rects
-                .borrow_mut()
-                .push((w.window_id, rect.clone()));
+            ids_and_rects.borrow_mut().push((w.window_id, rect.clone()));
         });
         assert_eq!(count, 4);
         let results = ids_and_rects.into_inner();
@@ -2251,8 +2398,14 @@ mod tests {
         let big_rect = &results.iter().find(|(id, _)| *id == 4).unwrap().1;
         // Its width should be a multiple of cell width (grid-aligned)
         // Its position should be at a grid boundary
-        assert!(big_rect.width > 300.0, "oversized window should span >1 col");
-        assert!(big_rect.height > 250.0, "oversized window should span >1 row");
+        assert!(
+            big_rect.width > 300.0,
+            "oversized window should span >1 col"
+        );
+        assert!(
+            big_rect.height > 250.0,
+            "oversized window should span >1 row"
+        );
     }
 
     /// With no oversized windows, layout_grid_on_display is unchanged.
@@ -2353,11 +2506,12 @@ mod tests {
             display(1920.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, rect| {
-            // Track which display each window landed on by checking x coordinate
-            let disp_idx = if rect.x < 1920.0 { 0 } else { 1 };
-            placed_on.borrow_mut().push((w.window_id, disp_idx));
-        });
+        let count =
+            layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, rect| {
+                // Track which display each window landed on by checking x coordinate
+                let disp_idx = if rect.x < 1920.0 { 0 } else { 1 };
+                placed_on.borrow_mut().push((w.window_id, disp_idx));
+            });
         assert_eq!(count, 10);
         let placed = placed_on.into_inner();
         let on_d0 = placed.iter().filter(|p| p.1 == 0).count();
@@ -2381,10 +2535,11 @@ mod tests {
             display(1000.0, 0.0, 1000.0, 800.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, rect| {
-            let disp_idx = if rect.x < 1000.0 { 0 } else { 1 };
-            placed_on.borrow_mut().push((w.window_id, disp_idx));
-        });
+        let count =
+            layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, rect| {
+                let disp_idx = if rect.x < 1000.0 { 0 } else { 1 };
+                placed_on.borrow_mut().push((w.window_id, disp_idx));
+            });
         assert_eq!(count, 9);
         let placed = placed_on.into_inner();
         // Normal windows on display 0
@@ -2458,10 +2613,11 @@ mod tests {
             display(1000.0, 0.0, 1000.0, 800.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, rect| {
-            let disp_idx = if rect.x < 1000.0 { 0 } else { 1 };
-            placed_on.borrow_mut().push((w.window_id, disp_idx));
-        });
+        let count =
+            layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, rect| {
+                let disp_idx = if rect.x < 1000.0 { 0 } else { 1 };
+                placed_on.borrow_mut().push((w.window_id, disp_idx));
+            });
         assert_eq!(count, 7);
         let placed = placed_on.into_inner();
         let on_d0 = placed.iter().filter(|p| p.1 == 0).count();
@@ -2483,10 +2639,17 @@ mod tests {
             display(3840.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, true, &[], &mut |w, rect| {
-            let disp_idx = if rect.x < 1920.0 { 0 } else if rect.x < 3840.0 { 1 } else { 2 };
-            placed_on.borrow_mut().push((w.window_id, disp_idx));
-        });
+        let count =
+            layout_across_displays(&ordered, &displays, 9, 0.0, true, &[], &mut |w, rect| {
+                let disp_idx = if rect.x < 1920.0 {
+                    0
+                } else if rect.x < 3840.0 {
+                    1
+                } else {
+                    2
+                };
+                placed_on.borrow_mut().push((w.window_id, disp_idx));
+            });
         assert_eq!(count, 10);
         let placed = placed_on.into_inner();
         let on_d0 = placed.iter().filter(|p| p.1 == 0).count();
@@ -2509,10 +2672,17 @@ mod tests {
             display(3840.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, rect| {
-            let disp_idx = if rect.x < 1920.0 { 0 } else if rect.x < 3840.0 { 1 } else { 2 };
-            placed_on.borrow_mut().push((w.window_id, disp_idx));
-        });
+        let count =
+            layout_across_displays(&ordered, &displays, 9, 0.0, false, &[], &mut |w, rect| {
+                let disp_idx = if rect.x < 1920.0 {
+                    0
+                } else if rect.x < 3840.0 {
+                    1
+                } else {
+                    2
+                };
+                placed_on.borrow_mut().push((w.window_id, disp_idx));
+            });
         assert_eq!(count, 10);
         let placed = placed_on.into_inner();
         let on_d0 = placed.iter().filter(|p| p.1 == 0).count();
@@ -2535,10 +2705,17 @@ mod tests {
             display(3840.0, 0.0, 1920.0, 1080.0),
         ];
         let placed_on = std::cell::RefCell::new(Vec::new());
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, true, &[], &mut |w, rect| {
-            let disp_idx = if rect.x < 1920.0 { 0 } else if rect.x < 3840.0 { 1 } else { 2 };
-            placed_on.borrow_mut().push((w.window_id, disp_idx));
-        });
+        let count =
+            layout_across_displays(&ordered, &displays, 9, 0.0, true, &[], &mut |w, rect| {
+                let disp_idx = if rect.x < 1920.0 {
+                    0
+                } else if rect.x < 3840.0 {
+                    1
+                } else {
+                    2
+                };
+                placed_on.borrow_mut().push((w.window_id, disp_idx));
+            });
         assert_eq!(count, 2);
         let placed = placed_on.into_inner();
         let on_d0 = placed.iter().filter(|p| p.1 == 0).count();
@@ -2635,7 +2812,10 @@ mod tests {
                 assert!(
                     r.width >= 0.0 && r.height >= 0.0,
                     "negative dimension for {:?} at third_ratio={}: {}x{}",
-                    layout, third_ratio, r.width, r.height,
+                    layout,
+                    third_ratio,
+                    r.width,
+                    r.height,
                 );
             }
         }
@@ -2661,7 +2841,10 @@ mod tests {
                 assert!(
                     r.width >= 0.0 && r.height >= 0.0,
                     "negative dimension for {:?} at gap={}: {}x{}",
-                    layout, gap, r.width, r.height,
+                    layout,
+                    gap,
+                    r.width,
+                    r.height,
                 );
             }
         }
@@ -2721,10 +2904,22 @@ mod tests {
     /// Verifies match_windows_to_rules matches by substring (case-insensitive).
     #[test]
     fn test_match_windows_basic() {
-        let windows = vec![win(1, "Google Chrome"), win(2, "VS Code"), win(3, "Terminal")];
+        let windows = vec![
+            win(1, "Google Chrome"),
+            win(2, "VS Code"),
+            win(3, "Terminal"),
+        ];
         let rules = vec![
-            crate::config::LayoutRule { app_match: "chrome".into(), layout: "leftHalf".into(), display_index: None },
-            crate::config::LayoutRule { app_match: "code".into(), layout: "rightHalf".into(), display_index: Some(0) },
+            crate::config::LayoutRule {
+                app_match: "chrome".into(),
+                layout: "leftHalf".into(),
+                display_index: None,
+            },
+            crate::config::LayoutRule {
+                app_match: "code".into(),
+                layout: "rightHalf".into(),
+                display_index: Some(0),
+            },
         ];
         let matches = match_windows_to_rules(&windows, &rules);
         assert_eq!(matches.len(), 2);
@@ -2740,8 +2935,16 @@ mod tests {
     fn test_match_windows_first_match_wins() {
         let windows = vec![win(1, "Chrome"), win(2, "Chrome")];
         let rules = vec![
-            crate::config::LayoutRule { app_match: "Chrome".into(), layout: "leftHalf".into(), display_index: None },
-            crate::config::LayoutRule { app_match: "Chrome".into(), layout: "rightHalf".into(), display_index: None },
+            crate::config::LayoutRule {
+                app_match: "Chrome".into(),
+                layout: "leftHalf".into(),
+                display_index: None,
+            },
+            crate::config::LayoutRule {
+                app_match: "Chrome".into(),
+                layout: "rightHalf".into(),
+                display_index: None,
+            },
         ];
         let matches = match_windows_to_rules(&windows, &rules);
         assert_eq!(matches.len(), 2);
@@ -2756,9 +2959,11 @@ mod tests {
     #[test]
     fn test_match_windows_unknown_layout_skipped() {
         let windows = vec![win(1, "Chrome")];
-        let rules = vec![
-            crate::config::LayoutRule { app_match: "Chrome".into(), layout: "invalidLayout".into(), display_index: None },
-        ];
+        let rules = vec![crate::config::LayoutRule {
+            app_match: "Chrome".into(),
+            layout: "invalidLayout".into(),
+            display_index: None,
+        }];
         let matches = match_windows_to_rules(&windows, &rules);
         assert_eq!(matches.len(), 0); // invalid layout → no match
     }
@@ -2767,9 +2972,11 @@ mod tests {
     #[test]
     fn test_match_windows_no_matches() {
         let windows = vec![win(1, "Firefox")];
-        let rules = vec![
-            crate::config::LayoutRule { app_match: "Chrome".into(), layout: "leftHalf".into(), display_index: None },
-        ];
+        let rules = vec![crate::config::LayoutRule {
+            app_match: "Chrome".into(),
+            layout: "leftHalf".into(),
+            display_index: None,
+        }];
         let matches = match_windows_to_rules(&windows, &rules);
         assert!(matches.is_empty());
     }
@@ -2819,7 +3026,15 @@ mod tests {
         let ordered: Vec<&WindowInfo> = ws.iter().collect();
         let displays = vec![display(0.0, 0.0, 1920.0, 1080.0)];
         let min_cells = vec![(700.0, 600.0)];
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &min_cells, &mut |_, _| {});
+        let count = layout_across_displays(
+            &ordered,
+            &displays,
+            9,
+            0.0,
+            false,
+            &min_cells,
+            &mut |_, _| {},
+        );
         // Only 2 windows should fit (700*2=1400 < 1920, 700*3=2100 > 1920)
         assert_eq!(count, 2);
     }
@@ -2847,7 +3062,15 @@ mod tests {
             display(3840.0, 0.0, 1920.0, 1080.0),
         ];
         let min_cells = vec![(1000.0, 750.0), (400.0, 300.0)];
-        let count = layout_across_displays(&ordered, &displays, 9, 0.0, false, &min_cells, &mut |_, _| {});
+        let count = layout_across_displays(
+            &ordered,
+            &displays,
+            9,
+            0.0,
+            false,
+            &min_cells,
+            &mut |_, _| {},
+        );
         // D0 accepts 9 (min cap=9, max_per_display=9), D1 accepts 6 remaining (9 cap, 6 left)
         assert_eq!(count, 15);
     }
@@ -2887,9 +3110,42 @@ mod tests {
     #[test]
     fn test_plan_expose_app_separates_by_pid() {
         let windows = vec![
-            WindowInfo { window_id: 1, owner_pid: 100, owner_name: "Chrome".into(), bounds: Rect { x: 0.0, y: 0.0, width: 800.0, height: 600.0 }, min_size: None },
-            WindowInfo { window_id: 2, owner_pid: 100, owner_name: "Chrome".into(), bounds: Rect { x: 100.0, y: 0.0, width: 800.0, height: 600.0 }, min_size: None },
-            WindowInfo { window_id: 3, owner_pid: 200, owner_name: "Firefox".into(), bounds: Rect { x: 200.0, y: 0.0, width: 800.0, height: 600.0 }, min_size: None },
+            WindowInfo {
+                window_id: 1,
+                owner_pid: 100,
+                owner_name: "Chrome".into(),
+                bounds: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 800.0,
+                    height: 600.0,
+                },
+                min_size: None,
+            },
+            WindowInfo {
+                window_id: 2,
+                owner_pid: 100,
+                owner_name: "Chrome".into(),
+                bounds: Rect {
+                    x: 100.0,
+                    y: 0.0,
+                    width: 800.0,
+                    height: 600.0,
+                },
+                min_size: None,
+            },
+            WindowInfo {
+                window_id: 3,
+                owner_pid: 200,
+                owner_name: "Firefox".into(),
+                bounds: Rect {
+                    x: 200.0,
+                    y: 0.0,
+                    width: 800.0,
+                    height: 600.0,
+                },
+                min_size: None,
+            },
         ];
         let displays = vec![
             display(0.0, 0.0, 1920.0, 1080.0),
@@ -2909,10 +3165,32 @@ mod tests {
         // 4 Chrome windows fill display 1 (cap=4), others go to display 2 only
         let mut windows = Vec::new();
         for i in 0..4 {
-            windows.push(WindowInfo { window_id: i, owner_pid: 100, owner_name: "Chrome".into(), bounds: Rect { x: 0.0, y: 0.0, width: 800.0, height: 600.0 }, min_size: None });
+            windows.push(WindowInfo {
+                window_id: i,
+                owner_pid: 100,
+                owner_name: "Chrome".into(),
+                bounds: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 800.0,
+                    height: 600.0,
+                },
+                min_size: None,
+            });
         }
         for i in 4..14 {
-            windows.push(WindowInfo { window_id: i, owner_pid: (200 + i) as i32, owner_name: format!("App{}", i), bounds: Rect { x: 0.0, y: 0.0, width: 800.0, height: 600.0 }, min_size: None });
+            windows.push(WindowInfo {
+                window_id: i,
+                owner_pid: (200 + i) as i32,
+                owner_name: format!("App{}", i),
+                bounds: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 800.0,
+                    height: 600.0,
+                },
+                min_size: None,
+            });
         }
         let displays = vec![
             display(0.0, 0.0, 1920.0, 1080.0),
@@ -2925,8 +3203,11 @@ mod tests {
         for p in &placements {
             if p.owner_pid != 100 {
                 // Other app windows should be on display 2 (x >= 1920)
-                assert!(p.target.x >= display1_right - 1.0,
-                    "non-target app window placed on consumed display: x={}", p.target.x);
+                assert!(
+                    p.target.x >= display1_right - 1.0,
+                    "non-target app window placed on consumed display: x={}",
+                    p.target.x
+                );
             }
         }
     }
@@ -2941,8 +3222,16 @@ mod tests {
         let preset = crate::config::LayoutPreset {
             name: "Dev".into(),
             rules: vec![
-                crate::config::LayoutRule { app_match: "Chrome".into(), layout: "leftHalf".into(), display_index: None },
-                crate::config::LayoutRule { app_match: "Code".into(), layout: "rightHalf".into(), display_index: None },
+                crate::config::LayoutRule {
+                    app_match: "Chrome".into(),
+                    layout: "leftHalf".into(),
+                    display_index: None,
+                },
+                crate::config::LayoutRule {
+                    app_match: "Code".into(),
+                    layout: "rightHalf".into(),
+                    display_index: None,
+                },
             ],
         };
         let placements = plan_layout_preset(&windows, &preset, &displays, 50, 33, 0);
@@ -2965,14 +3254,23 @@ mod tests {
     /// Regular explorer window (File Explorer) is NOT skipped.
     #[test]
     fn test_keep_file_explorer() {
-        assert!(!should_skip_system_window("explorer", "This PC - File Explorer"));
-        assert!(!should_skip_system_window("explorer", "C:\\Users\\test - File Explorer"));
+        assert!(!should_skip_system_window(
+            "explorer",
+            "This PC - File Explorer"
+        ));
+        assert!(!should_skip_system_window(
+            "explorer",
+            "C:\\Users\\test - File Explorer"
+        ));
     }
 
     /// TextInputHost (Windows IME) is skipped.
     #[test]
     fn test_skip_text_input_host() {
-        assert!(should_skip_system_window("TextInputHost", "Windows Input Experience"));
+        assert!(should_skip_system_window(
+            "TextInputHost",
+            "Windows Input Experience"
+        ));
     }
 
     /// ShellExperienceHost (Start menu, Action Center) is skipped.
@@ -2997,9 +3295,18 @@ mod tests {
     /// Normal app windows are NOT skipped.
     #[test]
     fn test_keep_normal_windows() {
-        assert!(!should_skip_system_window("chrome", "GitHub - Google Chrome"));
-        assert!(!should_skip_system_window("WindowsTerminal", "Ubuntu-24.04"));
-        assert!(!should_skip_system_window("brave", "Sy's Favorites - Brave"));
+        assert!(!should_skip_system_window(
+            "chrome",
+            "GitHub - Google Chrome"
+        ));
+        assert!(!should_skip_system_window(
+            "WindowsTerminal",
+            "Ubuntu-24.04"
+        ));
+        assert!(!should_skip_system_window(
+            "brave",
+            "Sy's Favorites - Brave"
+        ));
         assert!(!should_skip_system_window("7zFM", "archive.zip"));
         assert!(!should_skip_system_window("sublime_text", "file.rs"));
     }

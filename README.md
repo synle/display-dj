@@ -141,7 +141,7 @@ To diagnose output switching, open the tray menu and choose **Debug → Enable L
 | Shift + F3 / F4 / F5    | Brightness 0% / 50% / 100%                             |
 | Shift + F10 / F11 / F12 | Volume 0% / 10% / 100%                                 |
 
-Windows also maps `Ctrl + Alt + Shift + Up` to Task View, equivalent to pressing `Win + Tab`.
+Windows also maps `Ctrl + Alt + Shift + Up` to Task View (`Win + Tab`) and `Ctrl + Alt + Shift + Down` to Show Desktop (`Win + D`).
 
 **Window Tiling** (macOS + Windows + Linux/X11):
 
@@ -175,11 +175,11 @@ Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or 
 
 Before a focused window is tiled, Windows restores it from maximized state, macOS exits native or browser/video fullscreen, and Linux/X11 removes EWMH maximize/fullscreen state. Display DJ then reads the normal window bounds and applies the requested layout; minimized windows remain minimized outside Exposé.
 
-On Windows, Display DJ normally runs without administrator privileges so Tile Snap can monitor ordinary application drags without a UAC prompt. Windows does not allow a normal-integrity process to move or resize a window opened with **Run as administrator**; the Tiling settings show a non-blocking warning with restart guidance in standard mode. Explicitly launch Display DJ as administrator only when tiling elevated windows is required. If the optional elevation check fails, the app keeps running normally and omits the warning.
+On Windows, Display DJ normally runs without administrator privileges so Tile Snap can monitor ordinary application drags without a UAC prompt. Windows does not allow a normal-integrity process to move or resize a window opened with **Run as administrator**; Tiling settings show a compact status under Window Tiling and a green check while Display DJ is elevated. Explicitly launch Display DJ as administrator only when tiling elevated windows is required. If the optional elevation check fails, the app keeps running normally and omits the status.
 
 ### Windows Tile Snap setup
 
-Tile Snap defaults **off on Windows** because Windows 11 Snap uses the same screen edges and can draw a second, competing preview. For predictable drops, disable Windows Snap before enabling **Settings → Tiling → Enable Tile Snap (drag to edge)** in Display DJ.
+Tile Snap defaults **off on Windows** because Windows 11 Snap uses the same screen edges and can draw a second, competing preview. Tiling settings detect the current `WindowArrangementActive` value: a green check means native Snap is off, while a warning opens **System → Multitasking** so it can be disabled.
 
 Recommended Windows 11 steps:
 

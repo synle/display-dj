@@ -64,6 +64,8 @@ function setupInvoke(opts: {
   tilingSupported?: boolean;
   accessibilityTrusted?: boolean;
   windowsElevated?: boolean | null;
+  windowsSnapEnabled?: boolean | null;
+  platform?: 'macOS' | 'Windows' | 'Linux';
   prefsRejects?: boolean;
   tilingRejects?: boolean;
   accessRejects?: boolean;
@@ -86,6 +88,12 @@ function setupInvoke(opts: {
     if (cmd === 'get_windows_elevation_status') {
       if (opts.elevationRejects) return Promise.reject(new Error('boom'));
       return Promise.resolve(opts.windowsElevated ?? null);
+    }
+    if (cmd === 'get_windows_snap_enabled') {
+      return Promise.resolve(opts.windowsSnapEnabled ?? null);
+    }
+    if (cmd === 'get_about_info') {
+      return Promise.resolve({ os: opts.platform ?? 'Linux' });
     }
     if (cmd === 'save_preferences') return Promise.resolve(undefined);
     if (cmd === 'get_audio_output_devices') {
@@ -152,6 +160,7 @@ function setupInvoke(opts: {
       });
     }
     if (cmd === 'open_accessibility_settings') return Promise.resolve(undefined);
+    if (cmd === 'open_windows_multitasking_settings') return Promise.resolve(undefined);
     return Promise.resolve(undefined);
   });
 }
@@ -580,26 +589,25 @@ describe('SettingsPanel', () => {
   });
 
   it('warns standard Windows sessions that elevated windows need an administrator restart', async () => {
-    setupInvoke({ windowsElevated: false });
+    setupInvoke({ windowsElevated: false, platform: 'Windows' });
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Tiling' })).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'Tiling' }));
-    expect(screen.getByText(/Restart Display DJ with Run as administrator/)).toBeInTheDocument();
+    expect(screen.getByText(/elevated windows cannot be resized/)).toBeInTheDocument();
     expect(screen.getByLabelText('Enable Window Tiling')).toBeEnabled();
   });
 
   it('omits the administrator restart warning when Windows is already elevated', async () => {
-    setupInvoke({ windowsElevated: true });
+    setupInvoke({ windowsElevated: true, platform: 'Windows' });
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Tiling' })).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'Tiling' }));
-    expect(
-      screen.queryByText(/Restart Display DJ with Run as administrator/),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/elevated windows cannot be resized/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Running as administrator')).toHaveTextContent('✓');
   });
 
   it('keeps Settings usable when the optional Windows elevation check fails', async () => {
@@ -610,9 +618,7 @@ describe('SettingsPanel', () => {
       expect(mockInvoke).toHaveBeenCalledWith('get_windows_elevation_status');
     });
     expect(screen.getByText('Settings')).toBeInTheDocument();
-    expect(
-      screen.queryByText(/Restart Display DJ with Run as administrator/),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/elevated windows cannot be resized/)).not.toBeInTheDocument();
   });
 
   it('uses a 2x3 Exposé grid when saved grid fields are missing', async () => {
@@ -647,7 +653,7 @@ describe('SettingsPanel', () => {
   });
 
   it('shows accessibility warning when tile snap is on but not trusted', async () => {
-    setupInvoke({ accessibilityTrusted: false });
+    setupInvoke({ accessibilityTrusted: false, platform: 'macOS' });
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Tiling' })).toBeInTheDocument());
@@ -655,8 +661,37 @@ describe('SettingsPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Tiling' }));
     expect(screen.getByText(/Accessibility permission required/)).toBeInTheDocument();
 
-    await user.click(screen.getByText('Open Accessibility Settings'));
+    await user.click(screen.getByText(/Accessibility permission required/));
     expect(mockInvoke).toHaveBeenCalledWith('open_accessibility_settings');
+  });
+
+  it('shows a green accessibility status when macOS permission is granted', async () => {
+    setupInvoke({ accessibilityTrusted: true, platform: 'macOS' });
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await user.click(await screen.findByRole('button', { name: 'Tiling' }));
+
+    expect(screen.getByLabelText('Accessibility permission granted')).toHaveTextContent('✓');
+  });
+
+  it('links to Multitasking Settings when native Windows Snap is enabled', async () => {
+    setupInvoke({ platform: 'Windows', windowsElevated: true, windowsSnapEnabled: true });
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await user.click(await screen.findByRole('button', { name: 'Tiling' }));
+
+    await user.click(screen.getByText(/Windows Snap may interfere/));
+    expect(mockInvoke).toHaveBeenCalledWith('open_windows_multitasking_settings');
+  });
+
+  it('shows a green Tile Snap status when native Windows Snap is disabled', async () => {
+    setupInvoke({ platform: 'Windows', windowsElevated: true, windowsSnapEnabled: false });
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await user.click(await screen.findByRole('button', { name: 'Tiling' }));
+
+    expect(screen.getByLabelText('Windows Snap disabled')).toHaveTextContent('✓');
+    expect(screen.queryByText(/Windows Snap may interfere/)).not.toBeInTheDocument();
   });
 
   it('hides tiling sub-controls when tiling is disabled', async () => {

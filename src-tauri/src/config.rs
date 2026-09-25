@@ -51,10 +51,16 @@ fn default_system_keybindings_for_platform(is_windows: bool) -> Vec<KeyBinding> 
         return Vec::new();
     }
 
-    vec![KeyBinding {
-        key: "Ctrl+Alt+Shift+Up".into(),
-        command: CommandValue::Single("command/system/taskView".into()),
-    }]
+    vec![
+        KeyBinding {
+            key: "Ctrl+Alt+Shift+Up".into(),
+            command: CommandValue::Single("command/system/taskView".into()),
+        },
+        KeyBinding {
+            key: "Ctrl+Alt+Shift+Down".into(),
+            command: CommandValue::Single("command/system/showDesktop".into()),
+        },
+    ]
 }
 
 /// Default-value helper for `bool` fields that should default to `true` when
@@ -1038,7 +1044,7 @@ mod tests {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.min_brightness, 10);
-        assert_eq!(prefs.key_bindings.len(), if cfg!(target_os = "windows") { 23 } else { 22 });
+        assert_eq!(prefs.key_bindings.len(), if cfg!(target_os = "windows") { 24 } else { 22 });
     }
 
     /// Windows defaults Tile Snap off to avoid fighting the native Snap UI.
@@ -1193,11 +1199,16 @@ mod tests {
     #[test]
     fn test_default_task_view_keybinding_is_windows_only() {
         let windows = default_system_keybindings_for_platform(true);
-        assert_eq!(windows.len(), 1);
+        assert_eq!(windows.len(), 2);
         assert_eq!(windows[0].key, "Ctrl+Alt+Shift+Up");
         match &windows[0].command {
             CommandValue::Single(command) => assert_eq!(command, "command/system/taskView"),
             CommandValue::Multiple(_) => panic!("Task View must dispatch one command"),
+        }
+        assert_eq!(windows[1].key, "Ctrl+Alt+Shift+Down");
+        match &windows[1].command {
+            CommandValue::Single(command) => assert_eq!(command, "command/system/showDesktop"),
+            CommandValue::Multiple(_) => panic!("show desktop binding should contain one command"),
         }
         assert!(default_system_keybindings_for_platform(false).is_empty());
     }
@@ -1503,7 +1514,7 @@ mod tests {
         assert_eq!(loaded.min_brightness, 10);
         assert_eq!(
             loaded.key_bindings.len(),
-            if cfg!(target_os = "windows") { 23 } else { 22 }
+            if cfg!(target_os = "windows") { 24 } else { 22 }
         );
 
         std::fs::remove_dir_all(&dir).ok();

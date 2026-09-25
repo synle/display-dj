@@ -968,10 +968,7 @@ fn begin_tile_snap_drag(
     }
     let original_rect = get_hwnd_rect(hwnd)?;
     let display_infos = get_display_work_areas();
-    let displays: Vec<Rect> = display_infos
-        .iter()
-        .map(|(rect, _)| rect.clone())
-        .collect();
+    let displays: Vec<Rect> = display_infos.iter().map(|(rect, _)| rect.clone()).collect();
     let scale_factors: Vec<f64> = display_infos.iter().map(|(_, scale)| *scale).collect();
     if displays.is_empty() {
         dbg_log(app, "tile_snap_win: no displays found");

@@ -375,7 +375,12 @@ fn get_frame_extents(conn: &RustConnection, window: Window) -> (i32, i32, i32, i
     };
     let vals = get_cardinal_list(conn, window, atom);
     if vals.len() >= 4 {
-        (vals[0] as i32, vals[1] as i32, vals[2] as i32, vals[3] as i32)
+        (
+            vals[0] as i32,
+            vals[1] as i32,
+            vals[2] as i32,
+            vals[3] as i32,
+        )
     } else {
         (0, 0, 0, 0)
     }
@@ -1605,7 +1610,10 @@ fn execute_restore(app: &AppHandle) {
     if let Some(rect) = original {
         log::info!(
             "tiling: restore -> ({}, {}, {}x{})",
-            rect.x, rect.y, rect.width, rect.height,
+            rect.x,
+            rect.y,
+            rect.width,
+            rect.height,
         );
         set_window_rect(&conn, screen_num, window, &rect);
     } else {
@@ -1660,15 +1668,29 @@ pub fn execute_expose(app: &AppHandle) {
     }
 
     // X11 typically runs at 1x — use logical min values directly
-    let min_cell_sizes: Vec<(f64, f64)> = displays.iter().map(|_| (expose_min_w, expose_min_h)).collect();
+    let min_cell_sizes: Vec<(f64, f64)> = displays
+        .iter()
+        .map(|_| (expose_min_w, expose_min_h))
+        .collect();
 
-    let placements = plan_expose(&all_windows, &displays, max_per_display, gap as f64, spread, &min_cell_sizes);
+    let placements = plan_expose(
+        &all_windows,
+        &displays,
+        max_per_display,
+        gap as f64,
+        spread,
+        &min_cell_sizes,
+    );
     for p in &placements {
         let wid = p.window_id as u32;
         set_window_rect(&conn, screen_num, wid, &p.target);
         raise_window(&conn, root, wid);
     }
-    log::info!("expose: placed {} windows across {} displays", placements.len(), displays.len());
+    log::info!(
+        "expose: placed {} windows across {} displays",
+        placements.len(),
+        displays.len()
+    );
 }
 
 /// App Exposé: target app's windows on first displays, others on remaining.
@@ -1732,15 +1754,31 @@ pub fn execute_expose_app(app: &AppHandle) {
     }
 
     // X11 typically runs at 1x — use logical min values directly
-    let min_cell_sizes: Vec<(f64, f64)> = displays.iter().map(|_| (expose_min_w, expose_min_h)).collect();
+    let min_cell_sizes: Vec<(f64, f64)> = displays
+        .iter()
+        .map(|_| (expose_min_w, expose_min_h))
+        .collect();
 
-    let placements = plan_expose_app(&all_windows, target_pid as i32, &displays, max_per_display, gap as f64, spread, &min_cell_sizes);
+    let placements = plan_expose_app(
+        &all_windows,
+        target_pid as i32,
+        &displays,
+        max_per_display,
+        gap as f64,
+        spread,
+        &min_cell_sizes,
+    );
     for p in &placements {
         let wid = p.window_id as u32;
         set_window_rect(&conn, screen_num, wid, &p.target);
         raise_window(&conn, root, wid);
     }
-    log::info!("app_expose: placed {} windows (app '{}') across {} displays", placements.len(), target_app, displays.len());
+    log::info!(
+        "app_expose: placed {} windows (app '{}') across {} displays",
+        placements.len(),
+        target_app,
+        displays.len()
+    );
 }
 
 /// Apply a layout preset using shared plan_layout_preset logic.
@@ -1758,7 +1796,12 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
                 return;
             }
         };
-        (preset, prefs.tiling.half_ratio, prefs.tiling.third_ratio, prefs.tiling.gap)
+        (
+            preset,
+            prefs.tiling.half_ratio,
+            prefs.tiling.third_ratio,
+            prefs.tiling.gap,
+        )
     };
 
     let windows = get_all_windows();
@@ -1779,7 +1822,11 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
     };
 
     let placements = plan_layout_preset(&windows, &preset, &displays, half_ratio, third_ratio, gap);
-    log::info!("layout_preset: '{}' placing {} windows", preset.name, placements.len());
+    log::info!(
+        "layout_preset: '{}' placing {} windows",
+        preset.name,
+        placements.len()
+    );
     for p in &placements {
         set_window_rect(&conn, screen_num, p.window_id as u32, &p.target);
     }

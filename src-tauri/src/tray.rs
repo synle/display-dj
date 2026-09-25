@@ -1273,6 +1273,11 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                 log::warn!("task_view: {error}");
             }
         }
+        ["command", "system", "showDesktop"] => {
+            if let Err(error) = crate::core::task_view::show_desktop() {
+                log::warn!("show_desktop: {error}");
+            }
+        }
         ["command", "tile", layout] => {
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             {
@@ -1584,24 +1589,24 @@ mod tests {
         assert!(!handler.contains("if let Ok(Some(tray_rect)) = tray.rect()"));
     }
 
-    /// Windows Task View releases trigger modifiers before balanced Win+Tab events.
+    /// Windows shell shortcuts release trigger modifiers before balanced Win-key events.
     #[test]
-    fn task_view_input_sequence_releases_trigger_modifiers() {
+    fn windows_shell_shortcuts_release_trigger_modifiers() {
         let source = include_str!("core/task_view.rs");
         let function = source
-            .split("pub fn open()")
+            .split("fn send_windows_chord")
             .nth(1)
-            .expect("Windows Task View adapter must exist")
-            .split("/// Report unsupported Task View")
+            .expect("Windows shell input helper must exist")
+            .split("/// Open Windows Task View")
             .next()
-            .expect("Task View adapter must have a bounded body");
+            .expect("Windows shell input helper must have a bounded body");
         let expected_order = [
             "key_input(VK_CONTROL, KEYEVENTF_KEYUP)",
             "key_input(VK_MENU, KEYEVENTF_KEYUP)",
             "key_input(VK_SHIFT, KEYEVENTF_KEYUP)",
             "key_input(VK_LWIN, Default::default())",
-            "key_input(VK_TAB, Default::default())",
-            "key_input(VK_TAB, KEYEVENTF_KEYUP)",
+            "key_input(key, Default::default())",
+            "key_input(key, KEYEVENTF_KEYUP)",
             "key_input(VK_LWIN, KEYEVENTF_KEYUP)",
         ];
 
@@ -1609,8 +1614,10 @@ mod tests {
         for event in expected_order {
             remainder = remainder
                 .split_once(event)
-                .unwrap_or_else(|| panic!("missing or out-of-order Task View event: {event}"))
+                .unwrap_or_else(|| panic!("missing or out-of-order shell shortcut event: {event}"))
                 .1;
         }
+        assert!(source.contains("send_windows_chord(VK_TAB)"));
+        assert!(source.contains("send_windows_chord(VK_D)"));
     }
 }

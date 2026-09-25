@@ -29,6 +29,8 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   const [tilingSupported, setTilingSupported] = useState(false);
   const [accessibilityTrusted, setAccessibilityTrusted] = useState(true);
   const [windowsElevated, setWindowsElevated] = useState<boolean | null>(null);
+  const [windowsSnapEnabled, setWindowsSnapEnabled] = useState<boolean | null>(null);
+  const [platform, setPlatform] = useState<'macos' | 'windows' | 'other'>('other');
   const initialLoadRef = useRef(true);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -51,6 +53,15 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     invoke<boolean | null>('get_windows_elevation_status')
       .then(setWindowsElevated)
       .catch((error) => console.error('Failed to check Windows elevation:', error));
+    invoke<boolean | null>('get_windows_snap_enabled')
+      .then(setWindowsSnapEnabled)
+      .catch((error) => console.error('Failed to check Windows Snap:', error));
+    invoke<Record<string, string>>('get_about_info')
+      .then((info) => {
+        if (info.os === 'macOS') setPlatform('macos');
+        else if (info.os === 'Windows') setPlatform('windows');
+      })
+      .catch((error) => console.error('Failed to detect platform:', error));
     invoke<AudioOutputState>('get_audio_output_devices')
       .then(setAudioOutputState)
       .catch((error) => console.error('Failed to get audio output devices:', error));
@@ -615,25 +626,38 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         {activeTab === 'tiling' && (
           <>
             <div className='settings-section'>
-              <label className='settings-checkbox-row'>
-                <input
-                  type='checkbox'
-                  checked={tiling?.enabled ?? true}
-                  onChange={(e) => updateTiling('enabled', e.target.checked)}
-                />
-                <span>Enable Window Tiling</span>
-              </label>
-              {tiling.enabled && windowsElevated === false && (
-                <div
-                  role='status'
-                  style={{
-                    fontSize: '11px',
-                    color: '#e67700',
-                    marginTop: '4px',
-                    paddingLeft: '22px',
-                  }}>
-                  ⚠ Standard mode controls normal windows. To control elevated windows, quit Display
-                  DJ. Restart Display DJ with Run as administrator.
+              <div className='settings-status-row'>
+                <label className='settings-checkbox-row'>
+                  <input
+                    type='checkbox'
+                    checked={tiling?.enabled ?? true}
+                    onChange={(e) => updateTiling('enabled', e.target.checked)}
+                  />
+                  <span>Enable Window Tiling</span>
+                </label>
+                {platform === 'macos' && accessibilityTrusted && (
+                  <span
+                    className='settings-status-ok'
+                    aria-label='Accessibility permission granted'>
+                    ✓
+                  </span>
+                )}
+                {platform === 'windows' && windowsElevated === true && (
+                  <span className='settings-status-ok' aria-label='Running as administrator'>
+                    ✓
+                  </span>
+                )}
+              </div>
+              {platform === 'macos' && !accessibilityTrusted && (
+                <button
+                  className='settings-status-error'
+                  onClick={() => invoke('open_accessibility_settings')}>
+                  Accessibility permission required. Open Settings
+                </button>
+              )}
+              {platform === 'windows' && windowsElevated === false && (
+                <div className='settings-status-error' role='status'>
+                  Not running as administrator; elevated windows cannot be resized.
                 </div>
               )}
             </div>
@@ -643,41 +667,27 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 <div className='settings-divider' />
 
                 <div className='settings-section'>
-                  <label className='settings-checkbox-row'>
-                    <input
-                      type='checkbox'
-                      checked={tiling.tileSnapEnabled}
-                      onChange={(e) => updateTiling('tileSnapEnabled', e.target.checked)}
-                    />
-                    <span>Enable Tile Snap (drag to edge)</span>
-                  </label>
-                  {tiling.tileSnapEnabled && !accessibilityTrusted && (
-                    <div
-                      style={{
-                        fontSize: '11px',
-                        color: '#e67700',
-                        marginTop: '4px',
-                        paddingLeft: '22px',
-                      }}>
-                      ⚠ Accessibility permission required for Tile Snap.{' '}
-                      <a
-                        href='#'
-                        onClick={(e) => {
-                          e.preventDefault();
-                          invoke('open_accessibility_settings');
-                        }}
-                        style={{ color: '#e67700' }}>
-                        Open Accessibility Settings
-                      </a>{' '}
-                      |{' '}
-                      <a
-                        href='https://github.com/synle/display-dj#window-tiling-macos'
-                        target='_blank'
-                        rel='noopener noreferrer'
-                        style={{ color: '#e67700' }}>
-                        Learn how to enable
-                      </a>
-                    </div>
+                  <div className='settings-status-row'>
+                    <label className='settings-checkbox-row'>
+                      <input
+                        type='checkbox'
+                        checked={tiling.tileSnapEnabled}
+                        onChange={(e) => updateTiling('tileSnapEnabled', e.target.checked)}
+                      />
+                      <span>Enable Tile Snap (drag to edge)</span>
+                    </label>
+                    {platform === 'windows' && windowsSnapEnabled === false && (
+                      <span className='settings-status-ok' aria-label='Windows Snap disabled'>
+                        ✓
+                      </span>
+                    )}
+                  </div>
+                  {platform === 'windows' && windowsSnapEnabled === true && (
+                    <button
+                      className='settings-status-error'
+                      onClick={() => invoke('open_windows_multitasking_settings')}>
+                      Windows Snap may interfere. Open Multitasking Settings
+                    </button>
                   )}
                 </div>
 

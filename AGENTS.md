@@ -178,7 +178,7 @@ Windows runs at the invoking user's normal integrity (`asInvoker`, `uiAccess="fa
 
 - The WinEvent callback catches panics and only sends the HWND lifecycle event through a channel; no Tauri or blocking work runs across the FFI boundary.
 - `capabilities/default.json` must match `tile-snap-overlay-*` and `overlay-*`; otherwise the overlay pages cannot call `event.listen`, so zones and brightness dimming render nothing.
-- `get_windows_elevation_status` is advisory only: token-query errors log and return `None`; they never block startup or disable tiling. Settings warns standard-integrity Windows users that elevated target windows require restarting Display DJ with **Run as administrator**.
+- `get_windows_elevation_status` and `get_windows_snap_enabled` are advisory only: query errors log and return `None`; they never block startup or disable tiling. Settings shows inline green checks when macOS Accessibility, Windows elevation, or native-Snap conditions are satisfied; failures get one short line below the relevant checkbox. The macOS line opens Accessibility Settings, and the native-Snap line opens Windows Multitasking Settings.
 - The monitor starts at launch but remains dormant while `tileSnapEnabled` is false, so the Windows-default-off setting can be enabled without restarting.
 - Native Windows Snap competes for the same edges. README documents **Settings → System → Multitasking → Snap windows → Off** plus the `WindowArrangementActive=0` command-line alternative.
 
@@ -272,7 +272,7 @@ Module: `tiling/`. Moves/resizes the focused window into tiled layouts. **19 lay
 
 Tiling defaults come from one shared key/action table in `config.rs`. macOS prefixes every key with `Super+Ctrl` (Cmd+Ctrl); Windows and Linux prefix the same keys with `Ctrl+Alt`. Never edit one platform's defaults independently. Paired keys: Left/Center/Right Third = `Left`/`C` or `M`/`Right`, Left/Right Two-Thirds = `Up`/`Down`, Left/Right Half = `,`/`.`, Maximize = `/`, App Exposé = `A`, and Exposé = `E`. Quarter layouts have no default keyboard shortcuts.
 
-Windows additionally defaults `Ctrl+Alt+Shift+Up` to `command/system/taskView`, which releases the triggering modifiers and synthesizes `Win+Tab` through `SendInput`. macOS and Linux do not register this platform-specific default.
+Windows additionally defaults `Ctrl+Alt+Shift+Up` to `command/system/taskView` and `Ctrl+Alt+Shift+Down` to `command/system/showDesktop`. Both release the triggering modifiers before synthesizing `Win+Tab` or `Win+D` through `SendInput`. macOS and Linux do not register these platform-specific defaults.
 
 ### Architecture
 
@@ -393,6 +393,7 @@ Commands are strings dispatched by `execute_command()` in `tray.rs`. Bindable to
 | `command/tile/{layoutName}`                               | `tiling::execute_tile(...)`                                 | Tile the focused window                        |
 | `command/layout/{name_or_index}`                          | `tiling::execute_layout_preset(...)`                        | Apply a layout preset by name or 0-based index |
 | `command/system/taskView`                                 | Windows `SendInput(Win+Tab)`                                | Open Windows Task View                         |
+| `command/system/showDesktop`                              | Windows `SendInput(Win+D)`                                  | Show or restore the Windows desktop            |
 | `command/window/moveToFront`                              | `tiling::execute_zorder(WindowToFront)`                     | Raise the focused window above all others      |
 | `command/app/moveToFront`                                 | `tiling::execute_zorder(AppToFront)`                        | Raise all windows of the focused app           |
 | `command/window/moveToBack`                               | `tiling::execute_zorder(WindowToBack)`                      | Lower the focused window below all others      |

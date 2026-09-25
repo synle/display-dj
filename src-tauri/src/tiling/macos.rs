@@ -65,7 +65,10 @@ static LAST_BACKED_PID: Mutex<Option<i32>> = Mutex::new(None);
 fn remember_backed_pid(pid: i32) {
     if let Ok(mut g) = LAST_BACKED_PID.lock() {
         *g = Some(pid);
-        log::info!("remember_backed_pid: stored pid={} for next moveToFront", pid);
+        log::info!(
+            "remember_backed_pid: stored pid={} for next moveToFront",
+            pid
+        );
     }
 }
 
@@ -153,8 +156,11 @@ impl Drop for CfRef {
 /// Create a CFString from a Rust &str. Returns a CfRef that auto-releases.
 unsafe fn cfstr(s: &str) -> Option<CfRef> {
     let c = CString::new(s).ok()?;
-    let ptr =
-        CFStringCreateWithCString(K_CF_ALLOCATOR_DEFAULT, c.as_ptr(), K_CF_STRING_ENCODING_UTF8);
+    let ptr = CFStringCreateWithCString(
+        K_CF_ALLOCATOR_DEFAULT,
+        c.as_ptr(),
+        K_CF_STRING_ENCODING_UTF8,
+    );
     CfRef::new(ptr)
 }
 
@@ -244,7 +250,6 @@ extern "C" {
     /// Available since macOS 10.6, confirmed working through macOS 26.
     fn _AXUIElementGetWindow(element: CFTypeRef, window_id: *mut u32) -> AXError;
 }
-
 
 // ---------------------------------------------------------------------------
 // Geometry types (compatible with CoreGraphics C structs)
@@ -468,8 +473,7 @@ unsafe fn activate_app_by_pid_with_options(pid: i32, options: u64) {
         Some(c) => c,
         None => return,
     };
-    let app: *mut Object =
-        msg_send![cls, runningApplicationWithProcessIdentifier: pid];
+    let app: *mut Object = msg_send![cls, runningApplicationWithProcessIdentifier: pid];
     if app.is_null() {
         return;
     }
@@ -579,8 +583,7 @@ unsafe fn get_focused_window_via_frontmost_app() -> Option<CfRef> {
         // Last-ditch: just grab the first window from AXWindows.
         let attr = cfstr("AXWindows")?;
         let mut windows_ref: CFTypeRef = std::ptr::null();
-        let err =
-            AXUIElementCopyAttributeValue(app_el.as_ptr(), attr.as_ptr(), &mut windows_ref);
+        let err = AXUIElementCopyAttributeValue(app_el.as_ptr(), attr.as_ptr(), &mut windows_ref);
         if err != K_AX_ERROR_SUCCESS {
             log::info!(
                 "tiling: AXWindows (frontmost-app pid={} path) failed with AXError={} ({})",
@@ -720,8 +723,7 @@ unsafe fn get_window_rect(window: &CfRef) -> Option<Rect> {
 unsafe fn get_window_min_size(window: &CfRef) -> Option<(f64, f64)> {
     let attr = cfstr("AXMinimumSize")?;
     let mut val: CFTypeRef = std::ptr::null();
-    if AXUIElementCopyAttributeValue(window.as_ptr(), attr.as_ptr(), &mut val)
-        != K_AX_ERROR_SUCCESS
+    if AXUIElementCopyAttributeValue(window.as_ptr(), attr.as_ptr(), &mut val) != K_AX_ERROR_SUCCESS
     {
         return None;
     }
@@ -777,7 +779,10 @@ unsafe fn set_window_position(window: &CfRef, x: f64, y: f64) -> bool {
 /// Resize a window to the given dimensions (in points).
 /// Returns `true` on AX success. Logs the AX error code on failure.
 unsafe fn set_window_size(window: &CfRef, w: f64, h: f64) -> bool {
-    let mut size = CGSize { width: w, height: h };
+    let mut size = CGSize {
+        width: w,
+        height: h,
+    };
     let value = AXValueCreate(
         K_AX_VALUE_TYPE_CG_SIZE,
         &mut size as *mut CGSize as *mut c_void,
@@ -906,9 +911,7 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
             if let Some(refreshed_window) = get_focused_window() {
                 window = refreshed_window;
             } else {
-                log::warn!(
-                    "tiling: fullscreen exited but focused window could not be refreshed"
-                );
+                log::warn!("tiling: fullscreen exited but focused window could not be refreshed");
             }
         }
         let wid_opt = get_window_id(&window);
@@ -956,8 +959,13 @@ pub fn execute_tile(app: &AppHandle, layout_str: &str) {
     }
 
     // Calculate and apply target rect
-    let target =
-        calculate_target_rect(layout, &displays[target_display], half_ratio, third_ratio, gap);
+    let target = calculate_target_rect(
+        layout,
+        &displays[target_display],
+        half_ratio,
+        third_ratio,
+        gap,
+    );
     log::info!(
         "tiling: {} on display {} -> ({}, {}, {}x{}) wid={:?}",
         layout_str,
@@ -1017,7 +1025,10 @@ fn execute_restore(app: &AppHandle) {
     if let Some(rect) = original {
         log::info!(
             "tiling: restore -> ({}, {}, {}x{})",
-            rect.x, rect.y, rect.width, rect.height,
+            rect.x,
+            rect.y,
+            rect.width,
+            rect.height,
         );
         unsafe {
             set_window_rect(&window, &rect);
@@ -1095,7 +1106,11 @@ unsafe fn dict_get_i32(dict: CFDictionaryRef, key_str: &str) -> Option<i32> {
         return None;
     }
     let mut out: i32 = 0;
-    if CFNumberGetValue(val, K_CF_NUMBER_SINT32_TYPE, &mut out as *mut i32 as *mut c_void) {
+    if CFNumberGetValue(
+        val,
+        K_CF_NUMBER_SINT32_TYPE,
+        &mut out as *mut i32 as *mut c_void,
+    ) {
         Some(out)
     } else {
         None
@@ -1227,7 +1242,10 @@ pub fn move_window_to_front(_app: &AppHandle) {
             activate_app_by_pid(remembered_pid);
             // Raise the frontmost AX window of that app so it's the
             // topmost window within the (now-active) app.
-            if let Some((w, _wid)) = get_all_ax_windows_for_pid(remembered_pid).into_iter().next() {
+            if let Some((w, _wid)) = get_all_ax_windows_for_pid(remembered_pid)
+                .into_iter()
+                .next()
+            {
                 raise_window(&w);
             }
         }
@@ -1253,7 +1271,8 @@ pub fn move_window_to_front(_app: &AppHandle) {
         raise_window(&window);
         log::info!(
             "move_window_to_front: dispatched (pid={:?}, wid={:?})",
-            pid, wid,
+            pid,
+            wid,
         );
     }
 }
@@ -1305,7 +1324,9 @@ pub fn move_app_to_front(_app: &AppHandle) {
                     let fp = match get_window_pid(&f) {
                         Some(fp) => fp,
                         None => {
-                            log::info!("move_app_to_front: could not resolve PID for focused window");
+                            log::info!(
+                                "move_app_to_front: could not resolve PID for focused window"
+                            );
                             return;
                         }
                     };
@@ -1372,7 +1393,9 @@ unsafe fn activate_next_app_excluding_pid(excluded_pid: i32) -> bool {
         if w.owner_pid != excluded_pid && w.owner_pid > 0 {
             log::info!(
                 "activate_next_app_excluding_pid: activating pid={} ('{}') wid={}",
-                w.owner_pid, w.owner_name, w.window_id,
+                w.owner_pid,
+                w.owner_name,
+                w.window_id,
             );
             activate_app_by_pid(w.owner_pid);
             return true;
@@ -1428,7 +1451,8 @@ pub fn move_window_to_back(_app: &AppHandle) {
         }
         log::info!(
             "move_window_to_back: CGSOrderWindow sent (wid={}, pid={})",
-            wid, pid,
+            wid,
+            pid,
         );
     }
 }
@@ -1589,7 +1613,11 @@ fn spread_expose(app: &AppHandle) {
     // Normalize: unminimize and un-fullscreen all windows first
     let (unmin, unfs) = normalize_all_windows();
     if unmin > 0 || unfs > 0 {
-        log::info!("expose: normalized {} unminimized, {} un-fullscreened", unmin, unfs);
+        log::info!(
+            "expose: normalized {} unminimized, {} un-fullscreened",
+            unmin,
+            unfs
+        );
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
@@ -1618,13 +1646,27 @@ fn spread_expose(app: &AppHandle) {
     std::thread::sleep(std::time::Duration::from_millis(200));
 
     // macOS NSScreen returns points (logical pixels) — no DPI scaling needed
-    let min_cell_sizes: Vec<(f64, f64)> = displays.iter().map(|_| (expose_min_w, expose_min_h)).collect();
+    let min_cell_sizes: Vec<(f64, f64)> = displays
+        .iter()
+        .map(|_| (expose_min_w, expose_min_h))
+        .collect();
 
-    let placements = plan_expose(&all_windows, &displays, max_per_display, gap as f64, spread, &min_cell_sizes);
+    let placements = plan_expose(
+        &all_windows,
+        &displays,
+        max_per_display,
+        gap as f64,
+        spread,
+        &min_cell_sizes,
+    );
     for p in &placements {
         set_window_rect_by_id(p.owner_pid, p.window_id as u32, &p.target);
     }
-    log::info!("expose: placed {} windows across {} displays", placements.len(), displays.len());
+    log::info!(
+        "expose: placed {} windows across {} displays",
+        placements.len(),
+        displays.len()
+    );
 }
 
 /// Get an AXUIElement for a specific window by PID and CGWindowID.
@@ -1699,8 +1741,7 @@ unsafe fn is_window_minimized(ax_win: &CfRef) -> bool {
         None => return false,
     };
     let mut val: CFTypeRef = std::ptr::null();
-    if AXUIElementCopyAttributeValue(ax_win.as_ptr(), attr.as_ptr(), &mut val)
-        != K_AX_ERROR_SUCCESS
+    if AXUIElementCopyAttributeValue(ax_win.as_ptr(), attr.as_ptr(), &mut val) != K_AX_ERROR_SUCCESS
     {
         return false;
     }
@@ -1722,8 +1763,7 @@ unsafe fn is_window_fullscreen(ax_win: &CfRef) -> bool {
         None => return false,
     };
     let mut val: CFTypeRef = std::ptr::null();
-    if AXUIElementCopyAttributeValue(ax_win.as_ptr(), attr.as_ptr(), &mut val)
-        != K_AX_ERROR_SUCCESS
+    if AXUIElementCopyAttributeValue(ax_win.as_ptr(), attr.as_ptr(), &mut val) != K_AX_ERROR_SUCCESS
     {
         return false;
     }
@@ -2006,7 +2046,10 @@ fn normalize_all_windows() -> (usize, usize) {
                 std::thread::sleep(std::time::Duration::from_millis(200));
             }
             unfullscreened += 1;
-            log::info!("expose: sent Escape to exit pseudo-fullscreen (pid={})", pid);
+            log::info!(
+                "expose: sent Escape to exit pseudo-fullscreen (pid={})",
+                pid
+            );
         }
     }
 
@@ -2064,7 +2107,11 @@ fn spread_expose_app(app: &AppHandle) {
 
     let (unmin, unfs) = normalize_all_windows();
     if unmin > 0 || unfs > 0 {
-        log::info!("app_expose: normalized {} unminimized, {} un-fullscreened", unmin, unfs);
+        log::info!(
+            "app_expose: normalized {} unminimized, {} un-fullscreened",
+            unmin,
+            unfs
+        );
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
@@ -2092,15 +2139,28 @@ fn spread_expose_app(app: &AppHandle) {
     std::thread::sleep(std::time::Duration::from_millis(200));
 
     // macOS NSScreen returns points (logical pixels) — no DPI scaling needed
-    let min_cell_sizes: Vec<(f64, f64)> = displays.iter().map(|_| (expose_min_w, expose_min_h)).collect();
+    let min_cell_sizes: Vec<(f64, f64)> = displays
+        .iter()
+        .map(|_| (expose_min_w, expose_min_h))
+        .collect();
 
-    let placements = plan_expose_app(&all_windows, target_pid, &displays, max_per_display, gap as f64, spread, &min_cell_sizes);
+    let placements = plan_expose_app(
+        &all_windows,
+        target_pid,
+        &displays,
+        max_per_display,
+        gap as f64,
+        spread,
+        &min_cell_sizes,
+    );
     for p in &placements {
         set_window_rect_by_id(p.owner_pid, p.window_id as u32, &p.target);
     }
     log::info!(
         "app_expose: placed {} windows (app '{}') across {} displays",
-        placements.len(), target_app, displays.len()
+        placements.len(),
+        target_app,
+        displays.len()
     );
 }
 
@@ -2168,7 +2228,12 @@ fn get_mouse_location_cg() -> CGPoint {
 
 /// Commands dispatched to the main thread for overlay window management.
 enum OverlayCmd {
-    Show { x: f64, y: f64, w: f64, h: f64 },
+    Show {
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+    },
     Hide,
     /// Show drop zone indicators on all displays. Provides immediate visual
     /// feedback that the event tap is alive. Colors: green=top (maximize),
@@ -2190,8 +2255,7 @@ static OVERLAY_PTR: std::sync::OnceLock<std::sync::atomic::AtomicUsize> =
     std::sync::OnceLock::new();
 
 /// Global zone overlay NSWindow pointers. Created lazily, reused across drags.
-static ZONE_PTRS: std::sync::OnceLock<std::sync::Mutex<Vec<usize>>> =
-    std::sync::OnceLock::new();
+static ZONE_PTRS: std::sync::OnceLock<std::sync::Mutex<Vec<usize>>> = std::sync::OnceLock::new();
 
 /// Initialize the overlay on the main thread. Call once during app setup.
 fn init_overlay_on_main_thread() {
@@ -2254,7 +2318,10 @@ unsafe fn create_colored_overlay(r: f64, g: f64, b: f64, alpha: f64) -> *mut c_v
     let window: *mut Object = msg_send![cls, alloc];
     let rect = CGRect {
         origin: CGPoint { x: 0.0, y: 0.0 },
-        size: CGSize { width: 1.0, height: 1.0 },
+        size: CGSize {
+            width: 1.0,
+            height: 1.0,
+        },
     };
     let window: *mut Object = msg_send![window,
         initWithContentRect:rect
@@ -2285,7 +2352,10 @@ unsafe fn show_zone_window(window: *mut c_void, x: f64, y: f64, w: f64, h: f64, 
     let cocoa_y = primary_h - y - h;
     let frame = CGRect {
         origin: CGPoint { x, y: cocoa_y },
-        size: CGSize { width: w, height: h },
+        size: CGSize {
+            width: w,
+            height: h,
+        },
     };
     let _: () = msg_send![win, setFrame:frame display:true];
     let _: () = msg_send![win, orderFront:std::ptr::null::<Object>()];
@@ -2344,7 +2414,10 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
                 let cocoa_y = primary_h - y - h;
                 let frame = CGRect {
                     origin: CGPoint { x, y: cocoa_y },
-                    size: CGSize { width: w, height: h },
+                    size: CGSize {
+                        width: w,
+                        height: h,
+                    },
                 };
                 let _: () = msg_send![window, setFrame:frame display:true];
                 let _: () = msg_send![window, orderFront:std::ptr::null::<Object>()];
@@ -2352,7 +2425,13 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
             OverlayCmd::Hide => {
                 let _: () = msg_send![window, orderOut:std::ptr::null::<Object>()];
             }
-            OverlayCmd::ShowZones { displays, side_edge, top_edge, corner, toggles } => {
+            OverlayCmd::ShowZones {
+                displays,
+                side_edge,
+                top_edge,
+                corner,
+                toggles,
+            } => {
                 // Get primary screen height for coordinate conversion
                 let cls = objc::runtime::Class::get("NSScreen").unwrap();
                 let screens: *mut Object = msg_send![cls, screens];
@@ -2399,7 +2478,10 @@ extern "C" fn run_overlay_cmd(ctx: *mut c_void) {
                     }
                     show_zone_window(
                         ptrs[i] as *mut c_void,
-                        zone.rect.x, zone.rect.y, zone.rect.width, zone.rect.height,
+                        zone.rect.x,
+                        zone.rect.y,
+                        zone.rect.width,
+                        zone.rect.height,
                         primary_h,
                     );
                 }
@@ -2564,11 +2646,7 @@ struct SnapState {
 /// check caused false negatives for these browsers. Since the 10px drag
 /// confirmation threshold + snap zone geometry already prevent false positives,
 /// checking position alone is sufficient.
-fn is_window_move(
-    start_pos: (f64, f64),
-    _start_size: Option<(f64, f64)>,
-    cur_rect: &Rect,
-) -> bool {
+fn is_window_move(start_pos: (f64, f64), _start_size: Option<(f64, f64)>, cur_rect: &Rect) -> bool {
     let pos_dx = (cur_rect.x - start_pos.0).abs();
     let pos_dy = (cur_rect.y - start_pos.1).abs();
     pos_dx > 5.0 || pos_dy > 5.0
@@ -2635,7 +2713,9 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                 let (start_rect, win_info) = unsafe {
                     let w = get_focused_window();
                     let r = w.as_ref().and_then(|w| get_window_rect(w));
-                    let info = w.as_ref().map_or(String::from("?"), |w| get_window_debug_info(w));
+                    let info = w
+                        .as_ref()
+                        .map_or(String::from("?"), |w| get_window_debug_info(w));
                     (r, info)
                 };
                 state.drag_start_window_pos = start_rect.as_ref().map(|r| (r.x, r.y));
@@ -2656,9 +2736,17 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                     state.snap_zone_toggles = SnapZoneToggles::from_prefs(&tp);
                 }
                 if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
-                    let display_info: Vec<String> = state.displays.iter().enumerate().map(|(i, d)| {
-                        format!("D{}({:.0},{:.0} {:.0}x{:.0})", i, d.x, d.y, d.width, d.height)
-                    }).collect();
+                    let display_info: Vec<String> = state
+                        .displays
+                        .iter()
+                        .enumerate()
+                        .map(|(i, d)| {
+                            format!(
+                                "D{}({:.0},{:.0} {:.0}x{:.0})",
+                                i, d.x, d.y, d.width, d.height
+                            )
+                        })
+                        .collect();
                     crate::config::write_debug_log(
                         &dbg_state,
                         &format!(
@@ -2667,12 +2755,17 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                              edge_triggers=(side={:.0}, top={:.0}, corner={:.0}), \
                              tiling=(half={}, third={}, gap={})",
                             win_info,
-                            cursor.x, cursor.y,
+                            cursor.x,
+                            cursor.y,
                             state.drag_start_window_pos,
                             state.drag_start_window_size,
                             display_info.join(", "),
-                            state.side_edge_trigger, state.top_edge_trigger, state.corner_trigger,
-                            state.half_ratio, state.third_ratio, state.gap,
+                            state.side_edge_trigger,
+                            state.top_edge_trigger,
+                            state.corner_trigger,
+                            state.half_ratio,
+                            state.third_ratio,
+                            state.gap,
                         ),
                     );
                 }
@@ -2686,9 +2779,8 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
             // resizing or content drag. Only activate snap for window moves.
             if !state.window_is_moving {
                 if let Some((sx, sy)) = state.drag_start_window_pos {
-                    let cur_rect = unsafe {
-                        get_focused_window().and_then(|w| get_window_rect(&w))
-                    };
+                    let cur_rect =
+                        unsafe { get_focused_window().and_then(|w| get_window_rect(&w)) };
                     if let Some(r) = cur_rect {
                         if is_window_move((sx, sy), state.drag_start_window_size, &r) {
                             state.window_is_moving = true;
@@ -2807,9 +2899,7 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                         &dbg_state,
                         &format!(
                             "tile_snap: dragging {} — cursor=({:.0},{:.0}), zone={:?}",
-                            state.drag_window_title,
-                            cursor.x, cursor.y,
-                            state.current_layout,
+                            state.drag_window_title, cursor.x, cursor.y, state.current_layout,
                         ),
                     );
                 }
@@ -2898,7 +2988,10 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
                 if let Some(dbg_state) = ctx.app.try_state::<crate::AppState>() {
                     crate::config::write_debug_log(
                         &dbg_state,
-                        &format!("tile_snap: mouse_up {} — no zone active, cursor=({:.0},{:.0})", win_title, cursor.x, cursor.y),
+                        &format!(
+                            "tile_snap: mouse_up {} — no zone active, cursor=({:.0},{:.0})",
+                            win_title, cursor.x, cursor.y
+                        ),
                     );
                 }
             }
@@ -2930,7 +3023,12 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
                 return;
             }
         };
-        (preset, prefs.tiling.half_ratio, prefs.tiling.third_ratio, prefs.tiling.gap)
+        (
+            preset,
+            prefs.tiling.half_ratio,
+            prefs.tiling.third_ratio,
+            prefs.tiling.gap,
+        )
     };
 
     let windows = get_all_windows();
@@ -2946,7 +3044,11 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
     }
 
     let placements = plan_layout_preset(&windows, &preset, &displays, half_ratio, third_ratio, gap);
-    log::info!("layout_preset: '{}' placing {} windows", preset.name, placements.len());
+    log::info!(
+        "layout_preset: '{}' placing {} windows",
+        preset.name,
+        placements.len()
+    );
     for p in &placements {
         set_window_rect_by_id(p.owner_pid, p.window_id as u32, &p.target);
     }
@@ -2960,18 +3062,33 @@ pub fn execute_layout_preset(app: &AppHandle, name_or_index: &str) {
 pub fn start_tile_snap(app: AppHandle) {
     let trusted = unsafe { AXIsProcessTrusted() };
     let displays = get_display_visible_frames();
-    let display_info: Vec<String> = displays.iter().enumerate().map(|(i, d)| {
-        format!("D{}({:.0},{:.0} {:.0}x{:.0})", i, d.x, d.y, d.width, d.height)
-    }).collect();
+    let display_info: Vec<String> = displays
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            format!(
+                "D{}({:.0},{:.0} {:.0}x{:.0})",
+                i, d.x, d.y, d.width, d.height
+            )
+        })
+        .collect();
     // Log to debug file so bundled app failures are visible
     if let Some(state) = app.try_state::<crate::AppState>() {
-        let prefs_info = state.preferences.lock().ok().map(|p| {
-            format!(
-                "tiling.enabled={}, snap_enabled={}, side={}, top={}, corner={}",
-                p.tiling.enabled, p.tiling.tile_snap_enabled,
-                p.tiling.side_edge_trigger, p.tiling.top_edge_trigger, p.tiling.corner_trigger,
-            )
-        }).unwrap_or_else(|| "prefs lock failed".into());
+        let prefs_info = state
+            .preferences
+            .lock()
+            .ok()
+            .map(|p| {
+                format!(
+                    "tiling.enabled={}, snap_enabled={}, side={}, top={}, corner={}",
+                    p.tiling.enabled,
+                    p.tiling.tile_snap_enabled,
+                    p.tiling.side_edge_trigger,
+                    p.tiling.top_edge_trigger,
+                    p.tiling.corner_trigger,
+                )
+            })
+            .unwrap_or_else(|| "prefs lock failed".into());
         crate::config::write_debug_log(
             &state,
             &format!(
@@ -3133,7 +3250,12 @@ mod tests {
 
     /// Helper to build a Rect for tests.
     fn rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
-        Rect { x, y, width: w, height: h }
+        Rect {
+            x,
+            y,
+            width: w,
+            height: h,
+        }
     }
 
     /// First successful `try_mark_tile_snap_started()` returns true; the
@@ -3147,8 +3269,14 @@ mod tests {
         // static; the helper is gated by `#[cfg(test)]`.
         reset_tile_snap_started_for_test();
         assert!(try_mark_tile_snap_started(), "first call should claim");
-        assert!(!try_mark_tile_snap_started(), "second call must short-circuit");
-        assert!(!try_mark_tile_snap_started(), "subsequent calls also short-circuit");
+        assert!(
+            !try_mark_tile_snap_started(),
+            "second call must short-circuit"
+        );
+        assert!(
+            !try_mark_tile_snap_started(),
+            "subsequent calls also short-circuit"
+        );
         // Reset so we don't poison other tests that may run after.
         reset_tile_snap_started_for_test();
     }
@@ -3204,14 +3332,19 @@ mod tests {
     #[test]
     fn test_ax_error_description_known_codes_have_unique_descriptions() {
         let codes = [
-            -25200, -25201, -25202, -25204, -25205, -25206,
-            -25211, -25212, -25213, -25214, -25215, -25216,
+            -25200, -25201, -25202, -25204, -25205, -25206, -25211, -25212, -25213, -25214, -25215,
+            -25216,
         ];
         let mut seen = std::collections::HashSet::new();
         for c in codes {
             let d = ax_error_description(c);
             assert_ne!(d, "unknown", "code {} mapped to 'unknown'", c);
-            assert!(seen.insert(d), "duplicate description '{}' for code {}", d, c);
+            assert!(
+                seen.insert(d),
+                "duplicate description '{}' for code {}",
+                d,
+                c
+            );
         }
     }
 
@@ -3228,8 +3361,14 @@ mod tests {
     fn test_is_pseudo_fullscreen_matches_full_display_bounds() {
         let frames = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
 
-        assert!(is_pseudo_fullscreen(&rect(0.0, 0.0, 1920.0, 1080.0), &frames));
-        assert!(!is_pseudo_fullscreen(&rect(0.0, 25.0, 1920.0, 1055.0), &frames));
+        assert!(is_pseudo_fullscreen(
+            &rect(0.0, 0.0, 1920.0, 1080.0),
+            &frames
+        ));
+        assert!(!is_pseudo_fullscreen(
+            &rect(0.0, 25.0, 1920.0, 1055.0),
+            &frames
+        ));
     }
 
     // --- is_window_move tests ---
@@ -3718,9 +3857,8 @@ mod tests {
 
         // Cursor squarely on the top strip but outside any corner.
         // With Maximize disabled, this lands in nothing.
-        let hit = detect_snap_zone_macos_with_toggles(
-            960.0, 5.0, &displays, 18.0, 18.0, 50.0, &toggles,
-        );
+        let hit =
+            detect_snap_zone_macos_with_toggles(960.0, 5.0, &displays, 18.0, 18.0, 50.0, &toggles);
         assert_eq!(hit, None);
     }
 
@@ -3758,11 +3896,19 @@ mod tests {
         let mut toggles = SnapZoneToggles::all_enabled();
         toggles.bottom_thirds = false;
         let zones = build_snap_zones_with_toggles(&displays, 18.0, 18.0, 50.0, &toggles);
-        for layout in [TilingLayout::LeftThird, TilingLayout::CenterThird, TilingLayout::RightThird] {
+        for layout in [
+            TilingLayout::LeftThird,
+            TilingLayout::CenterThird,
+            TilingLayout::RightThird,
+        ] {
             assert!(!zones.iter().any(|(_, l, _)| *l == layout));
         }
-        assert!(zones.iter().any(|(_, l, _)| *l == TilingLayout::LeftTwoThirds));
-        assert!(zones.iter().any(|(_, l, _)| *l == TilingLayout::RightTwoThirds));
+        assert!(zones
+            .iter()
+            .any(|(_, l, _)| *l == TilingLayout::LeftTwoThirds));
+        assert!(zones
+            .iter()
+            .any(|(_, l, _)| *l == TilingLayout::RightTwoThirds));
     }
 
     /// `bottom_two_thirds = false` removes the two 2/3 markers without
@@ -3776,7 +3922,11 @@ mod tests {
         for layout in [TilingLayout::LeftTwoThirds, TilingLayout::RightTwoThirds] {
             assert!(!zones.iter().any(|(_, l, _)| *l == layout));
         }
-        for layout in [TilingLayout::LeftThird, TilingLayout::CenterThird, TilingLayout::RightThird] {
+        for layout in [
+            TilingLayout::LeftThird,
+            TilingLayout::CenterThird,
+            TilingLayout::RightThird,
+        ] {
             assert!(zones.iter().any(|(_, l, _)| *l == layout));
         }
     }
@@ -3787,13 +3937,26 @@ mod tests {
     fn test_bottom_two_thirds_zone_is_double_width_of_thirds() {
         let displays = vec![rect(0.0, 0.0, 1920.0, 1080.0)];
         let zones = build_snap_zones_with_toggles(
-            &displays, 18.0, 18.0, 50.0, &SnapZoneToggles::all_enabled(),
+            &displays,
+            18.0,
+            18.0,
+            50.0,
+            &SnapZoneToggles::all_enabled(),
         );
-        let third = zones.iter().find(|(_, l, _)| *l == TilingLayout::LeftThird).unwrap();
-        let two_third = zones.iter().find(|(_, l, _)| *l == TilingLayout::LeftTwoThirds).unwrap();
-        assert!((two_third.0.width - third.0.width * 2.0).abs() < 0.01,
+        let third = zones
+            .iter()
+            .find(|(_, l, _)| *l == TilingLayout::LeftThird)
+            .unwrap();
+        let two_third = zones
+            .iter()
+            .find(|(_, l, _)| *l == TilingLayout::LeftTwoThirds)
+            .unwrap();
+        assert!(
+            (two_third.0.width - third.0.width * 2.0).abs() < 0.01,
             "2/3 marker width ({}) should be 2× the 1/3 marker width ({})",
-            two_third.0.width, third.0.width);
+            two_third.0.width,
+            third.0.width
+        );
     }
 
     /// `from_prefs` faithfully maps every per-zone preference flag onto the
