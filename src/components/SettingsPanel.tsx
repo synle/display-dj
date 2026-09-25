@@ -62,7 +62,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         } catch (e) {
           console.error('Failed to save preferences:', e);
         }
-      }, 300);
+      }, 100);
     },
     [onPreferencesSaved],
   );

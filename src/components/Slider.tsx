@@ -46,7 +46,7 @@ export default function Slider({
       }
       timeoutRef.current = setTimeout(() => {
         onChange(newValue);
-      }, 150);
+      }, 50);
     },
     [onChange],
   );

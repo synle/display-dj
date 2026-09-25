@@ -100,7 +100,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** Wait long enough for the SettingsPanel debounce (300ms) to flush + save. */
+/** Wait long enough for the SettingsPanel debounce (100ms) to flush + save. */
 async function waitForSave() {
   await waitFor(
     () => {

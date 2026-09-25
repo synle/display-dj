@@ -260,7 +260,7 @@ States are cached on `AppState` (`is_dark_mode`, `is_muted`); `update_tray_icon(
 
 ## Settings & About
 
-- **Settings Panel**: auto-saves preferences (300ms debounce) — no Save/Cancel buttons. `SettingsPanel` uses `useCallback` + `setTimeout` to debounce `save_preferences`, and triggers `onPreferencesSaved` to refresh the parent UI.
+- **Settings Panel**: auto-saves preferences (100ms debounce) — no Save/Cancel buttons. `SettingsPanel` uses `useCallback` + `setTimeout` to debounce `save_preferences`, and triggers `onPreferencesSaved` to refresh the parent UI.
 - **Dropdowns**: every native select renders through `Dropdown.tsx`. `.dropdown` owns common height, padding, typography, focus, and disabled states; context classes only control layout width and minimum width.
 - **About Panel** (`AboutPanel.tsx`): tray menu "About Display DJ" → emits `show-about` → frontend shows panel. Displays version (`get_about_info`), latest version (GitHub `releases/latest`), engine, platform+arch, build date (`BUILD_DATE`), homepage. Shows "Up to date" / "Update available" badge. macOS shows `xattr -cr` quarantine and Accessibility commands in selectable code blocks.
 

@@ -52,7 +52,7 @@ describe('Slider', () => {
 
     // After the debounce period
     await act(async () => {
-      vi.advanceTimersByTime(150);
+      vi.advanceTimersByTime(50);
     });
 
     expect(onChange).toHaveBeenCalledWith(70);
