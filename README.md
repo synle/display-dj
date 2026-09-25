@@ -148,13 +148,15 @@ Use `Cmd + Ctrl` on macOS and `Ctrl + Alt` on Windows/Linux with each key below.
 | Key       | Action           |
 | --------- | ---------------- |
 | Left      | Left Third       |
-| C         | Center Third     |
+| C or M    | Center Third     |
 | Right     | Right Third      |
 | Up        | Left Two-Thirds  |
 | Down      | Right Two-Thirds |
-| M or /    | Maximize         |
+| /         | Maximize         |
 | , (comma) | Left Half        |
 | . (dot)   | Right Half       |
+| A         | App Exposé       |
+| E         | Exposé           |
 
 **Window Z-Order** (macOS + Windows + Linux/X11):
 

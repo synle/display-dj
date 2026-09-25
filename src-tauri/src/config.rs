@@ -14,16 +14,18 @@ pub const ABSOLUTE_MAX_MIN_BRIGHTNESS: u32 = 100;
 
 /// Key suffixes and commands shared by macOS and non-macOS tiling defaults.
 /// Keep this as one table so both platform sets stay paired.
-const DEFAULT_TILING_BINDINGS: [(&str, &str); 9] = [
+const DEFAULT_TILING_BINDINGS: [(&str, &str); 11] = [
     ("Left", "command/tile/leftThird"),
     ("C", "command/tile/centerThird"),
+    ("M", "command/tile/centerThird"),
     ("Right", "command/tile/rightThird"),
     ("Up", "command/tile/leftTwoThirds"),
     ("Down", "command/tile/rightTwoThirds"),
-    ("M", "command/tile/maximize"),
     (",", "command/tile/leftHalf"),
     (".", "command/tile/rightHalf"),
     ("/", "command/tile/maximize"),
+    ("A", "command/tile/exposeApp"),
+    ("E", "command/tile/expose"),
 ];
 
 /// Build paired tiling defaults using only the platform-specific modifier prefix.
@@ -1020,7 +1022,7 @@ mod tests {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.min_brightness, 10);
-        assert_eq!(prefs.key_bindings.len(), 20);
+        assert_eq!(prefs.key_bindings.len(), 22);
     }
 
     /// Windows defaults Tile Snap off to avoid fighting the native Snap UI.
@@ -1469,7 +1471,7 @@ mod tests {
         let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(loaded.min_brightness, 10);
-        assert_eq!(loaded.key_bindings.len(), 20);
+        assert_eq!(loaded.key_bindings.len(), 22);
 
         std::fs::remove_dir_all(&dir).ok();
     }

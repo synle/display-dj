@@ -270,7 +270,7 @@ Module: `tiling/`. Moves/resizes the focused window into tiled layouts. **19 lay
 
 ### Default keyboard shortcut pairing
 
-Tiling defaults come from one shared key/action table in `config.rs`. macOS prefixes every key with `Super+Ctrl` (Cmd+Ctrl); Windows and Linux prefix the same keys with `Ctrl+Alt`. Never edit one platform's defaults independently. Paired keys: Left/Center/Right Third = `Left`/`C`/`Right`, Left/Right Two-Thirds = `Up`/`Down`, Left/Right Half = `,`/`.`, and Maximize = both `M` and `/`. Exposé and quarter layouts have no default keyboard shortcuts.
+Tiling defaults come from one shared key/action table in `config.rs`. macOS prefixes every key with `Super+Ctrl` (Cmd+Ctrl); Windows and Linux prefix the same keys with `Ctrl+Alt`. Never edit one platform's defaults independently. Paired keys: Left/Center/Right Third = `Left`/`C` or `M`/`Right`, Left/Right Two-Thirds = `Up`/`Down`, Left/Right Half = `,`/`.`, Maximize = `/`, App Exposé = `A`, and Exposé = `E`. Quarter layouts have no default keyboard shortcuts.
 
 ### Architecture
 
