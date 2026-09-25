@@ -1,4 +1,32 @@
-//! Windows shell keyboard synthesis.
+//! Platform shell overview and desktop actions.
+
+/// Post one notification understood by the macOS Mission Control launcher.
+#[cfg(target_os = "macos")]
+#[allow(unexpected_cfgs)]
+fn post_macos_dock_notification(notification: &str) -> Result<(), String> {
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::ffi::CString;
+
+    let notification = CString::new(notification)
+        .map_err(|_| "Mission Control notification contains a null byte".to_string())?;
+    unsafe {
+        let name: *mut Object = msg_send![class!(NSString), alloc];
+        let name: *mut Object = msg_send![name, initWithUTF8String: notification.as_ptr()];
+        if name.is_null() {
+            return Err("failed to create Mission Control notification name".into());
+        }
+        let center: *mut Object = msg_send![class!(NSDistributedNotificationCenter), defaultCenter];
+        if center.is_null() {
+            let _: () = msg_send![name, release];
+            return Err("distributed notification center unavailable".into());
+        }
+        let _: () =
+            msg_send![center, postNotificationName: name object: std::ptr::null::<Object>()];
+        let _: () = msg_send![name, release];
+    }
+    Ok(())
+}
 
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -47,8 +75,14 @@ pub fn open() -> Result<(), String> {
     send_windows_chord(VK_TAB)
 }
 
-/// Report unsupported Task View invocation outside Windows.
-#[cfg(not(target_os = "windows"))]
+/// Open macOS Mission Control through the Dock's distributed notification.
+#[cfg(target_os = "macos")]
+pub fn open() -> Result<(), String> {
+    post_macos_dock_notification("com.apple.expose.awake")
+}
+
+/// Report unsupported overview invocation outside Windows and macOS.
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub fn open() -> Result<(), String> {
     Err("not supported on this platform".into())
 }
@@ -60,8 +94,14 @@ pub fn show_desktop() -> Result<(), String> {
     send_windows_chord(VK_D)
 }
 
-/// Report unsupported Show Desktop invocation outside Windows.
-#[cfg(not(target_os = "windows"))]
+/// Show or restore the macOS desktop through the Dock's distributed notification.
+#[cfg(target_os = "macos")]
+pub fn show_desktop() -> Result<(), String> {
+    post_macos_dock_notification("com.apple.showdesktop.awake")
+}
+
+/// Report unsupported Show Desktop invocation outside Windows and macOS.
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub fn show_desktop() -> Result<(), String> {
     Err("not supported on this platform".into())
 }

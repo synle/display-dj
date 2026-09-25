@@ -46,18 +46,23 @@ fn default_tiling_keybindings() -> Vec<KeyBinding> {
 }
 
 /// Build platform-specific system shortcuts that have no cross-platform equivalent.
-fn default_system_keybindings_for_platform(is_windows: bool) -> Vec<KeyBinding> {
-    if !is_windows {
+fn default_system_keybindings_for_platform(is_macos: bool, is_windows: bool) -> Vec<KeyBinding> {
+    if !is_macos && !is_windows {
         return Vec::new();
     }
 
+    let prefix = if is_macos {
+        "Ctrl+Super+Shift"
+    } else {
+        "Ctrl+Alt+Shift"
+    };
     vec![
         KeyBinding {
-            key: "Ctrl+Alt+Shift+Up".into(),
+            key: format!("{prefix}+Up"),
             command: CommandValue::Single("command/system/taskView".into()),
         },
         KeyBinding {
-            key: "Ctrl+Alt+Shift+Down".into(),
+            key: format!("{prefix}+Down"),
             command: CommandValue::Single("command/system/showDesktop".into()),
         },
     ]
@@ -534,7 +539,10 @@ impl Default for Preferences {
             },
         ];
         key_bindings.extend(default_tiling_keybindings());
-        key_bindings.extend(default_system_keybindings_for_platform(cfg!(target_os = "windows")));
+        key_bindings.extend(default_system_keybindings_for_platform(
+            cfg!(target_os = "macos"),
+            cfg!(target_os = "windows"),
+        ));
         key_bindings.extend([
             KeyBinding {
                 key: "Shift+Ctrl+Super+Left".into(),
@@ -1044,7 +1052,14 @@ mod tests {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.min_brightness, 10);
-        assert_eq!(prefs.key_bindings.len(), if cfg!(target_os = "windows") { 24 } else { 22 });
+        assert_eq!(
+            prefs.key_bindings.len(),
+            if cfg!(any(target_os = "macos", target_os = "windows")) {
+                24
+            } else {
+                22
+            }
+        );
     }
 
     /// Windows defaults Tile Snap off to avoid fighting the native Snap UI.
@@ -1195,10 +1210,10 @@ mod tests {
         }
     }
 
-    /// Windows maps the extra chord to Task View without changing other platforms.
+    /// macOS and Windows map matching platform chords to overview and desktop actions.
     #[test]
-    fn test_default_task_view_keybinding_is_windows_only() {
-        let windows = default_system_keybindings_for_platform(true);
+    fn test_default_system_keybindings_match_platform() {
+        let windows = default_system_keybindings_for_platform(false, true);
         assert_eq!(windows.len(), 2);
         assert_eq!(windows[0].key, "Ctrl+Alt+Shift+Up");
         match &windows[0].command {
@@ -1210,7 +1225,11 @@ mod tests {
             CommandValue::Single(command) => assert_eq!(command, "command/system/showDesktop"),
             CommandValue::Multiple(_) => panic!("show desktop binding should contain one command"),
         }
-        assert!(default_system_keybindings_for_platform(false).is_empty());
+        let macos = default_system_keybindings_for_platform(true, false);
+        assert_eq!(macos.len(), 2);
+        assert_eq!(macos[0].key, "Ctrl+Super+Shift+Up");
+        assert_eq!(macos[1].key, "Ctrl+Super+Shift+Down");
+        assert!(default_system_keybindings_for_platform(false, false).is_empty());
     }
 
     #[test]
@@ -1514,7 +1533,11 @@ mod tests {
         assert_eq!(loaded.min_brightness, 10);
         assert_eq!(
             loaded.key_bindings.len(),
-            if cfg!(target_os = "windows") { 24 } else { 22 }
+            if cfg!(any(target_os = "macos", target_os = "windows")) {
+                24
+            } else {
+                22
+            }
         );
 
         std::fs::remove_dir_all(&dir).ok();

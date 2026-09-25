@@ -1591,7 +1591,7 @@ mod tests {
 
     /// Windows shell shortcuts release trigger modifiers before balanced Win-key events.
     #[test]
-    fn windows_shell_shortcuts_release_trigger_modifiers() {
+    fn platform_shell_shortcuts_use_native_actions() {
         let source = include_str!("core/task_view.rs");
         let function = source
             .split("fn send_windows_chord")
@@ -1619,5 +1619,7 @@ mod tests {
         }
         assert!(source.contains("send_windows_chord(VK_TAB)"));
         assert!(source.contains("send_windows_chord(VK_D)"));
+        assert!(source.contains("com.apple.expose.awake"));
+        assert!(source.contains("com.apple.showdesktop.awake"));
     }
 }
