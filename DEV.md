@@ -127,6 +127,10 @@ Logs go to stdout (plus `debug.log` in the config dir when enabled). A clean sta
 
 `windows-app-manifest.xml` declares `asInvoker` with `uiAccess="false"`, embedded by `build.rs` through `tauri_build::WindowsAttributes`. Keeping the app at normal user integrity lets the global WinEvent monitor observe ordinary application drag events without a UAC prompt. Windows blocks normal-integrity processes from moving elevated windows, so users must explicitly run Display DJ as administrator when that behavior is required. Do not use `uiAccess="true"`: unsigned/current-user bundles do not meet Windows UIAccess signing and secure-install-location requirements. The manifest must retain Tauri's Common Controls v6 dependency.
 
+### Windows Task View shortcut
+
+`command/system/taskView` calls `core::task_view::open()`, which synthesizes `Win+Tab` with `SendInput`. Because the default trigger (`Ctrl+Alt+Shift+Up`) is still physically held when the global shortcut callback runs, the input sequence first releases Ctrl, Alt, and Shift, then sends balanced Win/Tab down-up events. The default binding is Windows-only.
+
 `tiling::get_windows_elevation_status()` queries the current process token only when Settings opens. It returns `Some(true|false)` on Windows and `None` on other platforms or query failure; failures are logged and never gate startup, tiling, or Settings. Standard-integrity Windows sessions show restart-as-administrator guidance while retaining all normal-window controls.
 
 Windows defaults `tileSnapEnabled` to false because native Windows Snap competes for the same edges. Users should disable **Settings → System → Multitasking → Snap windows** before opting in; README carries both UI and registry-command instructions.

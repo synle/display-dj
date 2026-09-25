@@ -45,6 +45,18 @@ fn default_tiling_keybindings() -> Vec<KeyBinding> {
         .collect()
 }
 
+/// Build platform-specific system shortcuts that have no cross-platform equivalent.
+fn default_system_keybindings_for_platform(is_windows: bool) -> Vec<KeyBinding> {
+    if !is_windows {
+        return Vec::new();
+    }
+
+    vec![KeyBinding {
+        key: "Ctrl+Alt+Shift+Up".into(),
+        command: CommandValue::Single("command/system/taskView".into()),
+    }]
+}
+
 /// Default-value helper for `bool` fields that should default to `true` when
 /// missing from a deserialized config. `#[serde(default)]` alone yields `false`
 /// for bools, which would silently disable newly-added snap-zone toggles on
@@ -513,6 +525,7 @@ impl Default for Preferences {
             },
         ];
         key_bindings.extend(default_tiling_keybindings());
+        key_bindings.extend(default_system_keybindings_for_platform(cfg!(target_os = "windows")));
         key_bindings.extend([
             KeyBinding {
                 key: "Shift+Ctrl+Super+Left".into(),
@@ -1022,7 +1035,7 @@ mod tests {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.min_brightness, 10);
-        assert_eq!(prefs.key_bindings.len(), 22);
+        assert_eq!(prefs.key_bindings.len(), if cfg!(target_os = "windows") { 23 } else { 22 });
     }
 
     /// Windows defaults Tile Snap off to avoid fighting the native Snap UI.
@@ -1171,6 +1184,19 @@ mod tests {
             assert_eq!(*actual_key, expected_key);
             assert_eq!(*actual_command, *expected_command);
         }
+    }
+
+    /// Windows maps the extra chord to Task View without changing other platforms.
+    #[test]
+    fn test_default_task_view_keybinding_is_windows_only() {
+        let windows = default_system_keybindings_for_platform(true);
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0].key, "Ctrl+Alt+Shift+Up");
+        match &windows[0].command {
+            CommandValue::Single(command) => assert_eq!(command, "command/system/taskView"),
+            CommandValue::Multiple(_) => panic!("Task View must dispatch one command"),
+        }
+        assert!(default_system_keybindings_for_platform(false).is_empty());
     }
 
     #[test]
@@ -1471,7 +1497,10 @@ mod tests {
         let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(loaded.min_brightness, 10);
-        assert_eq!(loaded.key_bindings.len(), 22);
+        assert_eq!(
+            loaded.key_bindings.len(),
+            if cfg!(target_os = "windows") { 23 } else { 22 }
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }

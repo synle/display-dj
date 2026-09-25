@@ -178,6 +178,7 @@ Verify: `node --version`, `rustc --version`, and on Linux `ddcutil detect`.
 - **"No displays found"** — Linux: `ddcutil detect` as your user; check `i2c` group membership. Windows: enable DDC/CI in the monitor OSD. macOS: try USB-C/DP instead of HDMI.
 - **Dark mode does nothing on Linux** — requires GNOME (`echo $XDG_CURRENT_DESKTOP`).
 - **Two snap previews appear on Windows** — disable **Settings → System → Multitasking → Snap windows**, then retry the drag. Display DJ Tile Snap defaults off on Windows for this reason.
+- **Task View shortcut does nothing for an elevated target** — Display DJ sends `Win+Tab` at its current integrity level. Restart Display DJ as administrator only when Windows blocks injected input across an elevation boundary.
 - **Two snap previews appear on XFCE/X11** — clear **Window Manager Tweaks → Accessibility → Automatically tile windows when moving toward the screen edge**, then retry the drag.
 - **Tile shortcuts silently no-op on Chromium apps (macOS)** — known AX limitation; fixed since v7.0.24 via NSWorkspace fallback. Details in [DEV.md](DEV.md).
 - **Maximized/fullscreen window does not resize when tiled** — focused tiling restores Windows maximized windows, exits macOS native or browser/video fullscreen, and removes Linux/X11 EWMH maximize/fullscreen states before applying the layout. Linux waits for the window manager to confirm normal state before saving restore bounds. Minimized windows remain untouched outside Exposé.

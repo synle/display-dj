@@ -1268,6 +1268,11 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                 }
             }
         }
+        ["command", "system", "taskView"] => {
+            if let Err(error) = crate::core::task_view::open() {
+                log::warn!("task_view: {error}");
+            }
+        }
         ["command", "tile", layout] => {
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             {
@@ -1577,5 +1582,35 @@ mod tests {
         assert!(handler.contains("rect: tray_rect"));
         assert!(handler.contains("position_window_near_tray(\n                            &window,\n                            tray_rect,"));
         assert!(!handler.contains("if let Ok(Some(tray_rect)) = tray.rect()"));
+    }
+
+    /// Windows Task View releases trigger modifiers before balanced Win+Tab events.
+    #[test]
+    fn task_view_input_sequence_releases_trigger_modifiers() {
+        let source = include_str!("core/task_view.rs");
+        let function = source
+            .split("pub fn open()")
+            .nth(1)
+            .expect("Windows Task View adapter must exist")
+            .split("/// Report unsupported Task View")
+            .next()
+            .expect("Task View adapter must have a bounded body");
+        let expected_order = [
+            "key_input(VK_CONTROL, KEYEVENTF_KEYUP)",
+            "key_input(VK_MENU, KEYEVENTF_KEYUP)",
+            "key_input(VK_SHIFT, KEYEVENTF_KEYUP)",
+            "key_input(VK_LWIN, Default::default())",
+            "key_input(VK_TAB, Default::default())",
+            "key_input(VK_TAB, KEYEVENTF_KEYUP)",
+            "key_input(VK_LWIN, KEYEVENTF_KEYUP)",
+        ];
+
+        let mut remainder = function;
+        for event in expected_order {
+            remainder = remainder
+                .split_once(event)
+                .unwrap_or_else(|| panic!("missing or out-of-order Task View event: {event}"))
+                .1;
+        }
     }
 }

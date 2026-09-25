@@ -272,6 +272,8 @@ Module: `tiling/`. Moves/resizes the focused window into tiled layouts. **19 lay
 
 Tiling defaults come from one shared key/action table in `config.rs`. macOS prefixes every key with `Super+Ctrl` (Cmd+Ctrl); Windows and Linux prefix the same keys with `Ctrl+Alt`. Never edit one platform's defaults independently. Paired keys: Left/Center/Right Third = `Left`/`C` or `M`/`Right`, Left/Right Two-Thirds = `Up`/`Down`, Left/Right Half = `,`/`.`, Maximize = `/`, App Exposé = `A`, and Exposé = `E`. Quarter layouts have no default keyboard shortcuts.
 
+Windows additionally defaults `Ctrl+Alt+Shift+Up` to `command/system/taskView`, which releases the triggering modifiers and synthesizes `Win+Tab` through `SendInput`. macOS and Linux do not register this platform-specific default.
+
 ### Architecture
 
 - `tiling/mod.rs` — shared types, layout math, `TilingLayout`, AND orchestration (`plan_expose`, `plan_expose_app`, `plan_layout_preset`) that compute placements without OS calls.
@@ -390,6 +392,7 @@ Commands are strings dispatched by `execute_command()` in `tray.rs`. Bindable to
 | `command/changeProfile/{index}`                           | (recursively dispatches profile commands)                   | Run all commands in a saved profile            |
 | `command/tile/{layoutName}`                               | `tiling::execute_tile(...)`                                 | Tile the focused window                        |
 | `command/layout/{name_or_index}`                          | `tiling::execute_layout_preset(...)`                        | Apply a layout preset by name or 0-based index |
+| `command/system/taskView`                                 | Windows `SendInput(Win+Tab)`                                | Open Windows Task View                         |
 | `command/window/moveToFront`                              | `tiling::execute_zorder(WindowToFront)`                     | Raise the focused window above all others      |
 | `command/app/moveToFront`                                 | `tiling::execute_zorder(AppToFront)`                        | Raise all windows of the focused app           |
 | `command/window/moveToBack`                               | `tiling::execute_zorder(WindowToBack)`                      | Lower the focused window below all others      |

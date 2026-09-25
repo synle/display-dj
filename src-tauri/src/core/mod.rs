@@ -14,6 +14,8 @@ pub mod linux;
 #[cfg(target_os = "windows")]
 pub mod win_cmd;
 
+pub mod task_view;
+
 pub mod theme;
 pub mod volume;
 pub mod wallpaper;

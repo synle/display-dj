@@ -141,6 +141,8 @@ To diagnose output switching, open the tray menu and choose **Debug → Enable L
 | Shift + F3 / F4 / F5    | Brightness 0% / 50% / 100%                             |
 | Shift + F10 / F11 / F12 | Volume 0% / 10% / 100%                                 |
 
+Windows also maps `Ctrl + Alt + Shift + Up` to Task View, equivalent to pressing `Win + Tab`.
+
 **Window Tiling** (macOS + Windows + Linux/X11):
 
 Use `Cmd + Ctrl` on macOS and `Ctrl + Alt` on Windows/Linux with each key below.
