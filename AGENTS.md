@@ -81,7 +81,7 @@ cd src-tauri && cargo test   # Backend tests (Rust)
 ### Frontend Tests (Vitest + React Testing Library)
 
 - **Setup**: `src/test/setup.ts` — jsdom, jest-dom matchers, Tauri API mocks (`invoke()` and `listen()` mocked globally).
-- **Unit tests**: `src/components/*.test.tsx` — one per component (Header, Slider, DarkModeToggle, VolumeControl, AllMonitorsControl, MonitorControl, KeepAwakeToggle, AboutPanel, ProfileButtons, SettingsPanel).
+- **Unit tests**: `src/components/*.test.tsx` — one per component (Header, Slider, Dropdown, DarkModeToggle, VolumeControl, AllMonitorsControl, MonitorControl, KeepAwakeToggle, AboutPanel, ProfileButtons, SettingsPanel).
 - **Smoke test**: `src/App.test.tsx` — verifies App renders, fetches initial data, handles backend failures.
 
 ### Backend Tests (Rust)
@@ -261,6 +261,7 @@ States are cached on `AppState` (`is_dark_mode`, `is_muted`); `update_tray_icon(
 ## Settings & About
 
 - **Settings Panel**: auto-saves preferences (300ms debounce) — no Save/Cancel buttons. `SettingsPanel` uses `useCallback` + `setTimeout` to debounce `save_preferences`, and triggers `onPreferencesSaved` to refresh the parent UI.
+- **Dropdowns**: every native select renders through `Dropdown.tsx`. `.dropdown` owns common height, padding, typography, focus, and disabled states; context classes only control layout width and minimum width.
 - **About Panel** (`AboutPanel.tsx`): tray menu "About Display DJ" → emits `show-about` → frontend shows panel. Displays version (`get_about_info`), latest version (GitHub `releases/latest`), engine, platform+arch, build date (`BUILD_DATE`), homepage. Shows "Up to date" / "Update available" badge. macOS shows `xattr -cr` quarantine and Accessibility commands in selectable code blocks.
 
 ## Window Tiling (macOS + Windows + Linux/X11)

@@ -74,6 +74,8 @@ When debug logging is enabled, `volume.rs` logs the initial snapshot and later c
 
 `VolumeControl.tsx` owns a speaker expand/collapse chevron independent from the monitor section. Its readonly `All Speakers (<enabled non-hidden count>)` label appends `- <selected name>` while collapsed; expanded mode lists every endpoint with the selected radio checked, padded radio targets, inline alias editing, and a tri-state selector. Output names share the monitor-name font size. Enabled devices sort first with built-in outputs leading, disabled devices follow, and hidden devices appear only after clicking "Show hidden outputs"; selection never affects row order. The tray's **Output Device** submenu lists enabled outputs only and marks the selected endpoint with `●`.
 
+`src/components/Dropdown.tsx` is the single frontend select primitive. Audio-output state, monitor brightness mode, wallpaper, slideshow, and Exposé strategy controls all use it; `.dropdown` in `App.css` owns their common 32px height, horizontal padding, typography, focus, hover, and disabled states.
+
 ## Platform pitfalls
 
 ### macOS — Chromium apps & `AXFocusedApplication` (Brave / Chrome / Edge / Arc)

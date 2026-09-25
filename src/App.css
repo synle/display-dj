@@ -20,6 +20,7 @@
   --toggle-inactive-bg: #2a2a3a;
   --about-code-bg: #16213e;
   --about-code-text: #ccc;
+  --dropdown-bg: var(--bg-secondary);
 }
 
 [data-theme='light'] {
@@ -37,6 +38,7 @@
   --toggle-inactive-bg: #e5e5ea;
   --about-code-bg: #1c1c1e;
   --about-code-text: #ccc;
+  --dropdown-bg: var(--bg-secondary);
 }
 
 html,
@@ -458,22 +460,41 @@ body,
   min-width: 0;
 }
 
+.dropdown {
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--dropdown-bg);
+  color: var(--text-primary);
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 30px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.dropdown:hover:not(:disabled) {
+  border-color: var(--text-secondary);
+}
+
+.dropdown:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  outline-offset: 1px;
+}
+
+.dropdown:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .audio-output-state {
   flex-shrink: 0;
   min-width: 84px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-secondary);
   color: var(--text-secondary);
-  padding: 5px 8px;
-  font-family: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.audio-output-state:disabled {
-  cursor: default;
-  opacity: 0.5;
 }
 
 .audio-output-hidden-toggle {
@@ -745,6 +766,10 @@ body,
   gap: 4px;
 }
 
+.settings-dropdown {
+  width: 100%;
+}
+
 .settings-label {
   font-size: 11px;
   color: var(--text-secondary);
@@ -845,24 +870,12 @@ body,
   color: var(--text-primary);
 }
 
-/* Per-monitor brightness control strategy dropdown
- * (auto / ddc / gamma / overlay). See SettingsPanel.tsx. */
 .monitor-brightness-mode {
-  font-size: 10px;
+  min-width: 94px;
   font-weight: 600;
   color: var(--text-secondary);
   background: var(--toggle-inactive-bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 1px 4px;
-  cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.15s;
-}
-
-.monitor-brightness-mode:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
 }
 
 /* About panel */

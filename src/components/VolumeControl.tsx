@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { AudioOutputDevice, AudioOutputDeviceState, AudioOutputState } from '../types';
+import Dropdown from './Dropdown';
 import Slider from './Slider';
 
 interface VolumeControlProps {
@@ -146,7 +147,7 @@ export default function VolumeControl({
                         {device.name || device.originalName}
                       </button>
                     )}
-                    <select
+                    <Dropdown
                       className='audio-output-state'
                       aria-label={`State for ${device.name}`}
                       value={device.state}
@@ -157,7 +158,7 @@ export default function VolumeControl({
                       <option value='enabled'>Enabled</option>
                       <option value='disabled'>Disabled</option>
                       <option value='hidden'>Hidden</option>
-                    </select>
+                    </Dropdown>
                   </div>
                 );
               })}

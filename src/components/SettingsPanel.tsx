@@ -7,6 +7,7 @@ import {
   TilingPreferences,
   WallpaperPreferences,
 } from '../types';
+import Dropdown from './Dropdown';
 import Slider from './Slider';
 
 interface SettingsPanelProps {
@@ -286,7 +287,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       </div>
                       {meta.apiId !== 'builtin' && (
                         <>
-                          <select
+                          <Dropdown
                             className='monitor-brightness-mode'
                             value={meta.brightnessMode || 'auto'}
                             onChange={(e) =>
@@ -309,7 +310,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                             <option value='ddc'>DDC only</option>
                             <option value='gamma'>Gamma only</option>
                             <option value='overlay'>Overlay only</option>
-                          </select>
+                          </Dropdown>
                           <button
                             className='monitor-visibility-btn'
                             onClick={() => updateMonitorConfig(meta.uid, { hidden: !meta.hidden })}
@@ -381,16 +382,16 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
 
             <div className='settings-section'>
               <label className='settings-label'>Wallpaper Fit</label>
-              <select
+              <Dropdown
+                className='settings-dropdown'
                 value={prefs.wallpaper?.fit ?? 'fill'}
-                onChange={(e) => updateWallpaper('fit', e.target.value)}
-                style={{ marginTop: '4px', width: '100%' }}>
+                onChange={(e) => updateWallpaper('fit', e.target.value)}>
                 <option value='fill'>Fill Screen</option>
                 <option value='fit'>Fit to Screen</option>
                 <option value='stretch'>Stretch</option>
                 <option value='center'>Center</option>
                 <option value='tile'>Tile</option>
-              </select>
+              </Dropdown>
             </div>
 
             <div className='settings-divider' />
@@ -424,7 +425,8 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                   <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                     <div style={{ flex: 1 }}>
                       <label className='settings-label'>Hours</label>
-                      <select
+                      <Dropdown
+                        className='settings-dropdown'
                         value={Math.floor((prefs.wallpaper?.slideshowIntervalMinutes ?? 30) / 60)}
                         onChange={(e) => {
                           const hours = parseInt(e.target.value);
@@ -432,18 +434,18 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                             (prefs.wallpaper?.slideshowIntervalMinutes ?? 30) % 60;
                           const total = Math.max(5, hours * 60 + currentMinutes);
                           updateWallpaper('slideshowIntervalMinutes', total);
-                        }}
-                        style={{ width: '100%' }}>
+                        }}>
                         {Array.from({ length: 25 }, (_, i) => (
                           <option key={i} value={i}>
                             {i}h
                           </option>
                         ))}
-                      </select>
+                      </Dropdown>
                     </div>
                     <div style={{ flex: 1 }}>
                       <label className='settings-label'>Minutes</label>
-                      <select
+                      <Dropdown
+                        className='settings-dropdown'
                         value={
                           Math.round(((prefs.wallpaper?.slideshowIntervalMinutes ?? 30) % 60) / 5) *
                           5
@@ -455,14 +457,13 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                           );
                           const total = Math.max(5, currentHours * 60 + minutes);
                           updateWallpaper('slideshowIntervalMinutes', total);
-                        }}
-                        style={{ width: '100%' }}>
+                        }}>
                         {Array.from({ length: 12 }, (_, i) => (
                           <option key={i * 5} value={i * 5}>
                             {i * 5}m
                           </option>
                         ))}
-                      </select>
+                      </Dropdown>
                     </div>
                   </div>
                   <span
@@ -485,14 +486,14 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
 
                 <div className='settings-section'>
                   <label className='settings-label'>Slideshow Order</label>
-                  <select
+                  <Dropdown
+                    className='settings-dropdown'
                     value={prefs.wallpaper?.slideshowOrder ?? 'forward'}
-                    onChange={(e) => updateWallpaper('slideshowOrder', e.target.value)}
-                    style={{ marginTop: '4px', width: '100%' }}>
+                    onChange={(e) => updateWallpaper('slideshowOrder', e.target.value)}>
                     <option value='forward'>Forward (A→Z, loop)</option>
                     <option value='backward'>Backward (Z→A, loop)</option>
                     <option value='random'>Random (shuffle)</option>
-                  </select>
+                  </Dropdown>
                 </div>
               </>
             )}
@@ -791,13 +792,13 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     </span>
                     <div style={{ marginTop: '8px' }}>
                       <label className='settings-label'>Layout Strategy</label>
-                      <select
+                      <Dropdown
+                        className='settings-dropdown'
                         value={tiling?.exposeLayoutStrategy ?? 'spread'}
-                        onChange={(e) => updateTiling('exposeLayoutStrategy', e.target.value)}
-                        style={{ marginTop: '4px', width: '100%' }}>
+                        onChange={(e) => updateTiling('exposeLayoutStrategy', e.target.value)}>
                         <option value='spread'>Spread (distribute evenly across displays)</option>
                         <option value='fill'>Fill (pack each display before using next)</option>
-                      </select>
+                      </Dropdown>
                     </div>
                     <div style={{ marginTop: '8px' }}>
                       <label className='settings-label'>Min Cell Width</label>
