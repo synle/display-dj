@@ -12,6 +12,37 @@ pub const ABSOLUTE_MIN_BRIGHTNESS: u32 = 5;
 /// (slider, tray, keybinding, night-mode timer). See [`Preferences::sanitize`].
 pub const ABSOLUTE_MAX_MIN_BRIGHTNESS: u32 = 100;
 
+/// Key suffixes and commands shared by macOS and non-macOS tiling defaults.
+/// Keep this as one table so both platform sets stay paired.
+const DEFAULT_TILING_BINDINGS: [(&str, &str); 9] = [
+    ("Left", "command/tile/leftThird"),
+    ("C", "command/tile/centerThird"),
+    ("Right", "command/tile/rightThird"),
+    ("Up", "command/tile/leftTwoThirds"),
+    ("Down", "command/tile/rightTwoThirds"),
+    ("M", "command/tile/maximize"),
+    (",", "command/tile/leftHalf"),
+    (".", "command/tile/rightHalf"),
+    ("/", "command/tile/maximize"),
+];
+
+/// Build paired tiling defaults using only the platform-specific modifier prefix.
+fn default_tiling_keybindings() -> Vec<KeyBinding> {
+    let prefix = if cfg!(target_os = "macos") {
+        "Super+Ctrl"
+    } else {
+        "Ctrl+Alt"
+    };
+
+    DEFAULT_TILING_BINDINGS
+        .iter()
+        .map(|(key, command)| KeyBinding {
+            key: format!("{prefix}+{key}"),
+            command: CommandValue::Single((*command).into()),
+        })
+        .collect()
+}
+
 /// Default-value helper for `bool` fields that should default to `true` when
 /// missing from a deserialized config. `#[serde(default)]` alone yields `false`
 /// for bools, which would silently disable newly-added snap-zone toggles on
@@ -433,127 +464,68 @@ impl Preferences {
 
 impl Default for Preferences {
     fn default() -> Self {
+        let mut key_bindings = vec![
+            KeyBinding {
+                key: "Shift+Escape".into(),
+                command: CommandValue::Single("command/changeDarkMode/toggle".into()),
+            },
+            KeyBinding {
+                key: "Shift+F1".into(),
+                command: CommandValue::Multiple(vec![
+                    "command/changeVolume/50".into(),
+                    "command/changeBrightness/65".into(),
+                    "command/changeDarkMode/light".into(),
+                ]),
+            },
+            KeyBinding {
+                key: "Shift+F2".into(),
+                command: CommandValue::Multiple(vec![
+                    "command/changeVolume/100".into(),
+                    "command/changeBrightness/100".into(),
+                    "command/changeDarkMode/light".into(),
+                ]),
+            },
+            KeyBinding {
+                key: "Shift+F3".into(),
+                command: CommandValue::Single("command/changeBrightness/0".into()),
+            },
+            KeyBinding {
+                key: "Shift+F4".into(),
+                command: CommandValue::Single("command/changeBrightness/50".into()),
+            },
+            KeyBinding {
+                key: "Shift+F5".into(),
+                command: CommandValue::Single("command/changeBrightness/100".into()),
+            },
+            KeyBinding {
+                key: "Shift+F10".into(),
+                command: CommandValue::Single("command/changeVolume/0".into()),
+            },
+            KeyBinding {
+                key: "Shift+F11".into(),
+                command: CommandValue::Single("command/changeVolume/10".into()),
+            },
+            KeyBinding {
+                key: "Shift+F12".into(),
+                command: CommandValue::Single("command/changeVolume/100".into()),
+            },
+        ];
+        key_bindings.extend(default_tiling_keybindings());
+        key_bindings.extend([
+            KeyBinding {
+                key: "Shift+Ctrl+Super+Left".into(),
+                command: CommandValue::Single("command/app/moveToBack".into()),
+            },
+            KeyBinding {
+                key: "Shift+Ctrl+Super+Right".into(),
+                command: CommandValue::Single("command/app/moveToFront".into()),
+            },
+        ]);
+
         Self {
             show_individual_displays: false,
             min_brightness: 10,
-            key_bindings: vec![
-                KeyBinding {
-                    key: "Shift+Escape".into(),
-                    command: CommandValue::Single("command/changeDarkMode/toggle".into()),
-                },
-                KeyBinding {
-                    key: "Shift+F1".into(),
-                    command: CommandValue::Multiple(vec![
-                        "command/changeVolume/50".into(),
-                        "command/changeBrightness/65".into(),
-                        "command/changeDarkMode/light".into(),
-                    ]),
-                },
-                KeyBinding {
-                    key: "Shift+F2".into(),
-                    command: CommandValue::Multiple(vec![
-                        "command/changeVolume/100".into(),
-                        "command/changeBrightness/100".into(),
-                        "command/changeDarkMode/light".into(),
-                    ]),
-                },
-                KeyBinding {
-                    key: "Shift+F3".into(),
-                    command: CommandValue::Single("command/changeBrightness/0".into()),
-                },
-                KeyBinding {
-                    key: "Shift+F4".into(),
-                    command: CommandValue::Single("command/changeBrightness/50".into()),
-                },
-                KeyBinding {
-                    key: "Shift+F5".into(),
-                    command: CommandValue::Single("command/changeBrightness/100".into()),
-                },
-                KeyBinding {
-                    key: "Shift+F10".into(),
-                    command: CommandValue::Single("command/changeVolume/0".into()),
-                },
-                KeyBinding {
-                    key: "Shift+F11".into(),
-                    command: CommandValue::Single("command/changeVolume/10".into()),
-                },
-                KeyBinding {
-                    key: "Shift+F12".into(),
-                    command: CommandValue::Single("command/changeVolume/100".into()),
-                },
-                // Tiling: thirds via arrow keys
-                KeyBinding {
-                    key: "Shift+Ctrl+Left".into(),
-                    command: CommandValue::Single("command/tile/leftThird".into()),
-                },
-                KeyBinding {
-                    key: "Shift+Ctrl+Right".into(),
-                    command: CommandValue::Single("command/tile/rightThird".into()),
-                },
-                // Tiling: two-thirds via up/down
-                KeyBinding {
-                    key: "Shift+Ctrl+Up".into(),
-                    command: CommandValue::Single("command/tile/leftTwoThirds".into()),
-                },
-                KeyBinding {
-                    key: "Shift+Ctrl+Down".into(),
-                    command: CommandValue::Single("command/tile/rightTwoThirds".into()),
-                },
-                // Tiling: third via C
-                KeyBinding {
-                    key: "Shift+Ctrl+C".into(),
-                    command: CommandValue::Single("command/tile/centerThird".into()),
-                },
-                // Tiling: quarters via I/O/K/L (keyboard layout)
-                KeyBinding {
-                    key: "Shift+Ctrl+I".into(),
-                    command: CommandValue::Single("command/tile/topLeftQuarter".into()),
-                },
-                KeyBinding {
-                    key: "Shift+Ctrl+O".into(),
-                    command: CommandValue::Single("command/tile/topRightQuarter".into()),
-                },
-                KeyBinding {
-                    key: "Shift+Ctrl+K".into(),
-                    command: CommandValue::Single("command/tile/bottomLeftQuarter".into()),
-                },
-                KeyBinding {
-                    key: "Shift+Ctrl+L".into(),
-                    command: CommandValue::Single("command/tile/bottomRightQuarter".into()),
-                },
-                // Tiling: maximize
-                KeyBinding {
-                    key: "Shift+Ctrl+M".into(),
-                    command: CommandValue::Single("command/tile/maximize".into()),
-                },
-                KeyBinding {
-                    key: "Shift+Ctrl+/".into(),
-                    command: CommandValue::Single("command/tile/maximize".into()),
-                },
-                // Tiling: exposé
-                KeyBinding {
-                    key: "Ctrl+Up".into(),
-                    command: CommandValue::Single("command/tile/expose".into()),
-                },
-                // Tiling: app exposé (current app only)
-                KeyBinding {
-                    key: "Ctrl+Down".into(),
-                    command: CommandValue::Single("command/tile/exposeApp".into()),
-                },
-                // Z-order: send all windows of focused app to back / bring
-                // them all to front. Mnemonic: Left = back (away), Right =
-                // front (toward you). Shift+Ctrl+Super (Cmd on macOS, Win
-                // on Windows, Super on Linux) is unbound by default in all
-                // three OSes.
-                KeyBinding {
-                    key: "Shift+Ctrl+Super+Left".into(),
-                    command: CommandValue::Single("command/app/moveToBack".into()),
-                },
-                KeyBinding {
-                    key: "Shift+Ctrl+Super+Right".into(),
-                    command: CommandValue::Single("command/app/moveToFront".into()),
-                },
-            ],
+            key_bindings,
             profiles: vec![
                 Profile {
                     name: "Presentation".into(),
@@ -726,55 +698,10 @@ pub fn load_preferences() -> Preferences {
     };
     migrate_monitor_configs_if_needed(&mut prefs);
     migrate_expose_grid_if_needed(&mut prefs);
-    let removed_conflicting_keybinding = migrate_legacy_ctrl_shift_g_binding(&mut prefs);
-    let removed_legacy_d_binding = migrate_legacy_ctrl_shift_d_binding(&mut prefs);
-    let removed_legacy_e_binding = migrate_legacy_ctrl_shift_e_binding(&mut prefs);
-    let removed_legacy_a_binding = migrate_legacy_ctrl_shift_a_binding(&mut prefs);
     // Runs after the migrations so migrated values are bounded too (e.g. a
     // legacy `exposeMaxWindows` that squares out to an absurd grid).
     prefs.sanitize();
-    if removed_conflicting_keybinding
-        || removed_legacy_d_binding
-        || removed_legacy_e_binding
-        || removed_legacy_a_binding
-    {
-        save_preferences_to_disk(&prefs);
-    }
     prefs
-}
-
-/// Removes a retired default keybinding that matches the exact key + single
-/// command, preserving any user-customized command bound to the same key.
-fn remove_default_keybinding(prefs: &mut Preferences, key: &str, command: &str) -> bool {
-    let original_len = prefs.key_bindings.len();
-    prefs.key_bindings.retain(|binding| {
-        !(binding.key == key
-            && matches!(
-                &binding.command,
-                CommandValue::Single(actual) if actual == command
-            ))
-    });
-    prefs.key_bindings.len() != original_len
-}
-
-/// Remove the retired default Ctrl+Shift+G mapping while preserving custom commands.
-fn migrate_legacy_ctrl_shift_g_binding(prefs: &mut Preferences) -> bool {
-    remove_default_keybinding(prefs, "Shift+Ctrl+G", "command/tile/rightThird")
-}
-
-/// Remove the retired default Ctrl+Shift+D mapping while preserving custom commands.
-fn migrate_legacy_ctrl_shift_d_binding(prefs: &mut Preferences) -> bool {
-    remove_default_keybinding(prefs, "Shift+Ctrl+D", "command/tile/leftThird")
-}
-
-/// Remove the retired default Ctrl+Shift+E mapping while preserving custom commands.
-fn migrate_legacy_ctrl_shift_e_binding(prefs: &mut Preferences) -> bool {
-    remove_default_keybinding(prefs, "Shift+Ctrl+E", "command/tile/expose")
-}
-
-/// Remove the retired default Ctrl+Shift+A mapping while preserving custom commands.
-fn migrate_legacy_ctrl_shift_a_binding(prefs: &mut Preferences) -> bool {
-    remove_default_keybinding(prefs, "Shift+Ctrl+A", "command/tile/exposeApp")
 }
 
 /// Serializes preferences to pretty JSON and writes to disk.
@@ -1093,7 +1020,7 @@ mod tests {
         let prefs = Preferences::default();
         assert!(!prefs.show_individual_displays);
         assert_eq!(prefs.min_brightness, 10);
-        assert_eq!(prefs.key_bindings.len(), 24);
+        assert_eq!(prefs.key_bindings.len(), 20);
     }
 
     /// Windows defaults Tile Snap off to avoid fighting the native Snap UI.
@@ -1211,146 +1138,37 @@ mod tests {
         assert_eq!(keys[8], "Shift+F12");
     }
 
-    /// Default shortcuts avoid Ctrl+Shift+G because Windows reserves it in common apps.
+    /// Tiling shortcuts use one paired key/action set with platform-specific modifiers.
     #[test]
-    fn test_default_keybindings_omit_ctrl_shift_g() {
+    fn test_default_tiling_keybindings_match_platform() {
         let prefs = Preferences::default();
-        let keys: Vec<&str> = prefs.key_bindings.iter().map(|kb| kb.key.as_str()).collect();
+        let actual: Vec<(&str, &str)> = prefs
+            .key_bindings
+            .iter()
+            .filter_map(|binding| match &binding.command {
+                CommandValue::Single(command) if command.starts_with("command/tile/") => {
+                    Some((binding.key.as_str(), command.as_str()))
+                }
+                _ => None,
+            })
+            .collect();
+        let expected_prefix = if cfg!(target_os = "macos") {
+            "Super+Ctrl"
+        } else {
+            "Ctrl+Alt"
+        };
+        let expected: Vec<(String, &str)> = DEFAULT_TILING_BINDINGS
+            .iter()
+            .map(|(key, command)| (format!("{expected_prefix}+{key}"), *command))
+            .collect();
 
-        assert!(!keys.contains(&"Shift+Ctrl+G"));
-        assert!(keys.contains(&"Shift+Ctrl+Right"));
-    }
-
-    /// Legacy persisted defaults drop Ctrl+Shift+G so upgrades stop registering the conflict.
-    #[test]
-    fn test_migrate_legacy_ctrl_shift_g_binding_removes_default_command() {
-        let mut prefs = Preferences::default();
-        prefs.key_bindings.push(KeyBinding {
-            key: "Shift+Ctrl+G".into(),
-            command: CommandValue::Single("command/tile/rightThird".into()),
-        });
-
-        assert!(migrate_legacy_ctrl_shift_g_binding(&mut prefs));
-        assert!(!prefs.key_bindings.iter().any(|binding| binding.key == "Shift+Ctrl+G"));
-        assert!(!migrate_legacy_ctrl_shift_g_binding(&mut prefs));
-    }
-
-    /// A user-defined Ctrl+Shift+G command is not mistaken for the retired default mapping.
-    #[test]
-    fn test_migrate_legacy_ctrl_shift_g_binding_preserves_custom_command() {
-        let mut prefs = Preferences::default();
-        prefs.key_bindings.push(KeyBinding {
-            key: "Shift+Ctrl+G".into(),
-            command: CommandValue::Single("command/changeVolume/50".into()),
-        });
-
-        assert!(!migrate_legacy_ctrl_shift_g_binding(&mut prefs));
-        assert!(prefs.key_bindings.iter().any(|binding| {
-            binding.key == "Shift+Ctrl+G"
-                && matches!(
-                    &binding.command,
-                    CommandValue::Single(command) if command == "command/changeVolume/50"
-                )
-        }));
-    }
-
-    /// The dropped Ctrl+Shift+D default mapping is removed from persisted configs.
-    #[test]
-    fn test_migrate_legacy_ctrl_shift_d_binding_removes_default_command() {
-        let mut prefs = Preferences::default();
-        prefs.key_bindings.push(KeyBinding {
-            key: "Shift+Ctrl+D".into(),
-            command: CommandValue::Single("command/tile/leftThird".into()),
-        });
-
-        assert!(migrate_legacy_ctrl_shift_d_binding(&mut prefs));
-        assert!(!prefs.key_bindings.iter().any(|binding| binding.key == "Shift+Ctrl+D"));
-        assert!(!migrate_legacy_ctrl_shift_d_binding(&mut prefs));
-    }
-
-    /// A user-defined Ctrl+Shift+D command is not mistaken for the dropped default mapping.
-    #[test]
-    fn test_migrate_legacy_ctrl_shift_d_binding_preserves_custom_command() {
-        let mut prefs = Preferences::default();
-        prefs.key_bindings.push(KeyBinding {
-            key: "Shift+Ctrl+D".into(),
-            command: CommandValue::Single("command/changeVolume/50".into()),
-        });
-
-        assert!(!migrate_legacy_ctrl_shift_d_binding(&mut prefs));
-        assert!(prefs.key_bindings.iter().any(|binding| {
-            binding.key == "Shift+Ctrl+D"
-                && matches!(
-                    &binding.command,
-                    CommandValue::Single(command) if command == "command/changeVolume/50"
-                )
-        }));
-    }
-
-    /// The dropped Ctrl+Shift+E default mapping is removed from persisted configs.
-    #[test]
-    fn test_migrate_legacy_ctrl_shift_e_binding_removes_default_command() {
-        let mut prefs = Preferences::default();
-        prefs.key_bindings.push(KeyBinding {
-            key: "Shift+Ctrl+E".into(),
-            command: CommandValue::Single("command/tile/expose".into()),
-        });
-
-        assert!(migrate_legacy_ctrl_shift_e_binding(&mut prefs));
-        assert!(!prefs.key_bindings.iter().any(|binding| binding.key == "Shift+Ctrl+E"));
-        assert!(!migrate_legacy_ctrl_shift_e_binding(&mut prefs));
-    }
-
-    /// A user-defined Ctrl+Shift+E command is not mistaken for the dropped default mapping.
-    #[test]
-    fn test_migrate_legacy_ctrl_shift_e_binding_preserves_custom_command() {
-        let mut prefs = Preferences::default();
-        prefs.key_bindings.push(KeyBinding {
-            key: "Shift+Ctrl+E".into(),
-            command: CommandValue::Single("command/changeVolume/50".into()),
-        });
-
-        assert!(!migrate_legacy_ctrl_shift_e_binding(&mut prefs));
-        assert!(prefs.key_bindings.iter().any(|binding| {
-            binding.key == "Shift+Ctrl+E"
-                && matches!(
-                    &binding.command,
-                    CommandValue::Single(command) if command == "command/changeVolume/50"
-                )
-        }));
-    }
-
-    /// The dropped Ctrl+Shift+A default mapping is removed from persisted configs.
-    #[test]
-    fn test_migrate_legacy_ctrl_shift_a_binding_removes_default_command() {
-        let mut prefs = Preferences::default();
-        prefs.key_bindings.push(KeyBinding {
-            key: "Shift+Ctrl+A".into(),
-            command: CommandValue::Single("command/tile/exposeApp".into()),
-        });
-
-        assert!(migrate_legacy_ctrl_shift_a_binding(&mut prefs));
-        assert!(!prefs.key_bindings.iter().any(|binding| binding.key == "Shift+Ctrl+A"));
-        assert!(!migrate_legacy_ctrl_shift_a_binding(&mut prefs));
-    }
-
-    /// A user-defined Ctrl+Shift+A command is not mistaken for the dropped default mapping.
-    #[test]
-    fn test_migrate_legacy_ctrl_shift_a_binding_preserves_custom_command() {
-        let mut prefs = Preferences::default();
-        prefs.key_bindings.push(KeyBinding {
-            key: "Shift+Ctrl+A".into(),
-            command: CommandValue::Single("command/changeVolume/50".into()),
-        });
-
-        assert!(!migrate_legacy_ctrl_shift_a_binding(&mut prefs));
-        assert!(prefs.key_bindings.iter().any(|binding| {
-            binding.key == "Shift+Ctrl+A"
-                && matches!(
-                    &binding.command,
-                    CommandValue::Single(command) if command == "command/changeVolume/50"
-                )
-        }));
+        assert_eq!(actual.len(), expected.len());
+        for ((actual_key, actual_command), (expected_key, expected_command)) in
+            actual.iter().zip(expected.iter())
+        {
+            assert_eq!(*actual_key, expected_key);
+            assert_eq!(*actual_command, *expected_command);
+        }
     }
 
     #[test]
@@ -1651,7 +1469,7 @@ mod tests {
         let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(loaded.min_brightness, 10);
-        assert_eq!(loaded.key_bindings.len(), 24);
+        assert_eq!(loaded.key_bindings.len(), 20);
 
         std::fs::remove_dir_all(&dir).ok();
     }

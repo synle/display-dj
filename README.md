@@ -143,18 +143,18 @@ To diagnose output switching, open the tray menu and choose **Debug → Enable L
 
 **Window Tiling** (macOS + Windows + Linux/X11):
 
-| Keys                  | Action                           |
-| --------------------- | -------------------------------- |
-| Ctrl + Shift + Left   | Left Third                       |
-| Ctrl + Shift + Right  | Right Third                      |
-| Ctrl + Shift + Up     | Left Two-Thirds                  |
-| Ctrl + Shift + Down   | Right Two-Thirds                 |
-| Ctrl + Shift + C      | Center Third                     |
-| Ctrl + Shift + I/O    | Top-Left/Top-Right Quarter       |
-| Ctrl + Shift + K/L    | Bottom-Left/Bottom-Right Quarter |
-| Ctrl + Shift + M or / | Maximize                         |
-| Ctrl + Up             | Exposé (all windows)             |
-| Ctrl + Down           | App Exposé (current app only)    |
+Use `Cmd + Ctrl` on macOS and `Ctrl + Alt` on Windows/Linux with each key below.
+
+| Key       | Action           |
+| --------- | ---------------- |
+| Left      | Left Third       |
+| C         | Center Third     |
+| Right     | Right Third      |
+| Up        | Left Two-Thirds  |
+| Down      | Right Two-Thirds |
+| M or /    | Maximize         |
+| , (comma) | Left Half        |
+| . (dot)   | Right Half       |
 
 **Window Z-Order** (macOS + Windows + Linux/X11):
 
@@ -209,8 +209,8 @@ Restore XFCE edge tiling later with the same command using `-s true`.
 
 ### Exposé
 
-- **Exposé** (Ctrl+Up or Ctrl+Shift+E) -- spreads all on-screen windows into a deterministic alphabetical grid, filling the first display and overflowing to the next. Windows with minimum size constraints (e.g., Steam, Chrome) that don't fit overflow to displays with larger cells.
-- **App Exposé** (Ctrl+Down or Ctrl+Shift+A) -- grids the frontmost app's windows, then fills remaining cells with other apps' windows.
+- **Exposé** (`command/tile/expose`) -- spreads all on-screen windows into a deterministic alphabetical grid, filling the first display and overflowing to the next. Windows with minimum size constraints (e.g., Steam, Chrome) that don't fit overflow to displays with larger cells.
+- **App Exposé** (`command/tile/exposeApp`) -- grids the frontmost app's windows, then fills remaining cells with other apps' windows.
 
 Both modes normalize windows first (unminimize, exit fullscreen), then lay out a grid; each invocation re-lays out everything (no toggle/restore). Grid size (1-5 columns/rows, default 2x3) and layout strategy ("spread" evenly across displays vs "fill" each to capacity) are in Settings (Tiling tab). The tray has a separate Exposé submenu: enable/disable, both actions, and grid presets (2x2 through 5x5).
 

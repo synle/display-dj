@@ -90,7 +90,7 @@ When debug logging is enabled, `volume.rs` logs the initial snapshot and later c
 2. `_AXUIElementGetWindow` can return `wid == 0` for Chromium elements — `execute_tile` treats window_id as optional and proceeds without restore-state.
 3. All AX failures log code + description via `ax_error_description`; `-25212` is tagged "Chromium-style" so regressions are grep-able.
 
-Code: `src-tauri/src/tiling/macos.rs`. Verify live: focus Brave, hit Ctrl+Shift+Right, expect a log line like `AXFocusedApplication failed with AXError=-25212 … falling back to NSWorkspace.frontmostApplication`. If you instead see `set AXPosition(…) failed`, the lookup worked but the app refused the move (fullscreen-locked or undecorated window) — different problem.
+Code: `src-tauri/src/tiling/macos.rs`. Verify live: focus Brave, hit Cmd+Ctrl+Right, expect a log line like `AXFocusedApplication failed with AXError=-25212 … falling back to NSWorkspace.frontmostApplication`. If you instead see `set AXPosition(…) failed`, the lookup worked but the app refused the move (fullscreen-locked or undecorated window) — different problem.
 
 ### Maximized / fullscreen focused-window tiling
 

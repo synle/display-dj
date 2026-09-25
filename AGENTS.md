@@ -268,6 +268,10 @@ States are cached on `AppState` (`is_dark_mode`, `is_muted`); `update_tray_icon(
 
 Module: `tiling/`. Moves/resizes the focused window into tiled layouts. **19 layouts** (halves, thirds, two-thirds incl. vertical, quarters, maximize) plus restore.
 
+### Default keyboard shortcut pairing
+
+Tiling defaults come from one shared key/action table in `config.rs`. macOS prefixes every key with `Super+Ctrl` (Cmd+Ctrl); Windows and Linux prefix the same keys with `Ctrl+Alt`. Never edit one platform's defaults independently. Paired keys: Left/Center/Right Third = `Left`/`C`/`Right`, Left/Right Two-Thirds = `Up`/`Down`, Left/Right Half = `,`/`.`, and Maximize = both `M` and `/`. Exposé and quarter layouts have no default keyboard shortcuts.
+
 ### Architecture
 
 - `tiling/mod.rs` — shared types, layout math, `TilingLayout`, AND orchestration (`plan_expose`, `plan_expose_app`, `plan_layout_preset`) that compute placements without OS calls.
@@ -283,8 +287,8 @@ On macOS, Tile Snap also smart-shrinks oversized windows on drag start (≥ 85% 
 
 ### Exposé
 
-- **Exposé** (`command/tile/expose`, Ctrl+Up): all on-screen windows into a deterministic alphabetical grid.
-- **App Exposé** (`command/tile/exposeApp`, Ctrl+Down): only frontmost app's windows.
+- **Exposé** (`command/tile/expose`): all on-screen windows into a deterministic alphabetical grid.
+- **App Exposé** (`command/tile/exposeApp`): only frontmost app's windows.
 
 Both **normalize** first (unminimize + exit native fullscreen + Escape browser/video pseudo-fullscreen + collapse virtual desktops/Spaces). **Fill-first overflow**: fill display 1 to `exposeColumns × exposeRows`, overflow to display 2, etc. Windows with min sizes (Steam, Chrome) that exceed grid cells overflow to subsequent displays; the last display uses grid-aligned placement (oversized windows consume `ceil`'d cells, snapped to grid boundaries with no gaps). Resizable windows placed first, oversized fill remaining slots. Layout is deterministic (sorted alphabetically by app, then `window_id`); each invocation re-lays out (no toggle/restore).
 
