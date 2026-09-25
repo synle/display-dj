@@ -1619,7 +1619,10 @@ mod tests {
         }
         assert!(source.contains("send_windows_chord(VK_TAB)"));
         assert!(source.contains("send_windows_chord(VK_D)"));
-        assert!(source.contains("com.apple.expose.awake"));
-        assert!(source.contains("com.apple.showdesktop.awake"));
+        assert!(source.contains("MACOS_MISSION_CONTROL_ACTION: &str = \"0\""));
+        assert!(source.contains("MACOS_SHOW_DESKTOP_ACTION: &str = \"2\""));
+        assert!(source.contains(".spawn()"));
+        assert!(source.contains("child.wait()"));
+        assert!(!source.contains(".status()"));
     }
 }

@@ -417,9 +417,9 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                               'overlay: software dimming window (works on any monitor).'
                             }>
                             <option value='auto'>Auto</option>
-                            <option value='ddc'>DDC only</option>
-                            <option value='gamma'>Gamma only</option>
-                            <option value='overlay'>Overlay only</option>
+                            <option value='ddc'>DDC</option>
+                            <option value='gamma'>Gamma</option>
+                            <option value='overlay'>Overlay</option>
                           </Dropdown>
                           <button
                             className='monitor-visibility-btn'

@@ -1,30 +1,25 @@
 //! Platform shell overview and desktop actions.
 
-/// Post one notification understood by the macOS Mission Control launcher.
 #[cfg(target_os = "macos")]
-#[allow(unexpected_cfgs)]
-fn post_macos_dock_notification(notification: &str) -> Result<(), String> {
-    use objc::runtime::Object;
-    use objc::{class, msg_send, sel, sel_impl};
-    use std::ffi::CString;
+const MACOS_MISSION_CONTROL_LAUNCHER: &str =
+    "/System/Applications/Mission Control.app/Contents/MacOS/Mission Control";
+#[cfg(target_os = "macos")]
+const MACOS_MISSION_CONTROL_ACTION: &str = "0";
+#[cfg(target_os = "macos")]
+const MACOS_SHOW_DESKTOP_ACTION: &str = "2";
 
-    let notification = CString::new(notification)
-        .map_err(|_| "Mission Control notification contains a null byte".to_string())?;
-    unsafe {
-        let name: *mut Object = msg_send![class!(NSString), alloc];
-        let name: *mut Object = msg_send![name, initWithUTF8String: notification.as_ptr()];
-        if name.is_null() {
-            return Err("failed to create Mission Control notification name".into());
+/// Invoke one action through Apple's Mission Control launcher.
+#[cfg(target_os = "macos")]
+fn run_macos_mission_control_action(action: &'static str) -> Result<(), String> {
+    let mut child = std::process::Command::new(MACOS_MISSION_CONTROL_LAUNCHER)
+        .arg(action)
+        .spawn()
+        .map_err(|error| format!("failed to launch Mission Control action {action}: {error}"))?;
+    std::thread::spawn(move || {
+        if let Err(error) = child.wait() {
+            log::warn!("failed to reap Mission Control action {action}: {error}");
         }
-        let center: *mut Object = msg_send![class!(NSDistributedNotificationCenter), defaultCenter];
-        if center.is_null() {
-            let _: () = msg_send![name, release];
-            return Err("distributed notification center unavailable".into());
-        }
-        let _: () =
-            msg_send![center, postNotificationName: name object: std::ptr::null::<Object>()];
-        let _: () = msg_send![name, release];
-    }
+    });
     Ok(())
 }
 
@@ -75,10 +70,10 @@ pub fn open() -> Result<(), String> {
     send_windows_chord(VK_TAB)
 }
 
-/// Open macOS Mission Control through the Dock's distributed notification.
+/// Open macOS Mission Control through Apple's launcher.
 #[cfg(target_os = "macos")]
 pub fn open() -> Result<(), String> {
-    post_macos_dock_notification("com.apple.expose.awake")
+    run_macos_mission_control_action(MACOS_MISSION_CONTROL_ACTION)
 }
 
 /// Report unsupported overview invocation outside Windows and macOS.
@@ -94,10 +89,10 @@ pub fn show_desktop() -> Result<(), String> {
     send_windows_chord(VK_D)
 }
 
-/// Show or restore the macOS desktop through the Dock's distributed notification.
+/// Show or restore the macOS desktop through Apple's Mission Control launcher.
 #[cfg(target_os = "macos")]
 pub fn show_desktop() -> Result<(), String> {
-    post_macos_dock_notification("com.apple.showdesktop.awake")
+    run_macos_mission_control_action(MACOS_SHOW_DESKTOP_ACTION)
 }
 
 /// Report unsupported Show Desktop invocation outside Windows and macOS.

@@ -129,7 +129,7 @@ Logs go to stdout (plus `debug.log` in the config dir when enabled). A clean sta
 
 ### Windows shell shortcuts
 
-`command/system/taskView` and `command/system/showDesktop` map to platform shell actions. macOS posts the Mission Control launcher's `com.apple.expose.awake` and `com.apple.showdesktop.awake` distributed notifications, with defaults `Ctrl+Cmd+Shift+Up` and `Ctrl+Cmd+Shift+Down`. Windows synthesizes `Win+Tab` and `Win+D` from matching `Ctrl+Alt+Shift` defaults; both routes release the triggering modifiers before sending balanced Windows-key events.
+`command/system/taskView` and `command/system/showDesktop` map to platform shell actions. macOS runs Apple's Mission Control launcher with action `0` or `2`, with defaults `Ctrl+Cmd+Shift+Up` and `Ctrl+Cmd+Shift+Down`. Windows synthesizes `Win+Tab` and `Win+D` from matching `Ctrl+Alt+Shift` defaults; both routes release the triggering modifiers before sending balanced Windows-key events.
 
 `tiling::get_windows_elevation_status()` queries the current process token only when Settings opens. `get_windows_snap_enabled()` reads `HKCU\Control Panel\Desktop\WindowArrangementActive`, and `open_windows_multitasking_settings()` opens `ms-settings:multitasking`. Optional-query failures log and return `None`; they never gate startup, tiling, or Settings. Settings shows inline green status for satisfied macOS Accessibility, Windows elevation, and native-Snap requirements; failures render a short linked line below the relevant checkbox.
 
