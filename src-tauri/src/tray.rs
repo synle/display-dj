@@ -637,6 +637,7 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
+                rect: tray_rect,
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
                 ..
@@ -654,27 +655,30 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                     if visible {
                         let _ = window.hide();
                     } else {
-                        if let Ok(Some(tray_rect)) = tray.rect() {
-                            // Store tray rect so resize handler can reposition
-                            if let Some(state) = app.try_state::<crate::AppState>() {
-                                if let Ok(mut stored) = state.last_tray_rect.lock() {
-                                    *stored = Some(tray_rect);
-                                }
-                                crate::config::write_debug_log(
-                                    &state,
-                                    &format!(
-                                        "tray_rect: pos={:?} size={:?}",
-                                        tray_rect.position, tray_rect.size
-                                    ),
-                                );
+                        // Use the clicked status item's rectangle. Re-querying tray.rect()
+                        // can report the primary menu bar when macOS mirrors menu bars.
+                        if let Some(state) = app.try_state::<crate::AppState>() {
+                            if let Ok(mut stored) = state.last_tray_rect.lock() {
+                                *stored = Some(tray_rect);
                             }
-                            let result = position_window_near_tray(&window, tray_rect, app.try_state::<crate::AppState>());
-                            if let Some(state) = app.try_state::<crate::AppState>() {
-                                crate::config::write_debug_log(
-                                    &state,
-                                    &format!("position_result: {:?}", result.as_ref().map(|_| "ok")),
-                                );
-                            }
+                            crate::config::write_debug_log(
+                                &state,
+                                &format!(
+                                    "tray_rect: pos={:?} size={:?}",
+                                    tray_rect.position, tray_rect.size
+                                ),
+                            );
+                        }
+                        let result = position_window_near_tray(
+                            &window,
+                            tray_rect,
+                            app.try_state::<crate::AppState>(),
+                        );
+                        if let Some(state) = app.try_state::<crate::AppState>() {
+                            crate::config::write_debug_log(
+                                &state,
+                                &format!("position_result: {:?}", result.as_ref().map(|_| "ok")),
+                            );
                         }
                         show_popup_window(app);
                     }
@@ -1555,5 +1559,23 @@ mod tests {
             parse_audio_output_menu_id(&entries[1].0).as_deref(),
             Some("dock")
         );
+    }
+
+    /// Popup placement uses the clicked tray rectangle so a secondary macOS
+    /// menu bar cannot be replaced by a later primary-menu-bar lookup.
+    #[test]
+    fn tray_click_positions_popup_from_event_rectangle() {
+        let source = include_str!("tray.rs");
+        let handler = source
+            .split(".on_tray_icon_event")
+            .nth(1)
+            .expect("tray event handler must exist")
+            .split(".build(app)")
+            .next()
+            .expect("tray event handler must have a bounded body");
+
+        assert!(handler.contains("rect: tray_rect"));
+        assert!(handler.contains("position_window_near_tray(\n                            &window,\n                            tray_rect,"));
+        assert!(!handler.contains("if let Ok(Some(tray_rect)) = tray.rect()"));
     }
 }
