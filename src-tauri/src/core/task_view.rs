@@ -1,25 +1,65 @@
 //! Platform shell overview and desktop actions.
 
 #[cfg(target_os = "macos")]
-const MACOS_MISSION_CONTROL_LAUNCHER: &str =
-    "/System/Applications/Mission Control.app/Contents/MacOS/Mission Control";
+const MACOS_MISSION_CONTROL_NOTIFICATION: &str = "com.apple.expose.awake";
 #[cfg(target_os = "macos")]
-const MACOS_MISSION_CONTROL_ACTION: &str = "0";
-#[cfg(target_os = "macos")]
-const MACOS_SHOW_DESKTOP_ACTION: &str = "2";
+const MACOS_SHOW_DESKTOP_NOTIFICATION: &str = "com.apple.showdesktop.awake";
 
-/// Invoke one action through Apple's Mission Control launcher.
+/// Send one window-management notification directly to the macOS Dock.
+///
+/// Do not replace this with the Mission Control app launcher. Its numeric
+/// arguments are private and easy to mis-map (`1` is Show Desktop while `2`
+/// is App Expose), and a successful child spawn does not prove that the Dock
+/// accepted the requested action. Calling the same Dock SPI directly uses
+/// semantic notification names and returns an actionable status code.
 #[cfg(target_os = "macos")]
-fn run_macos_mission_control_action(action: &'static str) -> Result<(), String> {
-    let mut child = std::process::Command::new(MACOS_MISSION_CONTROL_LAUNCHER)
-        .arg(action)
-        .spawn()
-        .map_err(|error| format!("failed to launch Mission Control action {action}: {error}"))?;
-    std::thread::spawn(move || {
-        if let Err(error) = child.wait() {
-            log::warn!("failed to reap Mission Control action {action}: {error}");
-        }
-    });
+fn send_macos_dock_notification(notification: &str) -> Result<(), String> {
+    use std::ffi::{c_char, c_int, c_void, CString};
+    use std::sync::OnceLock;
+
+    type CoreDockSendNotification = unsafe extern "C" fn(*const c_void, c_int) -> c_int;
+    const APPLICATION_SERVICES: &str =
+        "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices";
+    const UTF8_ENCODING: u32 = 0x08000100;
+    static HANDLE: OnceLock<usize> = OnceLock::new();
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFStringCreateWithCString(
+            allocator: *const c_void,
+            value: *const c_char,
+            encoding: u32,
+        ) -> *const c_void;
+        fn CFRelease(value: *const c_void);
+        fn dlopen(path: *const c_char, mode: c_int) -> *mut c_void;
+        fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
+    }
+
+    let framework = CString::new(APPLICATION_SERVICES).map_err(|error| error.to_string())?;
+    let handle = *HANDLE.get_or_init(|| unsafe { dlopen(framework.as_ptr(), 1) as usize });
+    if handle == 0 {
+        return Err("failed to open ApplicationServices".into());
+    }
+
+    let symbol = c"CoreDockSendNotification";
+    let function = unsafe { dlsym(handle as *mut c_void, symbol.as_ptr()) };
+    if function.is_null() {
+        return Err("CoreDockSendNotification is unavailable".into());
+    }
+
+    let value = CString::new(notification).map_err(|error| error.to_string())?;
+    let name = unsafe { CFStringCreateWithCString(std::ptr::null(), value.as_ptr(), UTF8_ENCODING) };
+    if name.is_null() {
+        return Err("failed to create Dock notification name".into());
+    }
+
+    let send: CoreDockSendNotification = unsafe { std::mem::transmute(function) };
+    let result = unsafe { send(name, 0) };
+    unsafe { CFRelease(name) };
+    if result != 0 {
+        return Err(format!("CoreDockSendNotification returned {result}"));
+    }
+
     Ok(())
 }
 
@@ -70,10 +110,10 @@ pub fn open() -> Result<(), String> {
     send_windows_chord(VK_TAB)
 }
 
-/// Open macOS Mission Control through Apple's launcher.
+/// Open macOS Mission Control through the Dock notification API.
 #[cfg(target_os = "macos")]
 pub fn open() -> Result<(), String> {
-    run_macos_mission_control_action(MACOS_MISSION_CONTROL_ACTION)
+    send_macos_dock_notification(MACOS_MISSION_CONTROL_NOTIFICATION)
 }
 
 /// Report unsupported overview invocation outside Windows and macOS.
@@ -89,10 +129,10 @@ pub fn show_desktop() -> Result<(), String> {
     send_windows_chord(VK_D)
 }
 
-/// Show or restore the macOS desktop through Apple's Mission Control launcher.
+/// Show or restore the macOS desktop through the Dock notification API.
 #[cfg(target_os = "macos")]
 pub fn show_desktop() -> Result<(), String> {
-    run_macos_mission_control_action(MACOS_SHOW_DESKTOP_ACTION)
+    send_macos_dock_notification(MACOS_SHOW_DESKTOP_NOTIFICATION)
 }
 
 /// Report unsupported Show Desktop invocation outside Windows and macOS.

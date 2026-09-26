@@ -274,7 +274,7 @@ Module: `tiling/`. Moves/resizes the focused window into tiled layouts. **19 lay
 
 Tiling defaults come from one shared key/action table in `config.rs`. macOS prefixes every key with `Super+Ctrl` (Cmd+Ctrl); Windows and Linux prefix the same keys with `Ctrl+Alt`. Never edit one platform's defaults independently. Paired keys: Left/Center/Right Third = `Left`/`C` or `M`/`Right`, Left/Right Two-Thirds = `Up`/`Down`, Left/Right Half = `,`/`.`, Maximize = `/`, App Exposé = `A`, and Exposé = `E`. Quarter layouts have no default keyboard shortcuts.
 
-macOS defaults `Ctrl+Cmd+Shift+Up` to `command/system/taskView` (Mission Control) and `Ctrl+Cmd+Shift+Down` to `command/system/showDesktop`; both dispatch after key release and call Apple's Mission Control launcher. Windows uses matching `Ctrl+Alt+Shift` defaults, dispatches after key release, and synthesizes `Win+Tab` or `Win+D` through `SendInput`. Linux does not register these platform-specific defaults.
+macOS defaults `Ctrl+Cmd+Shift+Up` to `command/system/taskView` (Mission Control) and `Ctrl+Cmd+Shift+Down` to `command/system/showDesktop`; both dispatch after key release and notify the Dock through `CoreDockSendNotification`. Windows uses matching `Ctrl+Alt+Shift` defaults, dispatches after key release, and synthesizes `Win+Tab` or `Win+D` through `SendInput`. Linux does not register these platform-specific defaults.
 
 ### Architecture
 
@@ -381,35 +381,35 @@ Settings UI: Wallpaper Fit dropdown, Enable Slideshow checkbox, folder path, int
 
 Commands are strings dispatched by `execute_command()` in `tray.rs`. Bindable to keyboard shortcuts in `keyBindings`, usable in profiles, and selectable from the tray menu. Every command dispatches in-process to a `core::*` function or a tiling/wallpaper helper. `build_command_url()` always returns `None` (covered by unit tests; kept as a typed signal that no command currently maps to an external URL).
 
-| Command                                                   | In-process dispatch                                           | Description                                    |
-| --------------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------- |
-| `command/changeBrightness/{value}`                        | `core::display::set_all_brightness(value)`                    | Set brightness on all monitors                 |
-| `command/changeBrightness/{monitor_id}/{value}`           | `core::display::set_one_brightness(id, value)`                | Set brightness on a single monitor             |
-| `command/changeContrast/{value}`                          | `core::display::set_all_contrast(value)`                      | Set contrast on all monitors                   |
-| `command/changeContrast/{monitor_id}/{value}`             | `core::display::set_one_contrast(id, value)`                  | Set contrast on a single monitor               |
-| `command/changeVolume/{value}`                            | `core::volume::set_volume(value)`                             | Set volume (0-100)                             |
-| `command/changeDarkMode/dark`                             | `core::theme::set_dark_mode(true)`                            | Switch to dark mode                            |
-| `command/changeDarkMode/light`                            | `core::theme::set_dark_mode(false)`                           | Switch to light mode                           |
-| `command/changeDarkMode/toggle`                           | `core::theme::get_dark_mode()` then `set_dark_mode(!cur)`     | Toggle dark/light mode                         |
-| `command/changeProfile/{index}`                           | (recursively dispatches profile commands)                     | Run all commands in a saved profile            |
-| `command/tile/{layoutName}`                               | `tiling::execute_tile(...)`                                   | Tile the focused window                        |
-| `command/layout/{name_or_index}`                          | `tiling::execute_layout_preset(...)`                          | Apply a layout preset by name or 0-based index |
-| `command/system/taskView`                                 | macOS Mission Control launcher / Windows `SendInput(Win+Tab)` | Open Mission Control or Windows Task View      |
-| `command/system/showDesktop`                              | macOS Mission Control launcher / Windows `SendInput(Win+D)`   | Show or restore the desktop                    |
-| `command/window/moveToFront`                              | `tiling::execute_zorder(WindowToFront)`                       | Raise the focused window above all others      |
-| `command/app/moveToFront`                                 | `tiling::execute_zorder(AppToFront)`                          | Raise all windows of the focused app           |
-| `command/window/moveToBack`                               | `tiling::execute_zorder(WindowToBack)`                        | Lower the focused window below all others      |
-| `command/app/moveToBack`                                  | `tiling::execute_zorder(AppToBack)`                           | Lower all windows of the focused app           |
-| `command/window/toggleFrontBack`                          | `tiling::execute_zorder(WindowToggle)`                        | Toggle focused window between front and back   |
-| `command/app/toggleFrontBack`                             | `tiling::execute_zorder(AppToggle)`                           | Toggle the focused app between front and back  |
-| `command/wallpaper/change/{path}`                         | `core::wallpaper::set_wallpaper(default_fit, path)`           | Set wallpaper on all monitors (default fit)    |
-| `command/wallpaper/change/{fit}/{path}`                   | `core::wallpaper::set_wallpaper(fit, path)`                   | Set wallpaper with explicit fit mode           |
-| `command/wallpaper/change_single/{monitor}/{path}`        | `core::wallpaper::set_wallpaper_one(idx, default_fit, p)`     | Set wallpaper on a single monitor              |
-| `command/wallpaper/change_single/{monitor}/{fit}/{path}`  | `core::wallpaper::set_wallpaper_one(idx, fit, path)`          | Per-monitor wallpaper with explicit fit        |
-| `command/wallpaper/slideshow/{folder_path}`               | `core::wallpaper::start_slideshow(default…, folder)`          | Start slideshow (default interval/order)       |
-| `command/wallpaper/slideshow/{interval}/{order}/{folder}` | `core::wallpaper::start_slideshow(interval, order, …)`        | Start slideshow with explicit interval/order   |
-| `command/wallpaper/slideshow_stop`                        | `core::wallpaper::stop_slideshow()`                           | Stop the active slideshow                      |
-| `command/wallpaper/slideshow_remote/{url_to_zip}`         | download via `reqwest`, then `start_slideshow` on extracted   | Download zip, extract images, start slideshow  |
+| Command                                                   | In-process dispatch                                         | Description                                    |
+| --------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
+| `command/changeBrightness/{value}`                        | `core::display::set_all_brightness(value)`                  | Set brightness on all monitors                 |
+| `command/changeBrightness/{monitor_id}/{value}`           | `core::display::set_one_brightness(id, value)`              | Set brightness on a single monitor             |
+| `command/changeContrast/{value}`                          | `core::display::set_all_contrast(value)`                    | Set contrast on all monitors                   |
+| `command/changeContrast/{monitor_id}/{value}`             | `core::display::set_one_contrast(id, value)`                | Set contrast on a single monitor               |
+| `command/changeVolume/{value}`                            | `core::volume::set_volume(value)`                           | Set volume (0-100)                             |
+| `command/changeDarkMode/dark`                             | `core::theme::set_dark_mode(true)`                          | Switch to dark mode                            |
+| `command/changeDarkMode/light`                            | `core::theme::set_dark_mode(false)`                         | Switch to light mode                           |
+| `command/changeDarkMode/toggle`                           | `core::theme::get_dark_mode()` then `set_dark_mode(!cur)`   | Toggle dark/light mode                         |
+| `command/changeProfile/{index}`                           | (recursively dispatches profile commands)                   | Run all commands in a saved profile            |
+| `command/tile/{layoutName}`                               | `tiling::execute_tile(...)`                                 | Tile the focused window                        |
+| `command/layout/{name_or_index}`                          | `tiling::execute_layout_preset(...)`                        | Apply a layout preset by name or 0-based index |
+| `command/system/taskView`                                 | macOS Dock notification / Windows `SendInput(Win+Tab)`      | Open Mission Control or Windows Task View      |
+| `command/system/showDesktop`                              | macOS Dock notification / Windows `SendInput(Win+D)`        | Show or restore the desktop                    |
+| `command/window/moveToFront`                              | `tiling::execute_zorder(WindowToFront)`                     | Raise the focused window above all others      |
+| `command/app/moveToFront`                                 | `tiling::execute_zorder(AppToFront)`                        | Raise all windows of the focused app           |
+| `command/window/moveToBack`                               | `tiling::execute_zorder(WindowToBack)`                      | Lower the focused window below all others      |
+| `command/app/moveToBack`                                  | `tiling::execute_zorder(AppToBack)`                         | Lower all windows of the focused app           |
+| `command/window/toggleFrontBack`                          | `tiling::execute_zorder(WindowToggle)`                      | Toggle focused window between front and back   |
+| `command/app/toggleFrontBack`                             | `tiling::execute_zorder(AppToggle)`                         | Toggle the focused app between front and back  |
+| `command/wallpaper/change/{path}`                         | `core::wallpaper::set_wallpaper(default_fit, path)`         | Set wallpaper on all monitors (default fit)    |
+| `command/wallpaper/change/{fit}/{path}`                   | `core::wallpaper::set_wallpaper(fit, path)`                 | Set wallpaper with explicit fit mode           |
+| `command/wallpaper/change_single/{monitor}/{path}`        | `core::wallpaper::set_wallpaper_one(idx, default_fit, p)`   | Set wallpaper on a single monitor              |
+| `command/wallpaper/change_single/{monitor}/{fit}/{path}`  | `core::wallpaper::set_wallpaper_one(idx, fit, path)`        | Per-monitor wallpaper with explicit fit        |
+| `command/wallpaper/slideshow/{folder_path}`               | `core::wallpaper::start_slideshow(default…, folder)`        | Start slideshow (default interval/order)       |
+| `command/wallpaper/slideshow/{interval}/{order}/{folder}` | `core::wallpaper::start_slideshow(interval, order, …)`      | Start slideshow with explicit interval/order   |
+| `command/wallpaper/slideshow_stop`                        | `core::wallpaper::stop_slideshow()`                         | Stop the active slideshow                      |
+| `command/wallpaper/slideshow_remote/{url_to_zip}`         | download via `reqwest`, then `start_slideshow` on extracted | Download zip, extract images, start slideshow  |
 
 Monitor IDs are the `id` field on `core::DisplayInfo` (e.g. `"1"`, `"2"`, `"builtin"`). Brightness clamped to `[effective_min_brightness, 100]`; contrast clamped to `[0, 100]`. Wallpaper monitor matching uses `resolve_monitor()` (id → uid → substring).
 
