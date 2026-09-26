@@ -15,6 +15,7 @@ fn app_state_struct_is_public() {
     let _state = display_dj_lib::AppState {
         preferences: std::sync::Mutex::new(Default::default()),
         last_tray_rect: std::sync::Mutex::new(None),
+        last_tray_click_position: std::sync::Mutex::new(None),
         expect_focus_gain: std::sync::Mutex::new(false),
         keep_awake: std::sync::Mutex::new(None),
         is_dark_mode: std::sync::Mutex::new(false),

@@ -247,6 +247,8 @@ Drawn programmatically at 128x128 from percentage-based layout constants (no PNG
 
 States are cached on `AppState` (`is_dark_mode`, `is_muted`); `update_tray_icon()` regenerates on change. Initial state is fetched in-process from `core::theme` and `core::volume` at startup via `fetch_initial_tray_state()`.
 
+Tray popup placement selects the monitor from the physical mouse position in `TrayIconEvent::Click`, not a scaled tray-rectangle guess. It starts below the tray, flips above only when the lower edge would overflow, then clamps every corner inside that same display. `AppState` retains both click point and tray rectangle for resize-driven repositioning. With Debug Logging enabled, left/right tray clicks record button, mouse/tray geometry, all monitor bounds/scales, selected screen, placement mode, popup bounds, and final position.
+
 ## Audio Output Selection
 
 - `VolumeControl.tsx` has its own expand/collapse chevron independent from the monitor section. Its readonly `All Speakers (<enabled non-hidden count>)` label appends `- <selected name>` while collapsed; expanded mode lists visible outputs, including the selected endpoint with its radio checked, using monitor-name font sizing, one padded radio target, click-to-edit name, and persisted reorder arrows. Settings lists every output above Night Mode Schedule with the same arrows plus an `enabled` / `disabled` / `hidden` selector per row.

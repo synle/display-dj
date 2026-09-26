@@ -8,6 +8,84 @@ use crate::config::{CommandValue, KeyBinding};
 
 const AUDIO_OUTPUT_MENU_PREFIX: &str = "audio_output_";
 const AUDIO_OUTPUT_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+const POPUP_GAP_LOGICAL: f64 = 4.0;
+const POPUP_MARGIN_LOGICAL: f64 = 8.0;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PhysicalBounds {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PopupVerticalPlacement {
+    Below,
+    Above,
+    Clamped,
+}
+
+/// Selects the containing monitor, or the nearest monitor when the point lies in a gap.
+fn monitor_index_for_point(monitors: &[PhysicalBounds], x: f64, y: f64) -> Option<usize> {
+    monitors
+        .iter()
+        .position(|monitor| {
+            x >= monitor.x
+                && x < monitor.x + monitor.width
+                && y >= monitor.y
+                && y < monitor.y + monitor.height
+        })
+        .or_else(|| {
+            monitors
+                .iter()
+                .enumerate()
+                .min_by(|(_, left), (_, right)| {
+                    distance_to_bounds_squared(**left, x, y)
+                        .total_cmp(&distance_to_bounds_squared(**right, x, y))
+                })
+                .map(|(index, _)| index)
+        })
+}
+
+/// Returns squared distance from a point to the nearest point inside one rectangle.
+fn distance_to_bounds_squared(bounds: PhysicalBounds, x: f64, y: f64) -> f64 {
+    let nearest_x = x.clamp(bounds.x, bounds.x + bounds.width);
+    let nearest_y = y.clamp(bounds.y, bounds.y + bounds.height);
+    (x - nearest_x).powi(2) + (y - nearest_y).powi(2)
+}
+
+/// Places the popup below the tray, flips above on bottom overflow, then clamps every edge.
+fn place_popup_in_monitor(
+    tray: PhysicalBounds,
+    popup_width: f64,
+    popup_height: f64,
+    monitor: PhysicalBounds,
+    scale: f64,
+) -> (f64, f64, PopupVerticalPlacement) {
+    let gap = POPUP_GAP_LOGICAL * scale;
+    let margin = POPUP_MARGIN_LOGICAL * scale;
+    let min_x = monitor.x + margin;
+    let max_x = (monitor.x + monitor.width - popup_width - margin).max(min_x);
+    let min_y = monitor.y + margin;
+    let max_y = (monitor.y + monitor.height - popup_height - margin).max(min_y);
+    let x = (tray.x + tray.width / 2.0 - popup_width / 2.0).clamp(min_x, max_x);
+    if popup_height > monitor.height - margin * 2.0 {
+        return (x, min_y, PopupVerticalPlacement::Clamped);
+    }
+
+    let below_y = tray.y + tray.height + gap;
+    if below_y <= max_y {
+        return (x, below_y.max(min_y), PopupVerticalPlacement::Below);
+    }
+
+    let above_y = tray.y - popup_height - gap;
+    if above_y >= min_y {
+        return (x, above_y.min(max_y), PopupVerticalPlacement::Above);
+    }
+
+    (x, below_y.clamp(min_y, max_y), PopupVerticalPlacement::Clamped)
+}
 
 /// Run a closure on a background thread (so we don't block whatever called us)
 /// and emit a Tauri event on `app` when it returns.
@@ -638,12 +716,17 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
                 rect: tray_rect,
-                button: MouseButton::Left,
+                position: click_position,
+                button,
                 button_state: MouseButtonState::Up,
                 ..
             } = event
             {
                 let app = tray.app_handle();
+                log_tray_click(app, button, click_position, tray_rect);
+                if button != MouseButton::Left {
+                    return;
+                }
                 if let Some(window) = app.get_webview_window("main") {
                     let visible = window.is_visible().unwrap_or(false);
                     if let Some(state) = app.try_state::<crate::AppState>() {
@@ -661,17 +744,14 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                             if let Ok(mut stored) = state.last_tray_rect.lock() {
                                 *stored = Some(tray_rect);
                             }
-                            crate::config::write_debug_log(
-                                &state,
-                                &format!(
-                                    "tray_rect: pos={:?} size={:?}",
-                                    tray_rect.position, tray_rect.size
-                                ),
-                            );
+                            if let Ok(mut stored) = state.last_tray_click_position.lock() {
+                                *stored = Some(click_position);
+                            }
                         }
                         let result = position_window_near_tray(
                             &window,
                             tray_rect,
+                            click_position,
                             app.try_state::<crate::AppState>(),
                         );
                         if let Some(state) = app.try_state::<crate::AppState>() {
@@ -688,6 +768,53 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
         .build(app)?;
 
     Ok(())
+}
+
+/// Writes one bounded tray-click snapshot when debug logging is enabled.
+fn log_tray_click(
+    app: &AppHandle,
+    button: MouseButton,
+    click_position: tauri::PhysicalPosition<f64>,
+    tray_rect: tauri::Rect,
+) {
+    let Some(state) = app.try_state::<crate::AppState>() else {
+        return;
+    };
+    let monitors = app.available_monitors().unwrap_or_default();
+    let monitor_bounds = monitors
+        .iter()
+        .map(|monitor| PhysicalBounds {
+            x: monitor.position().x as f64,
+            y: monitor.position().y as f64,
+            width: monitor.size().width as f64,
+            height: monitor.size().height as f64,
+        })
+        .collect::<Vec<_>>();
+    let clicked_monitor =
+        monitor_index_for_point(&monitor_bounds, click_position.x, click_position.y);
+    let screens = monitors
+        .iter()
+        .enumerate()
+        .map(|(index, monitor)| {
+            format!(
+                "screen[{index}] name={:?} pos=({}, {}) size={}x{} scale={}",
+                monitor.name(),
+                monitor.position().x,
+                monitor.position().y,
+                monitor.size().width,
+                monitor.size().height,
+                monitor.scale_factor()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    crate::config::write_debug_log(
+        &state,
+        &format!(
+            "tray_icon_click: button={button:?} mouse=({:.1}, {:.1}) screen={clicked_monitor:?} tray_rect={tray_rect:?}; {screens}",
+            click_position.x, click_position.y
+        ),
+    );
 }
 
 /// Position the popup window directly below (or above) the system tray icon.
@@ -744,6 +871,7 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
 pub fn position_window_near_tray(
     window: &tauri::WebviewWindow,
     tray_rect: tauri::Rect,
+    click_position: tauri::PhysicalPosition<f64>,
     state: Option<tauri::State<'_, crate::AppState>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::PhysicalPosition;
@@ -754,39 +882,21 @@ pub fn position_window_near_tray(
         }
     };
 
-    // --- Phase 1: Find the target monitor using a rough scale estimate ---
-    // We use window.scale_factor() only to convert Logical→Physical for the
-    // hit-test. The exact value doesn't matter much here — it just needs to be
-    // close enough to land in the right monitor's bounding box.
-    let rough_scale = window.scale_factor().unwrap_or(2.0);
-    dbg(&format!("phase1: rough_scale={}", rough_scale));
-
-    let tray_x_rough = match tray_rect.position {
-        tauri::Position::Physical(p) => p.x as f64,
-        tauri::Position::Logical(p) => p.x * rough_scale,
-    };
-    let tray_y_rough = match tray_rect.position {
-        tauri::Position::Physical(p) => p.y as f64,
-        tauri::Position::Logical(p) => p.y * rough_scale,
-    };
-    let tray_w_rough = match tray_rect.size {
-        tauri::Size::Physical(s) => s.width as f64,
-        tauri::Size::Logical(s) => s.width * rough_scale,
-    };
-    let tray_h_rough = match tray_rect.size {
-        tauri::Size::Physical(s) => s.height as f64,
-        tauri::Size::Logical(s) => s.height * rough_scale,
-    };
-
-    let tray_cx = tray_x_rough + tray_w_rough / 2.0;
-    let tray_cy = tray_y_rough + tray_h_rough / 2.0;
-    dbg(&format!(
-        "phase1: tray_rough x={} y={} w={} h={} cx={} cy={}",
-        tray_x_rough, tray_y_rough, tray_w_rough, tray_h_rough, tray_cx, tray_cy
-    ));
-
     let monitors = window.available_monitors()?;
-    let mut target_idx: Option<usize> = None;
+    let monitor_bounds = monitors
+        .iter()
+        .map(|monitor| PhysicalBounds {
+            x: monitor.position().x as f64,
+            y: monitor.position().y as f64,
+            width: monitor.size().width as f64,
+            height: monitor.size().height as f64,
+        })
+        .collect::<Vec<_>>();
+    let target_idx = monitor_index_for_point(
+        &monitor_bounds,
+        click_position.x,
+        click_position.y,
+    );
     for (i, m) in monitors.iter().enumerate() {
         let pos = m.position();
         let size = m.size();
@@ -795,18 +905,12 @@ pub fn position_window_near_tray(
             "  monitor[{}]: pos=({},{}) size={}x{} scale={}",
             i, pos.x, pos.y, size.width, size.height, scale
         ));
-        if target_idx.is_none()
-            && tray_cx >= pos.x as f64
-            && tray_cx < pos.x as f64 + size.width as f64
-            && tray_cy >= pos.y as f64
-            && tray_cy < pos.y as f64 + size.height as f64
-        {
-            target_idx = Some(i);
-        }
     }
 
     let target = target_idx.map(|i| &monitors[i]);
-    let target_scale = target.map(|m| m.scale_factor()).unwrap_or(rough_scale);
+    let target_scale = target
+        .map(|m| m.scale_factor())
+        .unwrap_or(window.scale_factor().unwrap_or(1.0));
     let window_scale = window.scale_factor().unwrap_or(1.0);
     let win_pos = window.outer_position().ok();
     if let Some(ref t) = target {
@@ -821,7 +925,6 @@ pub fn position_window_near_tray(
         dbg(&format!("target: NONE | window_scale={} window_pos={:?}", window_scale, win_pos));
     }
 
-    // --- Phase 2: Calculate position using target monitor's scale ---
     // All tray/monitor coordinates are in the global physical space.
     // We use target_scale (not window_scale) for sizing, then compensate
     // in set_position because Tauri divides by window_scale internally.
@@ -846,38 +949,31 @@ pub fn position_window_near_tray(
         tray_x, tray_y, tray_w, tray_h, win_w, win_h
     ));
 
-    // Center window horizontally under tray icon
-    let mut x = tray_x + (tray_w / 2.0) - (win_w / 2.0);
+    let target_bounds = target_idx
+        .and_then(|index| monitor_bounds.get(index).copied())
+        .ok_or("no monitor available for tray popup")?;
 
-    // Position below tray if in top half of monitor, above otherwise
-    let (mon_x, mon_y, mon_w, mon_h) = if let Some(m) = target {
-        (
-            m.position().x as f64,
-            m.position().y as f64,
-            m.size().width as f64,
-            m.size().height as f64,
-        )
-    } else {
-        (0.0, 0.0, 1920.0, 1080.0)
-    };
-
-    let tray_in_top_half = (tray_y - mon_y) < mon_h / 2.0;
-    let gap = 4.0 * target_scale;
-    let mut y = if tray_in_top_half {
-        tray_y + tray_h + gap
-    } else {
-        tray_y - win_h - gap
-    };
+    let (x, y, vertical_placement) = place_popup_in_monitor(
+        PhysicalBounds {
+            x: tray_x,
+            y: tray_y,
+            width: tray_w,
+            height: tray_h,
+        },
+        win_w,
+        win_h,
+        target_bounds,
+        target_scale,
+    );
     dbg(&format!(
-        "before_clamp x={} y={} | mon ({},{}) {}x{} | top_half={}",
-        x, y, mon_x, mon_y, mon_w, mon_h, tray_in_top_half
+        "placement: click=({:.1},{:.1}) target={target_idx:?} mode={vertical_placement:?} monitor=({},{}) {}x{} popup=({x},{y}) {win_w}x{win_h}",
+        click_position.x,
+        click_position.y,
+        target_bounds.x,
+        target_bounds.y,
+        target_bounds.width,
+        target_bounds.height,
     ));
-
-    // Clamp to monitor bounds with a safety margin so the window is never
-    // flush against the screen edge (prevents content from being cut off).
-    let margin = 8.0 * target_scale;
-    x = x.max(mon_x + margin).min(mon_x + mon_w - win_w - margin);
-    y = y.max(mon_y + margin).min(mon_y + mon_h - win_h - margin);
 
     // Compensate for Tauri's set_position dividing by window_scale.
     // We computed (x, y) in the global physical space. Tauri will do:
@@ -1585,8 +1681,146 @@ mod tests {
             .expect("tray event handler must have a bounded body");
 
         assert!(handler.contains("rect: tray_rect"));
+        assert!(handler.contains("position: click_position"));
         assert!(handler.contains("position_window_near_tray(\n                            &window,\n                            tray_rect,"));
         assert!(!handler.contains("if let Ok(Some(tray_rect)) = tray.rect()"));
+    }
+
+    /// A click on the lower screen in a vertical stack selects that screen.
+    #[test]
+    fn tray_click_selects_lower_stacked_monitor() {
+        let monitors = [
+            PhysicalBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 1920.0,
+                height: 1080.0,
+            },
+            PhysicalBounds {
+                x: 0.0,
+                y: 1080.0,
+                width: 1920.0,
+                height: 1080.0,
+            },
+        ];
+
+        assert_eq!(monitor_index_for_point(&monitors, 1500.0, 1095.0), Some(1));
+    }
+
+    /// Top-edge trays place the popup below while all corners stay on-screen.
+    #[test]
+    fn tray_popup_stays_below_top_tray() {
+        let monitor = PhysicalBounds {
+            x: 0.0,
+            y: 1080.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let tray = PhysicalBounds {
+            x: 1500.0,
+            y: 1080.0,
+            width: 24.0,
+            height: 24.0,
+        };
+
+        let (x, y, placement) = place_popup_in_monitor(tray, 420.0, 700.0, monitor, 1.0);
+
+        assert_eq!(placement, PopupVerticalPlacement::Below);
+        assert_eq!(y, 1108.0);
+        assert!(x >= monitor.x + POPUP_MARGIN_LOGICAL);
+        assert!(x + 420.0 <= monitor.x + monitor.width - POPUP_MARGIN_LOGICAL);
+        assert!(y + 700.0 <= monitor.y + monitor.height - POPUP_MARGIN_LOGICAL);
+    }
+
+    /// Bottom-edge trays flip the complete popup above the clicked tray.
+    #[test]
+    fn tray_popup_flips_above_bottom_tray() {
+        let monitor = PhysicalBounds {
+            x: 0.0,
+            y: 1080.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let tray = PhysicalBounds {
+            x: 1500.0,
+            y: 2130.0,
+            width: 24.0,
+            height: 24.0,
+        };
+
+        let (_, y, placement) = place_popup_in_monitor(tray, 420.0, 700.0, monitor, 1.0);
+
+        assert_eq!(placement, PopupVerticalPlacement::Above);
+        assert_eq!(y, 1426.0);
+        assert!(y >= monitor.y + POPUP_MARGIN_LOGICAL);
+        assert!(y + 700.0 <= monitor.y + monitor.height - POPUP_MARGIN_LOGICAL);
+    }
+
+    /// Right-edge tray clicks shift the whole popup left onto the same monitor.
+    #[test]
+    fn tray_popup_clamps_horizontal_overflow() {
+        let monitor = PhysicalBounds {
+            x: 1920.0,
+            y: 0.0,
+            width: 1280.0,
+            height: 1024.0,
+        };
+        let tray = PhysicalBounds {
+            x: 3175.0,
+            y: 0.0,
+            width: 24.0,
+            height: 24.0,
+        };
+
+        let (x, _, _) = place_popup_in_monitor(tray, 420.0, 700.0, monitor, 1.0);
+
+        assert_eq!(x, 2772.0);
+        assert!(x + 420.0 <= monitor.x + monitor.width - POPUP_MARGIN_LOGICAL);
+    }
+
+    /// A popup taller than the usable display aligns to the top margin instead of mislabeling below.
+    #[test]
+    fn tray_popup_clamps_oversized_height_to_top_margin() {
+        let monitor = PhysicalBounds {
+            x: 0.0,
+            y: 0.0,
+            width: 1280.0,
+            height: 600.0,
+        };
+        let tray = PhysicalBounds {
+            x: 900.0,
+            y: 0.0,
+            width: 24.0,
+            height: 24.0,
+        };
+
+        let (_, y, placement) = place_popup_in_monitor(tray, 420.0, 700.0, monitor, 1.0);
+
+        assert_eq!(placement, PopupVerticalPlacement::Clamped);
+        assert_eq!(y, POPUP_MARGIN_LOGICAL);
+    }
+
+    /// Retina scaling applies logical gap and margin values in physical pixels.
+    #[test]
+    fn tray_popup_scales_gap_and_margin_for_retina_display() {
+        let monitor = PhysicalBounds {
+            x: 0.0,
+            y: 0.0,
+            width: 3840.0,
+            height: 2160.0,
+        };
+        let tray = PhysicalBounds {
+            x: 3800.0,
+            y: 0.0,
+            width: 40.0,
+            height: 48.0,
+        };
+
+        let (x, y, placement) = place_popup_in_monitor(tray, 840.0, 1400.0, monitor, 2.0);
+
+        assert_eq!(placement, PopupVerticalPlacement::Below);
+        assert_eq!(x, 2984.0);
+        assert_eq!(y, 56.0);
     }
 
     /// Windows shell shortcuts release trigger modifiers before balanced Win-key events.

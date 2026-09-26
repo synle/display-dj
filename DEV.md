@@ -76,6 +76,8 @@ When debug logging is enabled, `volume.rs` logs the initial snapshot and later c
 
 `src/components/Dropdown.tsx` is the single frontend select primitive. Audio-output state, monitor brightness mode, wallpaper, slideshow, and Exposé strategy controls all use it; `.dropdown` in `App.css` owns their common 32px height, horizontal padding, typography, focus, hover, and disabled states.
 
+Tray popup placement uses the physical mouse position from `TrayIconEvent::Click` to select the target monitor. This avoids mixed-DPI tray-rectangle conversion guesses selecting the wrong display in vertical stacks. The popup starts below the tray, flips fully above when its lower edge would overflow, and clamps every corner inside that same monitor. `AppState` retains the click point and tray rectangle so content-driven resize events repeat the same placement. With Debug Logging enabled, every left/right tray button-up records button, mouse point, selected screen, all screen bounds/scales, tray bounds, placement mode, popup rectangle, and final position.
+
 ## Platform pitfalls
 
 ### macOS — Chromium apps & `AXFocusedApplication` (Brave / Chrome / Edge / Arc)

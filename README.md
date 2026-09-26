@@ -47,6 +47,7 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **App Exposé** -- grids the frontmost app's windows and fills remaining grid cells with other apps' windows
 - **Layout Presets** -- named presets that automatically tile specific apps to specific layouts. Triggered via keyboard shortcuts, profiles, or the tray menu
 - **Dynamic tray icon** -- the system tray icon updates to reflect app state: dark/light mode (border color), keep-awake active (blue fill), and muted (red X overlay)
+- **Multi-monitor popup placement** -- left-click opens on the clicked tray icon's display, including vertically stacked mixed-DPI layouts; bottom-edge trays place the popup above so it remains fully visible
 - **Settings panel** -- tabbed UI (General + Tiling) with auto-save. Configure brightness, contrast, monitors, night mode, snap zones, exposé grid size, layout strategy, and launch at login. Native dropdowns share one consistent height, padding, typography, and interaction treatment across the popup
 - **About / Update check** -- "About Display DJ" in the tray menu shows current version, latest GitHub release, engine, platform, build date, and homepage. Green "Up to date" or orange "Update available" badge with download link. macOS section includes quarantine fix and Accessibility settings commands
 - **System tray app** -- lives in your menu bar / system tray with no dock or taskbar clutter

@@ -184,6 +184,8 @@ async fn fetch_all_state(
 pub struct AppState {
     pub preferences: std::sync::Mutex<config::Preferences>,
     pub last_tray_rect: std::sync::Mutex<Option<tauri::Rect>>,
+    /// Physical mouse position from the last tray click, used for monitor selection.
+    pub last_tray_click_position: std::sync::Mutex<Option<tauri::PhysicalPosition<f64>>>,
     /// True while we're waiting for the window to gain focus after being shown.
     /// Blocks spurious `Focused(false)` events that fire before `Focused(true)`
     /// (a known issue on Linux/X11 and some Windows configurations).
@@ -213,6 +215,7 @@ impl Default for AppState {
         AppState {
             preferences: std::sync::Mutex::new(config::Preferences::default()),
             last_tray_rect: std::sync::Mutex::new(None),
+            last_tray_click_position: std::sync::Mutex::new(None),
             expect_focus_gain: std::sync::Mutex::new(false),
             keep_awake: std::sync::Mutex::new(None),
             is_dark_mode: std::sync::Mutex::new(false),
@@ -551,6 +554,7 @@ mod tests {
         assert!(!*state.is_dark_mode.lock().unwrap());
         assert!(!*state.is_muted.lock().unwrap());
         assert!(state.last_tray_rect.lock().unwrap().is_none());
+        assert!(state.last_tray_click_position.lock().unwrap().is_none());
         assert!(state.keep_awake.lock().unwrap().is_none());
         // sidecar_cache starts empty
         assert!(state.sidecar_cache.get_dark_mode().is_none());
@@ -694,6 +698,7 @@ pub fn run() {
         .manage(AppState {
             preferences: std::sync::Mutex::new(preferences.clone()),
             last_tray_rect: std::sync::Mutex::new(None),
+            last_tray_click_position: std::sync::Mutex::new(None),
             expect_focus_gain: std::sync::Mutex::new(false),
             keep_awake: std::sync::Mutex::new(None),
             is_dark_mode: std::sync::Mutex::new(false),
@@ -933,9 +938,21 @@ pub fn run() {
                                 let tray_rect = app_handle
                                     .try_state::<AppState>()
                                     .and_then(|s| s.last_tray_rect.lock().ok().and_then(|r| *r));
-                                if let Some(rect) = tray_rect {
+                                let click_position = app_handle
+                                    .try_state::<AppState>()
+                                    .and_then(|s| {
+                                        s.last_tray_click_position.lock().ok().and_then(|p| *p)
+                                    });
+                                if let (Some(rect), Some(click_position)) =
+                                    (tray_rect, click_position)
+                                {
                                     let state = app_handle.try_state::<AppState>();
-                                    let _ = tray::position_window_near_tray(&win_clone, rect, state);
+                                    let _ = tray::position_window_near_tray(
+                                        &win_clone,
+                                        rect,
+                                        click_position,
+                                        state,
+                                    );
                                 }
                             }
                         }
