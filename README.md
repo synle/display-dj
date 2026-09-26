@@ -163,12 +163,14 @@ Use `Cmd + Ctrl` on macOS and `Ctrl + Alt` on Windows/Linux with each key below.
 
 **Window Z-Order** (macOS + Windows + Linux/X11):
 
-| Keys                         | Action                                    |
-| ---------------------------- | ----------------------------------------- |
-| Shift + Ctrl + Super + Left  | Send all windows of focused app to back   |
-| Shift + Ctrl + Super + Right | Bring all windows of focused app to front |
+| Platform      | Keys                         | Action                                    |
+| ------------- | ---------------------------- | ----------------------------------------- |
+| macOS         | Shift + Ctrl + Super + Left  | Send all windows of focused app to back   |
+| macOS         | Shift + Ctrl + Super + Right | Bring all windows of focused app to front |
+| Windows/Linux | Shift + Ctrl + Alt + Left    | Send all windows of focused app to back   |
+| Windows/Linux | Shift + Ctrl + Alt + Right   | Bring all windows of focused app to front |
 
-`Super` = Cmd on macOS, Win on Windows, Super on Linux. More z-order commands (`command/window/*`, `command/app/*`) are bindable in `preferences.json` — see AGENTS.md.
+`Super` means Cmd on macOS. More z-order commands (`command/window/*`, `command/app/*`) are bindable in `preferences.json` — see AGENTS.md.
 
 ## Window Tiling (macOS + Windows + Linux/X11)
 

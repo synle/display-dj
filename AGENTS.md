@@ -322,7 +322,7 @@ Lives in the `tiling/` module — shares focused-window resolution and AX/Win32/
 - `command/window/moveToBack`, `command/app/moveToBack`
 - `command/window/toggleFrontBack`, `command/app/toggleFrontBack`
 
-**Default keybindings**: `Shift+Ctrl+Super+Left` = `command/app/moveToBack`, `Shift+Ctrl+Super+Right` = `command/app/moveToFront` (mnemonic: Left = back/away, Right = front/toward you; `Super` = Cmd/Win/Super). App-scope rather than window-scope so the visible behavior is symmetric on macOS — see "Back" below for why single-window scope can't visibly lower the active app's only window.
+**Default keybindings**: macOS uses `Shift+Ctrl+Super+Left` / `Right`; Windows and Linux use `Shift+Ctrl+Alt+Left` / `Right`. Left dispatches `command/app/moveToBack`; Right dispatches `command/app/moveToFront`. App-scope rather than window-scope keeps behavior symmetric on macOS — see "Back" below for why single-window scope can't visibly lower the active app's only window.
 
 **Self-test (debug aid)**: Set `DISPLAY_DJ_ZORDER_SELFTEST=1` before launching. Five seconds after startup, `tiling::run_zorder_selftest()` runs all 6 z-order commands on whatever window is currently focused, with state snapshots between steps. Logs everything with a `[zorder-selftest]` prefix. Off by default — running on every launch would manipulate the user's focused window.
 

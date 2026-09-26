@@ -45,6 +45,21 @@ fn default_tiling_keybindings() -> Vec<KeyBinding> {
         .collect()
 }
 
+/// Build z-order defaults with Cmd on macOS and Alt on Windows/Linux.
+fn default_zorder_keybindings_for_platform(is_macos: bool) -> [KeyBinding; 2] {
+    let modifier = if is_macos { "Super" } else { "Alt" };
+    [
+        KeyBinding {
+            key: format!("Shift+Ctrl+{modifier}+Left"),
+            command: CommandValue::Single("command/app/moveToBack".into()),
+        },
+        KeyBinding {
+            key: format!("Shift+Ctrl+{modifier}+Right"),
+            command: CommandValue::Single("command/app/moveToFront".into()),
+        },
+    ]
+}
+
 /// Build platform-specific system shortcuts that have no cross-platform equivalent.
 fn default_system_keybindings_for_platform(is_macos: bool, is_windows: bool) -> Vec<KeyBinding> {
     if !is_macos && !is_windows {
@@ -543,16 +558,9 @@ impl Default for Preferences {
             cfg!(target_os = "macos"),
             cfg!(target_os = "windows"),
         ));
-        key_bindings.extend([
-            KeyBinding {
-                key: "Shift+Ctrl+Super+Left".into(),
-                command: CommandValue::Single("command/app/moveToBack".into()),
-            },
-            KeyBinding {
-                key: "Shift+Ctrl+Super+Right".into(),
-                command: CommandValue::Single("command/app/moveToFront".into()),
-            },
-        ]);
+        key_bindings.extend(default_zorder_keybindings_for_platform(cfg!(
+            target_os = "macos"
+        )));
 
         Self {
             show_individual_displays: false,
@@ -1230,6 +1238,28 @@ mod tests {
         assert_eq!(macos[0].key, "Ctrl+Super+Shift+Up");
         assert_eq!(macos[1].key, "Ctrl+Super+Shift+Down");
         assert!(default_system_keybindings_for_platform(false, false).is_empty());
+    }
+
+    /// Z-order defaults use Cmd on macOS and Alt on Windows/Linux.
+    #[test]
+    fn test_default_zorder_keybindings_match_platform() {
+        let macos = default_zorder_keybindings_for_platform(true);
+        assert_eq!(macos[0].key, "Shift+Ctrl+Super+Left");
+        assert_eq!(macos[1].key, "Shift+Ctrl+Super+Right");
+
+        let windows_or_linux = default_zorder_keybindings_for_platform(false);
+        assert_eq!(windows_or_linux[0].key, "Shift+Ctrl+Alt+Left");
+        assert_eq!(windows_or_linux[1].key, "Shift+Ctrl+Alt+Right");
+        match &windows_or_linux[0].command {
+            CommandValue::Single(command) => assert_eq!(command, "command/app/moveToBack"),
+            CommandValue::Multiple(_) => panic!("move-to-back binding should contain one command"),
+        }
+        match &windows_or_linux[1].command {
+            CommandValue::Single(command) => assert_eq!(command, "command/app/moveToFront"),
+            CommandValue::Multiple(_) => {
+                panic!("move-to-front binding should contain one command")
+            }
+        }
     }
 
     #[test]
