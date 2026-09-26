@@ -2281,7 +2281,8 @@ mod tests {
                 .1;
         }
         assert!(source.contains("send_windows_chord(VK_TAB)"));
-        assert!(source.contains("send_windows_chord(VK_D)"));
+        assert!(source.contains("shell.ToggleDesktop()"));
+        assert!(!source.contains("send_windows_chord(VK_D)"));
         assert!(source.contains("GetAsyncKeyState"));
         assert!(source.contains("WINDOWS_MODIFIER_RELEASE_TIMEOUT"));
         assert!(!source.contains("key_input(VK_CONTROL, KEYEVENTF_KEYUP)"));

@@ -274,7 +274,7 @@ Module: `tiling/`. Moves/resizes the focused window into tiled layouts. **19 lay
 
 Tiling defaults come from one shared key/action table in `config.rs`. macOS prefixes every key with `Super+Ctrl` (Cmd+Ctrl); Windows and Linux prefix the same keys with `Ctrl+Alt`. Never edit one platform's defaults independently. Paired keys: Left/Center/Right Third = `Left`/`C` or `M`/`Right`, Left/Right Two-Thirds = `Up`/`Down`, Left/Right Half = `,`/`.`, Maximize = `/`, App Exposé = `A`, and Exposé = `E`. Quarter layouts have no default keyboard shortcuts.
 
-macOS defaults `Ctrl+Cmd+Shift+Up` to `command/system/taskView` (Mission Control) and `Ctrl+Cmd+Shift+Down` to `command/system/showDesktop`; both dispatch after key release and notify the Dock through `CoreDockSendNotification`. Windows uses matching `Ctrl+Alt+Shift` defaults, waits on a background thread for all physical modifiers to be released, and then synthesizes `Win+Tab` or `Win+D` through `SendInput`. Linux does not register these platform-specific defaults.
+macOS defaults `Ctrl+Cmd+Shift+Up` to `command/system/taskView` (Mission Control) and `Ctrl+Cmd+Shift+Down` to `command/system/showDesktop`; both dispatch after key release and notify the Dock through `CoreDockSendNotification`. Windows uses matching `Ctrl+Alt+Shift` defaults. Task View waits on a background thread for all physical modifiers to be released before synthesizing `Win+Tab`; Show Desktop calls `IShellDispatch4::ToggleDesktop` directly. Linux does not register these platform-specific defaults.
 
 ### Architecture
 
@@ -395,7 +395,7 @@ Commands are strings dispatched by `execute_command()` in `tray.rs`. Bindable to
 | `command/tile/{layoutName}`                               | `tiling::execute_tile(...)`                                 | Tile the focused window                        |
 | `command/layout/{name_or_index}`                          | `tiling::execute_layout_preset(...)`                        | Apply a layout preset by name or 0-based index |
 | `command/system/taskView`                                 | macOS Dock notification / Windows `SendInput(Win+Tab)`      | Open Mission Control or Windows Task View      |
-| `command/system/showDesktop`                              | macOS Dock notification / Windows `SendInput(Win+D)`        | Show or restore the desktop                    |
+| `command/system/showDesktop`                              | macOS Dock notification / Windows `Shell.ToggleDesktop()`   | Show or restore the desktop                    |
 | `command/window/moveToFront`                              | `tiling::execute_zorder(WindowToFront)`                     | Raise the focused window above all others      |
 | `command/app/moveToFront`                                 | `tiling::execute_zorder(AppToFront)`                        | Raise all windows of the focused app           |
 | `command/window/moveToBack`                               | `tiling::execute_zorder(WindowToBack)`                      | Lower the focused window below all others      |

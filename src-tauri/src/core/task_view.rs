@@ -72,6 +72,39 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 #[cfg(target_os = "windows")]
 const WINDOWS_MODIFIER_RELEASE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
+/// Toggle the Windows desktop through the documented Shell automation API.
+#[cfg(target_os = "windows")]
+fn toggle_windows_desktop() -> Result<(), String> {
+    use windows::core::HRESULT;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
+    };
+    use windows::Win32::UI::Shell::{IShellDispatch4, Shell};
+
+    const RPC_E_CHANGED_MODE: HRESULT = HRESULT(0x8001_0106_u32 as i32);
+
+    let initialization = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+    let should_uninitialize = if initialization.is_ok() {
+        true
+    } else if initialization == RPC_E_CHANGED_MODE {
+        false
+    } else {
+        return Err(format!("initialize Windows COM failed: {initialization}"));
+    };
+
+    let result = (|| {
+        let shell: IShellDispatch4 = unsafe { CoCreateInstance(&Shell, None, CLSCTX_ALL) }
+            .map_err(|error| format!("create Windows Shell automation object failed: {error}"))?;
+        unsafe { shell.ToggleDesktop() }
+            .map_err(|error| format!("toggle Windows desktop failed: {error}"))
+    })();
+
+    if should_uninitialize {
+        unsafe { CoUninitialize() };
+    }
+    result
+}
+
 /// Wait for physical shortcut modifiers to clear before emitting one Windows-key chord.
 ///
 /// `SendInput` does not reset physical keyboard state. Injecting modifier key-up
@@ -142,12 +175,11 @@ pub fn open() -> Result<(), String> {
     Err("not supported on this platform".into())
 }
 
-/// Show or restore the Windows desktop after physical modifier release by emitting Win+D.
+/// Show or restore the Windows desktop through the Shell automation API.
 #[cfg(target_os = "windows")]
 pub fn show_desktop() -> Result<(), String> {
-    use windows::Win32::UI::Input::KeyboardAndMouse::VK_D;
     std::thread::spawn(|| {
-        if let Err(error) = send_windows_chord(VK_D) {
+        if let Err(error) = toggle_windows_desktop() {
             log::warn!("show_desktop: {error}");
         }
     });

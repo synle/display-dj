@@ -142,7 +142,7 @@ To diagnose output switching, open the tray menu and choose **Debug → Enable L
 | Shift + F3 / F4 / F5    | Brightness 0% / 50% / 100%                             |
 | Shift + F10 / F11 / F12 | Volume 0% / 10% / 100%                                 |
 
-macOS maps `Ctrl + Cmd + Shift + Up` to Mission Control and `Ctrl + Cmd + Shift + Down` to Show Desktop. Windows maps the matching `Ctrl + Alt + Shift` chords to Task View (`Win + Tab`) and Show Desktop (`Win + D`). These system actions run after the shortcut key and all physical modifiers are released so held modifiers do not alter the OS command.
+macOS maps `Ctrl + Cmd + Shift + Up` to Mission Control and `Ctrl + Cmd + Shift + Down` to Show Desktop. Windows maps the matching `Ctrl + Alt + Shift` chords to Task View and Show Desktop. Task View waits for physical modifier release before sending `Win + Tab`; Show Desktop calls the native Shell toggle directly and does not synthesize keys.
 
 **Window Tiling** (macOS + Windows + Linux/X11):
 
