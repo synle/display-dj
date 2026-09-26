@@ -158,7 +158,10 @@ jobs:
         with:
           tagName: ${{ needs.prepare.outputs.tag }}
           releaseName: 'Display DJ ${{ needs.prepare.outputs.tag }}'
-          releaseBody: 'Build in progress...'
+          releaseBody: |
+            Build in progress...
+
+            [View release workflow run](github.serverurl/{{ github.repository }}/actions/runs/${{ github.run_id }})
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
