@@ -802,12 +802,6 @@ body,
   gap: 6px;
 }
 
-.settings-status-ok {
-  color: #2e9b4b;
-  font-size: 13px;
-  font-weight: 700;
-}
-
 .settings-status-error {
   align-self: flex-start;
   margin: 3px 0 0 22px;

@@ -369,13 +369,17 @@ describe('SettingsPanel', () => {
     );
   });
 
-  it('manages speaker state and order above Night Mode Schedule', async () => {
+  it('shows monitors before speakers and manages speaker state and order', async () => {
     setupInvoke({});
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
 
     const speakersLabel = await screen.findByText('Speakers');
+    const monitorsLabel = screen.getByText('Monitors');
     const scheduleLabel = screen.getByText('Night Mode Schedule');
+    expect(
+      monitorsLabel.compareDocumentPosition(speakersLabel) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
       speakersLabel.compareDocumentPosition(scheduleLabel) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -607,7 +611,7 @@ describe('SettingsPanel', () => {
 
     await user.click(screen.getByRole('button', { name: 'Tiling' }));
     expect(screen.queryByText(/elevated windows cannot be resized/)).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Running as administrator')).toHaveTextContent('✓');
+    expect(screen.queryByLabelText('Running as administrator')).not.toBeInTheDocument();
   });
 
   it('keeps Settings usable when the optional Windows elevation check fails', async () => {
@@ -665,13 +669,13 @@ describe('SettingsPanel', () => {
     expect(mockInvoke).toHaveBeenCalledWith('open_accessibility_settings');
   });
 
-  it('shows a green accessibility status when macOS permission is granted', async () => {
+  it('omits accessibility status when macOS permission is granted', async () => {
     setupInvoke({ accessibilityTrusted: true, platform: 'macOS' });
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await user.click(await screen.findByRole('button', { name: 'Tiling' }));
 
-    expect(screen.getByLabelText('Accessibility permission granted')).toHaveTextContent('✓');
+    expect(screen.queryByLabelText('Accessibility permission granted')).not.toBeInTheDocument();
   });
 
   it('links to Multitasking Settings when native Windows Snap is enabled', async () => {
@@ -684,13 +688,13 @@ describe('SettingsPanel', () => {
     expect(mockInvoke).toHaveBeenCalledWith('open_windows_multitasking_settings');
   });
 
-  it('shows a green Tile Snap status when native Windows Snap is disabled', async () => {
+  it('omits Tile Snap status when native Windows Snap is disabled', async () => {
     setupInvoke({ platform: 'Windows', windowsElevated: true, windowsSnapEnabled: false });
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await user.click(await screen.findByRole('button', { name: 'Tiling' }));
 
-    expect(screen.getByLabelText('Windows Snap disabled')).toHaveTextContent('✓');
+    expect(screen.queryByLabelText('Windows Snap disabled')).not.toBeInTheDocument();
     expect(screen.queryByText(/Windows Snap may interfere/)).not.toBeInTheDocument();
   });
 

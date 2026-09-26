@@ -19,6 +19,22 @@ npm run tauri build     # Production build (.dmg / .exe / .deb / .AppImage)
 
 ## Development TODO
 
+### Investigate Windows device battery indicators
+
+[HaloBattery](https://github.com/HeyOkay/HaloBattery) demonstrates a feasible Windows-only path
+for showing battery levels from wireless mice, headsets, controllers, and Bluetooth devices. Its
+MIT-licensed implementation combines vendor-specific HID protocols, Windows.Gaming.Input/XInput,
+and Windows Bluetooth PnP properties plus WinRT connection state. Useful parts to study include
+provider isolation, transport deduplication, last-known-value handling, and diagnostics.
+
+Do not copy the Python tray-window implementation into Display DJ. A future prototype should keep
+device discovery and polling in a Windows-only Rust module under `src-tauri/src/core/`, expose one
+normalized device snapshot through Tauri, and render it inside Display DJ's existing popup and tray
+menu. Scope must name supported hardware explicitly: most HID battery protocols are vendor- and
+model-specific, while generic Bluetooth coverage depends on battery data already exposed by
+Windows. Any borrowed code must retain HaloBattery's MIT notice and receive hardware-backed tests
+before shipping. No macOS or Linux support is implied by this investigation.
+
 ### Replace the temporary macOS 27 tray patch with Tauri 2.12.0
 
 Display DJ currently patches the published Tauri 2.11.5 crate so it can use `tray-icon` 0.25.1
@@ -72,7 +88,7 @@ Raising: measure current %, set floor ~10pp below, update both files. Never lowe
 
 When debug logging is enabled, `volume.rs` logs the initial snapshot and later changes with every device ID/name/state plus the selected ID. Explicit selection logs include the requested ID, cached before-state, refreshed after-state, active-ID confirmation or mismatch, and post-switch volume. On Windows, `core/audio_output/windows.rs` also logs the console, multimedia, and communications default endpoint IDs before and after `IPolicyConfig::SetDefaultEndpoint`, plus each role's HRESULT outcome. The unchanged 5-second refresh path emits nothing, preventing diagnostic polling from flooding `debug.log`.
 
-`VolumeControl.tsx` owns a speaker expand/collapse chevron independent from the monitor section. Its readonly `All Speakers (<enabled non-hidden count>)` label appends `- <selected name>` while collapsed; expanded mode lists visible endpoints with the selected radio checked, padded radio targets, inline alias editing, and reorder arrows. `SettingsPanel.tsx` lists every endpoint above Night Mode Schedule with the same arrows and a tri-state selector. Output names share the monitor-name font size. Enabled built-in outputs lead the initial order; `sortOrder` preserves later user ordering, and selection never affects row order. The tray's **Sound** submenu lists enabled outputs with the selected endpoint marked `●`, then exposes Mute, 50%, and 100% presets through the normal volume command dispatcher.
+`VolumeControl.tsx` owns a speaker expand/collapse chevron independent from the monitor section. Its readonly `All Speakers (<enabled non-hidden count>)` label appends `- <selected name>` while collapsed; expanded mode lists visible endpoints with the selected radio checked, padded radio targets, inline alias editing, and reorder arrows. `SettingsPanel.tsx` lists monitors first, then every endpoint before Night Mode Schedule with the same arrows and a tri-state selector. Output names share the monitor-name font size. Enabled built-in outputs lead the initial order; `sortOrder` preserves later user ordering, and selection never affects row order. The tray's **Speakers** submenu lists enabled outputs with the selected endpoint marked `●`, then exposes Mute, 50%, and 100% presets through the normal volume command dispatcher.
 
 `src/components/Dropdown.tsx` is the single frontend select primitive. Audio-output state, monitor brightness mode, wallpaper, slideshow, and Exposé strategy controls all use it; `.dropdown` in `App.css` owns their common 32px height, horizontal padding, typography, focus, hover, and disabled states.
 
@@ -131,9 +147,9 @@ Logs go to stdout (plus `debug.log` in the config dir when enabled). A clean sta
 
 ### Windows shell shortcuts
 
-`command/system/taskView` and `command/system/showDesktop` map to platform shell actions. macOS runs Apple's Mission Control launcher with action `0` or `2`, with defaults `Ctrl+Cmd+Shift+Up` and `Ctrl+Cmd+Shift+Down`. Windows synthesizes `Win+Tab` and `Win+D` from matching `Ctrl+Alt+Shift` defaults; both routes release the triggering modifiers before sending balanced Windows-key events.
+`command/system/taskView` and `command/system/showDesktop` map to platform shell actions. Their global-shortcut callbacks dispatch on key release so the complete triggering chord is physically up before the OS action runs. macOS then runs Apple's Mission Control launcher with action `0` or `2`, with defaults `Ctrl+Cmd+Shift+Up` and `Ctrl+Cmd+Shift+Down`. Windows synthesizes `Win+Tab` and `Win+D` from matching `Ctrl+Alt+Shift` defaults and sends balanced Windows-key events.
 
-`tiling::get_windows_elevation_status()` queries the current process token only when Settings opens. `get_windows_snap_enabled()` reads `HKCU\Control Panel\Desktop\WindowArrangementActive`, and `open_windows_multitasking_settings()` opens `ms-settings:multitasking`. Optional-query failures log and return `None`; they never gate startup, tiling, or Settings. Settings shows inline green status for satisfied macOS Accessibility, Windows elevation, and native-Snap requirements; failures render a short linked line below the relevant checkbox.
+`tiling::get_windows_elevation_status()` queries the current process token only when Settings opens. `get_windows_snap_enabled()` reads `HKCU\Control Panel\Desktop\WindowArrangementActive`, and `open_windows_multitasking_settings()` opens `ms-settings:multitasking`. Optional-query failures log and return `None`; they never gate startup, tiling, or Settings. Settings stays quiet when macOS Accessibility, Windows elevation, and native-Snap requirements are satisfied; failures render a short linked line below the relevant checkbox.
 
 Windows defaults `tileSnapEnabled` to false because native Windows Snap competes for the same edges. Users should disable **Settings → System → Multitasking → Snap windows** before opting in; README carries both UI and registry-command instructions.
 

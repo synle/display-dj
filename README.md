@@ -35,7 +35,7 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Brightness control** -- a single slider to adjust all monitors at once, or expand to control each monitor individually
 - **Contrast control** -- DDC/CI contrast adjustment for external monitors (enable in Settings)
 - **Dark mode toggle** -- system-wide dark/light mode switch
-- **Volume and output control** -- system volume slider with mute indicator, click-to-rename speaker names, reorder arrows in the expanded speaker list, and a **Sound** tray submenu for fast output switching plus Mute, 50%, and 100% presets. Settings lists every speaker with the same ordering controls plus Enabled/Disabled/Hidden state management. Enabled built-in speakers lead the initial order; saved custom order persists afterward, and known Steam Streaming endpoints are hidden automatically.
+- **Volume and output control** -- system volume slider with mute indicator, click-to-rename speaker names, reorder arrows in the expanded speaker list, and a **Speakers** tray submenu for fast output switching plus Mute, 50%, and 100% presets. Settings lists monitors before every speaker, with the same ordering controls plus Enabled/Disabled/Hidden state management. Enabled built-in speakers lead the initial order; saved custom order persists afterward, and known Steam Streaming endpoints are hidden automatically.
 - **Keep Awake** -- prevent your system from sleeping with a single toggle (macOS, Windows, Linux)
 - **Night mode schedule** -- automatically set brightness and dark/light mode on a time-based schedule (e.g., dim at 9 PM, bright at 7 AM). Supports custom commands (`nightCommands`/`dayCommands`) to run arbitrary actions on schedule (volume changes, profile activation, per-monitor brightness)
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
@@ -142,7 +142,7 @@ To diagnose output switching, open the tray menu and choose **Debug → Enable L
 | Shift + F3 / F4 / F5    | Brightness 0% / 50% / 100%                             |
 | Shift + F10 / F11 / F12 | Volume 0% / 10% / 100%                                 |
 
-macOS maps `Ctrl + Cmd + Shift + Up` to Mission Control and `Ctrl + Cmd + Shift + Down` to Show Desktop. Windows maps the matching `Ctrl + Alt + Shift` chords to Task View (`Win + Tab`) and Show Desktop (`Win + D`).
+macOS maps `Ctrl + Cmd + Shift + Up` to Mission Control and `Ctrl + Cmd + Shift + Down` to Show Desktop. Windows maps the matching `Ctrl + Alt + Shift` chords to Task View (`Win + Tab`) and Show Desktop (`Win + D`). These system actions run after the shortcut keys are released so held modifiers do not alter the OS command.
 
 **Window Tiling** (macOS + Windows + Linux/X11):
 

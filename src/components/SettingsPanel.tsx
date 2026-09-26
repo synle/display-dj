@@ -305,52 +305,6 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             <div className='settings-divider' />
 
             <div className='settings-section'>
-              <label className='settings-label'>Speakers</label>
-              <div className='settings-monitors-list'>
-                {audioOutputState?.devices.map((device, index) => (
-                  <div
-                    key={device.id}
-                    className={`settings-monitor-row${device.state === 'hidden' ? ' settings-monitor-hidden' : ''}`}>
-                    <div className='settings-monitor-reorder'>
-                      <button
-                        className='monitor-reorder-btn'
-                        disabled={index === 0}
-                        onClick={() => moveAudioOutput(index, 'up')}
-                        title={`Move ${device.name} up`}>
-                        ▲
-                      </button>
-                      <button
-                        className='monitor-reorder-btn'
-                        disabled={index === audioOutputState.devices.length - 1}
-                        onClick={() => moveAudioOutput(index, 'down')}
-                        title={`Move ${device.name} down`}>
-                        ▼
-                      </button>
-                    </div>
-                    <span className='settings-audio-output-name'>{device.name}</span>
-                    <Dropdown
-                      className='audio-output-state'
-                      aria-label={`State for ${device.name}`}
-                      value={device.state}
-                      disabled={updatingAudioOutputId !== null}
-                      onChange={(event) =>
-                        updateAudioOutputState(
-                          device.id,
-                          event.target.value as AudioOutputDeviceState,
-                        )
-                      }>
-                      <option value='enabled'>Enabled</option>
-                      <option value='disabled'>Disabled</option>
-                      <option value='hidden'>Hidden</option>
-                    </Dropdown>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className='settings-divider' />
-
-            <div className='settings-section'>
               <label className='settings-label'>Monitors</label>
               <div className='settings-monitors-list'>
                 {configs.map((meta, index) => {
@@ -432,6 +386,52 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     </div>
                   );
                 })}
+              </div>
+            </div>
+
+            <div className='settings-divider' />
+
+            <div className='settings-section'>
+              <label className='settings-label'>Speakers</label>
+              <div className='settings-monitors-list'>
+                {audioOutputState?.devices.map((device, index) => (
+                  <div
+                    key={device.id}
+                    className={`settings-monitor-row${device.state === 'hidden' ? ' settings-monitor-hidden' : ''}`}>
+                    <div className='settings-monitor-reorder'>
+                      <button
+                        className='monitor-reorder-btn'
+                        disabled={index === 0}
+                        onClick={() => moveAudioOutput(index, 'up')}
+                        title={`Move ${device.name} up`}>
+                        ▲
+                      </button>
+                      <button
+                        className='monitor-reorder-btn'
+                        disabled={index === audioOutputState.devices.length - 1}
+                        onClick={() => moveAudioOutput(index, 'down')}
+                        title={`Move ${device.name} down`}>
+                        ▼
+                      </button>
+                    </div>
+                    <span className='settings-audio-output-name'>{device.name}</span>
+                    <Dropdown
+                      className='audio-output-state'
+                      aria-label={`State for ${device.name}`}
+                      value={device.state}
+                      disabled={updatingAudioOutputId !== null}
+                      onChange={(event) =>
+                        updateAudioOutputState(
+                          device.id,
+                          event.target.value as AudioOutputDeviceState,
+                        )
+                      }>
+                      <option value='enabled'>Enabled</option>
+                      <option value='disabled'>Disabled</option>
+                      <option value='hidden'>Hidden</option>
+                    </Dropdown>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -635,18 +635,6 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                   />
                   <span>Enable Window Tiling</span>
                 </label>
-                {platform === 'macos' && accessibilityTrusted && (
-                  <span
-                    className='settings-status-ok'
-                    aria-label='Accessibility permission granted'>
-                    ✓
-                  </span>
-                )}
-                {platform === 'windows' && windowsElevated === true && (
-                  <span className='settings-status-ok' aria-label='Running as administrator'>
-                    ✓
-                  </span>
-                )}
               </div>
               {platform === 'macos' && !accessibilityTrusted && (
                 <button
@@ -676,11 +664,6 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       />
                       <span>Enable Tile Snap (drag to edge)</span>
                     </label>
-                    {platform === 'windows' && windowsSnapEnabled === false && (
-                      <span className='settings-status-ok' aria-label='Windows Snap disabled'>
-                        ✓
-                      </span>
-                    )}
                   </div>
                   {platform === 'windows' && windowsSnapEnabled === true && (
                     <button

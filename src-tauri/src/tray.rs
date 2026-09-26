@@ -318,7 +318,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let audio_output_state = app
         .try_state::<crate::AppState>()
         .and_then(|state| state.audio_output_state.lock().ok()?.clone());
-    let mut audio_output_submenu = SubmenuBuilder::new(app, "Sound");
+    let mut audio_output_submenu = SubmenuBuilder::new(app, "Speakers");
     let output_entries = audio_output_menu_entries(audio_output_state.as_ref());
     if output_entries.is_empty() {
         let empty = MenuItemBuilder::with_id("audio_output_empty", "No output devices")
@@ -1050,12 +1050,18 @@ pub fn position_window_near_tray(
     Ok(())
 }
 
-/// Runs a shortcut command only for the key-down half of a shortcut event.
-fn dispatch_shortcut_press(
+/// Dispatches shell shortcuts after modifier release and all other shortcuts on key-down.
+fn dispatch_shortcut_event(
     state: tauri_plugin_global_shortcut::ShortcutState,
+    command: &str,
     dispatch: impl FnOnce(),
 ) {
-    if state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+    let dispatch_state = if command.starts_with("command/system/") {
+        tauri_plugin_global_shortcut::ShortcutState::Released
+    } else {
+        tauri_plugin_global_shortcut::ShortcutState::Pressed
+    };
+    if state != dispatch_state {
         return;
     }
 
@@ -1084,18 +1090,17 @@ pub fn register_shortcuts(app: &AppHandle, key_bindings: &[KeyBinding]) {
         let handle = app.clone();
         let key = binding.key.clone();
         let key_for_log = binding.key.clone();
-        let cmds_for_log: Vec<String> = commands.clone();
 
         if let Ok(shortcut) = key.parse::<tauri_plugin_global_shortcut::Shortcut>() {
             match app.global_shortcut().on_shortcut(
                 shortcut,
                 move |_app, _shortcut, event| {
-                    dispatch_shortcut_press(event.state, || {
-                        log::info!("shortcut triggered: '{}' → {:?}", key_for_log, cmds_for_log);
-                        for cmd in &commands {
+                    for cmd in &commands {
+                        dispatch_shortcut_event(event.state, cmd, || {
+                            log::info!("shortcut triggered: '{}' → {}", key_for_log, cmd);
                             execute_command(&handle, cmd);
-                        }
-                    });
+                        });
+                    }
                 },
             ) {
                 Ok(_) => {
@@ -1654,17 +1659,71 @@ mod tests {
         }
     }
 
-    /// A press/release shortcut cycle dispatches its command exactly once.
+    /// Normal shortcuts dispatch on press and ignore release.
     #[test]
-    fn test_shortcut_release_does_not_dispatch_command_again() {
+    fn normal_shortcut_dispatches_on_press_only() {
         let mut dispatch_count = 0;
 
-        dispatch_shortcut_press(tauri_plugin_global_shortcut::ShortcutState::Pressed, || {
+        dispatch_shortcut_event(
+            tauri_plugin_global_shortcut::ShortcutState::Pressed,
+            "command/tile/leftHalf",
+            || {
+                dispatch_count += 1;
+            },
+        );
+        dispatch_shortcut_event(
+            tauri_plugin_global_shortcut::ShortcutState::Released,
+            "command/tile/leftHalf",
+            || {
+                dispatch_count += 1;
+            },
+        );
+
+        assert_eq!(dispatch_count, 1);
+    }
+
+    /// System shortcuts wait for release so held modifiers cannot alter the OS action.
+    #[test]
+    fn system_shortcut_dispatches_on_release_only() {
+        let mut dispatch_count = 0;
+
+        dispatch_shortcut_event(
+            tauri_plugin_global_shortcut::ShortcutState::Pressed,
+            "command/system/showDesktop",
+            || {
+                dispatch_count += 1;
+            },
+        );
+        dispatch_shortcut_event(
+            tauri_plugin_global_shortcut::ShortcutState::Released,
+            "command/system/showDesktop",
+            || {
+                dispatch_count += 1;
+            },
+        );
+
+        assert_eq!(dispatch_count, 1);
+    }
+
+    /// Both platform shell actions use release-time dispatch.
+    #[test]
+    fn task_view_shortcut_dispatches_on_release_only() {
+        let mut dispatch_count = 0;
+
+        dispatch_shortcut_event(
+            tauri_plugin_global_shortcut::ShortcutState::Pressed,
+            "command/system/taskView",
+            || {
+                dispatch_count += 1;
+            },
+        );
+        dispatch_shortcut_event(
+            tauri_plugin_global_shortcut::ShortcutState::Released,
+            "command/system/taskView",
+            || {
             dispatch_count += 1;
-        });
-        dispatch_shortcut_press(tauri_plugin_global_shortcut::ShortcutState::Released, || {
-            dispatch_count += 1;
-        });
+            },
+        );
 
         assert_eq!(dispatch_count, 1);
     }
@@ -1679,9 +1738,9 @@ mod tests {
         assert!(parse_audio_output_menu_id("audio_output_not-hex").is_none());
     }
 
-    /// Sound tray presets route through the existing volume command dispatcher.
+    /// Speaker tray presets route through the existing volume command dispatcher.
     #[test]
-    fn sound_menu_presets_map_to_volume_commands() {
+    fn speaker_menu_presets_map_to_volume_commands() {
         assert_eq!(
             sound_menu_command(SOUND_MUTE_MENU_ID),
             Some("command/changeVolume/0")
@@ -1697,17 +1756,17 @@ mod tests {
         assert_eq!(sound_menu_command("sound_volume_unknown"), None);
     }
 
-    /// Sound submenu keeps output selection above a separator and volume presets below it.
+    /// Speakers submenu keeps output selection above a separator and volume presets below it.
     #[test]
-    fn sound_submenu_contains_output_and_volume_sections() {
+    fn speakers_submenu_contains_output_and_volume_sections() {
         let source = include_str!("tray.rs");
         let builder = source
-            .split("let mut audio_output_submenu = SubmenuBuilder::new(app, \"Sound\")")
+            .split("let mut audio_output_submenu = SubmenuBuilder::new(app, \"Speakers\")")
             .nth(1)
-            .expect("Sound submenu builder must exist")
+            .expect("Speakers submenu builder must exist")
             .split("let audio_output_submenu = audio_output_submenu.build()")
             .next()
-            .expect("Sound submenu builder must have a bounded body");
+            .expect("Speakers submenu builder must have a bounded body");
 
         assert!(builder.contains("audio_output_menu_entries"));
         assert!(builder.contains(".separator()"));
