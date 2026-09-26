@@ -65,13 +65,31 @@ fn send_macos_dock_notification(notification: &str) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY,
-    VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT,
+    GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+    VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT,
 };
 
-/// Release shortcut modifiers and emit one Windows-key chord.
+#[cfg(target_os = "windows")]
+const WINDOWS_MODIFIER_RELEASE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Wait for physical shortcut modifiers to clear before emitting one Windows-key chord.
+///
+/// `SendInput` does not reset physical keyboard state. Injecting modifier key-up
+/// events while the user still holds those keys desynchronizes Windows until the
+/// keys are physically released, making the next shortcut appear unregistered.
 #[cfg(target_os = "windows")]
 fn send_windows_chord(key: VIRTUAL_KEY) -> Result<(), String> {
+    let deadline = std::time::Instant::now() + WINDOWS_MODIFIER_RELEASE_TIMEOUT;
+    while [VK_CONTROL, VK_MENU, VK_SHIFT]
+        .into_iter()
+        .any(|modifier| unsafe { GetAsyncKeyState(modifier.0 as i32) } < 0)
+    {
+        if std::time::Instant::now() >= deadline {
+            return Err("timed out waiting for Ctrl, Alt, and Shift to be released".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
     let key_input = |key, flags| INPUT {
         r#type: INPUT_KEYBOARD,
         Anonymous: INPUT_0 {
@@ -83,9 +101,6 @@ fn send_windows_chord(key: VIRTUAL_KEY) -> Result<(), String> {
         },
     };
     let inputs = [
-        key_input(VK_CONTROL, KEYEVENTF_KEYUP),
-        key_input(VK_MENU, KEYEVENTF_KEYUP),
-        key_input(VK_SHIFT, KEYEVENTF_KEYUP),
         key_input(VK_LWIN, Default::default()),
         key_input(key, Default::default()),
         key_input(key, KEYEVENTF_KEYUP),
@@ -103,11 +118,16 @@ fn send_windows_chord(key: VIRTUAL_KEY) -> Result<(), String> {
     Ok(())
 }
 
-/// Open Windows Task View by releasing the triggering modifiers and emitting Win+Tab.
+/// Open Windows Task View after physical modifier release by emitting Win+Tab.
 #[cfg(target_os = "windows")]
 pub fn open() -> Result<(), String> {
     use windows::Win32::UI::Input::KeyboardAndMouse::VK_TAB;
-    send_windows_chord(VK_TAB)
+    std::thread::spawn(|| {
+        if let Err(error) = send_windows_chord(VK_TAB) {
+            log::warn!("task_view: {error}");
+        }
+    });
+    Ok(())
 }
 
 /// Open macOS Mission Control through the Dock notification API.
@@ -122,11 +142,16 @@ pub fn open() -> Result<(), String> {
     Err("not supported on this platform".into())
 }
 
-/// Show or restore the Windows desktop by emitting Win+D.
+/// Show or restore the Windows desktop after physical modifier release by emitting Win+D.
 #[cfg(target_os = "windows")]
 pub fn show_desktop() -> Result<(), String> {
     use windows::Win32::UI::Input::KeyboardAndMouse::VK_D;
-    send_windows_chord(VK_D)
+    std::thread::spawn(|| {
+        if let Err(error) = send_windows_chord(VK_D) {
+            log::warn!("show_desktop: {error}");
+        }
+    });
+    Ok(())
 }
 
 /// Show or restore the macOS desktop through the Dock notification API.

@@ -147,7 +147,9 @@ Logs go to stdout (plus `debug.log` in the config dir when enabled). A clean sta
 
 ### Platform shell shortcuts
 
-`command/system/taskView` and `command/system/showDesktop` map to platform shell actions. Their global-shortcut callbacks dispatch on key release. macOS sends `com.apple.expose.awake` or `com.apple.showdesktop.awake` directly to the Dock through `CoreDockSendNotification`, with defaults `Ctrl+Cmd+Shift+Up` and `Ctrl+Cmd+Shift+Down`. Windows synthesizes `Win+Tab` and `Win+D` from matching `Ctrl+Alt+Shift` defaults and sends balanced Windows-key events.
+`command/system/taskView` and `command/system/showDesktop` map to platform shell actions. Their global-shortcut callbacks dispatch when the arrow key is released. macOS sends `com.apple.expose.awake` or `com.apple.showdesktop.awake` directly to the Dock through `CoreDockSendNotification`, with defaults `Ctrl+Cmd+Shift+Up` and `Ctrl+Cmd+Shift+Down`. Windows then polls `GetAsyncKeyState` on a background thread until the physical `Ctrl+Alt+Shift` keys are up before sending balanced `Win+Tab` or `Win+D` events. The wait is bounded at two seconds so a stuck key cannot retain a worker indefinitely.
+
+Do not inject key-up events for the triggering Windows modifiers. `SendInput` does not reset physical keyboard state, so the old path reported success while the hardware keys remained down and left Windows' logical state mismatched. Users then had to release and press the entire left-hand chord again before either global shortcut registered. Waiting for real release preserves keyboard state and keeps the shortcut callback non-blocking.
 
 Default app z-order shortcuts follow the same platform modifier split: `Shift+Ctrl+Super+Left` / `Right` on macOS and `Shift+Ctrl+Alt+Left` / `Right` on Windows/Linux. `config.rs::default_zorder_keybindings_for_platform` owns this mapping so non-macOS builds never register the operating-system Super key for these actions.
 

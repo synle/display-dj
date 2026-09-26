@@ -274,7 +274,7 @@ Module: `tiling/`. Moves/resizes the focused window into tiled layouts. **19 lay
 
 Tiling defaults come from one shared key/action table in `config.rs`. macOS prefixes every key with `Super+Ctrl` (Cmd+Ctrl); Windows and Linux prefix the same keys with `Ctrl+Alt`. Never edit one platform's defaults independently. Paired keys: Left/Center/Right Third = `Left`/`C` or `M`/`Right`, Left/Right Two-Thirds = `Up`/`Down`, Left/Right Half = `,`/`.`, Maximize = `/`, App Exposé = `A`, and Exposé = `E`. Quarter layouts have no default keyboard shortcuts.
 
-macOS defaults `Ctrl+Cmd+Shift+Up` to `command/system/taskView` (Mission Control) and `Ctrl+Cmd+Shift+Down` to `command/system/showDesktop`; both dispatch after key release and notify the Dock through `CoreDockSendNotification`. Windows uses matching `Ctrl+Alt+Shift` defaults, dispatches after key release, and synthesizes `Win+Tab` or `Win+D` through `SendInput`. Linux does not register these platform-specific defaults.
+macOS defaults `Ctrl+Cmd+Shift+Up` to `command/system/taskView` (Mission Control) and `Ctrl+Cmd+Shift+Down` to `command/system/showDesktop`; both dispatch after key release and notify the Dock through `CoreDockSendNotification`. Windows uses matching `Ctrl+Alt+Shift` defaults, waits on a background thread for all physical modifiers to be released, and then synthesizes `Win+Tab` or `Win+D` through `SendInput`. Linux does not register these platform-specific defaults.
 
 ### Architecture
 
