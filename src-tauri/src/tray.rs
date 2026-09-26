@@ -26,16 +26,22 @@ enum PopupVerticalPlacement {
     Clamped,
 }
 
-/// Selects the containing monitor, or the nearest monitor when the point lies in a gap.
+/// Selects the containing monitor nearest an edge, or the nearest monitor across a gap.
 fn monitor_index_for_point(monitors: &[PhysicalBounds], x: f64, y: f64) -> Option<usize> {
     monitors
         .iter()
-        .position(|monitor| {
+        .enumerate()
+        .filter(|(_, monitor)| {
             x >= monitor.x
                 && x < monitor.x + monitor.width
                 && y >= monitor.y
                 && y < monitor.y + monitor.height
         })
+        .min_by(|(_, left), (_, right)| {
+            distance_to_nearest_edge(**left, x, y)
+                .total_cmp(&distance_to_nearest_edge(**right, x, y))
+        })
+        .map(|(index, _)| index)
         .or_else(|| {
             monitors
                 .iter()
@@ -46,6 +52,18 @@ fn monitor_index_for_point(monitors: &[PhysicalBounds], x: f64, y: f64) -> Optio
                 })
                 .map(|(index, _)| index)
         })
+}
+
+/// Returns distance to the nearest edge; tray clicks sit shallowest in their real display.
+fn distance_to_nearest_edge(bounds: PhysicalBounds, x: f64, y: f64) -> f64 {
+    [
+        x - bounds.x,
+        bounds.x + bounds.width - x,
+        y - bounds.y,
+        bounds.y + bounds.height - y,
+    ]
+    .into_iter()
+    .fold(f64::INFINITY, f64::min)
 }
 
 /// Returns squared distance from a point to the nearest point inside one rectangle.
@@ -797,7 +815,7 @@ fn log_tray_click(
         .enumerate()
         .map(|(index, monitor)| {
             format!(
-                "screen[{index}] name={:?} pos=({}, {}) size={}x{} scale={}",
+                "screen[{index}] name={:?} pos=({}, {}) size={}x{} @{}x",
                 monitor.name(),
                 monitor.position().x,
                 monitor.position().y,
@@ -1705,6 +1723,109 @@ mod tests {
         ];
 
         assert_eq!(monitor_index_for_point(&monitors, 1500.0, 1095.0), Some(1));
+    }
+
+    /// Overlapping mixed-DPI bounds select the display whose tray edge is nearest the click.
+    #[test]
+    fn tray_click_disambiguates_live_mixed_dpi_stack() {
+        let monitors = [
+            PhysicalBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 3456.0,
+                height: 2234.0,
+            },
+            PhysicalBounds {
+                x: -63.0,
+                y: 1117.0,
+                width: 1920.0,
+                height: 1200.0,
+            },
+        ];
+
+        assert_eq!(monitor_index_for_point(&monitors, 1303.7, 1132.5), Some(1));
+        assert_eq!(monitor_index_for_point(&monitors, 2331.9, 26.7), Some(0));
+    }
+
+    /// Negative origins remain valid when a secondary display sits left and below primary.
+    #[test]
+    fn tray_click_selects_negative_origin_monitor() {
+        let monitors = [
+            PhysicalBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 2560.0,
+                height: 1600.0,
+            },
+            PhysicalBounds {
+                x: -1920.0,
+                y: 1600.0,
+                width: 1920.0,
+                height: 1080.0,
+            },
+        ];
+
+        assert_eq!(monitor_index_for_point(&monitors, -50.0, 1610.0), Some(1));
+    }
+
+    /// A point between display bounds selects the nearest display deterministically.
+    #[test]
+    fn tray_click_in_gap_selects_nearest_monitor() {
+        let monitors = [
+            PhysicalBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 1000.0,
+                height: 1000.0,
+            },
+            PhysicalBounds {
+                x: 0.0,
+                y: 1200.0,
+                width: 1000.0,
+                height: 1000.0,
+            },
+        ];
+
+        assert_eq!(monitor_index_for_point(&monitors, 500.0, 1150.0), Some(1));
+    }
+
+    /// Exact overlap ties remain stable by selecting the first enumerated display.
+    #[test]
+    fn tray_click_overlap_tie_is_stable() {
+        let monitors = [
+            PhysicalBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 1920.0,
+                height: 1080.0,
+            },
+            PhysicalBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 1920.0,
+                height: 1080.0,
+            },
+        ];
+
+        assert_eq!(monitor_index_for_point(&monitors, 500.0, 10.0), Some(0));
+    }
+
+    /// Tray click diagnostics include both buttons, DPI notation, and the physical mouse point.
+    #[test]
+    fn tray_click_diagnostics_include_button_mouse_and_dpi() {
+        let source = include_str!("tray.rs");
+        let logger = source
+            .split("fn log_tray_click")
+            .nth(1)
+            .expect("tray click logger must exist")
+            .split("/// Position the popup")
+            .next()
+            .expect("tray click logger must have a bounded body");
+
+        assert!(logger.contains("button={button:?}"));
+        assert!(logger.contains("mouse=({:.1}, {:.1})"));
+        assert!(logger.contains("screen={clicked_monitor:?}"));
+        assert!(logger.contains("@{}x"));
     }
 
     /// Top-edge trays place the popup below while all corners stay on-screen.
