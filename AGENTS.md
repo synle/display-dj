@@ -106,7 +106,7 @@ Inline `#[cfg(test)]` modules cover:
 
 ### CI
 
-GitHub Actions (`build.yml`) runs `npm test` and `cargo test` on macOS ARM/Intel, Windows, and Linux for every push and PR. PRs get a comment with per-platform build artifact links. A single rolled-up check named **`Main Build`** (job id `main_build`) aggregates the 4-platform matrix + coverage into one green/red status on the commit — require this name in branch protection instead of every matrix permutation.
+GitHub Actions (`build.yml`) runs `npm test` and `cargo test` across a 6-entry matrix (macOS ARM/Intel, Windows x64/arm64, and Linux x64/arm64) for every push and PR. PRs get a comment with per-platform build artifact links. A single rolled-up check named **`Main Build`** (job id `main_build`) aggregates the matrix + coverage into one green/red status on the commit — require this name in branch protection instead of every matrix permutation.
 
 ### Coverage thresholds (where they live)
 
@@ -247,13 +247,13 @@ Drawn programmatically at 128x128 from percentage-based layout constants (no PNG
 
 States are cached on `AppState` (`is_dark_mode`, `is_muted`); `update_tray_icon()` regenerates on change. Initial state is fetched in-process from `core::theme` and `core::volume` at startup via `fetch_initial_tray_state()`.
 
-Tray popup placement selects the monitor from the physical mouse position in `TrayIconEvent::Click`, not a scaled tray-rectangle guess. Mixed-DPI monitor bounds can overlap because Tauri reports origins and sizes with inconsistent scaling; when multiple displays contain the click, the one whose nearest edge is closest wins for top, bottom, left, and right trays. Exact coincident bounds retain stable enumeration order. It starts below the tray, flips above only when the lower edge would overflow, then clamps every corner inside that same display. `AppState` retains both click point and tray rectangle for resize-driven repositioning. With Debug Logging enabled, left/right tray clicks record button, mouse/tray geometry, all monitor origins/resolutions with explicit `@Nx` DPI scaling, selected screen, placement mode, popup bounds, and final position.
+Tray popup placement selects the monitor from the physical mouse position in `TrayIconEvent::Click`, not a scaled tray-rectangle guess. Mixed-DPI monitor bounds can overlap because Tauri reports origins and sizes with inconsistent scaling; when multiple displays contain the click, the one whose nearest edge is closest wins for top, bottom, left, and right trays. Exact coincident bounds retain stable enumeration order. Every click state stores the latest anchor before action filtering because macOS opens its synchronous context menu on right-button down; left-click opening and context-menu **Show Window** then reuse that anchor. It starts below the tray, flips above only when the lower edge would overflow, then clamps every corner inside that same display. `AppState` retains both click point and tray rectangle for resize-driven repositioning. With Debug Logging enabled, left/right tray button-up events record button, mouse/tray geometry, all monitor origins/resolutions with explicit `@Nx` DPI scaling, selected screen, placement mode, popup bounds, and final position.
 
 ## Audio Output Selection
 
 - `VolumeControl.tsx` has its own expand/collapse chevron independent from the monitor section. Its readonly `All Speakers (<enabled non-hidden count>)` label appends `- <selected name>` while collapsed; expanded mode lists visible outputs, including the selected endpoint with its radio checked, using monitor-name font sizing, one padded radio target, click-to-edit name, and persisted reorder arrows. Settings lists every output above Night Mode Schedule with the same arrows plus an `enabled` / `disabled` / `hidden` selector per row.
 - A backend refresh thread probes audio outputs every 5 seconds, updates `AppState.audio_output_state`, rebuilds the tray menu only when the snapshot changes, and emits `audio-output-changed` for the popup. `App.tsx` keeps its visible-main-panel poll as a cached fallback, with an in-flight guard and last-successful-state behavior.
-- The tray menu exposes an **Output Device** submenu containing enabled outputs only. The selected endpoint has a `●` marker; disabled and hidden outputs remain manageable from the expanded popup but cannot be selected from the tray.
+- The tray menu exposes a **Sound** submenu containing enabled outputs, then Mute, 50%, and 100% volume presets after a separator. The selected endpoint has a `●` marker; disabled and hidden outputs remain manageable from the expanded popup but cannot be selected from the tray.
 - Device IDs must remain stable: CoreAudio UID on macOS, `IMMDevice::GetId` on Windows, and the `pactl` sink name on Linux. The operating system owns the selected default; Display DJ never persists it.
 - User output settings live in `preferences.audioOutputConfigs` as `{ id, label, state, sortOrder }`; missing `state` values default to `enabled`, and missing sort positions retain default ordering. `originalName` always retains the native OS name, and a metadata entry is removed only when label, state, and sort order all return to defaults. Native names containing `Steam Streaming` are forced hidden. Initial ordering is enabled first, then disabled, then hidden; built-in outputs lead each group, then name and stable ID decide order. Saved sort positions override that initial order. Changing selection never reorders rows.
 - macOS excludes CoreAudio devices that are dead or cannot become the default output. `UNSUPPORTED_OUTPUT_DEVICE_UIDS` also always rejects known conference-app loopback endpoints such as Microsoft Teams Audio and ZoomAudioDevice, even if a future driver reports different capability flags.
@@ -292,7 +292,7 @@ On macOS, Tile Snap also smart-shrinks oversized windows on drag start (≥ 85% 
 ### Exposé
 
 - **Exposé** (`command/tile/expose`): all on-screen windows into a deterministic alphabetical grid.
-- **App Exposé** (`command/tile/exposeApp`): only frontmost app's windows.
+- **App Exposé** (`command/tile/exposeApp`): frontmost-app windows fill the first display(s); other apps may use only wholly unconsumed displays, never leftover cells beside target-app windows.
 
 Both **normalize** first (unminimize + exit native fullscreen + Escape browser/video pseudo-fullscreen + collapse virtual desktops/Spaces). **Fill-first overflow**: fill display 1 to `exposeColumns × exposeRows`, overflow to display 2, etc. Windows with min sizes (Steam, Chrome) that exceed grid cells overflow to subsequent displays; the last display uses grid-aligned placement (oversized windows consume `ceil`'d cells, snapped to grid boundaries with no gaps). Resizable windows placed first, oversized fill remaining slots. Layout is deterministic (sorted alphabetically by app, then `window_id`); each invocation re-lays out (no toggle/restore).
 
@@ -306,7 +306,7 @@ The shared `layout_across_displays` in `tiling/mod.rs` handles overflow for all 
 
 ### Preferences
 
-`tiling.{enabled, halfRatio=50, thirdRatio=33, gap=0, sideEdgeTrigger=18, topEdgeTrigger=18, cornerTrigger=50, exposeEnabled=true, exposeColumns=2, exposeRows=3, exposeMinWidth=400, exposeMinHeight=300}`. `exposeMinWidth/Height` are logical pixels — DPI-scaled on Windows.
+`tiling.{enabled, halfRatio=50, thirdRatio=33, gap=0, sideEdgeTrigger=18, topEdgeTrigger=18, cornerTrigger=30, exposeEnabled=true, exposeColumns=2, exposeRows=3, exposeLayoutStrategy="fill", exposeMinWidth=400, exposeMinHeight=300}`. Nine `snap*Enabled` booleans independently control top/left/right edges, four corners, bottom thirds, and bottom two-thirds; all default true. `exposeMinWidth/Height` are logical pixels — DPI-scaled on Windows.
 
 ### UI
 

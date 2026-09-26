@@ -35,16 +35,16 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Brightness control** -- a single slider to adjust all monitors at once, or expand to control each monitor individually
 - **Contrast control** -- DDC/CI contrast adjustment for external monitors (enable in Settings)
 - **Dark mode toggle** -- system-wide dark/light mode switch
-- **Volume and output control** -- system volume slider with mute indicator, click-to-rename speaker names, reorder arrows in the expanded speaker list, and an **Output Device** tray submenu for fast switching. Settings lists every speaker with the same ordering controls plus Enabled/Disabled/Hidden state management. Enabled built-in speakers lead the initial order; saved custom order persists afterward, and known Steam Streaming endpoints are hidden automatically.
+- **Volume and output control** -- system volume slider with mute indicator, click-to-rename speaker names, reorder arrows in the expanded speaker list, and a **Sound** tray submenu for fast output switching plus Mute, 50%, and 100% presets. Settings lists every speaker with the same ordering controls plus Enabled/Disabled/Hidden state management. Enabled built-in speakers lead the initial order; saved custom order persists afterward, and known Steam Streaming endpoints are hidden automatically.
 - **Keep Awake** -- prevent your system from sleeping with a single toggle (macOS, Windows, Linux)
 - **Night mode schedule** -- automatically set brightness and dark/light mode on a time-based schedule (e.g., dim at 9 PM, bright at 7 AM). Supports custom commands (`nightCommands`/`dayCommands`) to run arbitrary actions on schedule (volume changes, profile activation, per-monitor brightness)
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
 - **Global keyboard shortcuts** -- work even when the app isn't focused; fully configurable
 - **Monitor renaming** -- click any display name to give it a custom label
 - **Window tiling** (macOS + Windows + Linux/X11) -- tile windows to halves, thirds, two-thirds, quarters, or maximize via keyboard shortcuts or tray menu
-- **Tile Snap** (macOS + Windows + Linux/X11) -- drag a normal or maximized window to a screen edge to draw DPI-correct drop zones, preview the target on only that display, and snap it into a tiled layout. Enable/disable via the Tile Snap toggle in Settings; Windows defaults it off to avoid conflicting with Windows Snap
+- **Tile Snap** (macOS + Windows + Linux/X11) -- drag a normal or maximized window to a screen edge to draw DPI-correct drop zones, preview the target on only that display, and snap it into a tiled layout. Enable/disable via the Tile Snap toggle in Settings; Windows defaults it off to avoid conflicting with Windows Snap. Linux support requires X11 and has been tested primarily with XFCE/xfwm4
 - **Exposé** (macOS + Windows + Linux/X11) -- spread all windows into a grid overview, or just the current app's windows. Deterministic alphabetical layout with configurable multi-display strategy (spread evenly or fill each display). Has its own tray submenu with enable/disable toggle and grid size presets (2x2 through 5x5)
-- **App Exposé** -- grids the frontmost app's windows and fills remaining grid cells with other apps' windows
+- **App Exposé** -- grids the frontmost app's windows first; other apps may use wholly unconsumed displays but never leftover cells beside the target app
 - **Layout Presets** -- named presets that automatically tile specific apps to specific layouts. Triggered via keyboard shortcuts, profiles, or the tray menu
 - **Dynamic tray icon** -- the system tray icon updates to reflect app state: dark/light mode (border color), keep-awake active (blue fill), and muted (red X overlay)
 - **Multi-monitor popup placement** -- left-click opens on the clicked tray icon's display, including vertically stacked mixed-DPI layouts with overlapping reported bounds; bottom-edge trays place the popup above so it remains fully visible
@@ -215,7 +215,7 @@ Restore XFCE edge tiling later with the same command using `-s true`.
 ### Exposé
 
 - **Exposé** (`command/tile/expose`) -- spreads all on-screen windows into a deterministic alphabetical grid, filling the first display and overflowing to the next. Windows with minimum size constraints (e.g., Steam, Chrome) that don't fit overflow to displays with larger cells.
-- **App Exposé** (`command/tile/exposeApp`) -- grids the frontmost app's windows, then fills remaining cells with other apps' windows.
+- **App Exposé** (`command/tile/exposeApp`) -- grids the frontmost app's windows across the first display(s), then uses other apps only on wholly unconsumed displays; it never mixes other apps into leftover cells beside the target app.
 
 Both modes normalize windows first (unminimize, exit fullscreen), then lay out a grid; each invocation re-lays out everything (no toggle/restore). Grid size (1-5 columns/rows, default 2x3) and layout strategy ("spread" evenly across displays vs "fill" each to capacity) are in Settings (Tiling tab). The tray has a separate Exposé submenu: enable/disable, both actions, and grid presets (2x2 through 5x5).
 
@@ -328,22 +328,23 @@ No special permissions are needed on X11. Tiling uses EWMH window manager hints 
 
 Tiling settings are stored in `preferences.json` under the `tiling` key. They can also be configured via the Settings panel (Tiling tab).
 
-| Setting                | Default    | Range      | Description                                                                                                                          |
-| ---------------------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `enabled`              | `true`     | --         | Master toggle for all tiling features                                                                                                |
-| `halfRatio`            | `50`       | --         | Percentage for half splits (affects halves and quarters)                                                                             |
-| `thirdRatio`           | `33`       | --         | Percentage for third splits (center = 100 - 2 x third)                                                                               |
-| `gap`                  | `0`        | --         | Padding in points around the tiling area                                                                                             |
-| `tileSnapEnabled`      | platform   | --         | Enable/disable Tile Snap mouse edge snapping. Default: `true` on macOS/Linux, `false` on Windows to avoid Windows Snap conflicts     |
-| `sideEdgeTrigger`      | `10`       | 5-50 px    | Tile Snap: width of left/right/bottom edge zone                                                                                      |
-| `topEdgeTrigger`       | `10`       | 10-50 px   | Tile Snap: height of top edge zone (maximize)                                                                                        |
-| `cornerTrigger`        | `50`       | 25-150 px  | Tile Snap: size of corner zone (quarter tiles)                                                                                       |
-| `exposeEnabled`        | `true`     | --         | Master toggle for Exposé features                                                                                                    |
-| `exposeColumns`        | `2`        | 1-5        | Number of columns in the Exposé grid per display                                                                                     |
-| `exposeRows`           | `3`        | 1-5        | Number of rows in the Exposé grid per display                                                                                        |
-| `exposeLayoutStrategy` | `"spread"` | --         | `"spread"` distributes windows evenly across displays; `"fill"` packs each display to capacity before using the next                 |
-| `exposeMinWidth`       | `400`      | 100-800 px | Minimum grid cell width in logical pixels. Cells smaller than this cause overflow to less-crowded displays. Scaled by DPI on Windows |
-| `exposeMinHeight`      | `300`      | 100-600 px | Minimum grid cell height in logical pixels. Same DPI scaling as width                                                                |
+| Setting                | Default  | Range      | Description                                                                                                                          |
+| ---------------------- | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `enabled`              | `true`   | --         | Master toggle for all tiling features                                                                                                |
+| `halfRatio`            | `50`     | --         | Percentage for half splits (affects halves and quarters)                                                                             |
+| `thirdRatio`           | `33`     | --         | Percentage for third splits (center = 100 - 2 x third)                                                                               |
+| `gap`                  | `0`      | --         | Padding in points around the tiling area                                                                                             |
+| `tileSnapEnabled`      | platform | --         | Enable/disable Tile Snap mouse edge snapping. Default: `true` on macOS/Linux, `false` on Windows to avoid Windows Snap conflicts     |
+| `sideEdgeTrigger`      | `18`     | 1-500 px   | Tile Snap: width of left/right/bottom edge zone                                                                                      |
+| `topEdgeTrigger`       | `18`     | 1-500 px   | Tile Snap: height of top edge zone (maximize)                                                                                        |
+| `cornerTrigger`        | `30`     | 1-500 px   | Tile Snap: size of corner zone (quarter tiles)                                                                                       |
+| `snap*Enabled`         | `true`   | --         | Nine toggles for top/left/right edges, four corners, bottom thirds, and bottom two-thirds                                            |
+| `exposeEnabled`        | `true`   | --         | Master toggle for Exposé features                                                                                                    |
+| `exposeColumns`        | `2`      | 1-5        | Number of columns in the Exposé grid per display                                                                                     |
+| `exposeRows`           | `3`      | 1-5        | Number of rows in the Exposé grid per display                                                                                        |
+| `exposeLayoutStrategy` | `"fill"` | --         | `"spread"` distributes windows evenly across displays; `"fill"` packs each display to capacity before using the next                 |
+| `exposeMinWidth`       | `400`    | 100-800 px | Minimum grid cell width in logical pixels. Cells smaller than this cause overflow to less-crowded displays. Scaled by DPI on Windows |
+| `exposeMinHeight`      | `300`    | 100-600 px | Minimum grid cell height in logical pixels. Same DPI scaling as width                                                                |
 
 ## Known Issues
 

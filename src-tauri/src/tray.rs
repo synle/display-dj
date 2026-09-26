@@ -7,6 +7,9 @@ use tauri::{
 use crate::config::{CommandValue, KeyBinding};
 
 const AUDIO_OUTPUT_MENU_PREFIX: &str = "audio_output_";
+const SOUND_MUTE_MENU_ID: &str = "sound_volume_0";
+const SOUND_HALF_MENU_ID: &str = "sound_volume_50";
+const SOUND_FULL_MENU_ID: &str = "sound_volume_100";
 const AUDIO_OUTPUT_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 const POPUP_GAP_LOGICAL: f64 = 4.0;
 const POPUP_MARGIN_LOGICAL: f64 = 8.0;
@@ -189,7 +192,7 @@ fn dispatch_brightness_for_all<R: tauri::Runtime>(
     }
 }
 
-/// Shows the popup window, emits refresh events, and sets focus.
+/// Positions from the latest tray click, shows the popup, emits refresh events, and sets focus.
 /// Used by both the tray left-click handler and the "Show Window" menu item.
 /// Sets `expect_focus_gain` so the focus-loss handler won't hide us until
 /// the window actually receives `Focused(true)`.
@@ -203,12 +206,39 @@ fn show_popup_window(app: &AppHandle) {
                 *e = true;
             }
         }
+        position_popup_from_last_tray_click(app, &window);
         let _ = window.show();
         let _ = window.set_focus();
         let _ = app.emit("monitors-changed", ());
         let _ = app.emit("dark-mode-changed", ());
         let _ = app.emit("volume-changed", ());
     }
+}
+
+/// Reuses the latest left- or right-click tray anchor for shared popup placement.
+fn position_popup_from_last_tray_click(app: &AppHandle, window: &tauri::WebviewWindow) {
+    let Some(state) = app.try_state::<crate::AppState>() else {
+        return;
+    };
+    let tray_rect = state.last_tray_rect.lock().ok().and_then(|rect| *rect);
+    let click_position = state
+        .last_tray_click_position
+        .lock()
+        .ok()
+        .and_then(|position| *position);
+    let (Some(tray_rect), Some(click_position)) = (tray_rect, click_position) else {
+        crate::config::write_debug_log(&state, "popup_placement: no tray click anchor available");
+        return;
+    };
+
+    let result = position_window_near_tray(window, tray_rect, click_position, Some(state.clone()));
+    crate::config::write_debug_log(
+        &state,
+        &format!(
+            "popup_placement: shared tray anchor result={:?}",
+            result.as_ref().map(|_| "ok")
+        ),
+    );
 }
 
 /// Encodes arbitrary platform endpoint IDs into menu-safe hexadecimal IDs.
@@ -261,6 +291,16 @@ fn audio_output_menu_entries(
         .collect()
 }
 
+/// Maps one tray sound preset ID to the existing in-process volume command.
+fn sound_menu_command(menu_id: &str) -> Option<&'static str> {
+    match menu_id {
+        SOUND_MUTE_MENU_ID => Some("command/changeVolume/0"),
+        SOUND_HALF_MENU_ID => Some("command/changeVolume/50"),
+        SOUND_FULL_MENU_ID => Some("command/changeVolume/100"),
+        _ => None,
+    }
+}
+
 /// Builds the tray context menu from current preferences.
 /// Called on initial setup and after any action that changes the menu (debug toggle, reset).
 fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
@@ -278,7 +318,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let audio_output_state = app
         .try_state::<crate::AppState>()
         .and_then(|state| state.audio_output_state.lock().ok()?.clone());
-    let mut audio_output_submenu = SubmenuBuilder::new(app, "Output Device");
+    let mut audio_output_submenu = SubmenuBuilder::new(app, "Sound");
     let output_entries = audio_output_menu_entries(audio_output_state.as_ref());
     if output_entries.is_empty() {
         let empty = MenuItemBuilder::with_id("audio_output_empty", "No output devices")
@@ -291,6 +331,14 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             audio_output_submenu = audio_output_submenu.item(&item);
         }
     }
+    let mute = MenuItemBuilder::with_id(SOUND_MUTE_MENU_ID, "Mute").build(app)?;
+    let half = MenuItemBuilder::with_id(SOUND_HALF_MENU_ID, "50%").build(app)?;
+    let full = MenuItemBuilder::with_id(SOUND_FULL_MENU_ID, "100%").build(app)?;
+    audio_output_submenu = audio_output_submenu
+        .separator()
+        .item(&mute)
+        .item(&half)
+        .item(&full);
     let audio_output_submenu = audio_output_submenu.build()?;
 
     // Build profiles submenu from saved preferences
@@ -683,7 +731,9 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 app.exit(0);
             }
             other => {
-                if let Some(device_id) = parse_audio_output_menu_id(other) {
+                if let Some(command) = sound_menu_command(other) {
+                    execute_command(app, command);
+                } else if let Some(device_id) = parse_audio_output_menu_id(other) {
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
                         if let Err(error) =
@@ -736,11 +786,22 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 rect: tray_rect,
                 position: click_position,
                 button,
-                button_state: MouseButtonState::Up,
+                button_state,
                 ..
             } = event
             {
                 let app = tray.app_handle();
+                if let Some(state) = app.try_state::<crate::AppState>() {
+                    if let Ok(mut stored) = state.last_tray_rect.lock() {
+                        *stored = Some(tray_rect);
+                    }
+                    if let Ok(mut stored) = state.last_tray_click_position.lock() {
+                        *stored = Some(click_position);
+                    }
+                }
+                if button_state != MouseButtonState::Up {
+                    return;
+                }
                 log_tray_click(app, button, click_position, tray_rect);
                 if button != MouseButton::Left {
                     return;
@@ -756,28 +817,6 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                     if visible {
                         let _ = window.hide();
                     } else {
-                        // Use the clicked status item's rectangle. Re-querying tray.rect()
-                        // can report the primary menu bar when macOS mirrors menu bars.
-                        if let Some(state) = app.try_state::<crate::AppState>() {
-                            if let Ok(mut stored) = state.last_tray_rect.lock() {
-                                *stored = Some(tray_rect);
-                            }
-                            if let Ok(mut stored) = state.last_tray_click_position.lock() {
-                                *stored = Some(click_position);
-                            }
-                        }
-                        let result = position_window_near_tray(
-                            &window,
-                            tray_rect,
-                            click_position,
-                            app.try_state::<crate::AppState>(),
-                        );
-                        if let Some(state) = app.try_state::<crate::AppState>() {
-                            crate::config::write_debug_log(
-                                &state,
-                                &format!("position_result: {:?}", result.as_ref().map(|_| "ok")),
-                            );
-                        }
                         show_popup_window(app);
                     }
                 }
@@ -1640,6 +1679,43 @@ mod tests {
         assert!(parse_audio_output_menu_id("audio_output_not-hex").is_none());
     }
 
+    /// Sound tray presets route through the existing volume command dispatcher.
+    #[test]
+    fn sound_menu_presets_map_to_volume_commands() {
+        assert_eq!(
+            sound_menu_command(SOUND_MUTE_MENU_ID),
+            Some("command/changeVolume/0")
+        );
+        assert_eq!(
+            sound_menu_command(SOUND_HALF_MENU_ID),
+            Some("command/changeVolume/50")
+        );
+        assert_eq!(
+            sound_menu_command(SOUND_FULL_MENU_ID),
+            Some("command/changeVolume/100")
+        );
+        assert_eq!(sound_menu_command("sound_volume_unknown"), None);
+    }
+
+    /// Sound submenu keeps output selection above a separator and volume presets below it.
+    #[test]
+    fn sound_submenu_contains_output_and_volume_sections() {
+        let source = include_str!("tray.rs");
+        let builder = source
+            .split("let mut audio_output_submenu = SubmenuBuilder::new(app, \"Sound\")")
+            .nth(1)
+            .expect("Sound submenu builder must exist")
+            .split("let audio_output_submenu = audio_output_submenu.build()")
+            .next()
+            .expect("Sound submenu builder must have a bounded body");
+
+        assert!(builder.contains("audio_output_menu_entries"));
+        assert!(builder.contains(".separator()"));
+        assert!(builder.contains("SOUND_MUTE_MENU_ID, \"Mute\""));
+        assert!(builder.contains("SOUND_HALF_MENU_ID, \"50%\""));
+        assert!(builder.contains("SOUND_FULL_MENU_ID, \"100%\""));
+    }
+
     /// Tray choices include only enabled outputs and mark the current endpoint.
     #[test]
     fn audio_output_menu_entries_filter_and_mark_devices() {
@@ -1700,8 +1776,56 @@ mod tests {
 
         assert!(handler.contains("rect: tray_rect"));
         assert!(handler.contains("position: click_position"));
-        assert!(handler.contains("position_window_near_tray(\n                            &window,\n                            tray_rect,"));
+        assert!(handler.contains("*stored = Some(tray_rect)"));
+        assert!(handler.contains("*stored = Some(click_position)"));
+        assert!(handler.contains("if button_state != MouseButtonState::Up"));
+        assert!(handler.contains("if button != MouseButton::Left"));
+        assert!(handler.contains("show_popup_window(app)"));
         assert!(!handler.contains("if let Ok(Some(tray_rect)) = tray.rect()"));
+    }
+
+    /// Context-menu Show Window and left-click opening share the same placement seam.
+    #[test]
+    fn show_window_menu_reuses_latest_tray_click_placement() {
+        let source = include_str!("tray.rs");
+        let show_popup = source
+            .split("fn show_popup_window")
+            .nth(1)
+            .expect("shared popup helper must exist")
+            .split("/// Reuses the latest")
+            .next()
+            .expect("shared popup helper must have a bounded body");
+        let menu_handler = source
+            .split(".on_menu_event")
+            .nth(1)
+            .expect("menu event handler must exist")
+            .split(".on_tray_icon_event")
+            .next()
+            .expect("menu event handler must have a bounded body");
+
+        assert!(show_popup.contains("position_popup_from_last_tray_click(app, &window)"));
+        assert!(menu_handler.contains("\"show_window\" => {\n                show_popup_window(app);"));
+    }
+
+    /// Right-button down stores a fresh anchor before macOS opens its synchronous context menu.
+    #[test]
+    fn right_click_anchor_is_stored_before_button_up_filter() {
+        let source = include_str!("tray.rs");
+        let handler = source
+            .split(".on_tray_icon_event")
+            .nth(1)
+            .expect("tray icon event handler must exist")
+            .split(".build(app)?")
+            .next()
+            .expect("tray icon event handler must have a bounded body");
+        let store_index = handler
+            .find("*stored = Some(click_position)")
+            .expect("tray click position must be stored");
+        let up_filter_index = handler
+            .find("if button_state != MouseButtonState::Up")
+            .expect("button-up action filter must exist");
+
+        assert!(store_index < up_filter_index);
     }
 
     /// A click on the lower screen in a vertical stack selects that screen.

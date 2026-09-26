@@ -26,7 +26,7 @@ First Rust compile takes 2-10 min; later runs ~5-15s. The app is a **system tray
 
 ## Architecture
 
-[Tauri v2](https://v2.tauri.app/): React 19 frontend in a WebView, Rust backend. All platform code is vendored in-process under `src-tauri/src/core/` — no sidecar, no HTTP server.
+[Tauri v2](https://v2.tauri.app/): React 19 frontend in a WebView, Rust backend. Platform code runs in-process under `src-tauri/src/core/`; most modules are vendored and `audio_output` is display-dj-local. No sidecar or HTTP server runs.
 
 ```
 Frontend (React 19 + TypeScript + Vite 6)
@@ -58,17 +58,17 @@ Events (`monitors-changed`, `dark-mode-changed`, `volume-changed`, `audio-output
 
 **Registered commands** (`lib.rs` `invoke_handler`):
 
-| Module       | Commands                                                                                                                                                     |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `lib`        | `fetch_all_state`                                                                                                                                            |
-| `display`    | `get_monitors`, `set_brightness`, `set_all_brightness`, `set_contrast`, `set_all_contrast`, `rename_monitor`, `save_monitor_order`, `set_monitor_visibility` |
-| `dark_mode`  | `get_dark_mode`, `set_dark_mode`                                                                                                                             |
-| `volume`     | `get_volume`, `set_volume`, `get_audio_output_devices`, `set_audio_output_device`, `set_audio_output_device_state`, `rename_audio_output_device`             |
-| `config`     | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `open_app_folder`, `get_app_version`, `get_about_info`                     |
-| `crash_log`  | `get_crash_log`, `open_crash_log`                                                                                                                            |
-| `keep_awake` | `get_keep_awake`, `set_keep_awake`                                                                                                                           |
-| `tray`       | `apply_profile`                                                                                                                                              |
-| `tiling`     | `get_tiling_supported`, `get_accessibility_trusted`, `recheck_accessibility_trusted`, `open_accessibility_settings`                                          |
+| Module       | Commands                                                                                                                                                                    |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib`        | `fetch_all_state`                                                                                                                                                           |
+| `display`    | `get_monitors`, `set_brightness`, `set_all_brightness`, `set_contrast`, `set_all_contrast`, `rename_monitor`, `save_monitor_order`, `set_monitor_visibility`                |
+| `dark_mode`  | `get_dark_mode`, `set_dark_mode`                                                                                                                                            |
+| `volume`     | `get_volume`, `set_volume`, `get_audio_output_devices`, `set_audio_output_device`, `set_audio_output_device_state`, `rename_audio_output_device`, `save_audio_output_order` |
+| `config`     | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `open_app_folder`, `get_app_version`, `get_about_info`                                    |
+| `crash_log`  | `get_crash_log`, `open_crash_log`                                                                                                                                           |
+| `keep_awake` | `get_keep_awake`, `set_keep_awake`                                                                                                                                          |
+| `tray`       | `apply_profile`                                                                                                                                                             |
+| `tiling`     | `get_tiling_supported`, `get_accessibility_trusted`, `recheck_accessibility_trusted`, `open_accessibility_settings`                                                         |
 
 ### Frontend state
 
@@ -84,7 +84,7 @@ Key bindings pair a `key` (e.g. `"Shift+F1"`) with a `command` string or array o
 
 `monitorConfigs[]` stores per-monitor metadata keyed by a stable composite UID (`{api_id}::{api_model_name}`): `label`, `sortOrder`, `hidden`. Unplugged monitors keep their entry.
 
-`audioOutputConfigs[]` stores Display DJ settings as `{ id, label, state }`, keyed by the platform's stable endpoint ID. `state` is `enabled`, `disabled`, or `hidden` and defaults to `enabled` for older files. Empty labels clear only the alias; entries disappear when both label and state return to defaults. Native endpoint names containing `Steam Streaming` are always treated as hidden. Never persist the selected output; macOS, Windows, and Linux remain the source of truth.
+`audioOutputConfigs[]` stores Display DJ settings as `{ id, label, state, sortOrder }`, keyed by the platform's stable endpoint ID. `state` is `enabled`, `disabled`, or `hidden` and defaults to `enabled` for older files; missing sort positions retain default ordering. Empty labels clear only the alias; entries disappear only when label, state, and sort order all return to defaults. Native endpoint names containing `Steam Streaming` are always treated as hidden. Never persist the selected output; macOS, Windows, and Linux remain the source of truth.
 
 ## Conventions
 
@@ -133,7 +133,7 @@ All platforms: Git, Node.js 20+, Rust stable.
 
 - **macOS**: `xcode-select --install`; Node/Rust via Homebrew or rustup.
 - **Windows**: Node LTS (+ C++ build tools), Rustup, WebView2 (preinstalled on Win11). Tile Snap defaults off; verify Settings detects native Snap, links to **System → Multitasking** while it is on, and shows a green check after it is disabled. With multiple monitors, verify the blue preview appears only on the display containing the active snap zone. At non-100% display scaling, verify the three bottom-third zones remain visible directly above the taskbar. Also maximize a window, drag its title bar, and verify it restores to normal bounds before following the cursor. Test both standard launch (normal windows work and Settings shows advisory elevation guidance) and **Run as administrator** launch (normal and elevated windows work). Optional status-query failures must not block the app or Settings.
-- **Tray popup placement**: test horizontal and vertical multi-monitor layouts with mixed scaling. Left-click each display's tray icon; the popup must stay fully inside that same display, below top-edge trays and above bottom-edge trays. Enable Debug Logging and verify both left/right clicks record mouse position, selected screen, every screen's origin/resolution and explicit `@Nx` DPI scale, and final popup placement. Include a Retina-over-1x vertical stack because Tauri may report overlapping bounds.
+- **Tray popup placement**: test horizontal and vertical multi-monitor layouts with mixed scaling. Left-click each display's tray icon; the popup must stay fully inside that same display, below top-edge trays and above bottom-edge trays. Right-click, choose **Show Window**, and verify it uses that same display-local placement. Enable Debug Logging and verify click records include mouse position, selected screen, and every screen's origin/resolution plus explicit `@Nx` DPI scale; choosing **Show Window** should then log final popup placement. Include a Retina-over-1x vertical stack because Tauri may report overlapping bounds.
 - **Linux (Ubuntu/Debian)** -- Tauri v2 GUI build dependencies:
 
   ```bash
