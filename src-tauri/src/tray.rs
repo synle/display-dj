@@ -1705,7 +1705,7 @@ mod tests {
         assert_eq!(dispatch_count, 1);
     }
 
-    /// Both platform shell actions use release-time dispatch.
+    /// Task View uses release-time dispatch before synthesizing its Windows chord.
     #[test]
     fn task_view_shortcut_dispatches_on_release_only() {
         let mut dispatch_count = 0;
@@ -2255,7 +2255,7 @@ mod tests {
         assert_eq!(y, 56.0);
     }
 
-    /// Windows shell shortcuts wait for physical modifier release before balanced Win-key events.
+    /// Windows Task View releases trigger modifiers before balanced Win-key events.
     #[test]
     fn platform_shell_shortcuts_use_native_actions() {
         let source = include_str!("core/task_view.rs");
@@ -2267,6 +2267,9 @@ mod tests {
             .next()
             .expect("Windows shell input helper must have a bounded body");
         let expected_order = [
+            "key_input(VK_CONTROL, KEYEVENTF_KEYUP)",
+            "key_input(VK_MENU, KEYEVENTF_KEYUP)",
+            "key_input(VK_SHIFT, KEYEVENTF_KEYUP)",
             "key_input(VK_LWIN, Default::default())",
             "key_input(key, Default::default())",
             "key_input(key, KEYEVENTF_KEYUP)",
@@ -2283,11 +2286,8 @@ mod tests {
         assert!(source.contains("send_windows_chord(VK_TAB)"));
         assert!(source.contains("shell.ToggleDesktop()"));
         assert!(!source.contains("send_windows_chord(VK_D)"));
-        assert!(source.contains("GetAsyncKeyState"));
-        assert!(source.contains("WINDOWS_MODIFIER_RELEASE_TIMEOUT"));
-        assert!(!source.contains("key_input(VK_CONTROL, KEYEVENTF_KEYUP)"));
-        assert!(!source.contains("key_input(VK_MENU, KEYEVENTF_KEYUP)"));
-        assert!(!source.contains("key_input(VK_SHIFT, KEYEVENTF_KEYUP)"));
+        assert!(!source.contains("GetAsyncKeyState"));
+        assert!(!source.contains("WINDOWS_MODIFIER_RELEASE_TIMEOUT"));
         assert!(source.contains("com.apple.expose.awake"));
         assert!(source.contains("com.apple.showdesktop.awake"));
         assert!(source.contains("CoreDockSendNotification"));
