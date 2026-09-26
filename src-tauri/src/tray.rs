@@ -1747,6 +1747,28 @@ mod tests {
         assert_eq!(monitor_index_for_point(&monitors, 2331.9, 26.7), Some(0));
     }
 
+    /// Overlapping bounds also resolve side-mounted trays by their shallow edge distance.
+    #[test]
+    fn tray_click_disambiguates_overlapping_side_edges() {
+        let monitors = [
+            PhysicalBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 3840.0,
+                height: 2160.0,
+            },
+            PhysicalBounds {
+                x: 1900.0,
+                y: 100.0,
+                width: 1800.0,
+                height: 1080.0,
+            },
+        ];
+
+        assert_eq!(monitor_index_for_point(&monitors, 3690.0, 600.0), Some(1));
+        assert_eq!(monitor_index_for_point(&monitors, 10.0, 600.0), Some(0));
+    }
+
     /// Negative origins remain valid when a secondary display sits left and below primary.
     #[test]
     fn tray_click_selects_negative_origin_monitor() {
@@ -1897,6 +1919,112 @@ mod tests {
 
         assert_eq!(x, 2772.0);
         assert!(x + 420.0 <= monitor.x + monitor.width - POPUP_MARGIN_LOGICAL);
+    }
+
+    /// Left-edge trays shift the popup right while preserving below-first placement.
+    #[test]
+    fn tray_popup_stays_inside_left_edge() {
+        let monitor = PhysicalBounds {
+            x: -1920.0,
+            y: 200.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let tray = PhysicalBounds {
+            x: -1920.0,
+            y: 500.0,
+            width: 30.0,
+            height: 30.0,
+        };
+
+        let (x, y, placement) = place_popup_in_monitor(tray, 420.0, 600.0, monitor, 1.0);
+
+        assert_eq!(placement, PopupVerticalPlacement::Below);
+        assert_eq!(x, -1912.0);
+        assert_eq!(y, 534.0);
+        assert_popup_fits(x, y, 420.0, 600.0, monitor, 1.0);
+    }
+
+    /// Right-edge trays shift the popup left while preserving below-first placement.
+    #[test]
+    fn tray_popup_stays_inside_right_edge() {
+        let monitor = PhysicalBounds {
+            x: 1920.0,
+            y: 200.0,
+            width: 1920.0,
+            height: 1080.0,
+        };
+        let tray = PhysicalBounds {
+            x: 3810.0,
+            y: 500.0,
+            width: 30.0,
+            height: 30.0,
+        };
+
+        let (x, y, placement) = place_popup_in_monitor(tray, 420.0, 600.0, monitor, 1.0);
+
+        assert_eq!(placement, PopupVerticalPlacement::Below);
+        assert_eq!(x, 3412.0);
+        assert_eq!(y, 534.0);
+        assert_popup_fits(x, y, 420.0, 600.0, monitor, 1.0);
+    }
+
+    /// Every tray corner keeps all popup corners inside the same display.
+    #[test]
+    fn tray_popup_stays_inside_all_monitor_corners() {
+        let monitor = PhysicalBounds {
+            x: -500.0,
+            y: 300.0,
+            width: 1600.0,
+            height: 1000.0,
+        };
+        let trays = [
+            PhysicalBounds {
+                x: -500.0,
+                y: 300.0,
+                width: 30.0,
+                height: 30.0,
+            },
+            PhysicalBounds {
+                x: 1070.0,
+                y: 300.0,
+                width: 30.0,
+                height: 30.0,
+            },
+            PhysicalBounds {
+                x: -500.0,
+                y: 1270.0,
+                width: 30.0,
+                height: 30.0,
+            },
+            PhysicalBounds {
+                x: 1070.0,
+                y: 1270.0,
+                width: 30.0,
+                height: 30.0,
+            },
+        ];
+
+        for tray in trays {
+            let (x, y, _) = place_popup_in_monitor(tray, 420.0, 600.0, monitor, 1.0);
+            assert_popup_fits(x, y, 420.0, 600.0, monitor, 1.0);
+        }
+    }
+
+    /// Asserts every popup edge remains within the monitor's scaled safety margin.
+    fn assert_popup_fits(
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        monitor: PhysicalBounds,
+        scale: f64,
+    ) {
+        let margin = POPUP_MARGIN_LOGICAL * scale;
+        assert!(x >= monitor.x + margin);
+        assert!(y >= monitor.y + margin);
+        assert!(x + width <= monitor.x + monitor.width - margin);
+        assert!(y + height <= monitor.y + monitor.height - margin);
     }
 
     /// A popup taller than the usable display aligns to the top margin instead of mislabeling below.
