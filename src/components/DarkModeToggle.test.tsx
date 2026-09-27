@@ -16,7 +16,9 @@ describe('DarkModeToggle', () => {
     const darkBtn = buttons.find((b) => b.textContent?.includes('DARK'))!;
     const lightBtn = buttons.find((b) => b.textContent?.includes('LIGHT'))!;
     expect(darkBtn).toHaveClass('active');
+    expect(darkBtn).toHaveAttribute('aria-pressed', 'true');
     expect(lightBtn).not.toHaveClass('active');
+    expect(lightBtn).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('marks Light button as active when dark mode is off', () => {

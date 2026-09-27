@@ -74,6 +74,14 @@ CI enforces floors that trail main-branch measurement by ~10pp. Actual numbers a
 
 Raising: measure current %, set floor ~10pp below, update both files. Never lower without keeping the ~10pp gap.
 
+## State, persistence, and scheduling
+
+Platform reads and writes return errors when the OS backend cannot confirm the operation. `fetch_all_state` does not replace failures with empty monitors, light mode, or zero volume; frontend optimistic updates roll back and report the failure through an ARIA live status region. Aggregate brightness and contrast show an exact value only when applicable monitors agree, otherwise they show `Mixed`.
+
+`save_preferences_to_disk` serializes writers, syncs temporary primary and backup files, and atomically replaces each destination. Malformed `preferences.json` files are quarantined as timestamped `.invalid.json` files; a valid `preferences.backup.json` is then recovered before defaults are used. `SettingsPanel` serializes and coalesces debounced snapshots, including a final close/unmount flush.
+
+Night mode stores the last successfully applied day/night phase in `AppState`. The 60-second poll executes actions only on startup or a phase transition; failed default brightness/theme writes leave the phase pending for the next tick. Schedule times require strict `HH:MM` and brightness values are sanitized to the configured safe range.
+
 ## Audio output selection
 
 `src-tauri/src/core/audio_output/` owns the platform layer:

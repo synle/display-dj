@@ -105,18 +105,30 @@ fn place_popup_in_monitor(
         return (x, above_y.min(max_y), PopupVerticalPlacement::Above);
     }
 
-    (x, below_y.clamp(min_y, max_y), PopupVerticalPlacement::Clamped)
+    (
+        x,
+        below_y.clamp(min_y, max_y),
+        PopupVerticalPlacement::Clamped,
+    )
 }
 
 /// Run a closure on a background thread (so we don't block whatever called us)
 /// and emit a Tauri event on `app` when it returns.
 fn run_then_emit<R: tauri::Runtime, F>(app: AppHandle<R>, event: &'static str, f: F)
 where
-    F: FnOnce() + Send + 'static,
+    F: FnOnce() -> Result<(), String> + Send + 'static,
 {
-    std::thread::spawn(move || {
-        f();
-        let _ = app.emit(event, ());
+    std::thread::spawn(move || match f() {
+        Ok(()) => {
+            if let Err(error) = app.emit(event, ()) {
+                log::warn!(
+                    "failed to emit {} after successful operation: {}",
+                    event,
+                    error
+                );
+            }
+        }
+        Err(error) => log::warn!("background operation for {} failed: {}", event, error),
     });
 }
 
@@ -139,28 +151,35 @@ fn dispatch_brightness_for_one<R: tauri::Runtime>(
     value: u32,
     mode: &str,
     monitor_rect: Option<(i32, i32, i32, i32)>,
-) {
+) -> Result<(), String> {
     let route = crate::display::route_for_mode(mode);
     match route {
         crate::display::BrightnessRoute::DdcOnly => {
             let _ = crate::overlay::destroy_overlay(app, monitor_id);
-            let _ = crate::core::display::set_one_brightness(monitor_id, value as u16, "ddc");
+            if crate::core::display::set_one_brightness(monitor_id, value as u16, "ddc") {
+                Ok(())
+            } else {
+                Err(format!("brightness failed for {}", monitor_id))
+            }
         }
         crate::display::BrightnessRoute::GammaOnly => {
             let _ = crate::overlay::destroy_overlay(app, monitor_id);
-            let _ = crate::core::display::set_one_brightness(monitor_id, value as u16, "gamma");
+            if crate::core::display::set_one_brightness(monitor_id, value as u16, "gamma") {
+                Ok(())
+            } else {
+                Err(format!("brightness failed for {}", monitor_id))
+            }
         }
         crate::display::BrightnessRoute::OverlayOnly => {
-            let _ = crate::overlay::set_overlay_brightness(app, monitor_id, monitor_rect, value);
+            crate::overlay::set_overlay_brightness(app, monitor_id, monitor_rect, value)
         }
         crate::display::BrightnessRoute::AutoWithOverlayFallback => {
             let ok = crate::core::display::set_one_brightness(monitor_id, value as u16, "force");
             if ok {
                 let _ = crate::overlay::destroy_overlay(app, monitor_id);
+                Ok(())
             } else {
-                let _ = crate::overlay::set_overlay_brightness(
-                    app, monitor_id, monitor_rect, value,
-                );
+                crate::overlay::set_overlay_brightness(app, monitor_id, monitor_rect, value)
             }
         }
     }
@@ -181,14 +200,29 @@ fn dispatch_brightness_for_all<R: tauri::Runtime>(
     value: u32,
     configs: &[crate::config::MonitorMetadata],
     cached: &[crate::display::Monitor],
-) {
+) -> Result<(), String> {
     if cached.is_empty() {
-        let _ = crate::core::display::set_all_brightness(value as u16, "force");
-        return;
+        let failed = crate::core::display::set_all_brightness(value as u16, "force")
+            .into_iter()
+            .filter_map(|(id, ok)| (!ok).then_some(id))
+            .collect::<Vec<_>>();
+        return if failed.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("brightness failed for {}", failed.join(", ")))
+        };
     }
+    let mut failed = Vec::new();
     for m in cached {
         let mode = crate::display::resolve_brightness_mode(configs, &m.id);
-        dispatch_brightness_for_one(app, &m.id, value, &mode, m.monitor_rect);
+        if dispatch_brightness_for_one(app, &m.id, value, &mode, m.monitor_rect).is_err() {
+            failed.push(m.id.clone());
+        }
+    }
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("brightness failed for {}", failed.join(", ")))
     }
 }
 
@@ -277,9 +311,7 @@ fn audio_output_menu_entries(
     output_state
         .devices
         .iter()
-        .filter(|device| {
-            device.state == crate::core::audio_output::AudioOutputDeviceState::Enabled
-        })
+        .filter(|device| device.state == crate::core::audio_output::AudioOutputDeviceState::Enabled)
         .map(|device| {
             let selected = output_state.selected_device_id.as_deref() == Some(device.id.as_str());
             let marker = if selected { "● " } else { "   " };
@@ -303,10 +335,16 @@ fn sound_menu_command(menu_id: &str) -> Option<&'static str> {
 
 /// Builds the tray context menu from current preferences.
 /// Called on initial setup and after any action that changes the menu (debug toggle, reset).
-fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
+fn build_tray_menu(
+    app: &AppHandle,
+) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
     let debug_on = {
         if let Some(state) = app.try_state::<crate::AppState>() {
-            state.preferences.lock().map(|p| p.debug_logging).unwrap_or(false)
+            state
+                .preferences
+                .lock()
+                .map(|p| p.debug_logging)
+                .unwrap_or(false)
         } else {
             false
         }
@@ -344,7 +382,11 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     // Build profiles submenu from saved preferences
     let profiles = {
         if let Some(state) = app.try_state::<crate::AppState>() {
-            state.preferences.lock().map(|p| p.profiles.clone()).unwrap_or_default()
+            state
+                .preferences
+                .lock()
+                .map(|p| p.profiles.clone())
+                .unwrap_or_default()
         } else {
             crate::config::Preferences::default().profiles
         }
@@ -367,17 +409,14 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     let debug_disable = MenuItemBuilder::with_id("debug_disable", "Disable Logging").build(app)?;
     let debug_open = MenuItemBuilder::with_id("debug_open", "Open Debug Log").build(app)?;
     let debug_dump = MenuItemBuilder::with_id("debug_dump", "Dump Debug Info").build(app)?;
-    let open_prefs =
-        MenuItemBuilder::with_id("open_prefs", "Open App Preferences").build(app)?;
-    let open_folder =
-        MenuItemBuilder::with_id("open_folder", "Open App Folder").build(app)?;
+    let open_prefs = MenuItemBuilder::with_id("open_prefs", "Open App Preferences").build(app)?;
+    let open_folder = MenuItemBuilder::with_id("open_folder", "Open App Folder").build(app)?;
     // macOS-only: quick link to Accessibility settings (required for tiling)
     #[cfg(target_os = "macos")]
     let accessibility_settings =
         MenuItemBuilder::with_id("accessibility_settings", "Accessibility Settings").build(app)?;
 
-    let force_refresh =
-        MenuItemBuilder::with_id("force_refresh", "Force Refresh").build(app)?;
+    let force_refresh = MenuItemBuilder::with_id("force_refresh", "Force Refresh").build(app)?;
 
     let clear_wallpaper_cache =
         MenuItemBuilder::with_id("clear_wallpaper_cache", "Clear Wallpaper Cache").build(app)?;
@@ -455,7 +494,10 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .item(&MenuItemBuilder::with_id("tile_leftTwoThirds", "Left Two-Thirds").build(app)?)
             .item(&MenuItemBuilder::with_id("tile_rightTwoThirds", "Right Two-Thirds").build(app)?)
             .item(&MenuItemBuilder::with_id("tile_topTwoThirds", "Top Two-Thirds").build(app)?)
-            .item(&MenuItemBuilder::with_id("tile_bottomTwoThirds", "Bottom Two-Thirds").build(app)?)
+            .item(
+                &MenuItemBuilder::with_id("tile_bottomTwoThirds", "Bottom Two-Thirds")
+                    .build(app)?,
+            )
             .separator()
             .item(&MenuItemBuilder::with_id("tile_maximize", "Maximize").build(app)?)
             .item(&MenuItemBuilder::with_id("tile_restore", "Restore").build(app)?)
@@ -476,28 +518,58 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
             .item(&MenuItemBuilder::with_id("tile_exposeApp", "App Exposé").build(app)?)
             .separator();
         // Layout strategy (fill vs spread)
-        let (cur_cols, cur_rows, cur_strategy) = if let Some(state) = app.try_state::<crate::AppState>() {
-            state
-                .preferences
-                .lock()
-                .map(|p| (p.tiling.expose_columns, p.tiling.expose_rows, p.tiling.expose_layout_strategy.clone()))
-                .unwrap_or((2, 3, "fill".into()))
+        let (cur_cols, cur_rows, cur_strategy) =
+            if let Some(state) = app.try_state::<crate::AppState>() {
+                state
+                    .preferences
+                    .lock()
+                    .map(|p| {
+                        (
+                            p.tiling.expose_columns,
+                            p.tiling.expose_rows,
+                            p.tiling.expose_layout_strategy.clone(),
+                        )
+                    })
+                    .unwrap_or((2, 3, "fill".into()))
+            } else {
+                (2, 3, "fill".into())
+            };
+        let fill_check = if cur_strategy == "fill" {
+            "● "
         } else {
-            (2, 3, "fill".into())
+            "   "
         };
-        let fill_check = if cur_strategy == "fill" { "● " } else { "   " };
-        let spread_check = if cur_strategy == "spread" { "● " } else { "   " };
+        let spread_check = if cur_strategy == "spread" {
+            "● "
+        } else {
+            "   "
+        };
         builder = builder
-            .item(&MenuItemBuilder::with_id("expose_strategy_fill", &format!("{}Fill (pack first)", fill_check)).build(app)?)
-            .item(&MenuItemBuilder::with_id("expose_strategy_spread", &format!("{}Spread (distribute)", spread_check)).build(app)?)
+            .item(
+                &MenuItemBuilder::with_id(
+                    "expose_strategy_fill",
+                    &format!("{}Fill (pack first)", fill_check),
+                )
+                .build(app)?,
+            )
+            .item(
+                &MenuItemBuilder::with_id(
+                    "expose_strategy_spread",
+                    &format!("{}Spread (distribute)", spread_check),
+                )
+                .build(app)?,
+            )
             .separator();
         // Grid size options (columns × rows presets)
         for &(c, r) in &[(2u32, 2), (2, 3), (3, 3), (3, 4), (4, 4), (5, 5)] {
-            let check = if c == cur_cols && r == cur_rows { "● " } else { "   " };
+            let check = if c == cur_cols && r == cur_rows {
+                "● "
+            } else {
+                "   "
+            };
             let label = format!("{}{} \u{00d7} {} = {} windows", check, c, r, c * r);
             let id = format!("expose_grid_{}x{}", c, r);
-            builder =
-                builder.item(&MenuItemBuilder::with_id(&id, &label).build(app)?);
+            builder = builder.item(&MenuItemBuilder::with_id(&id, &label).build(app)?);
         }
         builder.build()?
     } else {
@@ -522,7 +594,11 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     let layout_presets = {
         if let Some(state) = app.try_state::<crate::AppState>() {
-            state.preferences.lock().map(|p| p.layout_presets.clone()).unwrap_or_default()
+            state
+                .preferences
+                .lock()
+                .map(|p| p.layout_presets.clone())
+                .unwrap_or_default()
         } else {
             Vec::new()
         }
@@ -540,8 +616,8 @@ fn build_tray_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, Box
                     preset.name.clone()
                 };
                 let id = format!("layout_preset_{}", i);
-                presets_submenu = presets_submenu
-                    .item(&MenuItemBuilder::with_id(&id, &label).build(app)?);
+                presets_submenu =
+                    presets_submenu.item(&MenuItemBuilder::with_id(&id, &label).build(app)?);
             }
             let presets_submenu = presets_submenu.build()?;
             menu = menu.item(&presets_submenu);
@@ -573,7 +649,10 @@ fn rebuild_tray_menu(app: &AppHandle) {
 /// Schedules a tray-menu rebuild on the runtime main thread.
 pub(crate) fn schedule_tray_menu_rebuild(app: &AppHandle) {
     let app = app.clone();
-    if let Err(error) = app.clone().run_on_main_thread(move || rebuild_tray_menu(&app)) {
+    if let Err(error) = app
+        .clone()
+        .run_on_main_thread(move || rebuild_tray_menu(&app))
+    {
         log::warn!("failed to schedule tray menu rebuild: {}", error);
     }
 }
@@ -633,37 +712,49 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
             }
             "tiling_enable" => {
                 if let Some(state) = app.try_state::<crate::AppState>() {
-                    crate::config::set_tiling_enabled(&state, true);
+                    if let Err(error) = crate::config::set_tiling_enabled(&state, true) {
+                        log::warn!("failed to enable tiling: {}", error);
+                    }
                 }
                 rebuild_tray_menu(app);
             }
             "tiling_disable" => {
                 if let Some(state) = app.try_state::<crate::AppState>() {
-                    crate::config::set_tiling_enabled(&state, false);
+                    if let Err(error) = crate::config::set_tiling_enabled(&state, false) {
+                        log::warn!("failed to disable tiling: {}", error);
+                    }
                 }
                 rebuild_tray_menu(app);
             }
             "expose_enable" => {
                 if let Some(state) = app.try_state::<crate::AppState>() {
-                    crate::config::set_expose_enabled(&state, true);
+                    if let Err(error) = crate::config::set_expose_enabled(&state, true) {
+                        log::warn!("failed to enable expose: {}", error);
+                    }
                 }
                 rebuild_tray_menu(app);
             }
             "expose_disable" => {
                 if let Some(state) = app.try_state::<crate::AppState>() {
-                    crate::config::set_expose_enabled(&state, false);
+                    if let Err(error) = crate::config::set_expose_enabled(&state, false) {
+                        log::warn!("failed to disable expose: {}", error);
+                    }
                 }
                 rebuild_tray_menu(app);
             }
             "debug_enable" => {
                 if let Some(state) = app.try_state::<crate::AppState>() {
-                    crate::config::set_debug_logging(&state, true);
+                    if let Err(error) = crate::config::set_debug_logging(&state, true) {
+                        log::warn!("failed to enable debug logging: {}", error);
+                    }
                 }
                 rebuild_tray_menu(app);
             }
             "debug_disable" => {
                 if let Some(state) = app.try_state::<crate::AppState>() {
-                    crate::config::set_debug_logging(&state, false);
+                    if let Err(error) = crate::config::set_debug_logging(&state, false) {
+                        log::warn!("failed to disable debug logging: {}", error);
+                    }
                 }
                 rebuild_tray_menu(app);
             }
@@ -682,7 +773,10 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                     .buttons(MessageDialogButtons::OkCancelCustom("Reset".into(), "Cancel".into()))
                     .blocking_show();
                 if confirmed {
-                    crate::config::reset_to_defaults();
+                    if let Err(error) = crate::config::reset_to_defaults() {
+                        log::warn!("failed to reset preferences: {}", error);
+                        return;
+                    }
                     // Reload in-memory state and invalidate cache
                     if let Some(state) = app_clone.try_state::<crate::AppState>() {
                         if let Ok(mut prefs) = state.preferences.lock() {
@@ -758,7 +852,9 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                                 if let Ok(mut prefs) = state.preferences.lock() {
                                     prefs.tiling.expose_columns = c;
                                     prefs.tiling.expose_rows = r;
-                                    crate::config::save_preferences_to_disk(&prefs);
+                                    if let Err(error) = crate::config::save_preferences_to_disk(&prefs) {
+                                        log::warn!("failed to save expose grid: {}", error);
+                                    }
                                 }
                             }
                             rebuild_tray_menu(app);
@@ -769,7 +865,9 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                     if let Some(state) = app.try_state::<crate::AppState>() {
                         if let Ok(mut prefs) = state.preferences.lock() {
                             prefs.tiling.expose_layout_strategy = strategy.to_string();
-                            crate::config::save_preferences_to_disk(&prefs);
+                            if let Err(error) = crate::config::save_preferences_to_disk(&prefs) {
+                                log::warn!("failed to save expose strategy: {}", error);
+                            }
                         }
                     }
                     rebuild_tray_menu(app);
@@ -949,11 +1047,7 @@ pub fn position_window_near_tray(
             height: monitor.size().height as f64,
         })
         .collect::<Vec<_>>();
-    let target_idx = monitor_index_for_point(
-        &monitor_bounds,
-        click_position.x,
-        click_position.y,
-    );
+    let target_idx = monitor_index_for_point(&monitor_bounds, click_position.x, click_position.y);
     for (i, m) in monitors.iter().enumerate() {
         let pos = m.position();
         let size = m.size();
@@ -974,12 +1068,19 @@ pub fn position_window_near_tray(
         dbg(&format!(
             "target: monitor[{}] pos=({},{}) size={}x{} scale={} | window_scale={} window_pos={:?}",
             target_idx.unwrap_or(0),
-            t.position().x, t.position().y,
-            t.size().width, t.size().height,
-            target_scale, window_scale, win_pos
+            t.position().x,
+            t.position().y,
+            t.size().width,
+            t.size().height,
+            target_scale,
+            window_scale,
+            win_pos
         ));
     } else {
-        dbg(&format!("target: NONE | window_scale={} window_pos={:?}", window_scale, win_pos));
+        dbg(&format!(
+            "target: NONE | window_scale={} window_pos={:?}",
+            window_scale, win_pos
+        ));
     }
 
     // All tray/monitor coordinates are in the global physical space.
@@ -1092,17 +1193,16 @@ pub fn register_shortcuts(app: &AppHandle, key_bindings: &[KeyBinding]) {
         let key_for_log = binding.key.clone();
 
         if let Ok(shortcut) = key.parse::<tauri_plugin_global_shortcut::Shortcut>() {
-            match app.global_shortcut().on_shortcut(
-                shortcut,
-                move |_app, _shortcut, event| {
+            match app
+                .global_shortcut()
+                .on_shortcut(shortcut, move |_app, _shortcut, event| {
                     for cmd in &commands {
                         dispatch_shortcut_event(event.state, cmd, || {
                             log::info!("shortcut triggered: '{}' → {}", key_for_log, cmd);
                             execute_command(&handle, cmd);
                         });
                     }
-                },
-            ) {
+                }) {
                 Ok(_) => {
                     log::info!(
                         "register_shortcuts: registered '{}' → {:?}",
@@ -1141,18 +1241,22 @@ pub fn register_shortcuts(app: &AppHandle, key_bindings: &[KeyBinding]) {
 fn dump_debug_info(app: &AppHandle) {
     let mut lines: Vec<String> = Vec::new();
     lines.push("=== DEBUG INFO DUMP ===".into());
+    lines.push(format!("version: {}", crate::config::get_app_version()));
     lines.push(format!(
-        "version: {}",
-        crate::config::get_app_version()
+        "os: {} {}",
+        std::env::consts::OS,
+        std::env::consts::ARCH
     ));
-    lines.push(format!("os: {} {}", std::env::consts::OS, std::env::consts::ARCH));
     lines.push("backend: in-process (display-dj-cli vendored)".to_string());
 
     if let Some(state) = app.try_state::<crate::AppState>() {
         if let Ok(prefs) = state.preferences.lock() {
             lines.push(format!("debug_logging: {}", prefs.debug_logging));
             lines.push(format!("launch_at_login: {}", prefs.launch_at_login));
-            lines.push(format!("show_individual_displays: {}", prefs.show_individual_displays));
+            lines.push(format!(
+                "show_individual_displays: {}",
+                prefs.show_individual_displays
+            ));
             lines.push(format!("show_contrast: {}", prefs.show_contrast));
             lines.push(format!("min_brightness: {}", prefs.min_brightness));
 
@@ -1162,13 +1266,25 @@ fn dump_debug_info(app: &AppHandle) {
             lines.push(format!("tiling.half_ratio: {}", prefs.tiling.half_ratio));
             lines.push(format!("tiling.third_ratio: {}", prefs.tiling.third_ratio));
             lines.push(format!("tiling.gap: {}", prefs.tiling.gap));
-            lines.push(format!("tiling.side_edge_trigger: {}", prefs.tiling.side_edge_trigger));
-            lines.push(format!("tiling.top_edge_trigger: {}", prefs.tiling.top_edge_trigger));
-            lines.push(format!("tiling.corner_trigger: {}", prefs.tiling.corner_trigger));
+            lines.push(format!(
+                "tiling.side_edge_trigger: {}",
+                prefs.tiling.side_edge_trigger
+            ));
+            lines.push(format!(
+                "tiling.top_edge_trigger: {}",
+                prefs.tiling.top_edge_trigger
+            ));
+            lines.push(format!(
+                "tiling.corner_trigger: {}",
+                prefs.tiling.corner_trigger
+            ));
 
             // Exposé state
             lines.push("--- exposé ---".into());
-            lines.push(format!("tiling.expose_enabled: {}", prefs.tiling.expose_enabled));
+            lines.push(format!(
+                "tiling.expose_enabled: {}",
+                prefs.tiling.expose_enabled
+            ));
             lines.push(format!(
                 "tiling.expose_grid: {}x{} = {} windows",
                 prefs.tiling.expose_columns,
@@ -1188,7 +1304,10 @@ fn dump_debug_info(app: &AppHandle) {
             ));
 
             // Keybindings
-            lines.push(format!("--- keybindings ({}) ---", prefs.key_bindings.len()));
+            lines.push(format!(
+                "--- keybindings ({}) ---",
+                prefs.key_bindings.len()
+            ));
             for kb in &prefs.key_bindings {
                 let cmds = match &kb.command {
                     crate::config::CommandValue::Single(c) => c.clone(),
@@ -1287,7 +1406,7 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                 }
                 let app_clone = app.clone();
                 run_then_emit(app.clone(), "monitors-changed", move || {
-                    dispatch_brightness_for_all(&app_clone, clamped, &configs, &cached);
+                    dispatch_brightness_for_all(&app_clone, clamped, &configs, &cached)
                 });
             }
         }
@@ -1304,20 +1423,15 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                     let mode = prefs
                         .as_ref()
                         .map(|p| {
-                            crate::display::resolve_brightness_mode(
-                                &p.monitor_configs, monitor_id,
-                            )
+                            crate::display::resolve_brightness_mode(&p.monitor_configs, monitor_id)
                         })
                         .unwrap_or_else(|_| "auto".into());
-                    let monitor_rect = state
-                        .sidecar_cache
-                        .get_monitors()
-                        .and_then(|monitors| {
-                            monitors
-                                .into_iter()
-                                .find(|m| m.id == *monitor_id)
-                                .and_then(|m| m.monitor_rect)
-                        });
+                    let monitor_rect = state.sidecar_cache.get_monitors().and_then(|monitors| {
+                        monitors
+                            .into_iter()
+                            .find(|m| m.id == *monitor_id)
+                            .and_then(|m| m.monitor_rect)
+                    });
                     (min, mode, monitor_rect)
                 };
                 let clamped = val.clamp(min, 100);
@@ -1327,7 +1441,7 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                 }
                 let app_clone = app.clone();
                 run_then_emit(app.clone(), "monitors-changed", move || {
-                    dispatch_brightness_for_one(&app_clone, &id, clamped, &mode, monitor_rect);
+                    dispatch_brightness_for_one(&app_clone, &id, clamped, &mode, monitor_rect)
                 });
             }
         }
@@ -1337,8 +1451,14 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                     // For toggle, read current state first via the in-process platform layer.
                     let app_clone = app.clone();
                     std::thread::spawn(move || {
-                        let is_dark = crate::core::theme::get_dark_mode().unwrap_or(false);
-                        let _ = crate::core::theme::set_dark_mode(!is_dark);
+                        let Some(is_dark) = crate::core::theme::get_dark_mode() else {
+                            log::warn!("dark mode toggle failed: platform state unavailable");
+                            return;
+                        };
+                        if !crate::core::theme::set_dark_mode(!is_dark) {
+                            log::warn!("dark mode toggle failed: platform write failed");
+                            return;
+                        }
                         crate::tray_icon::set_dark_mode_state(&app_clone, !is_dark);
                         if let Some(state) = app_clone.try_state::<crate::AppState>() {
                             state.sidecar_cache.invalidate_dark_mode();
@@ -1347,21 +1467,29 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                     });
                 }
                 "dark" => {
-                    crate::tray_icon::set_dark_mode_state(app, true);
-                    if let Some(state) = app.try_state::<crate::AppState>() {
-                        state.sidecar_cache.invalidate_dark_mode();
-                    }
-                    run_then_emit(app.clone(), "dark-mode-changed", || {
-                        let _ = crate::core::theme::set_dark_mode(true);
+                    let app_clone = app.clone();
+                    run_then_emit(app.clone(), "dark-mode-changed", move || {
+                        if !crate::core::theme::set_dark_mode(true) {
+                            return Err("dark mode platform write failed".into());
+                        }
+                        crate::tray_icon::set_dark_mode_state(&app_clone, true);
+                        if let Some(state) = app_clone.try_state::<crate::AppState>() {
+                            state.sidecar_cache.set_dark_mode(true);
+                        }
+                        Ok(())
                     });
                 }
                 "light" => {
-                    crate::tray_icon::set_dark_mode_state(app, false);
-                    if let Some(state) = app.try_state::<crate::AppState>() {
-                        state.sidecar_cache.invalidate_dark_mode();
-                    }
-                    run_then_emit(app.clone(), "dark-mode-changed", || {
-                        let _ = crate::core::theme::set_dark_mode(false);
+                    let app_clone = app.clone();
+                    run_then_emit(app.clone(), "dark-mode-changed", move || {
+                        if !crate::core::theme::set_dark_mode(false) {
+                            return Err("dark mode platform write failed".into());
+                        }
+                        crate::tray_icon::set_dark_mode_state(&app_clone, false);
+                        if let Some(state) = app_clone.try_state::<crate::AppState>() {
+                            state.sidecar_cache.set_dark_mode(false);
+                        }
+                        Ok(())
                     });
                 }
                 _ => {}
@@ -1375,7 +1503,15 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                     state.sidecar_cache.invalidate_monitors();
                 }
                 run_then_emit(app.clone(), "monitors-changed", move || {
-                    let _ = crate::core::display::set_all_contrast(clamped as u16);
+                    let failed = crate::core::display::set_all_contrast(clamped as u16)
+                        .into_iter()
+                        .filter_map(|(id, ok)| (!ok).then_some(id))
+                        .collect::<Vec<_>>();
+                    if failed.is_empty() {
+                        Ok(())
+                    } else {
+                        Err(format!("contrast failed for {}", failed.join(", ")))
+                    }
                 });
             }
         }
@@ -1388,19 +1524,27 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                     state.sidecar_cache.invalidate_monitors();
                 }
                 run_then_emit(app.clone(), "monitors-changed", move || {
-                    let _ = crate::core::display::set_one_contrast(&id, clamped as u16);
+                    if crate::core::display::set_one_contrast(&id, clamped as u16) {
+                        Ok(())
+                    } else {
+                        Err(format!("contrast failed for {}", id))
+                    }
                 });
             }
         }
         ["command", "changeVolume", value] => {
             if let Ok(val) = value.parse::<u32>() {
                 let clamped = val.min(100);
-                crate::tray_icon::set_muted_state(app, clamped == 0);
-                if let Some(state) = app.try_state::<crate::AppState>() {
-                    state.sidecar_cache.invalidate_volume();
-                }
+                let app_clone = app.clone();
                 run_then_emit(app.clone(), "volume-changed", move || {
-                    let _ = crate::core::volume::set_volume(clamped as u16);
+                    if !crate::core::volume::set_volume(clamped as u16) {
+                        return Err("volume platform write failed".into());
+                    }
+                    crate::tray_icon::set_muted_state(&app_clone, clamped == 0);
+                    if let Some(state) = app_clone.try_state::<crate::AppState>() {
+                        state.sidecar_cache.set_volume(clamped);
+                    }
+                    Ok(())
                 });
             }
         }
@@ -1489,7 +1633,10 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                 });
             }
             #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-            log::warn!("Layout presets are not supported on this platform: {}", name_or_index);
+            log::warn!(
+                "Layout presets are not supported on this platform: {}",
+                name_or_index
+            );
         }
         // Set wallpaper: command/wallpaper/change/{path} or command/wallpaper/change/{fit}/{path}
         ["command", "wallpaper", "change", ..] => {
@@ -1502,11 +1649,7 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                 let fit_owned = fit.map(|f| f.to_string());
                 std::thread::spawn(move || {
                     let state = app_clone.state::<crate::AppState>();
-                    crate::wallpaper::change_wallpaper(
-                        &state,
-                        &path_owned,
-                        fit_owned.as_deref(),
-                    );
+                    crate::wallpaper::change_wallpaper(&state, &path_owned, fit_owned.as_deref());
                 });
             } else {
                 log::warn!("wallpaper change command missing path: {}", command);
@@ -1540,7 +1683,10 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                     log::warn!("wallpaper change_single command missing path: {}", command);
                 }
             } else {
-                log::warn!("wallpaper change_single command missing monitor and path: {}", command);
+                log::warn!(
+                    "wallpaper change_single command missing monitor and path: {}",
+                    command
+                );
             }
         }
         // Start slideshow: command/wallpaper/slideshow/{path}
@@ -1563,7 +1709,10 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                     );
                 });
             } else {
-                log::warn!("wallpaper slideshow command missing folder path: {}", command);
+                log::warn!(
+                    "wallpaper slideshow command missing folder path: {}",
+                    command
+                );
             }
         }
         // Stop slideshow: command/wallpaper/slideshow_stop
@@ -1586,7 +1735,10 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                     crate::wallpaper::download_and_start_remote_slideshow(&state, &url_owned);
                 });
             } else {
-                log::warn!("wallpaper slideshow_remote command missing URL: {}", command);
+                log::warn!(
+                    "wallpaper slideshow_remote command missing URL: {}",
+                    command
+                );
             }
         }
         _ => {
@@ -1721,7 +1873,7 @@ mod tests {
             tauri_plugin_global_shortcut::ShortcutState::Released,
             "command/system/taskView",
             || {
-            dispatch_count += 1;
+                dispatch_count += 1;
             },
         );
 
@@ -1734,7 +1886,10 @@ mod tests {
         let device_id = r#"{0.0.0.00000000}.{speaker-guid}\BuiltIn"#;
         let menu_id = audio_output_menu_id(device_id);
 
-        assert_eq!(parse_audio_output_menu_id(&menu_id).as_deref(), Some(device_id));
+        assert_eq!(
+            parse_audio_output_menu_id(&menu_id).as_deref(),
+            Some(device_id)
+        );
         assert!(parse_audio_output_menu_id("audio_output_not-hex").is_none());
     }
 
@@ -1863,7 +2018,9 @@ mod tests {
             .expect("menu event handler must have a bounded body");
 
         assert!(show_popup.contains("position_popup_from_last_tray_click(app, &window)"));
-        assert!(menu_handler.contains("\"show_window\" => {\n                show_popup_window(app);"));
+        assert!(
+            menu_handler.contains("\"show_window\" => {\n                show_popup_window(app);")
+        );
     }
 
     /// Right-button down stores a fresh anchor before macOS opens its synchronous context menu.

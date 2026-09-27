@@ -17,16 +17,47 @@ function profileName(profile: Profile, index: number): string {
 export default function ProfileButtons({ profiles, onActivate }: ProfileButtonsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  /** Moves focus within the overflow menu and supports Escape dismissal. */
+  const handleMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
+    );
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setMenuOpen(false);
+      triggerRef.current?.focus();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      items[(currentIndex + 1) % items.length]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      items[(currentIndex - 1 + items.length) % items.length]?.focus();
+    }
+  };
 
   useEffect(() => {
     if (!menuOpen) return;
+    const closeMenu = (restoreFocus: boolean) => {
+      setMenuOpen(false);
+      if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus());
+    };
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
+        closeMenu(false);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeMenu(true);
+    };
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [menuOpen]);
 
   if (profiles.length === 0) return null;
@@ -48,19 +79,30 @@ export default function ProfileButtons({ profiles, onActivate }: ProfileButtonsP
       {overflow.length > 0 && (
         <div className='profile-overflow' ref={menuRef}>
           <button
+            ref={triggerRef}
             className='profile-btn profile-overflow-btn'
-            onClick={() => setMenuOpen(!menuOpen)}
+            onClick={() => {
+              setMenuOpen(!menuOpen);
+              if (!menuOpen)
+                requestAnimationFrame(() =>
+                  menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus(),
+                );
+            }}
+            aria-label='More profiles'
+            aria-haspopup='menu'
+            aria-expanded={menuOpen}
             title='More profiles'>
             {'\u25BE'}
           </button>
           {menuOpen && (
-            <div className='profile-overflow-menu'>
+            <div className='profile-overflow-menu' role='menu' onKeyDown={handleMenuKeyDown}>
               {overflow.map((profile, i) => {
                 const actualIndex = MAX_VISIBLE + i;
                 return (
                   <button
                     key={actualIndex}
                     className='profile-overflow-item'
+                    role='menuitem'
                     onClick={() => {
                       onActivate(actualIndex);
                       setMenuOpen(false);

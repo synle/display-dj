@@ -321,7 +321,9 @@ pub(crate) fn change_wallpaper(
                 if explicit_fit.is_some() {
                     prefs.wallpaper.fit = fit;
                 }
-                crate::config::save_preferences_to_disk(&prefs);
+                if let Err(error) = crate::config::save_preferences_to_disk(&prefs) {
+                    log::warn!("wallpaper: failed to persist preferences: {}", error);
+                }
             }
         }
         Err(e) => {
@@ -438,7 +440,9 @@ pub(crate) fn change_wallpaper_single(
                             wallpaper_path: dest_str,
                         });
                 }
-                crate::config::save_preferences_to_disk(&prefs);
+                if let Err(error) = crate::config::save_preferences_to_disk(&prefs) {
+                    log::warn!("wallpaper: failed to persist monitor wallpaper: {}", error);
+                }
             }
         }
         Err(e) => {
@@ -518,7 +522,9 @@ pub(crate) fn start_slideshow(
             prefs.wallpaper.slideshow_folder = Some(folder.to_string());
             prefs.wallpaper.slideshow_interval_minutes = interval;
             prefs.wallpaper.slideshow_order = order.to_string();
-            crate::config::save_preferences_to_disk(&prefs);
+            if let Err(error) = crate::config::save_preferences_to_disk(&prefs) {
+                log::warn!("wallpaper: failed to persist slideshow: {}", error);
+            }
         }
     }
 }
@@ -530,7 +536,9 @@ pub(crate) fn stop_slideshow(state: &crate::AppState) {
     crate::config::write_debug_log(state, "wallpaper: slideshow stopped");
     if let Ok(mut prefs) = state.preferences.lock() {
         prefs.wallpaper.slideshow_enabled = false;
-        crate::config::save_preferences_to_disk(&prefs);
+        if let Err(error) = crate::config::save_preferences_to_disk(&prefs) {
+            log::warn!("wallpaper: failed to persist stopped slideshow: {}", error);
+        }
     }
 }
 

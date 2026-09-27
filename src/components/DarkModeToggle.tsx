@@ -9,12 +9,14 @@ export default function DarkModeToggle({ isDarkMode, onChange }: DarkModeToggleP
     <div className='dark-mode-toggle'>
       <button
         className={`dark-mode-btn ${isDarkMode ? 'active' : ''}`}
+        aria-pressed={isDarkMode}
         onClick={() => onChange(true)}>
         <span className='icon'>{'\uD83C\uDF19'}</span>
         DARK
       </button>
       <button
         className={`dark-mode-btn ${!isDarkMode ? 'active' : ''}`}
+        aria-pressed={!isDarkMode}
         onClick={() => onChange(false)}>
         <span className='icon'>{'\u2600\uFE0F'}</span>
         LIGHT

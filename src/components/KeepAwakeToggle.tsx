@@ -10,6 +10,7 @@ export default function KeepAwakeToggle({ isActive, onChange }: KeepAwakeToggleP
     <div className='keep-awake-toggle'>
       <button
         className={`keep-awake-btn ${isActive ? 'active' : ''}`}
+        aria-pressed={isActive}
         onClick={() => onChange(!isActive)}
         title={
           isActive

@@ -37,7 +37,7 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Dark mode toggle** -- system-wide dark/light mode switch
 - **Volume and output control** -- system volume slider with mute indicator, click-to-rename speaker names, reorder arrows in the expanded speaker list, and a **Speakers** tray submenu for fast output switching plus Mute, 50%, and 100% presets. Settings lists monitors before every speaker, with the same ordering controls plus Enabled/Disabled/Hidden state management. Enabled built-in speakers lead the initial order; saved custom order persists afterward, and known Steam Streaming endpoints are hidden automatically.
 - **Keep Awake** -- prevent your system from sleeping with a single toggle (macOS, Windows, Linux)
-- **Night mode schedule** -- automatically set brightness and dark/light mode on a time-based schedule (e.g., dim at 9 PM, bright at 7 AM). Supports custom commands (`nightCommands`/`dayCommands`) to run arbitrary actions on schedule (volume changes, profile activation, per-monitor brightness)
+- **Night mode schedule** -- automatically set brightness and dark/light mode on a time-based schedule (e.g., dim at 9 PM, bright at 7 AM). Each phase runs once when its boundary is crossed rather than repeating every minute. Supports custom commands (`nightCommands`/`dayCommands`) to run arbitrary actions on schedule (volume changes, profile activation, per-monitor brightness)
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
 - **Global keyboard shortcuts** -- work even when the app isn't focused; fully configurable
 - **Monitor renaming** -- click any display name to give it a custom label
@@ -48,7 +48,8 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Layout Presets** -- named presets that automatically tile specific apps to specific layouts. Triggered via keyboard shortcuts, profiles, or the tray menu
 - **Dynamic tray icon** -- the system tray icon updates to reflect app state: dark/light mode (border color), keep-awake active (blue fill), and muted (red X overlay)
 - **Multi-monitor popup placement** -- left-click opens on the clicked tray icon's display, including vertically stacked mixed-DPI layouts with overlapping reported bounds; bottom-edge trays place the popup above so it remains fully visible
-- **Settings panel** -- tabbed UI (General + Tiling) with auto-save. Configure brightness, contrast, monitors, night mode, snap zones, exposé grid size, layout strategy, and launch at login. Native dropdowns share one consistent height, padding, typography, and interaction treatment across the popup
+- **Settings panel** -- tabbed UI (General + Tiling) with lossless, ordered auto-save and visible save status. Configure brightness, contrast, monitors, night mode, snap zones, exposé grid size, layout strategy, and launch at login. The popup stays screen-bounded with internal scrolling, and controls expose keyboard focus and screen-reader state
+- **Truthful status feedback** -- failed platform reads and writes appear in the popup instead of silently becoming zero/default values; optimistic controls return to their confirmed value after a failed operation
 - **About / Update check** -- "About Display DJ" in the tray menu shows current version, latest GitHub release, engine, platform, build date, and homepage. Green "Up to date" or orange "Update available" badge with download link. macOS section includes quarantine fix and Accessibility settings commands
 - **System tray app** -- lives in your menu bar / system tray with no dock or taskbar clutter
 

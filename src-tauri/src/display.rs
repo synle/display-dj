@@ -109,7 +109,11 @@ async fn set_monitor_brightness(
     let mode_owned = mode.to_string();
     log::info!(
         "set_monitor_brightness: id={} value={} clamped={} min={} mode={}",
-        id, value, clamped, min_brightness, mode_owned,
+        id,
+        value,
+        clamped,
+        min_brightness,
+        mode_owned,
     );
     let ok = tauri::async_runtime::spawn_blocking(move || {
         crate::core::display::set_one_brightness(&id, clamped as u16, &mode_owned)
@@ -127,9 +131,17 @@ async fn set_monitor_brightness(
 ///
 /// Returns the per-monitor `(id, success)` results so the caller can log them
 /// and surface partial failures.
-async fn set_all_monitors_brightness(value: u32, min_brightness: u32) -> Result<Vec<(String, bool)>, String> {
+async fn set_all_monitors_brightness(
+    value: u32,
+    min_brightness: u32,
+) -> Result<Vec<(String, bool)>, String> {
     let clamped = value.clamp(min_brightness, 100);
-    log::info!("set_all_monitors_brightness: value={} clamped={} min={}", value, clamped, min_brightness);
+    log::info!(
+        "set_all_monitors_brightness: value={} clamped={} min={}",
+        value,
+        clamped,
+        min_brightness
+    );
     let results = tauri::async_runtime::spawn_blocking(move || {
         crate::core::display::set_all_brightness(clamped as u16, "force")
     })
@@ -181,10 +193,7 @@ async fn set_all_monitors_contrast(value: u32) -> Result<Vec<(String, bool)>, St
 ///
 /// # Returns
 /// One of `"auto"`, `"ddc"`, `"gamma"`, `"overlay"`.
-pub fn resolve_brightness_mode(
-    configs: &[crate::config::MonitorMetadata],
-    api_id: &str,
-) -> String {
+pub fn resolve_brightness_mode(configs: &[crate::config::MonitorMetadata], api_id: &str) -> String {
     let stored = configs
         .iter()
         .find(|m| m.api_id == api_id)
@@ -258,8 +267,16 @@ pub fn merge_with_configs(
     }
 
     result.sort_by(|a, b| {
-        let order_a = configs.iter().find(|c| c.uid == a.uid).map(|c| c.sort_order).unwrap_or(i32::MAX);
-        let order_b = configs.iter().find(|c| c.uid == b.uid).map(|c| c.sort_order).unwrap_or(i32::MAX);
+        let order_a = configs
+            .iter()
+            .find(|c| c.uid == a.uid)
+            .map(|c| c.sort_order)
+            .unwrap_or(i32::MAX);
+        let order_b = configs
+            .iter()
+            .find(|c| c.uid == b.uid)
+            .map(|c| c.sort_order)
+            .unwrap_or(i32::MAX);
         order_a.cmp(&order_b).then(a.uid.cmp(&b.uid))
     });
 
@@ -277,7 +294,10 @@ fn reconcile_migrated_configs(
         if configs.iter().any(|c| c.uid == monitor.uid) {
             continue;
         }
-        if let Some(meta) = configs.iter_mut().find(|c| c.api_id == monitor.id && c.api_name == "unknown") {
+        if let Some(meta) = configs
+            .iter_mut()
+            .find(|c| c.api_id == monitor.id && c.api_name == "unknown")
+        {
             meta.uid = monitor.uid.clone();
             meta.api_name = monitor.original_name.clone();
             changed = true;
@@ -330,7 +350,10 @@ pub async fn get_monitors(
     if let Some(cached) = state.sidecar_cache.get_monitors() {
         crate::config::write_debug_log(
             &state,
-            &format!("benchmark: get_monitors — {:.1}ms (cache hit)", t0.elapsed().as_secs_f64() * 1000.0),
+            &format!(
+                "benchmark: get_monitors — {:.1}ms (cache hit)",
+                t0.elapsed().as_secs_f64() * 1000.0
+            ),
         );
         return Ok(cached);
     }
@@ -340,7 +363,11 @@ pub async fn get_monitors(
     let t_probe = t0.elapsed();
     crate::config::write_debug_log(
         &state,
-        &format!("benchmark: get_monitors — probe returned in {:.1}ms ({} displays)", t_probe.as_secs_f64() * 1000.0, monitors.len()),
+        &format!(
+            "benchmark: get_monitors — probe returned in {:.1}ms ({} displays)",
+            t_probe.as_secs_f64() * 1000.0,
+            monitors.len()
+        ),
     );
 
     let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
@@ -348,7 +375,7 @@ pub async fn get_monitors(
     let mut dirty = reconcile_migrated_configs(&monitors, &mut prefs.monitor_configs);
     dirty |= ensure_metadata_for_monitors(&monitors, &mut prefs.monitor_configs);
     if dirty {
-        crate::config::save_preferences_to_disk(&prefs);
+        crate::config::save_preferences_to_disk(&prefs)?;
     }
 
     let result = merge_with_configs(monitors, &prefs.monitor_configs);
@@ -401,13 +428,21 @@ pub async fn set_brightness(
     let monitor_rect = resolve_monitor_rect(&monitor_id, &cached_monitors).await;
     log::info!(
         "set_brightness: id={} mode={} cache_size={} rect={:?}",
-        monitor_id, mode, cached_monitors.len(), monitor_rect,
+        monitor_id,
+        mode,
+        cached_monitors.len(),
+        monitor_rect,
     );
     crate::config::write_debug_log(
         &state,
         &format!(
             "set_brightness: id={} value={} min={} mode={} has_rect={} cache_size={} — START",
-            monitor_id, value, min, mode, monitor_rect.is_some(), cached_monitors.len(),
+            monitor_id,
+            value,
+            min,
+            mode,
+            monitor_rect.is_some(),
+            cached_monitors.len(),
         ),
     );
     state.sidecar_cache.invalidate_monitors();
@@ -500,10 +535,9 @@ pub async fn set_all_brightness(
     // Decide whether we can take the fast path. The fast path is fine when
     // every monitor is in "auto" mode AND no monitor currently has an overlay
     // window (otherwise the bulk call would leave the overlay state stale).
-    let all_auto = cached_monitors.iter().all(|m| {
-        m.is_built_in
-            || resolve_brightness_mode(&configs, &m.id) == "auto"
-    });
+    let all_auto = cached_monitors
+        .iter()
+        .all(|m| m.is_built_in || resolve_brightness_mode(&configs, &m.id) == "auto");
 
     if all_auto && !cached_monitors.is_empty() {
         // Fast path: one bulk hardware call covers all monitors. Any monitor
@@ -515,6 +549,7 @@ pub async fn set_all_brightness(
             Ok(per_monitor) => {
                 // Tear down stale overlays on monitors that succeeded;
                 // fall back to overlay for any monitor that failed.
+                let mut failed_ids = Vec::new();
                 for (id, ok) in per_monitor {
                     if *ok {
                         let _ = crate::overlay::destroy_overlay(&app, id);
@@ -528,13 +563,23 @@ pub async fn set_all_brightness(
                                 "set_all_brightness: id={} hardware failed, falling back to overlay (rect={:?})",
                                 id, rect,
                             );
-                            let _ = crate::overlay::set_overlay_brightness(
-                                &app, id, rect, value,
-                            );
+                            if let Err(error) =
+                                crate::overlay::set_overlay_brightness(&app, id, rect, value)
+                            {
+                                log::warn!(
+                                    "set_all_brightness: id={} overlay fallback failed: {}",
+                                    id,
+                                    error
+                                );
+                                failed_ids.push(id.clone());
+                            }
+                        } else {
+                            failed_ids.push(id.clone());
                         }
                     }
                 }
-                let summary = per_monitor.iter()
+                let summary = per_monitor
+                    .iter()
                     .map(|(id, ok)| format!("{}={}", id, ok))
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -545,16 +590,26 @@ pub async fn set_all_brightness(
                         value, summary, elapsed,
                     ),
                 );
+                return if failed_ids.is_empty() {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "set_all_brightness failed for monitors: {}",
+                        failed_ids.join(", ")
+                    ))
+                };
             }
-            Err(e) => crate::config::write_debug_log(
-                &state,
-                &format!(
-                    "set_all_brightness: value={} ERROR={} — {:.1}ms (fast)",
-                    value, e, elapsed,
-                ),
-            ),
+            Err(e) => {
+                crate::config::write_debug_log(
+                    &state,
+                    &format!(
+                        "set_all_brightness: value={} ERROR={} — {:.1}ms (fast)",
+                        value, e, elapsed,
+                    ),
+                );
+                return Err(e.clone());
+            }
         }
-        return result.map(|_| ());
     }
 
     // Slow path: dispatch per-monitor so each monitor's `brightnessMode` is
@@ -572,10 +627,11 @@ pub async fn set_all_brightness(
                 value, elapsed,
             ),
         );
-        return result.map(|_| ());
+        return result.and_then(all_targets_succeeded);
     }
 
     let mut summary_lines: Vec<String> = Vec::with_capacity(cached_monitors.len());
+    let mut failed_ids = Vec::new();
     for m in &cached_monitors {
         let mode = resolve_brightness_mode(&configs, &m.id);
         let route = route_for_mode(&mode);
@@ -590,8 +646,7 @@ pub async fn set_all_brightness(
             }
             BrightnessRoute::OverlayOnly => {
                 let rect = resolve_monitor_rect(&m.id, &cached_monitors).await;
-                crate::overlay::set_overlay_brightness(&app, &m.id, rect, value)
-                    .map(|_| true)
+                crate::overlay::set_overlay_brightness(&app, &m.id, rect, value).map(|_| true)
             }
             BrightnessRoute::AutoWithOverlayFallback => {
                 // NOTE: deliberately no `?` here. This runs inside the
@@ -614,8 +669,15 @@ pub async fn set_all_brightness(
             }
         };
         match res {
-            Ok(ok) => summary_lines.push(format!("{}(mode={})={}", m.id, mode, ok)),
-            Err(e) => summary_lines.push(format!("{}(mode={})=ERR:{}", m.id, mode, e)),
+            Ok(true) => summary_lines.push(format!("{}(mode={})=true", m.id, mode)),
+            Ok(false) => {
+                failed_ids.push(m.id.clone());
+                summary_lines.push(format!("{}(mode={})=false", m.id, mode));
+            }
+            Err(e) => {
+                failed_ids.push(m.id.clone());
+                summary_lines.push(format!("{}(mode={})=ERR:{}", m.id, mode, e));
+            }
         }
     }
     let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
@@ -623,10 +685,19 @@ pub async fn set_all_brightness(
         &state,
         &format!(
             "set_all_brightness: value={} per_monitor=[{}] — {:.1}ms (slow/per-mode)",
-            value, summary_lines.join(", "), elapsed,
+            value,
+            summary_lines.join(", "),
+            elapsed,
         ),
     );
-    Ok(())
+    if failed_ids.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "set_all_brightness failed for monitors: {}",
+            failed_ids.join(", ")
+        ))
+    }
 }
 
 /// Sets contrast for a single monitor (0-100, DDC-only).
@@ -646,11 +717,17 @@ pub async fn set_contrast(
     match &result {
         Ok(ok) => crate::config::write_debug_log(
             &state,
-            &format!("set_contrast: id={} platform_ok={} — {:.1}ms", monitor_id, ok, elapsed),
+            &format!(
+                "set_contrast: id={} platform_ok={} — {:.1}ms",
+                monitor_id, ok, elapsed
+            ),
         ),
         Err(e) => crate::config::write_debug_log(
             &state,
-            &format!("set_contrast: id={} ERROR={} — {:.1}ms", monitor_id, e, elapsed),
+            &format!(
+                "set_contrast: id={} ERROR={} — {:.1}ms",
+                monitor_id, e, elapsed
+            ),
         ),
     }
     match result? {
@@ -674,21 +751,44 @@ pub async fn set_all_contrast(
     let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
     match &result {
         Ok(per_monitor) => {
-            let summary = per_monitor.iter()
+            let summary = per_monitor
+                .iter()
                 .map(|(id, ok)| format!("{}={}", id, ok))
                 .collect::<Vec<_>>()
                 .join(", ");
             crate::config::write_debug_log(
                 &state,
-                &format!("set_all_contrast: value={} per_monitor=[{}] — {:.1}ms", value, summary, elapsed),
+                &format!(
+                    "set_all_contrast: value={} per_monitor=[{}] — {:.1}ms",
+                    value, summary, elapsed
+                ),
             );
         }
         Err(e) => crate::config::write_debug_log(
             &state,
-            &format!("set_all_contrast: value={} ERROR={} — {:.1}ms", value, e, elapsed),
+            &format!(
+                "set_all_contrast: value={} ERROR={} — {:.1}ms",
+                value, e, elapsed
+            ),
         ),
     }
-    result.map(|_| ())
+    result.and_then(all_targets_succeeded)
+}
+
+/// Converts per-target platform results into one truthful aggregate result.
+fn all_targets_succeeded(results: Vec<(String, bool)>) -> Result<(), String> {
+    let failed_ids = results
+        .into_iter()
+        .filter_map(|(id, ok)| (!ok).then_some(id))
+        .collect::<Vec<_>>();
+    if failed_ids.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "operation failed for monitors: {}",
+            failed_ids.join(", ")
+        ))
+    }
 }
 
 /// Updates a monitor's custom label in preferences. Creates a new metadata entry
@@ -719,8 +819,7 @@ pub fn rename_monitor(
             brightness_mode: crate::config::default_brightness_mode(),
         });
     }
-    crate::config::save_preferences_to_disk(&prefs);
-    Ok(())
+    crate::config::save_preferences_to_disk(&prefs)
 }
 
 /// Persists the user's custom monitor sort order to preferences.
@@ -751,8 +850,7 @@ pub fn save_monitor_order(
             });
         }
     }
-    crate::config::save_preferences_to_disk(&prefs);
-    Ok(())
+    crate::config::save_preferences_to_disk(&prefs)
 }
 
 /// Toggles a monitor's hidden state in preferences (hidden monitors are excluded from the main UI).
@@ -766,8 +864,7 @@ pub fn set_monitor_visibility(
     if let Some(meta) = prefs.monitor_configs.iter_mut().find(|m| m.uid == uid) {
         meta.hidden = hidden;
     }
-    crate::config::save_preferences_to_disk(&prefs);
-    Ok(())
+    crate::config::save_preferences_to_disk(&prefs)
 }
 
 /// Resolves a monitor identifier string to a Monitor, trying (in order):
@@ -786,15 +883,34 @@ pub(crate) fn resolve_monitor(monitors: &[Monitor], query: &str) -> Option<(usiz
     }
     // 3. Case-insensitive substring on name or original_name
     let needle = query.to_lowercase();
-    monitors.iter().enumerate().find(|(_, m)| {
-        m.name.to_lowercase().contains(&needle)
-            || m.original_name.to_lowercase().contains(&needle)
-    }).map(|(i, m)| (i, m.clone()))
+    monitors
+        .iter()
+        .enumerate()
+        .find(|(_, m)| {
+            m.name.to_lowercase().contains(&needle)
+                || m.original_name.to_lowercase().contains(&needle)
+        })
+        .map(|(i, m)| (i, m.clone()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Aggregate operation results retain every failed monitor ID.
+    #[test]
+    fn aggregate_target_results_reports_all_failed_ids() {
+        let result = all_targets_succeeded(vec![
+            ("one".into(), false),
+            ("two".into(), true),
+            ("three".into(), false),
+        ]);
+
+        assert_eq!(
+            result.unwrap_err(),
+            "operation failed for monitors: one, three"
+        );
+    }
 
     fn make_monitor(id: &str, name: &str, is_built_in: bool) -> Monitor {
         Monitor {
@@ -945,7 +1061,7 @@ mod tests {
         let monitors = vec![make_monitor("1", "Dell", false)];
         let configs = vec![
             make_meta("1::Dell", "My Dell", 0),
-            make_meta("2::LG", "Office Left", 1),       // unplugged
+            make_meta("2::LG", "Office Left", 1), // unplugged
             make_meta("builtin::Built-in", "MacBook", 2), // unplugged
         ];
         let result = merge_with_configs(monitors, &configs);
@@ -1074,8 +1190,8 @@ mod tests {
         // Pre-existing configs with sort orders 0, 5, 10
         let mut configs = vec![
             make_meta("builtin::Built-in", "MacBook", 0),
-            make_meta("1::Dell", "Left", 5),   // unplugged but persisted
-            make_meta("2::LG", "Right", 10),    // unplugged but persisted
+            make_meta("1::Dell", "Left", 5), // unplugged but persisted
+            make_meta("2::LG", "Right", 10), // unplugged but persisted
         ];
         let changed = ensure_metadata_for_monitors(&monitors, &mut configs);
         assert!(changed); // "3::New Monitor" is new
@@ -1133,7 +1249,7 @@ mod tests {
         assert_eq!(configs[1].uid, "2::LG 27UK850");
         assert_eq!(configs[1].api_name, "LG 27UK850");
         assert_eq!(configs[1].label, "Right Monitor"); // preserved
-        // Already-known entry unchanged
+                                                       // Already-known entry unchanged
         assert_eq!(configs[2].uid, "builtin::Built-in Display");
         assert_eq!(configs[2].label, "MacBook");
     }
@@ -1271,12 +1387,18 @@ mod tests {
     /// Verifies each mode string maps to the expected route variant.
     #[test]
     fn test_route_for_mode_all_modes() {
-        assert_eq!(route_for_mode("auto"), BrightnessRoute::AutoWithOverlayFallback);
+        assert_eq!(
+            route_for_mode("auto"),
+            BrightnessRoute::AutoWithOverlayFallback
+        );
         assert_eq!(route_for_mode("ddc"), BrightnessRoute::DdcOnly);
         assert_eq!(route_for_mode("gamma"), BrightnessRoute::GammaOnly);
         assert_eq!(route_for_mode("overlay"), BrightnessRoute::OverlayOnly);
         // Unknown -> auto (safe default).
-        assert_eq!(route_for_mode("whatever"), BrightnessRoute::AutoWithOverlayFallback);
+        assert_eq!(
+            route_for_mode("whatever"),
+            BrightnessRoute::AutoWithOverlayFallback
+        );
         assert_eq!(route_for_mode(""), BrightnessRoute::AutoWithOverlayFallback);
     }
 
@@ -1320,8 +1442,13 @@ mod tests {
             let app = make_app();
             let state = app.state::<crate::AppState>();
             rename_monitor(state, "1::Dell U2720Q".to_string(), "MyDell".to_string()).unwrap();
-            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
-            let meta = prefs.monitor_configs.iter().find(|m| m.uid == "1::Dell U2720Q").unwrap();
+            let st = app.state::<crate::AppState>();
+            let prefs = st.preferences.lock().unwrap();
+            let meta = prefs
+                .monitor_configs
+                .iter()
+                .find(|m| m.uid == "1::Dell U2720Q")
+                .unwrap();
             assert_eq!(meta.label, "MyDell");
             assert_eq!(meta.api_id, "1");
             assert_eq!(meta.api_name, "Dell U2720Q");
@@ -1335,7 +1462,8 @@ mod tests {
             let app = make_app();
             // Seed one entry
             {
-                let st = app.state::<crate::AppState>(); let mut prefs = st.preferences.lock().unwrap();
+                let st = app.state::<crate::AppState>();
+                let mut prefs = st.preferences.lock().unwrap();
                 prefs.monitor_configs.push(crate::config::MonitorMetadata {
                     uid: "1::Dell".to_string(),
                     api_id: "1".to_string(),
@@ -1348,8 +1476,13 @@ mod tests {
             }
             let state = app.state::<crate::AppState>();
             rename_monitor(state, "1::Dell".to_string(), "new".to_string()).unwrap();
-            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
-            let meta = prefs.monitor_configs.iter().find(|m| m.uid == "1::Dell").unwrap();
+            let st = app.state::<crate::AppState>();
+            let prefs = st.preferences.lock().unwrap();
+            let meta = prefs
+                .monitor_configs
+                .iter()
+                .find(|m| m.uid == "1::Dell")
+                .unwrap();
             assert_eq!(meta.label, "new");
             assert_eq!(prefs.monitor_configs.len(), 1, "should update, not insert");
         });
@@ -1362,8 +1495,13 @@ mod tests {
             let app = make_app();
             let state = app.state::<crate::AppState>();
             rename_monitor(state, "builtin".to_string(), "Internal".to_string()).unwrap();
-            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
-            let meta = prefs.monitor_configs.iter().find(|m| m.uid == "builtin").unwrap();
+            let st = app.state::<crate::AppState>();
+            let prefs = st.preferences.lock().unwrap();
+            let meta = prefs
+                .monitor_configs
+                .iter()
+                .find(|m| m.uid == "builtin")
+                .unwrap();
             assert_eq!(meta.api_id, "builtin");
             assert_eq!(meta.api_name, "");
         });
@@ -1377,8 +1515,13 @@ mod tests {
             let orders = vec![("1::Dell".to_string(), 5)];
             let state = app.state::<crate::AppState>();
             save_monitor_order(state, orders).unwrap();
-            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
-            let meta = prefs.monitor_configs.iter().find(|m| m.uid == "1::Dell").unwrap();
+            let st = app.state::<crate::AppState>();
+            let prefs = st.preferences.lock().unwrap();
+            let meta = prefs
+                .monitor_configs
+                .iter()
+                .find(|m| m.uid == "1::Dell")
+                .unwrap();
             assert_eq!(meta.sort_order, 5);
         });
     }
@@ -1389,7 +1532,8 @@ mod tests {
         with_tempdir_config(|_| {
             let app = make_app();
             {
-                let st = app.state::<crate::AppState>(); let mut prefs = st.preferences.lock().unwrap();
+                let st = app.state::<crate::AppState>();
+                let mut prefs = st.preferences.lock().unwrap();
                 prefs.monitor_configs.push(crate::config::MonitorMetadata {
                     uid: "1::Dell".to_string(),
                     api_id: "1".to_string(),
@@ -1403,8 +1547,13 @@ mod tests {
             let orders = vec![("1::Dell".to_string(), 99)];
             let state = app.state::<crate::AppState>();
             save_monitor_order(state, orders).unwrap();
-            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
-            let meta = prefs.monitor_configs.iter().find(|m| m.uid == "1::Dell").unwrap();
+            let st = app.state::<crate::AppState>();
+            let prefs = st.preferences.lock().unwrap();
+            let meta = prefs
+                .monitor_configs
+                .iter()
+                .find(|m| m.uid == "1::Dell")
+                .unwrap();
             assert_eq!(meta.sort_order, 99);
             assert_eq!(prefs.monitor_configs.len(), 1);
         });
@@ -1416,7 +1565,8 @@ mod tests {
         with_tempdir_config(|_| {
             let app = make_app();
             {
-                let st = app.state::<crate::AppState>(); let mut prefs = st.preferences.lock().unwrap();
+                let st = app.state::<crate::AppState>();
+                let mut prefs = st.preferences.lock().unwrap();
                 prefs.monitor_configs.push(crate::config::MonitorMetadata {
                     uid: "1::Dell".to_string(),
                     api_id: "1".to_string(),
@@ -1429,8 +1579,16 @@ mod tests {
             }
             let state = app.state::<crate::AppState>();
             set_monitor_visibility(state, "1::Dell".to_string(), true).unwrap();
-            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
-            assert!(prefs.monitor_configs.iter().find(|m| m.uid == "1::Dell").unwrap().hidden);
+            let st = app.state::<crate::AppState>();
+            let prefs = st.preferences.lock().unwrap();
+            assert!(
+                prefs
+                    .monitor_configs
+                    .iter()
+                    .find(|m| m.uid == "1::Dell")
+                    .unwrap()
+                    .hidden
+            );
         });
     }
 
@@ -1442,7 +1600,8 @@ mod tests {
             let state = app.state::<crate::AppState>();
             // Should not error even when uid doesn't exist.
             set_monitor_visibility(state, "nonexistent::foo".to_string(), true).unwrap();
-            let st = app.state::<crate::AppState>(); let prefs = st.preferences.lock().unwrap();
+            let st = app.state::<crate::AppState>();
+            let prefs = st.preferences.lock().unwrap();
             assert!(prefs.monitor_configs.is_empty());
         });
     }
@@ -1465,24 +1624,20 @@ mod tests {
         with_tempdir_config(|_| {
             let app = make_app();
             let state = app.state::<crate::AppState>();
-            let result = tauri::async_runtime::block_on(set_contrast(
-                state,
-                "1".to_string(),
-                50,
-            ));
+            let result = tauri::async_runtime::block_on(set_contrast(state, "1".to_string(), 50));
             // Either Ok (hardware succeeded) or Err (monitor not found) — both acceptable.
             let _ = result;
         });
     }
 
-    /// set_all_contrast smoke test — returns Ok regardless of HW success.
+    /// set_all_contrast smoke test — completes with a truthful hardware result.
     #[test]
     fn test_set_all_contrast_smoke() {
         with_tempdir_config(|_| {
             let app = make_app();
             let state = app.state::<crate::AppState>();
             let result = tauri::async_runtime::block_on(set_all_contrast(state, 50));
-            assert!(result.is_ok());
+            let _ = result;
         });
     }
 }

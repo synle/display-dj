@@ -184,12 +184,13 @@ async function waitForSave() {
 }
 
 describe('SettingsPanel', () => {
-  it('renders null until preferences load', () => {
+  it('renders loading feedback until preferences load', () => {
     setupInvoke({});
     const { container } = render(
       <SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />,
     );
-    expect(container.firstChild).toBeNull();
+    expect(container.firstChild).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading settings');
   });
 
   it('renders Settings title and tabs when tiling is supported', async () => {
@@ -220,6 +221,75 @@ describe('SettingsPanel', () => {
     await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
     await user.click(screen.getByTitle('Close'));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  /** Closing immediately flushes the final edited snapshot before dismissal. */
+  it('saves a final edit before immediate close', async () => {
+    setupInvoke({});
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={onClose} onPreferencesSaved={() => {}} />);
+    await screen.findByText('Settings');
+
+    await user.click(screen.getByLabelText('Show Contrast Slider'));
+    await user.click(screen.getByTitle('Close'));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'save_preferences',
+        expect.objectContaining({ preferences: expect.objectContaining({ showContrast: true }) }),
+      );
+      expect(onClose).toHaveBeenCalledOnce();
+    });
+  });
+
+  /** Save queue serializes writes and coalesces pending edits to newest full snapshot. */
+  it('serializes rapid saves so stale snapshots cannot win', async () => {
+    let resolveFirstSave!: () => void;
+    const firstSave = new Promise<void>((resolve) => {
+      resolveFirstSave = resolve;
+    });
+    setupInvoke({});
+    const baseImplementation = mockInvoke.getMockImplementation()!;
+    let saveCalls = 0;
+    mockInvoke.mockImplementation((command: string, args?: unknown) => {
+      if (command === 'get_preferences') return Promise.resolve(buildPrefs());
+      if (command === 'save_preferences') {
+        saveCalls += 1;
+        return saveCalls === 1 ? firstSave : Promise.resolve(undefined);
+      }
+      return baseImplementation(command, args as never);
+    });
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await screen.findByText('Settings');
+
+    await user.click(screen.getByLabelText('Show Contrast Slider'));
+    await waitFor(() => expect(saveCalls).toBe(1));
+    await user.click(screen.getByLabelText('Launch at Login'));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(saveCalls).toBe(1);
+
+    resolveFirstSave();
+    await waitFor(() => expect(saveCalls).toBe(2));
+    const saveInvocations = mockInvoke.mock.calls.filter(
+      ([command]) => command === 'save_preferences',
+    );
+    expect(saveInvocations[1][1]).toEqual({
+      preferences: expect.objectContaining({ showContrast: true, launchAtLogin: true }),
+    });
+  });
+
+  /** Preference load failures render an alert and working retry action. */
+  it('shows settings load error with retry', async () => {
+    setupInvoke({ prefsRejects: true });
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load settings');
+    setupInvoke({});
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Min Brightness')).toBeInTheDocument();
   });
 
   it('clamps minBrightness below 5 up to 5 on load', async () => {
@@ -787,7 +857,7 @@ describe('SettingsPanel', () => {
     expect(screen.queryByRole('button', { name: 'Tiling' })).not.toBeInTheDocument();
   });
 
-  it('handles get_preferences rejection by remaining null (no crash)', async () => {
+  it('handles get_preferences rejection with visible recovery (no crash)', async () => {
     setupInvoke({ prefsRejects: true });
     const { container } = render(
       <SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />,
@@ -796,6 +866,7 @@ describe('SettingsPanel', () => {
       // Ensure invoke has been called and the rejection settled.
       expect(mockInvoke).toHaveBeenCalledWith('get_preferences');
     });
-    expect(container.firstChild).toBeNull();
+    expect(container.firstChild).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load settings');
   });
 });

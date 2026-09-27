@@ -88,4 +88,18 @@ describe('ProfileButtons', () => {
     expect(onActivate).toHaveBeenCalledWith(3);
     expect(screen.queryByText('Mute')).not.toBeInTheDocument();
   });
+
+  /** Escape closes overflow and restores focus to its trigger. */
+  it('closes the overflow menu with Escape and restores trigger focus', async () => {
+    const user = userEvent.setup();
+    render(<ProfileButtons profiles={[...mockProfiles, extraProfile]} onActivate={() => {}} />);
+    const trigger = screen.getByRole('button', { name: 'More profiles' });
+
+    await user.click(trigger);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
 });

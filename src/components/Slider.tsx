@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback } from 'react';
 
 interface SliderProps {
+  label: string;
   icon?: string;
+  iconLabel?: string;
   value: number;
   min?: number;
   max?: number;
@@ -9,11 +11,14 @@ interface SliderProps {
   showValue?: boolean;
   unit?: string;
   onIconClick?: () => void;
+  mixed?: boolean;
 }
 
 /** Reusable range slider with optional icon, debounced onChange, and value display. */
 export default function Slider({
+  label,
   icon,
+  iconLabel,
   value,
   min = 0,
   max = 100,
@@ -21,6 +26,7 @@ export default function Slider({
   showValue = true,
   unit = '%',
   onIconClick,
+  mixed = false,
 }: SliderProps) {
   const [localValue, setLocalValue] = useState(value);
   const [prevPropValue, setPrevPropValue] = useState(value);
@@ -55,13 +61,20 @@ export default function Slider({
 
   return (
     <div className='slider-row'>
-      {icon && (
-        <span
-          className={`slider-icon${onIconClick ? ' slider-icon-clickable' : ''}`}
-          onClick={onIconClick}>
-          {icon}
-        </span>
-      )}
+      {icon &&
+        (onIconClick ? (
+          <button
+            type='button'
+            className='slider-icon slider-icon-clickable'
+            aria-label={iconLabel ?? `Toggle ${label.toLowerCase()}`}
+            onClick={onIconClick}>
+            {icon}
+          </button>
+        ) : (
+          <span className='slider-icon' aria-hidden='true'>
+            {icon}
+          </span>
+        ))}
       <div className='slider-container'>
         <div className='slider-track'>
           <div className='slider-fill' style={{ width: `${percentage}%` }} />
@@ -72,13 +85,14 @@ export default function Slider({
           min={min}
           max={max}
           value={localValue}
+          aria-label={label}
+          aria-valuetext={mixed ? `Mixed, ${localValue}${unit}` : undefined}
           onChange={handleChange}
         />
       </div>
       {showValue && (
-        <span className='slider-value'>
-          {localValue}
-          {unit}
+        <span className={`slider-value${mixed ? ' slider-value-mixed' : ''}`}>
+          {mixed ? 'Mixed' : `${localValue}${unit}`}
         </span>
       )}
     </div>

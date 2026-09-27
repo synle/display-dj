@@ -18,6 +18,7 @@ describe('KeepAwakeToggle', () => {
     render(<KeepAwakeToggle isActive={true} onChange={() => {}} />);
     const btn = screen.getByRole('button');
     expect(btn).toHaveClass('active');
+    expect(btn).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('does not apply active class when inactive', () => {

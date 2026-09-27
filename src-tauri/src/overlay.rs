@@ -33,7 +33,9 @@
 //!   and `core::linux`). [`set_overlay_brightness`] silently no-ops on
 //!   those platforms until those TODOs are filled in.
 
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder,
+};
 
 /// Build the Tauri window label for a given monitor id.
 ///
@@ -68,7 +70,7 @@ fn overlay_label(monitor_id: &str) -> String {
 /// * `app` - Tauri `AppHandle` used to create / fetch the overlay window.
 /// * `monitor_id` - The raw `core::DisplayInfo.id` of the target monitor.
 /// * `monitor_rect` - `(left, top, width, height)` in global physical pixels.
-///   Pass `None` to skip (overlay is unsupported on this platform / monitor).
+///   Missing geometry returns an error because no overlay can be applied.
 /// * `brightness_pct` - Target brightness 0..=100. Values >= 100 hide the
 ///   overlay; values < 100 show it and set opacity accordingly.
 ///
@@ -84,11 +86,10 @@ pub fn set_overlay_brightness<R: tauri::Runtime>(
     let rect = match monitor_rect {
         Some(r) => r,
         None => {
-            log::info!(
-                "overlay: skipping monitor {} — no monitor_rect (platform stub)",
-                monitor_id,
-            );
-            return Ok(());
+            return Err(format!(
+                "overlay: monitor_rect unavailable for {}",
+                monitor_id
+            ))
         }
     };
 
@@ -177,7 +178,12 @@ pub fn set_overlay_brightness<R: tauri::Runtime>(
     emit_alpha(app, monitor_id, brightness_pct);
     log::info!(
         "overlay: created window {} at ({},{}) {}x{} brightness={}%",
-        label, left, top, width, height, brightness_pct,
+        label,
+        left,
+        top,
+        width,
+        height,
+        brightness_pct,
     );
     Ok(())
 }
@@ -197,7 +203,10 @@ pub fn set_overlay_brightness<R: tauri::Runtime>(
 /// `Ok(())` whether the window existed or not. `Err(String)` only when the
 /// close call itself failed (rare — usually means the window was already
 /// torn down by Tauri).
-pub fn destroy_overlay<R: tauri::Runtime>(app: &AppHandle<R>, monitor_id: &str) -> Result<(), String> {
+pub fn destroy_overlay<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    monitor_id: &str,
+) -> Result<(), String> {
     let label = overlay_label(monitor_id);
     if let Some(window) = app.get_webview_window(&label) {
         window
@@ -222,7 +231,8 @@ fn emit_alpha<R: tauri::Runtime>(app: &AppHandle<R>, monitor_id: &str, brightnes
     if let Err(e) = app.emit_to(label.as_str(), "set-overlay-alpha", alpha) {
         log::warn!(
             "overlay: emit set-overlay-alpha failed for {}: {}",
-            monitor_id, e,
+            monitor_id,
+            e,
         );
     }
 }
@@ -275,14 +285,15 @@ mod tests {
         assert_eq!(overlay_label("builtin"), "overlay-builtin");
     }
 
-    /// set_overlay_brightness with `monitor_rect = None` is the
-    /// no-op platform-stub path (current macOS/Linux behavior). Must
-    /// return Ok(()) without attempting any Tauri window calls.
+    /// Missing geometry reports that the requested overlay could not be applied.
     #[test]
-    fn test_set_overlay_brightness_none_rect_is_noop() {
+    fn test_set_overlay_brightness_none_rect_is_error() {
         let app = tauri::test::mock_app();
         let result = set_overlay_brightness(app.handle(), "1", None, 50);
-        assert!(result.is_ok(), "None rect should be a silent no-op");
+        assert_eq!(
+            result.unwrap_err(),
+            "overlay: monitor_rect unavailable for 1"
+        );
     }
 
     /// set_overlay_brightness must reject a degenerate rect (zero or

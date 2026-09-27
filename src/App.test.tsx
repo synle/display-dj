@@ -429,6 +429,87 @@ describe('App smoke test', () => {
     await waitFor(() => {
       expect(container.querySelector('.app')).toBeInTheDocument();
     });
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load controls');
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  /** Aggregate controls derive value and mixed state from visible capable monitors. */
+  it('derives aggregate brightness from capable monitors and marks differing values mixed', async () => {
+    const monitors = [
+      {
+        id: '1',
+        uid: 'one',
+        name: 'One',
+        originalName: 'One',
+        brightness: 80,
+        contrast: 40,
+        supportsBrightness: true,
+        isBuiltIn: false,
+        hidden: false,
+      },
+      {
+        id: '2',
+        uid: 'two',
+        name: 'Two',
+        originalName: 'Two',
+        brightness: 60,
+        contrast: 20,
+        supportsBrightness: true,
+        isBuiltIn: false,
+        hidden: false,
+      },
+      {
+        id: '3',
+        uid: 'hidden',
+        name: 'Hidden',
+        originalName: 'Hidden',
+        brightness: 5,
+        contrast: 5,
+        supportsBrightness: true,
+        isBuiltIn: false,
+        hidden: true,
+      },
+      {
+        id: '4',
+        uid: 'incapable',
+        name: 'Incapable',
+        originalName: 'Incapable',
+        brightness: 10,
+        contrast: null,
+        supportsBrightness: false,
+        isBuiltIn: false,
+        hidden: false,
+      },
+    ];
+    const original = mockInvoke.getMockImplementation()!;
+    mockInvoke.mockImplementation((command: string, args?: unknown) =>
+      command === 'fetch_all_state'
+        ? Promise.resolve({ monitors, isDark: false, volume: 50 })
+        : original(command, args as never),
+    );
+    render(<App />);
+
+    expect(await screen.findByText('Mixed')).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'Brightness for all monitors' })).toHaveValue('70');
+  });
+
+  /** Failed optimistic brightness updates restore prior state and announce error. */
+  it('reverts failed aggregate brightness updates with visible feedback', async () => {
+    const original = mockInvoke.getMockImplementation()!;
+    mockInvoke.mockImplementation((command: string, args?: unknown) =>
+      command === 'set_all_brightness'
+        ? Promise.reject(new Error('write failed'))
+        : original(command, args as never),
+    );
+    const user = userEvent.setup();
+    render(<App />);
+    const slider = await screen.findByRole('slider', { name: 'Brightness for all monitors' });
+
+    await user.click(screen.getByRole('button', { name: 'Toggle brightness for all monitors' }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not update brightness'),
+    );
+    expect(slider).toHaveValue('50');
   });
 
   it('renders collapsed and expanded views without JS errors', async () => {
@@ -622,7 +703,7 @@ describe('App smoke test', () => {
     await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
   });
 
-  it('handles backend rejection on dark-mode toggle without crashing', async () => {
+  it('shows backend rejection on dark-mode toggle and reverts state', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'set_dark_mode') return Promise.reject(new Error('nope'));
       if (cmd === 'fetch_all_state') {
@@ -649,15 +730,14 @@ describe('App smoke test', () => {
       }
       return Promise.resolve(undefined);
     });
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const user = userEvent.setup();
     render(<App />);
     await waitFor(() => expect(screen.getByText('DARK', { exact: false })).toBeInTheDocument());
     await user.click(screen.getByText('DARK').closest('button')!);
     await waitFor(() => {
-      expect(errSpy).toHaveBeenCalledWith('Failed to set dark mode:', expect.any(Error));
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not update appearance');
+      expect(screen.getByText('LIGHT').closest('button')).toHaveAttribute('aria-pressed', 'true');
     });
-    errSpy.mockRestore();
   });
 
   it('calls set_brightness with API id (not uid)', async () => {
@@ -1007,7 +1087,7 @@ describe('App smoke test', () => {
     fetchSpy.mockRestore();
   });
 
-  it('logs an error when set_volume rejects', async () => {
+  it('shows an error and reverts when set_volume rejects', async () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === 'fetch_all_state') {
         return Promise.resolve({ monitors: [], isDark: false, volume: 50 });
@@ -1035,7 +1115,6 @@ describe('App smoke test', () => {
       return Promise.resolve(undefined);
     });
 
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const user = userEvent.setup();
     render(<App />);
 
@@ -1047,8 +1126,8 @@ describe('App smoke test', () => {
     await user.click(volumeIcon);
 
     await waitFor(() => {
-      expect(errSpy).toHaveBeenCalledWith('Failed to set volume:', expect.any(Error));
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not update volume');
+      expect(screen.getByRole('slider', { name: 'System volume' })).toHaveValue('50');
     });
-    errSpy.mockRestore();
   });
 });

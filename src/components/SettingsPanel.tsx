@@ -31,19 +31,24 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   const [windowsElevated, setWindowsElevated] = useState<boolean | null>(null);
   const [windowsSnapEnabled, setWindowsSnapEnabled] = useState<boolean | null>(null);
   const [platform, setPlatform] = useState<'macos' | 'windows' | 'other'>('other');
-  const initialLoadRef = useRef(true);
+  const [loadError, setLoadError] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSaveRef = useRef<Preferences | null>(null);
+  const saveInFlightRef = useRef(false);
+  const mountedRef = useRef(true);
 
-  useEffect(() => {
+  /** Loads editable preferences and exposes failure instead of leaving a blank panel. */
+  const loadPreferences = useCallback(() => {
     invoke<Preferences>('get_preferences')
       .then((p) => {
-        p.minBrightness = Math.max(5, Math.min(100, p.minBrightness));
-        setPrefs(p);
-        setTimeout(() => {
-          initialLoadRef.current = false;
-        }, 0);
+        setPrefs({ ...p, minBrightness: Math.max(5, Math.min(100, p.minBrightness)) });
       })
-      .catch(console.error);
+      .catch(() => setLoadError(true));
+  }, []);
+
+  useEffect(() => {
+    loadPreferences();
     invoke<boolean>('get_tiling_supported')
       .then(setTilingSupported)
       .catch(() => setTilingSupported(false));
@@ -65,35 +70,75 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     invoke<AudioOutputState>('get_audio_output_devices')
       .then(setAudioOutputState)
       .catch((error) => console.error('Failed to get audio output devices:', error));
-  }, []);
+  }, [loadPreferences]);
 
-  /** Auto-save preferences after each change with debounce. */
-  const savePreferences = useCallback(
-    (prefsToSave: Preferences) => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
+  /** Serializes full preference snapshots, coalescing queued edits to the newest state. */
+  const flushSave = useCallback(
+    async function drainSaveQueue() {
+      if (saveInFlightRef.current || !pendingSaveRef.current) return;
+      saveInFlightRef.current = true;
+      const snapshot = pendingSaveRef.current;
+      pendingSaveRef.current = null;
+      if (mountedRef.current) setSaveStatus('saving');
+      try {
+        await invoke('save_preferences', { preferences: snapshot });
+        onPreferencesSaved();
+        if (mountedRef.current) setSaveStatus(pendingSaveRef.current ? 'saving' : 'saved');
+      } catch {
+        if (!pendingSaveRef.current) pendingSaveRef.current = snapshot;
+        if (mountedRef.current) setSaveStatus('error');
+        saveInFlightRef.current = false;
+        return;
       }
-      saveTimeoutRef.current = setTimeout(async () => {
-        try {
-          await invoke('save_preferences', { preferences: prefsToSave });
-          onPreferencesSaved();
-        } catch (e) {
-          console.error('Failed to save preferences:', e);
-        }
-      }, 100);
+      saveInFlightRef.current = false;
+      if (pendingSaveRef.current) void drainSaveQueue();
     },
     [onPreferencesSaved],
   );
 
+  /** Debounces edits while retaining the latest complete snapshot for close/unmount flush. */
+  const savePreferences = useCallback(
+    (prefsToSave: Preferences) => {
+      pendingSaveRef.current = prefsToSave;
+      setSaveStatus('saving');
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(() => void flushSave(), 100);
+    },
+    [flushSave],
+  );
+
   useEffect(() => {
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
+      mountedRef.current = false;
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      void flushSave();
     };
-  }, []);
+  }, [flushSave]);
 
-  if (!prefs) return null;
+  if (!prefs) {
+    return (
+      <div className='settings-panel'>
+        <div className='settings-header'>
+          <span className='settings-title'>Settings</span>
+          <button className='settings-close' onClick={onClose} title='Close'>
+            &times;
+          </button>
+        </div>
+        <div className='status-message' role={loadError ? 'alert' : 'status'} aria-live='polite'>
+          {loadError ? 'Could not load settings.' : 'Loading settings...'}
+          {loadError && (
+            <button
+              onClick={() => {
+                setLoadError(false);
+                loadPreferences();
+              }}>
+              Retry
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const schedule = prefs.nightModeSchedule;
   const configs = [...prefs.monitorConfigs].toSorted(
@@ -105,7 +150,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     setPrefs((prev) => {
       if (!prev) return prev;
       const next = { ...prev, [key]: value };
-      if (!initialLoadRef.current) savePreferences(next);
+      savePreferences(next);
       return next;
     });
   };
@@ -121,7 +166,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         ...prev,
         nightModeSchedule: { ...prev.nightModeSchedule, [key]: value },
       };
-      if (!initialLoadRef.current) savePreferences(next);
+      savePreferences(next);
       return next;
     });
   };
@@ -134,7 +179,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         ...prev,
         tiling: { ...prev.tiling, [key]: value },
       };
-      if (!initialLoadRef.current) savePreferences(next);
+      savePreferences(next);
       return next;
     });
   };
@@ -150,7 +195,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         ...prev,
         wallpaper: { ...prev.wallpaper, [key]: value },
       };
-      if (!initialLoadRef.current) savePreferences(next);
+      savePreferences(next);
       return next;
     });
   };
@@ -163,7 +208,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         ...prev,
         monitorConfigs: prev.monitorConfigs.map((m) => (m.uid === uid ? { ...m, ...patch } : m)),
       };
-      if (!initialLoadRef.current) savePreferences(next);
+      savePreferences(next);
       return next;
     });
   };
@@ -184,7 +229,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
           return m;
         }),
       };
-      if (!initialLoadRef.current) savePreferences(next);
+      savePreferences(next);
       return next;
     });
   };
@@ -258,7 +303,27 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     <div className='settings-panel'>
       <div className='settings-header'>
         <span className='settings-title'>Settings</span>
-        <button className='settings-close' onClick={onClose} title='Close'>
+        <span
+          className={`save-status save-status-${saveStatus}`}
+          role={saveStatus === 'error' ? 'alert' : 'status'}
+          aria-live='polite'>
+          {saveStatus === 'saving'
+            ? 'Saving...'
+            : saveStatus === 'saved'
+              ? 'Saved'
+              : saveStatus === 'error'
+                ? 'Save failed'
+                : ''}
+          {saveStatus === 'error' && <button onClick={() => void flushSave()}>Retry</button>}
+        </span>
+        <button
+          className='settings-close'
+          onClick={() => {
+            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+            void flushSave();
+            onClose();
+          }}
+          title='Close'>
           &times;
         </button>
       </div>
@@ -284,6 +349,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             <div className='settings-section'>
               <label className='settings-label'>Min Brightness</label>
               <Slider
+                label='Minimum brightness'
                 value={prefs.minBrightness}
                 min={5}
                 max={100}
@@ -461,6 +527,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     />
                   </div>
                   <Slider
+                    label='Night brightness'
                     value={schedule.nightBrightness}
                     min={5}
                     max={100}
@@ -479,6 +546,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     />
                   </div>
                   <Slider
+                    label='Day brightness'
                     value={schedule.dayBrightness}
                     min={5}
                     max={100}
@@ -680,6 +748,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <div style={{ marginTop: '4px' }}>
                       <label className='settings-label'>Side Edge</label>
                       <Slider
+                        label='Side edge trigger'
                         value={tiling?.sideEdgeTrigger ?? 18}
                         min={5}
                         max={50}
@@ -690,6 +759,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <div style={{ marginTop: '4px' }}>
                       <label className='settings-label'>Top Edge</label>
                       <Slider
+                        label='Top edge trigger'
                         value={tiling?.topEdgeTrigger ?? 18}
                         min={10}
                         max={50}
@@ -700,6 +770,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <div style={{ marginTop: '4px' }}>
                       <label className='settings-label'>Corner</label>
                       <Slider
+                        label='Corner trigger'
                         value={tiling?.cornerTrigger ?? 30}
                         min={25}
                         max={150}
@@ -855,6 +926,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <div style={{ marginTop: '4px' }}>
                       <label className='settings-label'>Columns</label>
                       <Slider
+                        label='Exposé columns'
                         value={exposeCols}
                         min={1}
                         max={5}
@@ -865,6 +937,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <div style={{ marginTop: '4px' }}>
                       <label className='settings-label'>Rows</label>
                       <Slider
+                        label='Exposé rows'
                         value={exposeRows}
                         min={1}
                         max={5}
@@ -895,6 +968,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <div style={{ marginTop: '8px' }}>
                       <label className='settings-label'>Min Cell Width</label>
                       <Slider
+                        label='Minimum cell width'
                         value={tiling?.exposeMinWidth ?? 400}
                         min={100}
                         max={800}
@@ -905,6 +979,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     <div style={{ marginTop: '4px' }}>
                       <label className='settings-label'>Min Cell Height</label>
                       <Slider
+                        label='Minimum cell height'
                         value={tiling?.exposeMinHeight ?? 300}
                         min={100}
                         max={600}

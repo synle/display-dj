@@ -80,18 +80,22 @@ export default function VolumeControl({
         <button
           className='section-toggle'
           onClick={onToggleExpanded}
+          aria-expanded={expanded}
+          aria-controls='audio-output-list'
           title={expanded ? 'Hide output speakers' : 'Show output speakers'}>
           <span className={`chevron${expanded ? ' expanded' : ''}`}>&#9662;</span>
         </button>
       </div>
       <Slider
+        label='System volume'
         icon={value === 0 ? '\uD83D\uDD07' : '\uD83D\uDD0A'}
+        iconLabel={value === 0 ? 'Unmute system volume' : 'Mute system volume'}
         value={value}
         onChange={onChange}
         onIconClick={() => onChange(value > 0 ? 0 : 100)}
       />
       {expanded && outputState && (
-        <div className='audio-output-list'>
+        <div className='audio-output-list' id='audio-output-list'>
           {visibleDevices.length === 0 ? (
             <span className='audio-output-empty'>No audio outputs found</span>
           ) : (

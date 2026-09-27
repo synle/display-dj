@@ -223,7 +223,7 @@ Each Tauri brightness command snapshots `min_brightness`, the per-monitor `brigh
 ### Platform status
 
 - **Windows**: fully functional. `DisplayInfo.monitor_rect` is populated from `MONITORINFOEXW.rcMonitor` for external displays.
-- **macOS / Linux**: the Tauri overlay window itself spawns, but `monitor_rect` is currently `None` on both platforms (see TODOs in `core::macos` and `core::linux`). `brightnessMode = "overlay"` is selectable in the UI but no-ops on those platforms until the rect is filled in. The auto path keeps working on macOS/Linux because DDC and DisplayServices/ddcutil paths are unaffected.
+- **macOS / Linux**: `monitor_rect` is currently `None` on both platforms (see TODOs in `core::macos` and `core::linux`). `brightnessMode = "overlay"` therefore returns an explicit error instead of reporting a successful no-op. The auto path keeps working when DDC or DisplayServices/ddcutil succeeds.
 
 ## Key Conventions
 
@@ -232,6 +232,7 @@ Each Tauri brightness command snapshots `min_brightness`, the per-monitor `brigh
 - Frontend parameter objects use camelCase (Serde converts).
 - `CommandValue` uses `#[serde(untagged)]` so keybindings accept both `"string"` and `["array"]`.
 - Preferences use `#[serde(default)]` for forward-compatible config loading.
+- Preferences writes are serialized and atomic: `preferences.json.tmp` is synced before replacement, `preferences.backup.json` stores the last valid snapshot, and malformed primary JSON is quarantined before backup recovery or default fallback.
 - **All user-editable numerics are bounded on both sides by `Preferences::sanitize()`** (`config.rs`), called from `load_preferences()` (disk → memory) and the `save_preferences` command (frontend → memory + disk). `preferences.json` is a documented hand-editing surface, so treat every numeric in it as untrusted input. Add new numeric preferences to `sanitize()` in the same commit that introduces them.
 - Brightness is clamped to `[effective_min_brightness(), 100]`, where `effective_min_brightness()` is itself clamped to `[5, 100]`. The **upper** bound is load-bearing: `u32::clamp` panics when `min > max`, so an unbounded `minBrightness` would panic every brightness path.
 - Contrast is DDC-only (`Option<u32>` / `number | null`); the slider is hidden by default and toggled via `showContrast` in Settings.
@@ -262,7 +263,8 @@ Tray popup placement selects the monitor from the physical mouse position in `Tr
 
 ## Settings & About
 
-- **Settings Panel**: auto-saves preferences (100ms debounce) — no Save/Cancel buttons. `SettingsPanel` uses `useCallback` + `setTimeout` to debounce `save_preferences`, and triggers `onPreferencesSaved` to refresh the parent UI.
+- **Settings Panel**: auto-saves preferences (100ms debounce) with one serialized, coalescing queue. Closing or unmounting flushes the latest full snapshot; visible Saving/Saved/Error status reports persistence state.
+- **Operation feedback**: backend commands return errors when platform reads/writes fail. `App.tsx` announces loading, success, and retryable failures through an ARIA live region and rolls optimistic controls back on failure.
 - **Dropdowns**: every native select renders through `Dropdown.tsx`. `.dropdown` owns common height, padding, typography, focus, and disabled states; context classes only control layout width and minimum width.
 - **About Panel** (`AboutPanel.tsx`): tray menu "About Display DJ" → emits `show-about` → frontend shows panel. Displays version (`get_about_info`), latest version (GitHub `releases/latest`), engine, platform+arch, build date (`BUILD_DATE`), homepage. Shows "Up to date" / "Update available" badge. macOS shows `xattr -cr` quarantine and Accessibility commands in selectable code blocks.
 

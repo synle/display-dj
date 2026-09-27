@@ -29,7 +29,14 @@ describe('AllMonitorsControl', () => {
 
   it('renders expand button', () => {
     render(<AllMonitorsControl {...defaultProps} />);
-    expect(screen.getByTitle('Show individual monitors')).toBeInTheDocument();
+    expect(screen.getByTitle('Show individual monitors')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  /** Differing monitor values stay operable while announcing mixed state. */
+  it('announces mixed aggregate values', () => {
+    render(<AllMonitorsControl {...defaultProps} brightness={70} brightnessMixed />);
+    expect(screen.getByText('Mixed')).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'Brightness for all monitors' })).toHaveValue('70');
   });
 
   it('calls onExpand when expand button is clicked', async () => {

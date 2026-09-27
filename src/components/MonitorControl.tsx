@@ -96,7 +96,9 @@ export default function MonitorControl({
         )}
       </div>
       <Slider
+        label={`Brightness for ${monitor.name || monitor.originalName}`}
         icon={monitor.isBuiltIn ? '\uD83D\uDCBB' : '\uD83D\uDDA5'}
+        iconLabel={`Toggle brightness for ${monitor.name || monitor.originalName}`}
         value={monitor.brightness}
         min={minBrightness}
         onChange={onBrightnessChange}
@@ -106,7 +108,9 @@ export default function MonitorControl({
       />
       {showContrast && monitor.contrast !== null && (
         <Slider
+          label={`Contrast for ${monitor.name || monitor.originalName}`}
           icon={'\u25D0'}
+          iconLabel={`Toggle contrast for ${monitor.name || monitor.originalName}`}
           value={monitor.contrast}
           onChange={onContrastChange}
           onIconClick={() => onContrastChange(monitor.contrast! > 0 ? 0 : 100)}

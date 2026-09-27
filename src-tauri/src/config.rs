@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::path::PathBuf;
+
+static PREFERENCES_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Absolute floor for brightness — never allow less than this regardless of user config.
 pub const ABSOLUTE_MIN_BRIGHTNESS: u32 = 5;
@@ -502,6 +505,14 @@ impl Preferences {
             .min_brightness
             .clamp(ABSOLUTE_MIN_BRIGHTNESS, ABSOLUTE_MAX_MIN_BRIGHTNESS);
         self.tiling.sanitize();
+        self.night_mode_schedule.night_brightness = self
+            .night_mode_schedule
+            .night_brightness
+            .clamp(ABSOLUTE_MIN_BRIGHTNESS, 100);
+        self.night_mode_schedule.day_brightness = self
+            .night_mode_schedule
+            .day_brightness
+            .clamp(ABSOLUTE_MIN_BRIGHTNESS, 100);
     }
 }
 
@@ -675,7 +686,10 @@ pub fn write_debug_log(state: &crate::AppState, message: &str) {
                 let keep = content.len() * 80 / 100;
                 let trim_at = content.len() - keep;
                 // Find the next newline after the trim point to avoid splitting a line
-                let start = content[trim_at..].find('\n').map(|i| trim_at + i + 1).unwrap_or(trim_at);
+                let start = content[trim_at..]
+                    .find('\n')
+                    .map(|i| trim_at + i + 1)
+                    .unwrap_or(trim_at);
                 std::fs::write(&path, &content[start..]).ok();
             }
         }
@@ -724,16 +738,46 @@ fn preferences_path() -> PathBuf {
     config_dir().join("preferences.json")
 }
 
-/// Loads preferences from disk, falling back to defaults on missing/malformed JSON.
+/// Loads preferences from disk, quarantining malformed JSON before using defaults.
 /// Runs the legacy monitor-configs migration if needed.
 pub fn load_preferences() -> Preferences {
     let path = preferences_path();
     let mut prefs = match std::fs::read_to_string(&path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-        Err(_) => {
+        Ok(content) => match serde_json::from_str(&content) {
+            Ok(preferences) => preferences,
+            Err(error) => {
+                let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S_%3f");
+                let invalid_path =
+                    config_dir().join(format!("preferences.{}.invalid.json", timestamp));
+                if let Err(rename_error) = std::fs::rename(&path, &invalid_path) {
+                    log::error!(
+                        "failed to quarantine malformed preferences {}: {}",
+                        path.display(),
+                        rename_error
+                    );
+                } else {
+                    log::error!(
+                        "quarantined malformed preferences as {}: {}",
+                        invalid_path.display(),
+                        error
+                    );
+                }
+                load_preferences_backup().unwrap_or_else(|| {
+                    log::error!("no valid preferences backup available; using defaults");
+                    Preferences::default()
+                })
+            }
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             let prefs = Preferences::default();
-            save_preferences_to_disk(&prefs);
+            if let Err(save_error) = save_preferences_to_disk(&prefs) {
+                log::error!("failed to create default preferences: {}", save_error);
+            }
             prefs
+        }
+        Err(error) => {
+            log::error!("failed to read preferences {}: {}", path.display(), error);
+            Preferences::default()
         }
     };
     migrate_monitor_configs_if_needed(&mut prefs);
@@ -744,12 +788,116 @@ pub fn load_preferences() -> Preferences {
     prefs
 }
 
-/// Serializes preferences to pretty JSON and writes to disk.
-pub fn save_preferences_to_disk(prefs: &Preferences) {
-    let path = preferences_path();
-    if let Ok(json) = serde_json::to_string_pretty(prefs) {
-        std::fs::write(path, json).ok();
+/// Loads the last atomically written preferences backup after primary corruption.
+fn load_preferences_backup() -> Option<Preferences> {
+    let backup_path = config_dir().join("preferences.backup.json");
+    let content = std::fs::read_to_string(&backup_path).ok()?;
+    match serde_json::from_str(&content) {
+        Ok(preferences) => {
+            log::warn!(
+                "restored preferences from backup {}",
+                backup_path.display()
+            );
+            Some(preferences)
+        }
+        Err(error) => {
+            log::error!(
+                "preferences backup {} is malformed: {}",
+                backup_path.display(),
+                error
+            );
+            None
+        }
     }
+}
+
+/// Atomically persists preferences and a known-good backup.
+pub fn save_preferences_to_disk(prefs: &Preferences) -> Result<(), String> {
+    let _guard = PREFERENCES_WRITE_LOCK
+        .lock()
+        .map_err(|_| "preferences write lock poisoned".to_string())?;
+    let path = preferences_path();
+    let temp_path = path.with_extension("json.tmp");
+    let backup_path = path.with_file_name("preferences.backup.json");
+    let backup_temp_path = path.with_file_name("preferences.backup.json.tmp");
+    let json = serde_json::to_vec_pretty(prefs)
+        .map_err(|error| format!("failed to serialize preferences: {}", error))?;
+
+    write_synced_file(&temp_path, &json)?;
+    write_synced_file(&backup_temp_path, &json)?;
+    replace_file(&backup_temp_path, &backup_path)?;
+    replace_file(&temp_path, &path)?;
+    sync_parent_directory(&path)?;
+    Ok(())
+}
+
+/// Writes bytes to a fresh or truncated file and flushes them to stable storage.
+fn write_synced_file(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    let mut file = std::fs::File::create(path)
+        .map_err(|error| format!("failed to create {}: {}", path.display(), error))?;
+    file.write_all(bytes)
+        .map_err(|error| format!("failed to write {}: {}", path.display(), error))?;
+    file.sync_all()
+        .map_err(|error| format!("failed to sync {}: {}", path.display(), error))
+}
+
+/// Replaces the destination atomically on each supported platform.
+#[cfg(not(target_os = "windows"))]
+fn replace_file(source: &std::path::Path, destination: &std::path::Path) -> Result<(), String> {
+    std::fs::rename(source, destination).map_err(|error| {
+        format!(
+            "failed to replace {} with {}: {}",
+            destination.display(),
+            source.display(),
+            error
+        )
+    })
+}
+
+/// Replaces the destination atomically through Win32 MoveFileExW.
+#[cfg(target_os = "windows")]
+fn replace_file(source: &std::path::Path, destination: &std::path::Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    let source_wide = source
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let destination_wide = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    unsafe {
+        MoveFileExW(
+            PCWSTR(source_wide.as_ptr()),
+            PCWSTR(destination_wide.as_ptr()),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    }
+    .map_err(|error| format!("failed to replace {}: {}", destination.display(), error))
+}
+
+/// Syncs the containing directory where the platform supports directory handles.
+#[cfg(not(target_os = "windows"))]
+fn sync_parent_directory(path: &std::path::Path) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
+    std::fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("failed to sync {}: {}", parent.display(), error))
+}
+
+/// Windows replacement uses MOVEFILE_WRITE_THROUGH, so no directory sync follows.
+#[cfg(target_os = "windows")]
+fn sync_parent_directory(_path: &std::path::Path) -> Result<(), String> {
+    Ok(())
 }
 
 /// One-time migration: reads old `monitor-configs.json`, converts entries to
@@ -797,7 +945,10 @@ fn migrate_monitor_configs_if_needed(prefs: &mut Preferences) {
         });
     }
 
-    save_preferences_to_disk(prefs);
+    if let Err(error) = save_preferences_to_disk(prefs) {
+        log::error!("failed to persist monitor config migration: {}", error);
+        return;
+    }
 
     // Rename old file so migration doesn't re-run
     let migrated_path = config_dir().join("monitor-configs.migrated.json");
@@ -822,11 +973,13 @@ fn migrate_expose_grid_if_needed(prefs: &mut Preferences) {
     prefs.tiling.expose_columns = dim;
     prefs.tiling.expose_rows = dim;
     prefs.tiling.expose_max_windows = 0; // clear legacy field
-    save_preferences_to_disk(prefs);
+    if let Err(error) = save_preferences_to_disk(prefs) {
+        log::error!("failed to persist expose grid migration: {}", error);
+    }
 }
 
 /// Backs up the current preferences file and resets to defaults.
-pub fn reset_to_defaults() {
+pub fn reset_to_defaults() -> Result<(), String> {
     let now = chrono::Local::now().format("%Y%m%d_%H%M%S");
 
     // Backup and reset preferences
@@ -835,7 +988,7 @@ pub fn reset_to_defaults() {
         let backup = config_dir().join(format!("preferences.bak_{}.json", now));
         std::fs::copy(&prefs_path, &backup).ok();
     }
-    save_preferences_to_disk(&Preferences::default());
+    save_preferences_to_disk(&Preferences::default())
 }
 
 // -- Tauri commands --
@@ -910,11 +1063,6 @@ pub async fn save_preferences(
     // Keep the AppState-less tee gate in lock-step with the saved preference
     // so toggling debug logging in Settings takes effect immediately for
     // `log::info!` calls in `core/*` (which can't see `AppState`).
-    DEBUG_LOG_ENABLED.store(
-        preferences.debug_logging,
-        std::sync::atomic::Ordering::Relaxed,
-    );
-
     // Save to disk and update in-memory state first so the UI isn't blocked
     // even if autostart hangs
     let old_launch_at_login = state
@@ -923,18 +1071,26 @@ pub async fn save_preferences(
         .map(|p| p.launch_at_login)
         .unwrap_or(false);
 
-    save_preferences_to_disk(&preferences);
+    save_preferences_to_disk(&preferences)?;
     log::info!("save_preferences: written to disk");
 
     let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
     *prefs = preferences.clone();
     drop(prefs); // release lock before autostart call
     log::info!("save_preferences: in-memory state updated");
+    DEBUG_LOG_ENABLED.store(
+        preferences.debug_logging,
+        std::sync::atomic::Ordering::Relaxed,
+    );
 
     // Sync autostart with OS only when the value actually changed
     // (autostart.enable/disable can hang on some platforms)
     if preferences.launch_at_login != old_launch_at_login {
-        log::info!("save_preferences: autostart changed {} -> {}, syncing", old_launch_at_login, preferences.launch_at_login);
+        log::info!(
+            "save_preferences: autostart changed {} -> {}, syncing",
+            old_launch_at_login,
+            preferences.launch_at_login
+        );
         use tauri_plugin_autostart::ManagerExt;
         let autostart = app.autolaunch();
         let result = if preferences.launch_at_login {
@@ -961,7 +1117,7 @@ pub fn open_preferences_file() -> Result<(), String> {
     let path = preferences_path();
     // Ensure the file exists before trying to open it
     if !path.exists() {
-        save_preferences_to_disk(&Preferences::default());
+        save_preferences_to_disk(&Preferences::default())?;
     }
     open::that(path).map_err(|e| e.to_string())
 }
@@ -986,27 +1142,33 @@ pub fn open_app_folder() -> Result<(), String> {
 }
 
 /// Set debug_logging in preferences and persist to disk. Used by tray Debug submenu.
-pub fn set_debug_logging(state: &crate::AppState, enabled: bool) {
+pub fn set_debug_logging(state: &crate::AppState, enabled: bool) -> Result<(), String> {
     if let Ok(mut prefs) = state.preferences.lock() {
         prefs.debug_logging = enabled;
-        save_preferences_to_disk(&prefs);
+        save_preferences_to_disk(&prefs)?;
+        return Ok(());
     }
+    Err("preferences lock poisoned".into())
 }
 
 /// Set tiling.enabled in preferences and persist to disk. Used by tray Tiling submenu.
-pub fn set_tiling_enabled(state: &crate::AppState, enabled: bool) {
+pub fn set_tiling_enabled(state: &crate::AppState, enabled: bool) -> Result<(), String> {
     if let Ok(mut prefs) = state.preferences.lock() {
         prefs.tiling.enabled = enabled;
-        save_preferences_to_disk(&prefs);
+        save_preferences_to_disk(&prefs)?;
+        return Ok(());
     }
+    Err("preferences lock poisoned".into())
 }
 
 /// Set tiling.expose_enabled in preferences and persist to disk. Used by tray Exposé submenu.
-pub fn set_expose_enabled(state: &crate::AppState, enabled: bool) {
+pub fn set_expose_enabled(state: &crate::AppState, enabled: bool) -> Result<(), String> {
     if let Ok(mut prefs) = state.preferences.lock() {
         prefs.tiling.expose_enabled = enabled;
-        save_preferences_to_disk(&prefs);
+        save_preferences_to_disk(&prefs)?;
+        return Ok(());
     }
+    Err("preferences lock poisoned".into())
 }
 
 /// Returns the app version string with architecture suffix (e.g. "5.0.0 (arm64)").
@@ -1053,6 +1215,110 @@ pub fn get_about_info() -> std::collections::HashMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Runs a config test against an isolated process-wide config directory.
+    fn with_temp_config_dir(test: impl FnOnce(&std::path::Path)) {
+        let _guard = TEST_CONFIG_DIR_LOCK.lock().unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        std::env::set_var("DISPLAY_DJ_CONFIG_DIR", directory.path());
+        test(directory.path());
+        std::env::remove_var("DISPLAY_DJ_CONFIG_DIR");
+    }
+
+    /// Atomic persistence writes readable primary and backup copies.
+    #[test]
+    fn atomic_preferences_save_roundtrips_primary_and_backup() {
+        with_temp_config_dir(|directory| {
+            let mut preferences = Preferences::default();
+            preferences.min_brightness = 37;
+
+            save_preferences_to_disk(&preferences).unwrap();
+
+            let primary: Preferences = serde_json::from_str(
+                &std::fs::read_to_string(directory.join("preferences.json")).unwrap(),
+            )
+            .unwrap();
+            let backup: Preferences = serde_json::from_str(
+                &std::fs::read_to_string(directory.join("preferences.backup.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(primary.min_brightness, 37);
+            assert_eq!(backup.min_brightness, 37);
+        });
+    }
+
+    /// Malformed preferences move aside instead of being overwritten by defaults.
+    #[test]
+    fn malformed_preferences_are_quarantined() {
+        with_temp_config_dir(|directory| {
+            std::fs::write(directory.join("preferences.json"), "{not-json").unwrap();
+
+            let preferences = load_preferences();
+
+            assert_eq!(
+                preferences.min_brightness,
+                Preferences::default().min_brightness
+            );
+            assert!(!directory.join("preferences.json").exists());
+            let invalid_files = std::fs::read_dir(directory)
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .ends_with(".invalid.json")
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(invalid_files.len(), 1);
+            assert_eq!(
+                std::fs::read_to_string(invalid_files[0].path()).unwrap(),
+                "{not-json"
+            );
+        });
+    }
+
+    /// A valid backup recovers user settings after primary-file corruption.
+    #[test]
+    fn malformed_preferences_restore_known_good_backup() {
+        with_temp_config_dir(|directory| {
+            let mut expected = Preferences::default();
+            expected.min_brightness = 37;
+            save_preferences_to_disk(&expected).unwrap();
+            std::fs::write(directory.join("preferences.json"), "{not-json").unwrap();
+
+            let preferences = load_preferences();
+
+            assert_eq!(preferences.min_brightness, 37);
+            assert!(std::fs::read_dir(directory)
+                .unwrap()
+                .filter_map(Result::ok)
+                .any(|entry| entry
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".invalid.json")));
+        });
+    }
+
+    /// A failed temp-file write leaves the previous primary preferences intact.
+    #[test]
+    fn failed_preferences_save_preserves_existing_file() {
+        with_temp_config_dir(|directory| {
+            let original = Preferences::default();
+            save_preferences_to_disk(&original).unwrap();
+            std::fs::create_dir(directory.join("preferences.json.tmp")).unwrap();
+            let mut replacement = Preferences::default();
+            replacement.min_brightness = 77;
+
+            assert!(save_preferences_to_disk(&replacement).is_err());
+
+            let persisted: Preferences = serde_json::from_str(
+                &std::fs::read_to_string(directory.join("preferences.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(persisted.min_brightness, original.min_brightness);
+        });
+    }
 
     /// Defaults expose the expected base controls and conflict-free shortcut set.
     #[test]
@@ -1104,10 +1370,16 @@ mod tests {
         let mut prefs = Preferences::default();
 
         prefs.min_brightness = 150;
-        assert_eq!(prefs.effective_min_brightness(), ABSOLUTE_MAX_MIN_BRIGHTNESS);
+        assert_eq!(
+            prefs.effective_min_brightness(),
+            ABSOLUTE_MAX_MIN_BRIGHTNESS
+        );
 
         prefs.min_brightness = u32::MAX;
-        assert_eq!(prefs.effective_min_brightness(), ABSOLUTE_MAX_MIN_BRIGHTNESS);
+        assert_eq!(
+            prefs.effective_min_brightness(),
+            ABSOLUTE_MAX_MIN_BRIGHTNESS
+        );
     }
 
     /// Regression: the exact panic the ceiling exists to prevent.
@@ -1178,7 +1450,11 @@ mod tests {
     #[test]
     fn test_default_keybindings_keys() {
         let prefs = Preferences::default();
-        let keys: Vec<&str> = prefs.key_bindings.iter().map(|kb| kb.key.as_str()).collect();
+        let keys: Vec<&str> = prefs
+            .key_bindings
+            .iter()
+            .map(|kb| kb.key.as_str())
+            .collect();
         assert_eq!(keys[0], "Shift+Escape");
         assert_eq!(keys[1], "Shift+F1");
         assert_eq!(keys[7], "Shift+F11");
@@ -1340,7 +1616,10 @@ mod tests {
         let prefs = Preferences::default();
         let json = serde_json::to_string_pretty(&prefs).unwrap();
         let deserialized: Preferences = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.show_individual_displays, prefs.show_individual_displays);
+        assert_eq!(
+            deserialized.show_individual_displays,
+            prefs.show_individual_displays
+        );
         assert_eq!(deserialized.min_brightness, prefs.min_brightness);
         assert_eq!(deserialized.key_bindings.len(), prefs.key_bindings.len());
     }
@@ -1766,8 +2045,16 @@ mod tests {
         prefs.layout_presets.push(LayoutPreset {
             name: "Coding".into(),
             rules: vec![
-                LayoutRule { app_match: "Chrome".into(), layout: "leftHalf".into(), display_index: None },
-                LayoutRule { app_match: "VS Code".into(), layout: "rightHalf".into(), display_index: Some(0) },
+                LayoutRule {
+                    app_match: "Chrome".into(),
+                    layout: "leftHalf".into(),
+                    display_index: None,
+                },
+                LayoutRule {
+                    app_match: "VS Code".into(),
+                    layout: "rightHalf".into(),
+                    display_index: Some(0),
+                },
             ],
         });
         let json = serde_json::to_string_pretty(&prefs).unwrap();
@@ -1817,7 +2104,10 @@ mod tests {
         let restored: Preferences = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.night_mode_schedule.night_commands.len(), 2);
         assert_eq!(restored.night_mode_schedule.day_commands.len(), 3);
-        assert_eq!(restored.night_mode_schedule.day_commands[2], "command/changeVolume/50");
+        assert_eq!(
+            restored.night_mode_schedule.day_commands[2],
+            "command/changeVolume/50"
+        );
     }
 
     #[test]
@@ -1871,7 +2161,10 @@ mod tests {
         assert!(json.contains("currentWallpaperPath"));
         let restored: WallpaperPreferences = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.fit, "center");
-        assert_eq!(restored.current_wallpaper_path.as_deref(), Some("/tmp/wallpaper.jpg"));
+        assert_eq!(
+            restored.current_wallpaper_path.as_deref(),
+            Some("/tmp/wallpaper.jpg")
+        );
     }
 
     /// Verifies old configs missing the wallpaper field get defaults.

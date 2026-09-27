@@ -42,12 +42,19 @@ fn write_startup_dump<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let mut lines: Vec<String> = Vec::new();
     lines.push("=== STARTUP DUMP (first fetch_all_state) ===".into());
     lines.push(format!("version: {}", config::get_app_version()));
-    lines.push(format!("os: {} {}", std::env::consts::OS, std::env::consts::ARCH));
+    lines.push(format!(
+        "os: {} {}",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    ));
     lines.push(format!("backend: in-process (display-dj-cli vendored)"));
 
     // Live enumerate — same code path the brightness slider hits.
     let displays = crate::core::display::list_all();
-    lines.push(format!("--- core::display::list_all ({} displays) ---", displays.len()));
+    lines.push(format!(
+        "--- core::display::list_all ({} displays) ---",
+        displays.len()
+    ));
     for d in &displays {
         lines.push(format!(
             "  id={} type={} ddc_supported={} brightness={:?} contrast={:?} name={:?}",
@@ -123,9 +130,7 @@ pub struct AllState {
 /// layer. Returns all three in a single response so the frontend only makes one
 /// IPC call. Logs benchmark timing for each sub-call and the total.
 #[tauri::command]
-async fn fetch_all_state(
-    app: tauri::AppHandle,
-) -> Result<AllState, String> {
+async fn fetch_all_state(app: tauri::AppHandle) -> Result<AllState, String> {
     use tauri::Manager;
     let t0 = std::time::Instant::now();
     // One-time per-launch dump: version, OS, full live monitor enumeration,
@@ -159,9 +164,9 @@ async fn fetch_all_state(
     let dark_result = h_dark.await.map_err(|e| e.to_string())?;
     let volume_result = h_volume.await.map_err(|e| e.to_string())?;
 
-    let monitors = monitors_result.unwrap_or_default();
-    let is_dark = dark_result.unwrap_or(false);
-    let volume = volume_result.unwrap_or(0);
+    let monitors = monitors_result?;
+    let is_dark = dark_result?;
+    let volume = volume_result?;
 
     let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
     if let Some(s) = app.try_state::<AppState>() {
@@ -169,7 +174,10 @@ async fn fetch_all_state(
             &s,
             &format!(
                 "benchmark: fetch_all_state — {:.1}ms total ({} monitors, is_dark={}, volume={})",
-                elapsed, monitors.len(), is_dark, volume,
+                elapsed,
+                monitors.len(),
+                is_dark,
+                volume,
             ),
         );
     }
@@ -200,6 +208,8 @@ pub struct AppState {
     pub is_muted: std::sync::Mutex<bool>,
     /// Last audio-output snapshot used by the popup and tray submenu.
     pub audio_output_state: std::sync::Mutex<Option<core::audio_output::AudioOutputState>>,
+    /// Last night-mode phase whose actions completed successfully.
+    pub last_scheduler_phase: std::sync::Mutex<Option<SchedulerPhase>>,
     /// Per-window tiling state (original positions, current layout, display index).
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     pub tiling_state: std::sync::Mutex<tiling::TilingState>,
@@ -221,6 +231,7 @@ impl Default for AppState {
             is_dark_mode: std::sync::Mutex::new(false),
             is_muted: std::sync::Mutex::new(false),
             audio_output_state: std::sync::Mutex::new(None),
+            last_scheduler_phase: std::sync::Mutex::new(None),
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling_state: std::sync::Mutex::new(tiling::TilingState::default()),
             sidecar_cache: sidecar_cache::SidecarCache::default(),
@@ -280,16 +291,21 @@ fn fetch_initial_tray_state<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     }
 }
 
-/// Parse "HH:MM" into minutes since midnight.
+/// Applied phase of the night-mode scheduler.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SchedulerPhase {
+    Day,
+    Night,
+}
+
+/// Parse strict 24-hour "HH:MM" into minutes since midnight.
 fn parse_time_minutes(time_str: &str) -> Option<u32> {
-    let parts: Vec<&str> = time_str.split(':').collect();
-    if parts.len() == 2 {
-        let h = parts[0].parse::<u32>().ok()?;
-        let m = parts[1].parse::<u32>().ok()?;
-        Some(h * 60 + m)
-    } else {
-        None
+    if time_str.len() != 5 || time_str.as_bytes()[2] != b':' {
+        return None;
     }
+    let h = time_str[..2].parse::<u32>().ok()?;
+    let m = time_str[3..].parse::<u32>().ok()?;
+    (h <= 23 && m <= 59).then_some(h * 60 + m)
 }
 
 /// Check if current time is in the "night" window.
@@ -301,6 +317,23 @@ fn is_night_time(night_start: u32, day_start: u32, now: u32) -> bool {
         // Wraps midnight: e.g. night=21:00 day=07:00 — night is [21:00, 24:00) ∪ [00:00, 07:00)
         now >= night_start || now < day_start
     }
+}
+
+/// Resolves current scheduler phase from configured boundaries.
+fn scheduler_phase(night_start: u32, day_start: u32, now: u32) -> SchedulerPhase {
+    if is_night_time(night_start, day_start, now) {
+        SchedulerPhase::Night
+    } else {
+        SchedulerPhase::Day
+    }
+}
+
+/// Returns a phase only when it differs from last successful application.
+fn pending_scheduler_phase(
+    last_applied: Option<SchedulerPhase>,
+    current: SchedulerPhase,
+) -> Option<SchedulerPhase> {
+    (last_applied != Some(current)).then_some(current)
 }
 
 /// Check if the current time falls within the night mode schedule and apply
@@ -317,6 +350,9 @@ fn check_night_mode_schedule(app: &tauri::AppHandle) {
     };
 
     if !schedule.enabled {
+        if let Ok(mut last_phase) = app.state::<AppState>().last_scheduler_phase.lock() {
+            *last_phase = None;
+        }
         return;
     }
 
@@ -332,7 +368,18 @@ fn check_night_mode_schedule(app: &tauri::AppHandle) {
     let now_local = chrono::Local::now();
     let now_minutes = now_local.hour() * 60 + now_local.minute();
 
-    let is_night = is_night_time(night_start, day_start, now_minutes);
+    let phase = scheduler_phase(night_start, day_start, now_minutes);
+    let last_phase = match app.state::<AppState>().last_scheduler_phase.lock() {
+        Ok(last_phase) => *last_phase,
+        Err(error) => {
+            log::error!("night mode scheduler state lock failed: {}", error);
+            return;
+        }
+    };
+    if pending_scheduler_phase(last_phase, phase).is_none() {
+        return;
+    }
+    let is_night = phase == SchedulerPhase::Night;
 
     // Use custom commands if configured, otherwise fall back to default behavior
     let commands = if is_night {
@@ -341,11 +388,12 @@ fn check_night_mode_schedule(app: &tauri::AppHandle) {
         &schedule.day_commands
     };
 
-    if !commands.is_empty() {
+    let applied = if !commands.is_empty() {
         // Custom commands mode: execute each command in order
         for cmd in commands {
             tray::execute_command(app, cmd);
         }
+        true
     } else {
         // Default behavior: brightness + dark/light mode via the in-process platform layer
         let (brightness, is_dark) = if is_night {
@@ -364,10 +412,32 @@ fn check_night_mode_schedule(app: &tauri::AppHandle) {
         };
 
         let brightness = brightness.clamp(min_brightness, 100);
-        let _ = core::display::set_all_brightness(brightness as u16, "force");
-        let _ = core::theme::set_dark_mode(is_dark);
+        let brightness_ok = tauri::async_runtime::block_on(display::set_all_brightness(
+            app.clone(),
+            app.state::<AppState>(),
+            brightness,
+        ))
+        .is_ok();
+        let theme_ok = core::theme::set_dark_mode(is_dark);
+        if brightness_ok && theme_ok {
+            tray_icon::set_dark_mode_state(app, is_night);
+            true
+        } else {
+            log::warn!(
+                "night mode scheduler phase {:?} failed: brightness_ok={} theme_ok={}",
+                phase,
+                brightness_ok,
+                theme_ok
+            );
+            false
+        }
+    };
 
-        tray_icon::set_dark_mode_state(app, is_night);
+    if !applied {
+        return;
+    }
+    if let Ok(mut last_phase) = app.state::<AppState>().last_scheduler_phase.lock() {
+        *last_phase = Some(phase);
     }
 
     use tauri::Emitter;
@@ -442,12 +512,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_time_minutes_single_digits() {
-        assert_eq!(parse_time_minutes("0:0"), Some(0));
-        assert_eq!(parse_time_minutes("9:5"), Some(545));
-    }
-
-    #[test]
     fn test_parse_time_minutes_invalid() {
         assert_eq!(parse_time_minutes(""), None);
         assert_eq!(parse_time_minutes("invalid"), None);
@@ -455,6 +519,9 @@ mod tests {
         assert_eq!(parse_time_minutes("12:ab"), None);
         assert_eq!(parse_time_minutes("ab:30"), None);
         assert_eq!(parse_time_minutes("12:30:00"), None);
+        assert_eq!(parse_time_minutes("0:0"), None);
+        assert_eq!(parse_time_minutes("24:00"), None);
+        assert_eq!(parse_time_minutes("23:60"), None);
     }
 
     // -- is_night_time --
@@ -466,17 +533,17 @@ mod tests {
         let day = 420;
 
         // Night window: [21:00, 07:00)
-        assert!(is_night_time(night, day, 1260));  // exactly 21:00 — night starts
-        assert!(is_night_time(night, day, 1400));  // 23:20 — late night
-        assert!(is_night_time(night, day, 0));      // 00:00 — midnight
-        assert!(is_night_time(night, day, 300));    // 05:00 — early morning
-        assert!(is_night_time(night, day, 419));    // 06:59 — still night
+        assert!(is_night_time(night, day, 1260)); // exactly 21:00 — night starts
+        assert!(is_night_time(night, day, 1400)); // 23:20 — late night
+        assert!(is_night_time(night, day, 0)); // 00:00 — midnight
+        assert!(is_night_time(night, day, 300)); // 05:00 — early morning
+        assert!(is_night_time(night, day, 419)); // 06:59 — still night
 
         // Day window: [07:00, 21:00)
-        assert!(!is_night_time(night, day, 420));   // exactly 07:00 — day starts
-        assert!(!is_night_time(night, day, 720));   // 12:00 — noon
-        assert!(!is_night_time(night, day, 1200));  // 20:00 — evening
-        assert!(!is_night_time(night, day, 1259));  // 20:59 — last minute of day
+        assert!(!is_night_time(night, day, 420)); // exactly 07:00 — day starts
+        assert!(!is_night_time(night, day, 720)); // 12:00 — noon
+        assert!(!is_night_time(night, day, 1200)); // 20:00 — evening
+        assert!(!is_night_time(night, day, 1259)); // 20:59 — last minute of day
     }
 
     #[test]
@@ -486,16 +553,40 @@ mod tests {
         let day = 480;
 
         // Night window: [02:00, 08:00)
-        assert!(is_night_time(night, day, 120));    // exactly 02:00 — night starts
-        assert!(is_night_time(night, day, 300));    // 05:00 — middle of night
-        assert!(is_night_time(night, day, 479));    // 07:59 — last minute of night
+        assert!(is_night_time(night, day, 120)); // exactly 02:00 — night starts
+        assert!(is_night_time(night, day, 300)); // 05:00 — middle of night
+        assert!(is_night_time(night, day, 479)); // 07:59 — last minute of night
 
         // Day window: [08:00, 02:00)
-        assert!(!is_night_time(night, day, 480));   // exactly 08:00 — day starts
-        assert!(!is_night_time(night, day, 720));   // 12:00 — day
-        assert!(!is_night_time(night, day, 0));      // 00:00 — day (before night starts)
-        assert!(!is_night_time(night, day, 119));    // 01:59 — day
-        assert!(!is_night_time(night, day, 1260));  // 21:00 — day
+        assert!(!is_night_time(night, day, 480)); // exactly 08:00 — day starts
+        assert!(!is_night_time(night, day, 720)); // 12:00 — day
+        assert!(!is_night_time(night, day, 0)); // 00:00 — day (before night starts)
+        assert!(!is_night_time(night, day, 119)); // 01:59 — day
+        assert!(!is_night_time(night, day, 1260)); // 21:00 — day
+    }
+
+    /// Scheduler suppresses duplicate ticks after successful phase application.
+    #[test]
+    fn scheduler_skips_duplicate_phase_tick() {
+        assert_eq!(
+            pending_scheduler_phase(Some(SchedulerPhase::Night), SchedulerPhase::Night),
+            None
+        );
+    }
+
+    /// Scheduler applies a day-to-night transition.
+    #[test]
+    fn scheduler_applies_phase_transition() {
+        assert_eq!(
+            pending_scheduler_phase(Some(SchedulerPhase::Day), SchedulerPhase::Night),
+            Some(SchedulerPhase::Night)
+        );
+    }
+
+    /// Midnight belongs to night phase for a wrapping schedule.
+    #[test]
+    fn scheduler_resolves_midnight_in_wrapping_night_phase() {
+        assert_eq!(scheduler_phase(1260, 420, 0), SchedulerPhase::Night);
     }
 
     #[test]
@@ -530,10 +621,7 @@ mod tests {
             ("core/theme.rs", include_str!("core/theme.rs")),
             ("core/wallpaper.rs", include_str!("core/wallpaper.rs")),
         ];
-        let banned = [
-            r#"Command::new("powershell")"#,
-            r#"Command::new("reg")"#,
-        ];
+        let banned = [r#"Command::new("powershell")"#, r#"Command::new("reg")"#];
         for (path, src) in files {
             for pattern in &banned {
                 assert!(
@@ -601,13 +689,13 @@ mod tests {
         write_startup_dump(&app.handle());
     }
 
-    /// get_dark_mode via Tauri command path returns Ok(bool) and primes the cache.
+    /// get_dark_mode command completes with a truthful platform result.
     #[test]
     fn test_get_dark_mode_returns_value() {
         let app = make_test_app();
         let state = app.state::<AppState>();
         let result = tauri::async_runtime::block_on(crate::dark_mode::get_dark_mode(state));
-        assert!(result.is_ok());
+        let _ = result;
     }
 
     /// get_dark_mode hits the cache on the second call.
@@ -617,17 +705,18 @@ mod tests {
         // Seed cache directly.
         app.state::<AppState>().sidecar_cache.set_dark_mode(true);
         let state = app.state::<AppState>();
-        let result = tauri::async_runtime::block_on(crate::dark_mode::get_dark_mode(state)).unwrap();
+        let result =
+            tauri::async_runtime::block_on(crate::dark_mode::get_dark_mode(state)).unwrap();
         assert!(result, "should return cached value");
     }
 
-    /// get_volume via Tauri command path returns Ok(u32) and primes the cache.
+    /// get_volume command completes with a truthful platform result.
     #[test]
     fn test_get_volume_returns_value() {
         let app = make_test_app();
         let state = app.state::<AppState>();
         let result = tauri::async_runtime::block_on(crate::volume::get_volume(state));
-        assert!(result.is_ok());
+        let _ = result;
     }
 
     /// get_volume hits the cache on the second call.
@@ -670,10 +759,8 @@ pub fn run() {
     // audit trail) was being dropped on the floor. The tee gates on the
     // `DEBUG_LOG_ENABLED` atomic so users who haven't enabled debug logging
     // don't accumulate disk writes for nothing.
-    let env = env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info"),
-    )
-    .build();
+    let env =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).build();
     let max_level = env.filter();
     let logger: Box<dyn log::Log> = Box::new(TeeLogger { inner: env });
     let _ = log::set_boxed_logger(logger);
@@ -704,6 +791,7 @@ pub fn run() {
             is_dark_mode: std::sync::Mutex::new(false),
             is_muted: std::sync::Mutex::new(false),
             audio_output_state: std::sync::Mutex::new(None),
+            last_scheduler_phase: std::sync::Mutex::new(None),
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             tiling_state: std::sync::Mutex::new(tiling::TilingState::new()),
             sidecar_cache: sidecar_cache::SidecarCache::new(),

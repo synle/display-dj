@@ -16,6 +16,11 @@ import { AudioOutputState, Monitor, Preferences, Profile } from './types';
 
 const ABSOLUTE_MIN_BRIGHTNESS = 5;
 
+interface Feedback {
+  kind: 'status' | 'error';
+  message: string;
+}
+
 /** Root component: manages all app state (monitors, dark mode, volume, preferences)
  * and renders the main UI or settings panel. */
 function App() {
@@ -35,47 +40,33 @@ function App() {
   const [accessibilityTrusted, setAccessibilityTrusted] = useState(true);
   const [audioOutputState, setAudioOutputState] = useState<AudioOutputState | null>(null);
   const [updatingAudioOutputId, setUpdatingAudioOutputId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<Feedback>({
+    kind: 'status',
+    message: 'Loading controls...',
+  });
   const appRef = useRef<HTMLDivElement>(null);
   const audioOutputFetchInFlight = useRef(false);
   const audioOutputStateVersion = useRef(0);
   const showAccessibilityGate = isMac && !accessibilityTrusted;
   const mainViewVisible = !showAccessibilityGate && !aboutOpen && !settingsOpen;
 
-  /** Merges refetched monitors with the current state, preserving client-side
-   * brightness/contrast values. The client is the source of truth for these —
-   * reading them back from the backend can return stale values while DDC
-   * settles, which causes the slider to snap back to the pre-change value. */
-  const mergeMonitors = useCallback((fetched: Monitor[], prev: Monitor[]): Monitor[] => {
-    return fetched.map((m) => {
-      const existing = prev.find((p) => p.uid === m.uid);
-      if (!existing) return m;
-      return {
-        ...m,
-        brightness: existing.brightness,
-        // Only preserve contrast when both sides still report DDC capability
-        contrast:
-          m.contrast !== null && existing.contrast !== null ? existing.contrast : m.contrast,
-      };
-    });
-  }, []);
-
   /** Fetches the list of connected monitors from the backend. */
   const fetchMonitors = useCallback(async () => {
     try {
       const m = await invoke<Monitor[]>('get_monitors');
-      setMonitors((prev) => mergeMonitors(m, prev));
-    } catch (e) {
-      console.error('Failed to get monitors:', e);
+      setMonitors(m);
+    } catch {
+      setFeedback({ kind: 'error', message: 'Could not refresh monitors.' });
     }
-  }, [mergeMonitors]);
+  }, []);
 
   /** Fetches the current dark mode state from the backend. */
   const fetchDarkMode = useCallback(async () => {
     try {
       const dm = await invoke<boolean>('get_dark_mode');
       setDarkMode(dm);
-    } catch (e) {
-      console.error('Failed to get dark mode:', e);
+    } catch {
+      setFeedback({ kind: 'error', message: 'Could not refresh dark mode.' });
     }
   }, []);
 
@@ -84,8 +75,8 @@ function App() {
     try {
       const v = await invoke<number>('get_volume');
       setVolume(v);
-    } catch (e) {
-      console.error('Failed to get volume:', e);
+    } catch {
+      setFeedback({ kind: 'error', message: 'Could not refresh volume.' });
     }
   }, []);
 
@@ -99,8 +90,8 @@ function App() {
       if (requestVersion === audioOutputStateVersion.current) {
         setAudioOutputState(outputState);
       }
-    } catch (e) {
-      console.error('Failed to get audio output devices:', e);
+    } catch {
+      setFeedback({ kind: 'error', message: 'Could not load controls.' });
     } finally {
       audioOutputFetchInFlight.current = false;
     }
@@ -111,8 +102,8 @@ function App() {
     try {
       const active = await invoke<boolean>('get_keep_awake');
       setKeepAwake(active);
-    } catch (e) {
-      console.error('Failed to get keep awake:', e);
+    } catch {
+      setFeedback({ kind: 'error', message: 'Could not refresh Keep Awake.' });
     }
   }, []);
 
@@ -124,7 +115,7 @@ function App() {
       setShowContrast(prefs.showContrast ?? false);
       setProfiles(prefs.profiles || []);
     } catch {
-      // ignore
+      setFeedback({ kind: 'error', message: 'Could not load preferences.' });
     }
   }, []);
 
@@ -136,15 +127,14 @@ function App() {
         isDark: boolean;
         volume: number;
       }>('fetch_all_state');
-      setMonitors((prev) =>
-        prev.length === 0 ? state.monitors : mergeMonitors(state.monitors, prev),
-      );
+      setMonitors(state.monitors);
       setDarkMode(state.isDark);
       setVolume(state.volume);
-    } catch (e) {
-      console.error('Failed to fetch all state:', e);
+      setFeedback({ kind: 'status', message: '' });
+    } catch {
+      setFeedback({ kind: 'error', message: 'Could not load controls.' });
     }
-  }, [mergeMonitors]);
+  }, []);
 
   useEffect(() => {
     // Startup state fetches. False positive below: each fn is async and every
@@ -271,63 +261,69 @@ function App() {
     const observer = new ResizeObserver(() => {
       const height = el.scrollHeight;
       if (height > 0) {
-        win.setSize(new LogicalSize(400, height));
+        const availableHeight = window.screen.availHeight || window.innerHeight;
+        win.setSize(new LogicalSize(400, Math.min(height, availableHeight)));
       }
     });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
-  /** Tracked value for the "all monitors" brightness slider.
-   * Not derived from monitors to avoid jumpy recalculations on fetch. */
-  const [allBrightness, setAllBrightness] = useState(50);
-
-  /** Tracked value for the "all monitors" contrast slider. */
-  const [allContrast, setAllContrast] = useState(50);
-
   /** Sets brightness for all monitors with optimistic UI update. */
   const handleAllBrightness = async (value: number) => {
-    setAllBrightness(value);
-    setMonitors((prev) => prev.map((m) => ({ ...m, brightness: value })));
+    const previous = monitors;
+    setFeedback({ kind: 'status', message: 'Updating brightness...' });
+    setMonitors((prev) =>
+      prev.map((m) => (m.hidden || !m.supportsBrightness ? m : { ...m, brightness: value })),
+    );
     try {
       await invoke('set_all_brightness', { value });
-    } catch (e) {
-      console.error('Failed to set brightness:', e);
-      fetchMonitors();
+      setFeedback({ kind: 'status', message: 'Brightness updated.' });
+    } catch {
+      setMonitors(previous);
+      setFeedback({ kind: 'error', message: 'Could not update brightness.' });
     }
   };
 
   /** Sets brightness for a single monitor with optimistic UI update. */
   const handleMonitorBrightness = async (monitorId: string, uid: string, value: number) => {
+    const previous = monitors;
+    setFeedback({ kind: 'status', message: 'Updating brightness...' });
     setMonitors((prev) => prev.map((m) => (m.uid === uid ? { ...m, brightness: value } : m)));
     try {
       await invoke('set_brightness', { monitorId, value });
-    } catch (e) {
-      console.error('Failed to set brightness:', e);
-      fetchMonitors();
+      setFeedback({ kind: 'status', message: 'Brightness updated.' });
+    } catch {
+      setMonitors(previous);
+      setFeedback({ kind: 'error', message: 'Could not update brightness.' });
     }
   };
 
   /** Sets contrast for all monitors with optimistic UI update. */
   const handleAllContrast = async (value: number) => {
-    setAllContrast(value);
+    const previous = monitors;
+    setFeedback({ kind: 'status', message: 'Updating contrast...' });
     setMonitors((prev) => prev.map((m) => (m.contrast !== null ? { ...m, contrast: value } : m)));
     try {
       await invoke('set_all_contrast', { value });
-    } catch (e) {
-      console.error('Failed to set contrast:', e);
-      fetchMonitors();
+      setFeedback({ kind: 'status', message: 'Contrast updated.' });
+    } catch {
+      setMonitors(previous);
+      setFeedback({ kind: 'error', message: 'Could not update contrast.' });
     }
   };
 
   /** Sets contrast for a single monitor with optimistic UI update. */
   const handleMonitorContrast = async (monitorId: string, uid: string, value: number) => {
+    const previous = monitors;
+    setFeedback({ kind: 'status', message: 'Updating contrast...' });
     setMonitors((prev) => prev.map((m) => (m.uid === uid ? { ...m, contrast: value } : m)));
     try {
       await invoke('set_contrast', { monitorId, value });
-    } catch (e) {
-      console.error('Failed to set contrast:', e);
-      fetchMonitors();
+      setFeedback({ kind: 'status', message: 'Contrast updated.' });
+    } catch {
+      setMonitors(previous);
+      setFeedback({ kind: 'error', message: 'Could not update contrast.' });
     }
   };
 
@@ -336,8 +332,9 @@ function App() {
     try {
       await invoke('rename_monitor', { uid, name });
       setMonitors((prev) => prev.map((m) => (m.uid === uid ? { ...m, name } : m)));
-    } catch (e) {
-      console.error('Failed to rename monitor:', e);
+      setFeedback({ kind: 'status', message: 'Monitor renamed.' });
+    } catch {
+      setFeedback({ kind: 'error', message: 'Could not rename monitor.' });
     }
   };
 
@@ -363,28 +360,36 @@ function App() {
         next[swapIndex] = prev[index];
         return next;
       });
-    } catch (e) {
-      console.error('Failed to reorder monitors:', e);
+    } catch {
+      setFeedback({ kind: 'error', message: 'Could not reorder monitors.' });
     }
   };
 
   /** Toggles dark/light mode via the backend. */
   const handleDarkMode = async (enabled: boolean) => {
+    const previous = darkMode;
+    setDarkMode(enabled);
+    setFeedback({ kind: 'status', message: 'Updating appearance...' });
     try {
       await invoke('set_dark_mode', { enabled });
-      setDarkMode(enabled);
-    } catch (e) {
-      console.error('Failed to set dark mode:', e);
+      setFeedback({ kind: 'status', message: 'Appearance updated.' });
+    } catch {
+      setDarkMode(previous);
+      setFeedback({ kind: 'error', message: 'Could not update appearance.' });
     }
   };
 
   /** Sets the system volume via the backend. */
   const handleVolume = async (value: number) => {
+    const previous = volume;
+    setVolume(value);
+    setFeedback({ kind: 'status', message: 'Updating volume...' });
     try {
       await invoke('set_volume', { value });
-      setVolume(value);
-    } catch (e) {
-      console.error('Failed to set volume:', e);
+      setFeedback({ kind: 'status', message: 'Volume updated.' });
+    } catch {
+      setVolume(previous);
+      setFeedback({ kind: 'error', message: 'Could not update volume.' });
     }
   };
 
@@ -398,9 +403,9 @@ function App() {
       const outputState = await invoke<AudioOutputState>('set_audio_output_device', { id });
       setAudioOutputState(outputState);
       await fetchVolume();
-    } catch (e) {
+    } catch {
       setAudioOutputState(previousState);
-      console.error('Failed to set audio output device:', e);
+      setFeedback({ kind: 'error', message: 'Could not change speaker.' });
     } finally {
       setUpdatingAudioOutputId(null);
     }
@@ -420,8 +425,8 @@ function App() {
           ),
         };
       });
-    } catch (e) {
-      console.error('Failed to rename audio output device:', e);
+    } catch {
+      setFeedback({ kind: 'error', message: 'Could not rename speaker.' });
     }
   };
 
@@ -447,31 +452,35 @@ function App() {
         orderedIds: devices.map((device) => device.id),
       });
       setAudioOutputState(outputState);
-    } catch (e) {
+    } catch {
       setAudioOutputState(previousState);
-      console.error('Failed to reorder audio output devices:', e);
+      setFeedback({ kind: 'error', message: 'Could not reorder speakers.' });
     }
   };
 
   /** Toggles the keep-awake state (prevents system from sleeping). */
   const handleKeepAwake = async (enabled: boolean) => {
+    const previous = keepAwake;
+    setKeepAwake(enabled);
+    setFeedback({ kind: 'status', message: 'Updating Keep Awake...' });
     try {
       await invoke('set_keep_awake', { enabled });
-      setKeepAwake(enabled);
-    } catch (e) {
-      console.error('Failed to set keep awake:', e);
+      setFeedback({ kind: 'status', message: 'Keep Awake updated.' });
+    } catch {
+      setKeepAwake(previous);
+      setFeedback({ kind: 'error', message: 'Could not update Keep Awake.' });
     }
   };
 
   /** Applies a saved profile by index and refreshes all state. */
   const handleProfile = async (index: number) => {
+    setFeedback({ kind: 'status', message: 'Applying profile...' });
     try {
       await invoke('apply_profile', { index });
-      fetchMonitors();
-      fetchDarkMode();
-      fetchVolume();
-    } catch (e) {
-      console.error('Failed to apply profile:', e);
+      setFeedback({ kind: 'status', message: 'Profile applied.' });
+      await Promise.all([fetchMonitors(), fetchDarkMode(), fetchVolume()]);
+    } catch {
+      setFeedback({ kind: 'error', message: 'Could not apply profile.' });
     }
   };
 
@@ -482,9 +491,20 @@ function App() {
   // recovery loop a single round-trip.
   // Only show non-hidden monitors in the main UI
   const visibleMonitors = monitors.filter((m) => !m.hidden);
+  const brightnessMonitors = visibleMonitors.filter((m) => m.supportsBrightness);
+  const brightnessValues = brightnessMonitors.map((m) => m.brightness);
+  const allBrightness = brightnessValues.length
+    ? Math.round(brightnessValues.reduce((sum, value) => sum + value, 0) / brightnessValues.length)
+    : minBrightness;
+  const brightnessMixed = brightnessValues.some((value) => value !== brightnessValues[0]);
 
   // Whether any visible monitor supports contrast (used to show/hide the contrast slider)
-  const hasContrast = visibleMonitors.some((m) => m.contrast !== null);
+  const contrastValues = visibleMonitors.flatMap((m) => (m.contrast === null ? [] : [m.contrast]));
+  const hasContrast = contrastValues.length > 0;
+  const allContrast = hasContrast
+    ? Math.round(contrastValues.reduce((sum, value) => sum + value, 0) / contrastValues.length)
+    : 0;
+  const contrastMixed = contrastValues.some((value) => value !== contrastValues[0]);
 
   return (
     <div className='app' ref={appRef} data-theme={darkMode ? 'dark' : 'light'}>
@@ -493,6 +513,18 @@ function App() {
         onSettingsToggle={() => setSettingsOpen(!settingsOpen)}
         settingsOpen={settingsOpen}
       />
+
+      {feedback.message && (
+        <div
+          className={`status-message status-message-${feedback.kind}`}
+          role={feedback.kind === 'error' ? 'alert' : 'status'}
+          aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'}>
+          <span>{feedback.message}</span>
+          {feedback.message === 'Could not load controls.' && (
+            <button onClick={() => void fetchAllState()}>Retry</button>
+          )}
+        </div>
+      )}
 
       {showAccessibilityGate ? (
         <AccessibilityGate
@@ -519,8 +551,10 @@ function App() {
             (!monitorsExpanded ? (
               <AllMonitorsControl
                 brightness={allBrightness}
+                brightnessMixed={brightnessMixed}
                 onBrightnessChange={handleAllBrightness}
                 contrast={hasContrast ? allContrast : null}
+                contrastMixed={contrastMixed}
                 onContrastChange={handleAllContrast}
                 showContrast={showContrast}
                 monitorCount={visibleMonitors.length}
@@ -528,12 +562,14 @@ function App() {
                 onExpand={() => setMonitorsExpanded(true)}
               />
             ) : (
-              <div className='monitors-list'>
+              <div className='monitors-list' id='monitor-controls'>
                 <div className='section-label-row'>
                   <span className='section-label'>All Monitors ({visibleMonitors.length})</span>
                   <button
                     className='section-toggle'
                     onClick={() => setMonitorsExpanded(false)}
+                    aria-expanded='true'
+                    aria-controls='monitor-controls'
                     title='Show all monitors control'>
                     <span className='chevron expanded'>&#9662;</span>
                   </button>
