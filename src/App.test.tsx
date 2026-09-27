@@ -423,13 +423,10 @@ describe('App smoke test', () => {
   });
 
   it('handles backend errors gracefully without crashing', async () => {
-    mockInvoke.mockRejectedValue(new Error('backend unavailable'));
-    const { container } = render(<App />);
-    // App should still render even if all backend calls fail
-    await waitFor(() => {
-      expect(container.querySelector('.app')).toBeInTheDocument();
-    });
-    expect(screen.getByRole('alert')).toHaveTextContent('Could not load controls');
+    mockInvoke.mockRejectedValueOnce(new Error('backend unavailable'));
+    render(<App />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load controls');
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 

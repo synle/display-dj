@@ -2132,9 +2132,17 @@ mod tests {
     /// the directory is created on disk (used by open_app_folder).
     #[test]
     fn test_config_dir_exists_and_named_correctly() {
+        let _lock = TEST_CONFIG_DIR_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let previous = std::env::var("DISPLAY_DJ_CONFIG_DIR").ok();
+        std::env::remove_var("DISPLAY_DJ_CONFIG_DIR");
         let dir = super::config_dir();
         assert!(dir.ends_with("display-dj"));
         assert!(dir.exists(), "config_dir() should create the directory");
+        if let Some(value) = previous {
+            std::env::set_var("DISPLAY_DJ_CONFIG_DIR", value);
+        }
     }
 
     /// Verifies WallpaperPreferences defaults to fit="fill" and no current path.

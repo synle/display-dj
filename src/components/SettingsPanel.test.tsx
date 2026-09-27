@@ -688,10 +688,8 @@ describe('SettingsPanel', () => {
     setupInvoke({ elevationRejects: true });
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
 
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('get_windows_elevation_status');
-    });
-    expect(screen.getByText('Settings')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'General' })).toBeInTheDocument();
+    expect(mockInvoke).toHaveBeenCalledWith('get_windows_elevation_status');
     expect(screen.queryByText(/elevated windows cannot be resized/)).not.toBeInTheDocument();
   });
 
