@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
+import '../App.css';
 import SettingsPanel from './SettingsPanel';
 
 const mockInvoke = vi.mocked(invoke);
@@ -202,6 +203,22 @@ describe('SettingsPanel', () => {
     });
     expect(screen.getByRole('button', { name: 'General' })).toBeInTheDocument();
     expect(screen.getByText('Settings')).toBeInTheDocument();
+  });
+
+  /** Settings content stays measurable so the Tauri window can grow from a short main view. */
+  it('does not clip settings content inside the current viewport', async () => {
+    setupInvoke({ tilingSupported: true });
+    const { container } = render(
+      <SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />,
+    );
+
+    await screen.findByText('Min Brightness');
+    const panel = container.querySelector('.settings-panel');
+    const body = container.querySelector('.settings-body');
+    expect(getComputedStyle(panel!).maxHeight).toBe('none');
+    expect(getComputedStyle(panel!).overflow).toBe('');
+    expect(getComputedStyle(body!).overflowY).toBe('visible');
+    expect(getComputedStyle(body!).minHeight).toBe('auto');
   });
 
   it('hides tabs when tiling is not supported', async () => {

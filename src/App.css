@@ -738,8 +738,6 @@ select:focus-visible {
 .settings-panel {
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 46px);
-  overflow: hidden;
 }
 
 .settings-header {
@@ -830,8 +828,6 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow-y: auto;
-  min-height: 0;
 }
 
 .settings-section {
