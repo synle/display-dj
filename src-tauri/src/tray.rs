@@ -268,6 +268,14 @@ fn monitor_list_signature(monitors: &[crate::display::Monitor]) -> Vec<(String, 
         .collect()
 }
 
+/// Rescans displays and speakers on demand (popup section-label click).
+/// Async per the macOS tray pitfall; the rescan itself runs on a thread.
+#[tauri::command]
+pub async fn refresh_devices(app: AppHandle) -> Result<(), String> {
+    refresh_devices_on_show(app);
+    Ok(())
+}
+
 /// Rescans displays and audio outputs off the main thread after the popup is
 /// shown, so connects/disconnects appear without blocking or flicker.
 ///
@@ -483,6 +491,8 @@ fn build_tray_menu(
         MenuItemBuilder::with_id("accessibility_settings", "Accessibility Settings").build(app)?;
 
     let force_refresh = MenuItemBuilder::with_id("force_refresh", "Force Refresh").build(app)?;
+    let refresh_devices =
+        MenuItemBuilder::with_id("refresh_devices", "Refresh Displays && Speakers").build(app)?;
 
     let clear_wallpaper_cache =
         MenuItemBuilder::with_id("clear_wallpaper_cache", "Clear Wallpaper Cache").build(app)?;
@@ -502,6 +512,7 @@ fn build_tray_menu(
         builder
             .separator()
             .item(&force_refresh)
+            .item(&refresh_devices)
             .item(&clear_wallpaper_cache)
             .separator()
             .item(&reset_defaults)
@@ -518,6 +529,7 @@ fn build_tray_menu(
         builder
             .separator()
             .item(&force_refresh)
+            .item(&refresh_devices)
             .item(&clear_wallpaper_cache)
             .separator()
             .item(&reset_defaults)
@@ -865,6 +877,11 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 if let Some(state) = app.try_state::<crate::AppState>() {
                     crate::wallpaper::clear_wallpaper_cache(&state);
                 }
+            }
+            "refresh_devices" => {
+                // Same background rescan the popup runs on show; emits change
+                // events only when the display/speaker set changed.
+                refresh_devices_on_show(app.clone());
             }
             "force_refresh" => {
                 // Reload preferences from disk into in-memory state

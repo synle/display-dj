@@ -914,6 +914,7 @@ pub fn run() {
             config::get_preferences,
             config::save_preferences,
             config::record_last_known_values,
+            tray::refresh_devices,
             config::open_preferences_file,
             config::open_debug_log,
             config::open_app_folder,

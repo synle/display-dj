@@ -1,3 +1,4 @@
+import RefreshLabel from './RefreshLabel';
 import { useRef, useState } from 'react';
 import { AudioOutputDevice, AudioOutputState } from '../types';
 import Slider from './Slider';
@@ -5,6 +6,8 @@ import Slider from './Slider';
 interface VolumeControlProps {
   value: number;
   onChange: (value: number) => void;
+  /** Rescans displays and speakers. */
+  onRefresh?: () => void;
   outputState: AudioOutputState | null;
   expanded: boolean;
   onToggleExpanded: () => void;
@@ -21,6 +24,7 @@ const VOLUME_THROTTLE_MS = 30;
 export default function VolumeControl({
   value,
   onChange,
+  onRefresh = () => {},
   outputState,
   expanded,
   onToggleExpanded,
@@ -74,12 +78,15 @@ export default function VolumeControl({
   return (
     <div className='volume-section'>
       <div className='section-label-row'>
-        <span className='section-label audio-output-active-name'>
-          {`All Speakers (${enabledOutputCount})`}
-          {!expanded && selectedDevice
-            ? ` - ${selectedDevice.name || selectedDevice.originalName}`
-            : ''}
-        </span>
+        <RefreshLabel
+          className='audio-output-active-name'
+          text={`All Speakers (${enabledOutputCount})${
+            !expanded && selectedDevice
+              ? ` - ${selectedDevice.name || selectedDevice.originalName}`
+              : ''
+          }`}
+          onRefresh={onRefresh}
+        />
         <button
           className='section-toggle'
           onClick={onToggleExpanded}

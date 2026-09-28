@@ -1,3 +1,4 @@
+import RefreshLabel from './RefreshLabel';
 import Slider from './Slider';
 
 interface AllMonitorsControlProps {
@@ -11,6 +12,8 @@ interface AllMonitorsControlProps {
   monitorCount: number;
   minBrightness: number;
   onExpand: () => void;
+  /** Rescans displays and speakers. */
+  onRefresh?: () => void;
 }
 
 /** Combined brightness and optional contrast slider that controls all monitors at once.
@@ -26,11 +29,12 @@ export default function AllMonitorsControl({
   monitorCount,
   minBrightness,
   onExpand,
+  onRefresh = () => {},
 }: AllMonitorsControlProps) {
   return (
     <div className='all-monitors-section'>
       <div className='section-label-row'>
-        <span className='section-label'>All Monitors ({monitorCount})</span>
+        <RefreshLabel text={`All Monitors (${monitorCount})`} onRefresh={onRefresh} />
         <button
           className='section-toggle'
           onClick={onExpand}

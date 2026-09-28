@@ -1198,4 +1198,10 @@ describe('App smoke test', () => {
       mockInvoke.mock.calls.filter(([cmd]) => cmd === 'record_last_known_values'),
     ).toHaveLength(1);
   });
+  /** Clicking the All Speakers label asks the backend to rescan devices. */
+  it('requests a device refresh when a section label is clicked', async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: /All Speakers/ }));
+    expect(mockInvoke).toHaveBeenCalledWith('refresh_devices');
+  });
 });

@@ -12,6 +12,7 @@ import KeepAwakeToggle from './components/KeepAwakeToggle';
 import SettingsPanel from './components/SettingsPanel';
 import AboutPanel from './components/AboutPanel';
 import AccessibilityGate from './components/AccessibilityGate';
+import RefreshLabel from './components/RefreshLabel';
 import { AudioOutputState, LastKnownValues, Monitor, Preferences, Profile } from './types';
 
 const ABSOLUTE_MIN_BRIGHTNESS = 5;
@@ -374,6 +375,11 @@ function App() {
     } catch {}
   };
 
+  /** Asks the backend to rescan displays and speakers; change events update the lists. */
+  const handleRefreshDevices = () => {
+    invoke('refresh_devices').catch(() => {});
+  };
+
   /** Toggles dark/light mode via the backend. */
   const handleDarkMode = async (enabled: boolean) => {
     const previous = darkMode;
@@ -552,11 +558,15 @@ function App() {
                 monitorCount={visibleMonitors.length}
                 minBrightness={minBrightness}
                 onExpand={() => setMonitorsExpanded(true)}
+                onRefresh={handleRefreshDevices}
               />
             ) : (
               <div className='monitors-list' id='monitor-controls'>
                 <div className='section-label-row'>
-                  <span className='section-label'>All Monitors ({visibleMonitors.length})</span>
+                  <RefreshLabel
+                    text={`All Monitors (${visibleMonitors.length})`}
+                    onRefresh={handleRefreshDevices}
+                  />
                   <button
                     className='section-toggle'
                     onClick={() => setMonitorsExpanded(false)}
@@ -587,6 +597,7 @@ function App() {
           <VolumeControl
             value={volume}
             onChange={handleVolume}
+            onRefresh={handleRefreshDevices}
             outputState={audioOutputState}
             expanded={speakersExpanded}
             onToggleExpanded={() => setSpeakersExpanded((current) => !current)}

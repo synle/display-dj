@@ -341,6 +341,28 @@ body,
   letter-spacing: 0.5px;
 }
 
+.section-label-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  padding: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.section-label-refresh .refresh-icon {
+  color: #2eaa4a;
+  font-size: 12px;
+  text-transform: none;
+}
+
+.section-label-refresh:hover .refresh-icon {
+  color: #3fcf60;
+}
+
 .section-label-row {
   display: flex;
   align-items: center;
