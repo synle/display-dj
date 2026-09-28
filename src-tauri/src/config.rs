@@ -443,6 +443,90 @@ pub struct Preferences {
     pub layout_presets: Vec<LayoutPreset>,
     /// Wallpaper preferences: fit mode and current wallpaper path.
     pub wallpaper: WallpaperPreferences,
+    /// Last slider values changed from within Display DJ. Backend-owned:
+    /// `save_preferences` keeps the in-memory copy instead of the payload's.
+    pub last_known_values: LastKnownValues,
+}
+
+/// Default slider position rendered when no last-known value exists.
+pub const DEFAULT_SLIDER_VALUE: u32 = 50;
+
+/// Last-known slider values set from Display DJ, rendered instead of live
+/// hardware reads and re-applied once at startup.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LastKnownValues {
+    /// Aggregate "All Monitors" brightness slider.
+    pub all_brightness: Option<u32>,
+    /// Per-monitor brightness keyed by monitor `uid`.
+    pub monitor_brightness: std::collections::BTreeMap<String, u32>,
+    /// Aggregate "All Speakers" volume slider.
+    pub all_volume: Option<u32>,
+    /// Per-speaker volume keyed by stable audio-output device ID.
+    pub speaker_volume: std::collections::BTreeMap<String, u32>,
+    /// Last speaker selected from Display DJ.
+    pub selected_speaker_id: Option<String>,
+}
+
+/// Partial update merged into [`LastKnownValues`] by `record_last_known_values`.
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LastKnownValuesPatch {
+    pub all_brightness: Option<u32>,
+    pub monitor_brightness: std::collections::BTreeMap<String, u32>,
+    pub all_volume: Option<u32>,
+    pub speaker_volume: std::collections::BTreeMap<String, u32>,
+    pub selected_speaker_id: Option<String>,
+}
+
+impl LastKnownValues {
+    /// Merges a patch, clamping every value to `[0, 100]`.
+    ///
+    /// # Arguments
+    /// * `patch` - Fields to overwrite; absent fields keep their stored value.
+    pub fn merge(&mut self, patch: LastKnownValuesPatch) {
+        if let Some(v) = patch.all_brightness {
+            self.all_brightness = Some(v.min(100));
+        }
+        for (k, v) in patch.monitor_brightness {
+            self.monitor_brightness.insert(k, v.min(100));
+        }
+        if let Some(v) = patch.all_volume {
+            self.all_volume = Some(v.min(100));
+        }
+        for (k, v) in patch.speaker_volume {
+            self.speaker_volume.insert(k, v.min(100));
+        }
+        if let Some(id) = patch.selected_speaker_id {
+            self.selected_speaker_id = Some(id);
+        }
+    }
+
+    /// Clamps hand-edited values to `[0, 100]`.
+    pub fn sanitize(&mut self) {
+        self.all_brightness = self.all_brightness.map(|v| v.min(100));
+        self.all_volume = self.all_volume.map(|v| v.min(100));
+        self.monitor_brightness.values_mut().for_each(|v| *v = (*v).min(100));
+        self.speaker_volume.values_mut().for_each(|v| *v = (*v).min(100));
+    }
+}
+
+/// Merges last-known slider values into preferences and persists them.
+///
+/// Async to avoid the macOS tray run-loop starvation pitfall.
+#[tauri::command]
+pub async fn record_last_known_values(
+    state: tauri::State<'_, crate::AppState>,
+    patch: LastKnownValuesPatch,
+) -> Result<(), String> {
+    let snapshot = {
+        let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
+        prefs.last_known_values.merge(patch);
+        prefs.clone()
+    };
+    tauri::async_runtime::spawn_blocking(move || save_preferences_to_disk(&snapshot))
+        .await
+        .map_err(|e| format!("record_last_known_values join failed: {}", e))?
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -505,6 +589,7 @@ impl Preferences {
             .min_brightness
             .clamp(ABSOLUTE_MIN_BRIGHTNESS, ABSOLUTE_MAX_MIN_BRIGHTNESS);
         self.tiling.sanitize();
+        self.last_known_values.sanitize();
         self.night_mode_schedule.night_brightness = self
             .night_mode_schedule
             .night_brightness
@@ -611,6 +696,7 @@ impl Default for Preferences {
             tiling: TilingPreferences::default(),
             layout_presets: Vec::new(),
             wallpaper: WallpaperPreferences::default(),
+            last_known_values: LastKnownValues::default(),
         }
     }
 }
@@ -1045,6 +1131,11 @@ pub async fn save_preferences(
     // everything before it reaches memory or disk.
     let mut preferences = preferences;
     preferences.sanitize();
+    // Last-known slider values are backend-owned; never let a stale Settings
+    // snapshot overwrite them.
+    if let Ok(current) = state.preferences.lock() {
+        preferences.last_known_values = current.last_known_values.clone();
+    }
 
     write_debug_log(
         &state,
@@ -1676,6 +1767,7 @@ mod tests {
     fn test_preferences_missing_audio_output_configs_defaults() {
         let prefs: Preferences = serde_json::from_str("{}").unwrap();
         assert!(prefs.audio_output_configs.is_empty());
+        assert_eq!(prefs.last_known_values, LastKnownValues::default());
     }
 
     #[test]
@@ -2185,5 +2277,51 @@ mod tests {
         let prefs: Preferences = serde_json::from_str(json).unwrap();
         assert_eq!(prefs.wallpaper.fit, "fill");
         assert!(prefs.wallpaper.current_wallpaper_path.is_none());
+    }
+}
+
+#[cfg(test)]
+mod last_known_values_tests {
+    use super::*;
+
+    /// Merging overwrites only provided fields and clamps to 100.
+    #[test]
+    fn merge_overwrites_provided_fields_and_clamps() {
+        let mut v = LastKnownValues {
+            all_volume: Some(20),
+            ..Default::default()
+        };
+        let mut patch = LastKnownValuesPatch {
+            all_brightness: Some(150),
+            selected_speaker_id: Some("spk".into()),
+            ..Default::default()
+        };
+        patch.monitor_brightness.insert("uid-1".into(), 70);
+        v.merge(patch);
+        assert_eq!(v.all_brightness, Some(100));
+        assert_eq!(v.all_volume, Some(20));
+        assert_eq!(v.monitor_brightness.get("uid-1"), Some(&70));
+        assert_eq!(v.selected_speaker_id.as_deref(), Some("spk"));
+    }
+
+    /// Serialized form uses camelCase keys and round-trips.
+    #[test]
+    fn serde_roundtrip_camel_case() {
+        let mut v = LastKnownValues::default();
+        v.speaker_volume.insert("a".into(), 40);
+        let json = serde_json::to_string(&v).unwrap();
+        assert!(json.contains("speakerVolume"));
+        let back: LastKnownValues = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, v);
+    }
+
+    /// Hand-edited out-of-range values are clamped by sanitize.
+    #[test]
+    fn sanitize_clamps_hand_edited_values() {
+        let mut p: Preferences =
+            serde_json::from_str(r#"{"lastKnownValues":{"allVolume":500,"monitorBrightness":{"x":900}}}"#).unwrap();
+        p.sanitize();
+        assert_eq!(p.last_known_values.all_volume, Some(100));
+        assert_eq!(p.last_known_values.monitor_brightness.get("x"), Some(&100));
     }
 }

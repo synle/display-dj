@@ -12,13 +12,16 @@ import KeepAwakeToggle from './components/KeepAwakeToggle';
 import SettingsPanel from './components/SettingsPanel';
 import AboutPanel from './components/AboutPanel';
 import AccessibilityGate from './components/AccessibilityGate';
-import { AudioOutputState, Monitor, Preferences, Profile } from './types';
+import { AudioOutputState, LastKnownValues, Monitor, Preferences, Profile } from './types';
 
 const ABSOLUTE_MIN_BRIGHTNESS = 5;
 
-interface Feedback {
-  kind: 'status' | 'error';
-  message: string;
+/** Slider value rendered when no last-known value was recorded. */
+const DEFAULT_SLIDER_VALUE = 50;
+
+/** Records last-known slider values in preferences; failures are ignored. */
+function recordLastKnown(patch: LastKnownValues) {
+  invoke('record_last_known_values', { patch }).catch(() => {});
 }
 
 /** Root component: manages all app state (monitors, dark mode, volume, preferences)
@@ -26,7 +29,6 @@ interface Feedback {
 function App() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [darkMode, setDarkMode] = useState(false);
-  const [volume, setVolume] = useState(50);
   const [minBrightness, setMinBrightness] = useState(10);
   const [showContrast, setShowContrast] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -40,10 +42,7 @@ function App() {
   const [accessibilityTrusted, setAccessibilityTrusted] = useState(true);
   const [audioOutputState, setAudioOutputState] = useState<AudioOutputState | null>(null);
   const [updatingAudioOutputId, setUpdatingAudioOutputId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<Feedback>({
-    kind: 'status',
-    message: 'Loading controls...',
-  });
+  const [lastKnown, setLastKnown] = useState<LastKnownValues>({});
   const appRef = useRef<HTMLDivElement>(null);
   const audioOutputFetchInFlight = useRef(false);
   const audioOutputStateVersion = useRef(0);
@@ -55,9 +54,7 @@ function App() {
     try {
       const m = await invoke<Monitor[]>('get_monitors');
       setMonitors(m);
-    } catch {
-      setFeedback({ kind: 'error', message: 'Could not refresh monitors.' });
-    }
+    } catch {}
   }, []);
 
   /** Fetches the current dark mode state from the backend. */
@@ -65,19 +62,7 @@ function App() {
     try {
       const dm = await invoke<boolean>('get_dark_mode');
       setDarkMode(dm);
-    } catch {
-      setFeedback({ kind: 'error', message: 'Could not refresh dark mode.' });
-    }
-  }, []);
-
-  /** Fetches the current system volume from the backend. */
-  const fetchVolume = useCallback(async () => {
-    try {
-      const v = await invoke<number>('get_volume');
-      setVolume(v);
-    } catch {
-      setFeedback({ kind: 'error', message: 'Could not refresh volume.' });
-    }
+    } catch {}
   }, []);
 
   /** Fetches selectable audio outputs without overlapping slow platform probes. */
@@ -91,7 +76,6 @@ function App() {
         setAudioOutputState(outputState);
       }
     } catch {
-      setFeedback({ kind: 'error', message: 'Could not load controls.' });
     } finally {
       audioOutputFetchInFlight.current = false;
     }
@@ -102,9 +86,7 @@ function App() {
     try {
       const active = await invoke<boolean>('get_keep_awake');
       setKeepAwake(active);
-    } catch {
-      setFeedback({ kind: 'error', message: 'Could not refresh Keep Awake.' });
-    }
+    } catch {}
   }, []);
 
   /** Fetches user preferences (min brightness, profiles) from the backend. */
@@ -114,9 +96,8 @@ function App() {
       setMinBrightness(Math.max(prefs.minBrightness, ABSOLUTE_MIN_BRIGHTNESS));
       setShowContrast(prefs.showContrast ?? false);
       setProfiles(prefs.profiles || []);
-    } catch {
-      setFeedback({ kind: 'error', message: 'Could not load preferences.' });
-    }
+      setLastKnown(prefs.lastKnownValues ?? {});
+    } catch {}
   }, []);
 
   /** Fetches monitors, dark mode, and volume in a single parallel backend call. */
@@ -125,15 +106,10 @@ function App() {
       const state = await invoke<{
         monitors: Monitor[];
         isDark: boolean;
-        volume: number;
       }>('fetch_all_state');
       setMonitors(state.monitors);
       setDarkMode(state.isDark);
-      setVolume(state.volume);
-      setFeedback({ kind: 'status', message: '' });
-    } catch {
-      setFeedback({ kind: 'error', message: 'Could not load controls.' });
-    }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -159,7 +135,6 @@ function App() {
     // Listen for backend events from shortcuts, tray actions, and refresh workers.
     const unlisten1 = listen('monitors-changed', () => fetchMonitors());
     const unlisten2 = listen('dark-mode-changed', () => fetchDarkMode());
-    const unlisten3 = listen('volume-changed', () => fetchVolume());
     const unlisten4 = listen<AudioOutputState>('audio-output-changed', (event) => {
       setAudioOutputState(event.payload);
     });
@@ -203,13 +178,12 @@ function App() {
     return () => {
       unlisten1.then((f) => f());
       unlisten2.then((f) => f());
-      unlisten3.then((f) => f());
       unlisten4.then((f) => f());
       unlisten5.then((f) => f());
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [fetchAllState, fetchMonitors, fetchDarkMode, fetchVolume, fetchPreferences, fetchKeepAwake]);
+  }, [fetchAllState, fetchMonitors, fetchDarkMode, fetchPreferences, fetchKeepAwake]);
 
   // The backend owns hot-plug probing. Poll its shared snapshot while the main
   // panel is visible as a fallback, retaining the last successful state.
@@ -271,59 +245,54 @@ function App() {
 
   /** Sets brightness for all monitors with optimistic UI update. */
   const handleAllBrightness = async (value: number) => {
-    const previous = monitors;
-    setFeedback({ kind: 'status', message: 'Updating brightness...' });
-    setMonitors((prev) =>
-      prev.map((m) => (m.hidden || !m.supportsBrightness ? m : { ...m, brightness: value })),
-    );
+    const targets = monitors.filter((m) => !m.hidden && m.supportsBrightness);
+    const monitorBrightness = Object.fromEntries(targets.map((m) => [m.uid, value]));
+    setLastKnown((prev) => ({
+      ...prev,
+      allBrightness: value,
+      monitorBrightness: { ...prev.monitorBrightness, ...monitorBrightness },
+    }));
+    recordLastKnown({ allBrightness: value, monitorBrightness });
     try {
       await invoke('set_all_brightness', { value });
-      setFeedback({ kind: 'status', message: 'Brightness updated.' });
     } catch {
-      setMonitors(previous);
-      setFeedback({ kind: 'error', message: 'Could not update brightness.' });
+      // Keep the last-known value; hardware errors are not surfaced.
     }
   };
 
   /** Sets brightness for a single monitor with optimistic UI update. */
   const handleMonitorBrightness = async (monitorId: string, uid: string, value: number) => {
-    const previous = monitors;
-    setFeedback({ kind: 'status', message: 'Updating brightness...' });
-    setMonitors((prev) => prev.map((m) => (m.uid === uid ? { ...m, brightness: value } : m)));
+    setLastKnown((prev) => ({
+      ...prev,
+      monitorBrightness: { ...prev.monitorBrightness, [uid]: value },
+    }));
+    recordLastKnown({ monitorBrightness: { [uid]: value } });
     try {
       await invoke('set_brightness', { monitorId, value });
-      setFeedback({ kind: 'status', message: 'Brightness updated.' });
     } catch {
-      setMonitors(previous);
-      setFeedback({ kind: 'error', message: 'Could not update brightness.' });
+      // Keep the last-known value; hardware errors are not surfaced.
     }
   };
 
   /** Sets contrast for all monitors with optimistic UI update. */
   const handleAllContrast = async (value: number) => {
     const previous = monitors;
-    setFeedback({ kind: 'status', message: 'Updating contrast...' });
     setMonitors((prev) => prev.map((m) => (m.contrast !== null ? { ...m, contrast: value } : m)));
     try {
       await invoke('set_all_contrast', { value });
-      setFeedback({ kind: 'status', message: 'Contrast updated.' });
     } catch {
       setMonitors(previous);
-      setFeedback({ kind: 'error', message: 'Could not update contrast.' });
     }
   };
 
   /** Sets contrast for a single monitor with optimistic UI update. */
   const handleMonitorContrast = async (monitorId: string, uid: string, value: number) => {
     const previous = monitors;
-    setFeedback({ kind: 'status', message: 'Updating contrast...' });
     setMonitors((prev) => prev.map((m) => (m.uid === uid ? { ...m, contrast: value } : m)));
     try {
       await invoke('set_contrast', { monitorId, value });
-      setFeedback({ kind: 'status', message: 'Contrast updated.' });
     } catch {
       setMonitors(previous);
-      setFeedback({ kind: 'error', message: 'Could not update contrast.' });
     }
   };
 
@@ -332,10 +301,7 @@ function App() {
     try {
       await invoke('rename_monitor', { uid, name });
       setMonitors((prev) => prev.map((m) => (m.uid === uid ? { ...m, name } : m)));
-      setFeedback({ kind: 'status', message: 'Monitor renamed.' });
-    } catch {
-      setFeedback({ kind: 'error', message: 'Could not rename monitor.' });
-    }
+    } catch {}
   };
 
   /** Swaps a monitor's position in the list with its neighbor. */
@@ -360,36 +326,34 @@ function App() {
         next[swapIndex] = prev[index];
         return next;
       });
-    } catch {
-      setFeedback({ kind: 'error', message: 'Could not reorder monitors.' });
-    }
+    } catch {}
   };
 
   /** Toggles dark/light mode via the backend. */
   const handleDarkMode = async (enabled: boolean) => {
     const previous = darkMode;
     setDarkMode(enabled);
-    setFeedback({ kind: 'status', message: 'Updating appearance...' });
     try {
       await invoke('set_dark_mode', { enabled });
-      setFeedback({ kind: 'status', message: 'Appearance updated.' });
     } catch {
       setDarkMode(previous);
-      setFeedback({ kind: 'error', message: 'Could not update appearance.' });
     }
   };
 
   /** Sets the system volume via the backend. */
   const handleVolume = async (value: number) => {
-    const previous = volume;
-    setVolume(value);
-    setFeedback({ kind: 'status', message: 'Updating volume...' });
+    const speakerId = audioOutputState?.selectedDeviceId ?? null;
+    const speakerVolume = speakerId ? { [speakerId]: value } : {};
+    setLastKnown((prev) => ({
+      ...prev,
+      allVolume: value,
+      speakerVolume: { ...prev.speakerVolume, ...speakerVolume },
+    }));
+    recordLastKnown({ allVolume: value, speakerVolume });
     try {
       await invoke('set_volume', { value });
-      setFeedback({ kind: 'status', message: 'Volume updated.' });
     } catch {
-      setVolume(previous);
-      setFeedback({ kind: 'error', message: 'Could not update volume.' });
+      // Keep the last-known value; hardware errors are not surfaced.
     }
   };
 
@@ -402,10 +366,9 @@ function App() {
     try {
       const outputState = await invoke<AudioOutputState>('set_audio_output_device', { id });
       setAudioOutputState(outputState);
-      await fetchVolume();
+      recordLastKnown({ selectedSpeakerId: id });
     } catch {
       setAudioOutputState(previousState);
-      setFeedback({ kind: 'error', message: 'Could not change speaker.' });
     } finally {
       setUpdatingAudioOutputId(null);
     }
@@ -425,9 +388,7 @@ function App() {
           ),
         };
       });
-    } catch {
-      setFeedback({ kind: 'error', message: 'Could not rename speaker.' });
-    }
+    } catch {}
   };
 
   /** Moves one speaker by one row and persists the complete device order. */
@@ -454,7 +415,6 @@ function App() {
       setAudioOutputState(outputState);
     } catch {
       setAudioOutputState(previousState);
-      setFeedback({ kind: 'error', message: 'Could not reorder speakers.' });
     }
   };
 
@@ -462,26 +422,19 @@ function App() {
   const handleKeepAwake = async (enabled: boolean) => {
     const previous = keepAwake;
     setKeepAwake(enabled);
-    setFeedback({ kind: 'status', message: 'Updating Keep Awake...' });
     try {
       await invoke('set_keep_awake', { enabled });
-      setFeedback({ kind: 'status', message: 'Keep Awake updated.' });
     } catch {
       setKeepAwake(previous);
-      setFeedback({ kind: 'error', message: 'Could not update Keep Awake.' });
     }
   };
 
   /** Applies a saved profile by index and refreshes all state. */
   const handleProfile = async (index: number) => {
-    setFeedback({ kind: 'status', message: 'Applying profile...' });
     try {
       await invoke('apply_profile', { index });
-      setFeedback({ kind: 'status', message: 'Profile applied.' });
-      await Promise.all([fetchMonitors(), fetchDarkMode(), fetchVolume()]);
-    } catch {
-      setFeedback({ kind: 'error', message: 'Could not apply profile.' });
-    }
+      await Promise.all([fetchMonitors(), fetchDarkMode()]);
+    } catch {}
   };
 
   // macOS-only: when Accessibility permission is missing, render a blocking
@@ -490,13 +443,20 @@ function App() {
   // (rather than only auto-opening System Settings on launch) makes the
   // recovery loop a single round-trip.
   // Only show non-hidden monitors in the main UI
-  const visibleMonitors = monitors.filter((m) => !m.hidden);
-  const brightnessMonitors = visibleMonitors.filter((m) => m.supportsBrightness);
-  const brightnessValues = brightnessMonitors.map((m) => m.brightness);
-  const allBrightness = brightnessValues.length
-    ? Math.round(brightnessValues.reduce((sum, value) => sum + value, 0) / brightnessValues.length)
-    : minBrightness;
-  const brightnessMixed = brightnessValues.some((value) => value !== brightnessValues[0]);
+  // Brightness and volume render last-known values recorded from this app
+  // (default 50%), never live hardware reads.
+  const visibleMonitors = monitors
+    .filter((m) => !m.hidden)
+    .map((m) => ({
+      ...m,
+      brightness: lastKnown.monitorBrightness?.[m.uid] ?? DEFAULT_SLIDER_VALUE,
+    }));
+  const allBrightness = lastKnown.allBrightness ?? DEFAULT_SLIDER_VALUE;
+  const selectedSpeakerId = audioOutputState?.selectedDeviceId ?? null;
+  const volume = speakersExpanded
+    ? ((selectedSpeakerId ? lastKnown.speakerVolume?.[selectedSpeakerId] : undefined) ??
+      DEFAULT_SLIDER_VALUE)
+    : (lastKnown.allVolume ?? DEFAULT_SLIDER_VALUE);
 
   // Whether any visible monitor supports contrast (used to show/hide the contrast slider)
   const contrastValues = visibleMonitors.flatMap((m) => (m.contrast === null ? [] : [m.contrast]));
@@ -513,18 +473,6 @@ function App() {
         onSettingsToggle={() => setSettingsOpen(!settingsOpen)}
         settingsOpen={settingsOpen}
       />
-
-      {feedback.message && (
-        <div
-          className={`status-message status-message-${feedback.kind}`}
-          role={feedback.kind === 'error' ? 'alert' : 'status'}
-          aria-live={feedback.kind === 'error' ? 'assertive' : 'polite'}>
-          <span>{feedback.message}</span>
-          {feedback.message === 'Could not load controls.' && (
-            <button onClick={() => void fetchAllState()}>Retry</button>
-          )}
-        </div>
-      )}
 
       {showAccessibilityGate ? (
         <AccessibilityGate
@@ -551,7 +499,7 @@ function App() {
             (!monitorsExpanded ? (
               <AllMonitorsControl
                 brightness={allBrightness}
-                brightnessMixed={brightnessMixed}
+                brightnessMixed={false}
                 onBrightnessChange={handleAllBrightness}
                 contrast={hasContrast ? allContrast : null}
                 contrastMixed={contrastMixed}

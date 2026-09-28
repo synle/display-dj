@@ -169,6 +169,19 @@ export interface Preferences {
   layoutPresets: LayoutPreset[];
   /** Wallpaper preferences: fit mode and current wallpaper path. */
   wallpaper: WallpaperPreferences;
+  /** Last slider values set from Display DJ (backend-owned). */
+  lastKnownValues?: LastKnownValues;
+}
+
+/** Last-known slider values rendered instead of live hardware reads. */
+export interface LastKnownValues {
+  allBrightness?: number | null;
+  /** Keyed by monitor uid. */
+  monitorBrightness?: Record<string, number>;
+  allVolume?: number | null;
+  /** Keyed by audio-output device ID. */
+  speakerVolume?: Record<string, number>;
+  selectedSpeakerId?: string | null;
 }
 
 export interface KeyBinding {

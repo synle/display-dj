@@ -145,7 +145,7 @@ where
 /// * `mode` - Resolved brightness mode (`"auto"`, `"ddc"`, `"gamma"`, `"overlay"`).
 /// * `monitor_rect` - Physical rect for the overlay path; `None` is acceptable
 ///   on platforms where it's not populated (the overlay call no-ops).
-fn dispatch_brightness_for_one<R: tauri::Runtime>(
+pub(crate) fn dispatch_brightness_for_one<R: tauri::Runtime>(
     app: &AppHandle<R>,
     monitor_id: &str,
     value: u32,

@@ -659,31 +659,6 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
-.status-message {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 24px;
-  padding: 5px 16px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
-.status-message-error {
-  color: #d46600;
-}
-
-.status-message button {
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
 /* Keep awake toggle */
 .keep-awake-toggle {
   display: flex;

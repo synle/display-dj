@@ -730,6 +730,90 @@ mod tests {
     }
 }
 
+/// Re-applies last-known slider values once at startup, after diagnostics
+/// and the cache pre-warm finish.
+///
+/// Sets brightness for every connected monitor with a recorded value
+/// (routed through its `brightnessMode`), re-selects the last speaker when it
+/// is present and `enabled`, then restores that speaker's volume. Failures are
+/// logged and never abort startup. Other speakers' volumes cannot be set
+/// without making them the default output, so only the selected one is applied.
+fn restore_last_known_values(app: &tauri::AppHandle) {
+    let state = app.state::<AppState>();
+    let (lkv, configs) = match state.preferences.lock() {
+        Ok(p) => (p.last_known_values.clone(), p.monitor_configs.clone()),
+        Err(_) => return,
+    };
+    for monitor in state.sidecar_cache.get_monitors().unwrap_or_default() {
+        let Some(&value) = lkv.monitor_brightness.get(&monitor.uid) else {
+            continue;
+        };
+        if !monitor.supports_brightness {
+            continue;
+        }
+        let min = state
+            .preferences
+            .lock()
+            .map(|p| p.effective_min_brightness())
+            .unwrap_or(config::ABSOLUTE_MIN_BRIGHTNESS);
+        let mode = display::resolve_brightness_mode(&configs, &monitor.id);
+        let result = tray::dispatch_brightness_for_one(
+            app,
+            &monitor.id,
+            value.clamp(min, 100),
+            &mode,
+            monitor.monitor_rect,
+        );
+        log::info!(
+            "restore_last_known_values: brightness uid={} value={} result={:?}",
+            monitor.uid,
+            value,
+            result
+        );
+    }
+    state.sidecar_cache.invalidate_monitors();
+
+    let Some(speaker_id) = lkv.selected_speaker_id.clone() else {
+        return;
+    };
+    let output_state = tauri::async_runtime::block_on(volume::get_audio_output_devices(app.clone()));
+    let available = output_state.as_ref().is_ok_and(|s| {
+        s.devices.iter().any(|d| {
+            d.id == speaker_id
+                && d.state == core::audio_output::AudioOutputDeviceState::Enabled
+        })
+    });
+    if !available {
+        log::info!(
+            "restore_last_known_values: speaker {} unavailable or not enabled",
+            speaker_id
+        );
+        return;
+    }
+    let already = output_state
+        .as_ref()
+        .is_ok_and(|s| s.selected_device_id.as_deref() == Some(speaker_id.as_str()));
+    if !already {
+        let result = tauri::async_runtime::block_on(volume::select_audio_output_device(
+            speaker_id.clone(),
+            app.clone(),
+        ));
+        log::info!(
+            "restore_last_known_values: select speaker {} ok={}",
+            speaker_id,
+            result.is_ok()
+        );
+        if result.is_err() {
+            return;
+        }
+    }
+    if let Some(&vol) = lkv.speaker_volume.get(&speaker_id) {
+        let ok = core::volume::set_volume(vol.min(100) as u16);
+        log::info!("restore_last_known_values: volume {} ok={}", vol, ok);
+        state.sidecar_cache.invalidate_volume();
+    }
+}
+
 /// Main entry point: builds the Tauri app, sets up the system tray, registers
 /// shortcuts, and starts the event loop. All display, theme, volume, and
 /// wallpaper operations are handled in-process via the vendored `core` module —
@@ -817,6 +901,7 @@ pub fn run() {
             volume::save_audio_output_order,
             config::get_preferences,
             config::save_preferences,
+            config::record_last_known_values,
             config::open_preferences_file,
             config::open_debug_log,
             config::open_app_folder,
@@ -882,6 +967,8 @@ pub fn run() {
                     state.sidecar_cache.set_volume(info.volume);
                 }
                 log::info!("startup probe + cache pre-warm complete");
+                // Realign hardware to the last values set from Display DJ.
+                restore_last_known_values(&startup_handle);
                 // Resume wallpaper slideshow if it was enabled before shutdown
                 wallpaper::resume_slideshow_if_enabled(&state);
             });
