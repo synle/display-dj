@@ -368,10 +368,14 @@ pub struct WallpaperPreferences {
     pub slideshow_enabled: bool,
     /// Folder path for slideshow images.
     pub slideshow_folder: Option<String>,
-    /// Slideshow interval in minutes (minimum 5).
+    /// Slideshow interval, minutes component (combined with seconds; total minimum 5s).
     pub slideshow_interval_minutes: u32,
+    /// Slideshow interval, extra seconds component (0-59).
+    pub slideshow_interval_seconds: u32,
     /// Slideshow cycling order: "forward", "backward", "random".
     pub slideshow_order: String,
+    /// Path of the last image the slideshow displayed; used to resume on startup.
+    pub slideshow_last_path: Option<String>,
 }
 
 impl Default for WallpaperPreferences {
@@ -383,8 +387,21 @@ impl Default for WallpaperPreferences {
             slideshow_enabled: false,
             slideshow_folder: None,
             slideshow_interval_minutes: 30,
+            slideshow_interval_seconds: 0,
             slideshow_order: "forward".into(),
+            slideshow_last_path: None,
         }
+    }
+}
+
+impl WallpaperPreferences {
+    /// Total slideshow interval in seconds (minutes * 60 + seconds), floored at
+    /// [`crate::core::wallpaper::MIN_SLIDESHOW_INTERVAL_SECS`].
+    ///
+    /// Returns: `u64` seconds.
+    pub fn slideshow_interval_total_secs(&self) -> u64 {
+        (self.slideshow_interval_minutes as u64 * 60 + self.slideshow_interval_seconds as u64)
+            .max(crate::core::wallpaper::MIN_SLIDESHOW_INTERVAL_SECS)
     }
 }
 
@@ -612,6 +629,11 @@ impl Preferences {
             .night_mode_schedule
             .day_brightness
             .clamp(ABSOLUTE_MIN_BRIGHTNESS, 100);
+        // 24h cap matches the Settings hours dropdown.
+        self.wallpaper.slideshow_interval_minutes =
+            self.wallpaper.slideshow_interval_minutes.clamp(0, 24 * 60);
+        self.wallpaper.slideshow_interval_seconds =
+            self.wallpaper.slideshow_interval_seconds.clamp(0, 59);
     }
 }
 
@@ -1149,6 +1171,9 @@ pub async fn save_preferences(
     // snapshot overwrite them.
     if let Ok(current) = state.preferences.lock() {
         preferences.last_known_values = current.last_known_values.clone();
+        // Backend-owned: written by the slideshow change hook.
+        preferences.wallpaper.slideshow_last_path =
+            current.wallpaper.slideshow_last_path.clone();
     }
 
     write_debug_log(
@@ -1175,6 +1200,11 @@ pub async fn save_preferences(
         .lock()
         .map(|p| p.launch_at_login)
         .unwrap_or(false);
+    let old_slideshow = state
+        .preferences
+        .lock()
+        .map(|p| slideshow_signature(&p.wallpaper))
+        .ok();
 
     save_preferences_to_disk(&preferences)?;
     log::info!("save_preferences: written to disk");
@@ -1212,8 +1242,39 @@ pub async fn save_preferences(
         log::info!("save_preferences: launch_at_login unchanged, skipping autostart");
     }
 
+    // Apply slideshow changes live (start / restart / stop) instead of waiting
+    // for the next app launch. Runs off the async runtime: starting sets the
+    // first wallpaper synchronously.
+    if old_slideshow.as_ref() != Some(&slideshow_signature(&preferences.wallpaper)) {
+        let enabled = preferences.wallpaper.slideshow_enabled;
+        let app_handle = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            use tauri::Manager;
+            let state = app_handle.state::<crate::AppState>();
+            if enabled {
+                crate::wallpaper::resume_slideshow_if_enabled(&state);
+            } else {
+                let _ = crate::core::wallpaper::slideshow_stop();
+            }
+        });
+    }
+
     log::info!("save_preferences: done");
     Ok(())
+}
+
+/// Tuple of every wallpaper preference that affects a running slideshow; a
+/// change in any field means the slideshow must restart.
+///
+/// Returns: `(enabled, folder, total_interval_secs, order, fit)`.
+fn slideshow_signature(w: &WallpaperPreferences) -> (bool, Option<String>, u64, String, String) {
+    (
+        w.slideshow_enabled,
+        w.slideshow_folder.clone(),
+        w.slideshow_interval_total_secs(),
+        w.slideshow_order.clone(),
+        w.fit.clone(),
+    )
 }
 
 /// Opens the preferences.json file in the OS default editor.
@@ -2269,7 +2330,9 @@ mod tests {
             slideshow_enabled: false,
             slideshow_folder: None,
             slideshow_interval_minutes: 30,
+            slideshow_interval_seconds: 0,
             slideshow_order: "forward".into(),
+            slideshow_last_path: None,
         };
         let json = serde_json::to_string(&wp).unwrap();
         assert!(json.contains("currentWallpaperPath"));
@@ -2330,6 +2393,38 @@ mod last_known_values_tests {
     }
 
     /// Hand-edited out-of-range values are clamped by sanitize.
+    /// Slideshow total interval combines minutes + seconds and floors at 5s.
+    #[test]
+    fn slideshow_interval_total_secs_combines_and_floors() {
+        let mut w = WallpaperPreferences::default();
+        assert_eq!(w.slideshow_interval_total_secs(), 1800);
+        w.slideshow_interval_minutes = 1;
+        w.slideshow_interval_seconds = 30;
+        assert_eq!(w.slideshow_interval_total_secs(), 90);
+        w.slideshow_interval_minutes = 0;
+        w.slideshow_interval_seconds = 0;
+        assert_eq!(w.slideshow_interval_total_secs(), 5);
+    }
+
+    /// Changing the interval changes the slideshow signature (triggers restart).
+    #[test]
+    fn slideshow_signature_changes_with_interval() {
+        let a = WallpaperPreferences::default();
+        let mut b = a.clone();
+        assert_eq!(slideshow_signature(&a), slideshow_signature(&b));
+        b.slideshow_interval_seconds = 10;
+        assert_ne!(slideshow_signature(&a), slideshow_signature(&b));
+    }
+
+    /// sanitize clamps slideshow seconds to 0-59.
+    #[test]
+    fn sanitize_clamps_slideshow_seconds() {
+        let mut p = Preferences::default();
+        p.wallpaper.slideshow_interval_seconds = 500;
+        p.sanitize();
+        assert_eq!(p.wallpaper.slideshow_interval_seconds, 59);
+    }
+
     #[test]
     fn sanitize_clamps_hand_edited_values() {
         let mut p: Preferences =

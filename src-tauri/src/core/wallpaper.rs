@@ -350,7 +350,7 @@ pub fn is_wallpaper_supported() -> bool {
 
 /// Valid image extensions for slideshow folder scanning.
 const IMAGE_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "bmp", "tiff", "tif", "gif", "heic", "webp",
+    "jpg", "jpeg", "png", "bmp", "tiff", "tif", "gif", "heic", "webp", "avif",
 ];
 
 /// Persistent slideshow state — protected by a static Mutex.
@@ -358,7 +358,7 @@ pub struct SlideshowState {
     pub running: bool,
     pub cancel: Arc<AtomicBool>,
     pub folder: String,
-    pub interval_minutes: u64,
+    pub interval_seconds: u64,
     pub order: String,
     pub fit: String,
     pub images: Vec<String>,
@@ -371,7 +371,7 @@ impl Default for SlideshowState {
             running: false,
             cancel: Arc::new(AtomicBool::new(false)),
             folder: String::new(),
-            interval_minutes: 0,
+            interval_seconds: 0,
             order: String::new(),
             fit: String::new(),
             images: Vec::new(),
@@ -406,23 +406,105 @@ pub fn scan_images(folder: &str) -> Vec<String> {
 pub fn slideshow_cancel() {
     let mut guard = SLIDESHOW.lock().unwrap();
     if let Some(state) = guard.as_ref() {
+        log::info!("slideshow: cancelling running slideshow folder={}", state.folder);
         state.cancel.store(true, Ordering::SeqCst);
     }
     *guard = None;
 }
 
+/// Minimum slideshow interval in seconds.
+pub const MIN_SLIDESHOW_INTERVAL_SECS: u64 = 5;
+
+/// Callback invoked with the image path every time the slideshow sets a wallpaper.
+type SlideshowChangeHook = Box<dyn Fn(&str) + Send + Sync>;
+
+/// Optional hook (set by the app layer) used to persist the last-shown image.
+static ON_SLIDESHOW_CHANGE: std::sync::Mutex<Option<SlideshowChangeHook>> =
+    std::sync::Mutex::new(None);
+
+/// Registers the hook called after each slideshow wallpaper change
+/// (including the initial image). Replaces any previous hook.
+pub fn set_slideshow_change_hook(hook: SlideshowChangeHook) {
+    if let Ok(mut guard) = ON_SLIDESHOW_CHANGE.lock() {
+        *guard = Some(hook);
+    }
+}
+
+/// Invokes the registered change hook, if any. Never panics on a poisoned lock.
+fn notify_slideshow_change(path: &str) {
+    if let Ok(guard) = ON_SLIDESHOW_CHANGE.lock() {
+        if let Some(hook) = guard.as_ref() {
+            hook(path);
+        }
+    }
+}
+
+/// Moves `resume_path` to the correct starting slot and returns the start index.
+///
+/// - forward/backward: index of `resume_path` in the ordered list (list unchanged).
+/// - random: `resume_path` is swapped to the front of the shuffled list (index 0).
+/// - missing/`None`: 0.
+fn resume_start_index(images: &mut [String], order: &str, resume_path: Option<&str>) -> usize {
+    let Some(pos) = resume_path.and_then(|p| images.iter().position(|i| i == p)) else {
+        return 0;
+    };
+    if order == "random" {
+        images.swap(0, pos);
+        return 0;
+    }
+    pos
+}
+
+/// Valid slideshow orders: name A→Z, name Z→A, shuffle, modified-time
+/// oldest→newest, modified-time newest→oldest.
+pub const SLIDESHOW_ORDERS: &[&str] = &["forward", "backward", "random", "oldest", "newest"];
+
+/// Reorders an alphabetically sorted image list in place for `order`.
+/// Unknown orders leave the list alphabetical. Files whose modified time
+/// can't be read sort as the oldest (UNIX epoch); ties keep name order.
+fn apply_slideshow_order(images: &mut Vec<String>, order: &str) {
+    let mtime = |p: &String| {
+        std::fs::metadata(p)
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::UNIX_EPOCH)
+    };
+    match order {
+        "backward" => images.reverse(),
+        "random" => shuffle(images),
+        "oldest" => images.sort_by_key(mtime),
+        "newest" => images.sort_by_key(|p| std::cmp::Reverse(mtime(p))),
+        _ => {} // "forward" — already sorted alphabetically
+    }
+}
+
+/// Start a wallpaper slideshow from the beginning. See [`slideshow_start_at`].
+pub fn slideshow_start(interval_secs: u64, order: &str, fit: &str, folder: &str) -> String {
+    slideshow_start_at(interval_secs, order, fit, folder, None)
+}
+
 /// Start a wallpaper slideshow. Cancels any existing slideshow first.
+///
+/// `interval_secs` is the cycle interval in seconds (minimum
+/// [`MIN_SLIDESHOW_INTERVAL_SECS`]). When `resume_path` is an image in the
+/// folder, it is shown first and the next tick advances from it; otherwise
+/// the slideshow starts at the beginning.
 /// Returns JSON response with image count and first image, or error.
-pub fn slideshow_start(interval: u64, order: &str, fit: &str, folder: &str) -> String {
+pub fn slideshow_start_at(
+    interval_secs: u64,
+    order: &str,
+    fit: &str,
+    folder: &str,
+    resume_path: Option<&str>,
+) -> String {
     // Validate parameters
-    if interval < 5 {
-        return r#"{"error":"interval must be at least 5 minutes"}"#.to_string();
+    if interval_secs < MIN_SLIDESHOW_INTERVAL_SECS {
+        return r#"{"error":"interval must be at least 5 seconds"}"#.to_string();
     }
     if !validate_fit(fit) {
         return format!(r#"{{"error":"invalid fit mode: '{}'. Valid: fill, fit, stretch, center, tile"}}"#, fit);
     }
-    if !["forward", "backward", "random"].contains(&order) {
-        return format!(r#"{{"error":"invalid order: '{}'. Valid: forward, backward, random"}}"#, order);
+    if !SLIDESHOW_ORDERS.contains(&order) {
+        return format!(r#"{{"error":"invalid order: '{}'. Valid: {}"}}"#, order, SLIDESHOW_ORDERS.join(", "));
     }
     if !std::path::Path::new(folder).is_dir() {
         return format!(r#"{{"error":"folder not found: {}"}}"#, folder);
@@ -434,16 +516,14 @@ pub fn slideshow_start(interval: u64, order: &str, fit: &str, folder: &str) -> S
     }
 
     // Sort/shuffle based on order
-    match order {
-        "backward" => images.reverse(),
-        "random" => shuffle(&mut images),
-        _ => {} // "forward" — already sorted alphabetically
-    }
+    apply_slideshow_order(&mut images, order);
+
+    let start_idx = resume_start_index(&mut images, order, resume_path);
 
     // Cancel any existing slideshow
     slideshow_cancel();
 
-    let first_image = images[0].clone();
+    let first_image = images[start_idx].clone();
     let fit_owned = fit.to_string();
     let order_owned = order.to_string();
     let folder_owned = folder.to_string();
@@ -452,10 +532,15 @@ pub fn slideshow_start(interval: u64, order: &str, fit: &str, folder: &str) -> S
     if !set_wallpaper(&first_image, fit) {
         return r#"{"error":"failed to set first wallpaper"}"#.to_string();
     }
+    notify_slideshow_change(&first_image);
 
     let cancel_flag = Arc::new(AtomicBool::new(false));
     let cancel_clone = cancel_flag.clone();
     let images_count = images.len();
+    log::info!(
+        "slideshow: started folder={} images={} interval={}s order={} first={} resumed={}",
+        folder, images_count, interval_secs, order, first_image, start_idx > 0 || resume_path == Some(first_image.as_str())
+    );
 
     // Store state
     {
@@ -464,18 +549,17 @@ pub fn slideshow_start(interval: u64, order: &str, fit: &str, folder: &str) -> S
             running: true,
             cancel: cancel_flag,
             folder: folder_owned.clone(),
-            interval_minutes: interval,
+            interval_seconds: interval_secs,
             order: order_owned.clone(),
             fit: fit_owned.clone(),
             images: images.clone(),
-            current_index: 0,
+            current_index: start_idx,
         });
     }
 
     // Spawn background timer thread
     thread::spawn(move || {
-        let interval_secs = interval * 60;
-        let mut idx = 0usize;
+        let mut idx = start_idx;
 
         loop {
             // Sleep in 1-second increments so we can check cancel flag frequently
@@ -492,11 +576,12 @@ pub fn slideshow_start(interval: u64, order: &str, fit: &str, folder: &str) -> S
                 let mut fresh = scan_images(&folder_owned);
                 if fresh.is_empty() {
                     // Folder empty/gone — auto-stop
+                    log::warn!("slideshow: folder empty or missing, stopping: {}", folder_owned);
                     let mut guard = SLIDESHOW.lock().unwrap();
                     *guard = None;
                     return;
                 }
-                if order_owned == "backward" { fresh.reverse(); }
+                apply_slideshow_order(&mut fresh, &order_owned);
                 fresh
             };
 
@@ -507,6 +592,7 @@ pub fn slideshow_start(interval: u64, order: &str, fit: &str, folder: &str) -> S
                     // Reshuffle and rescan for new images
                     current_images = scan_images(&folder_owned);
                     if current_images.is_empty() {
+                        log::warn!("slideshow: folder empty after reshuffle, stopping: {}", folder_owned);
                         let mut guard = SLIDESHOW.lock().unwrap();
                         *guard = None;
                         return;
@@ -522,10 +608,24 @@ pub fn slideshow_start(interval: u64, order: &str, fit: &str, folder: &str) -> S
             let img = &current_images[idx];
 
             // Skip if file no longer exists
-            if !std::path::Path::new(img).exists() { continue; }
+            if !std::path::Path::new(img).exists() {
+                log::warn!("slideshow: image vanished, skipping: {}", img);
+                continue;
+            }
 
             // Set wallpaper (serialized — the Mutex in SLIDESHOW prevents interleaving)
-            let _ = set_wallpaper(img, &fit_owned);
+            let ok = set_wallpaper(img, &fit_owned);
+            if ok {
+                notify_slideshow_change(img);
+            }
+            log::info!(
+                "slideshow: tick {}/{} set={} fit={} ok={}",
+                idx + 1,
+                current_images.len(),
+                img,
+                fit_owned,
+                ok
+            );
 
             // Update state
             if let Ok(mut guard) = SLIDESHOW.lock() {
@@ -564,7 +664,7 @@ pub fn slideshow_status() -> String {
             serde_json::to_string(&serde_json::json!({
                 "running": true,
                 "folder": state.folder,
-                "interval_minutes": state.interval_minutes,
+                "interval_seconds": state.interval_seconds,
                 "order": state.order,
                 "fit": state.fit,
                 "current_image": current_image,
@@ -695,13 +795,61 @@ mod tests {
         assert_eq!(sorted, expected);
     }
 
-    /// slideshow_start rejects intervals < 5 minutes.
+    /// Date orders sort by modified time (oldest/newest first).
+    #[test]
+    fn test_apply_slideshow_order_by_modified_time() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old = tmp.path().join("z-old.png");
+        let new = tmp.path().join("a-new.png");
+        std::fs::write(&old, "x").unwrap();
+        std::fs::write(&new, "x").unwrap();
+        let t0 = std::time::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let t1 = std::time::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        std::fs::File::options().write(true).open(&old).unwrap().set_modified(t0).unwrap();
+        std::fs::File::options().write(true).open(&new).unwrap().set_modified(t1).unwrap();
+        let old_s = old.to_str().unwrap().to_string();
+        let new_s = new.to_str().unwrap().to_string();
+
+        let mut imgs = vec![new_s.clone(), old_s.clone()];
+        apply_slideshow_order(&mut imgs, "oldest");
+        assert_eq!(imgs, vec![old_s.clone(), new_s.clone()]);
+
+        apply_slideshow_order(&mut imgs, "newest");
+        assert_eq!(imgs, vec![new_s, old_s]);
+    }
+
+    /// Resume index: forward finds the saved image's position.
+    #[test]
+    fn test_resume_start_index_forward_finds_position() {
+        let mut imgs = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        assert_eq!(resume_start_index(&mut imgs, "forward", Some("b")), 1);
+        assert_eq!(imgs, vec!["a", "b", "c"]);
+    }
+
+    /// Resume index: missing or absent path starts at 0.
+    #[test]
+    fn test_resume_start_index_missing_path_starts_at_zero() {
+        let mut imgs = vec!["a".to_string(), "b".to_string()];
+        assert_eq!(resume_start_index(&mut imgs, "forward", Some("gone")), 0);
+        assert_eq!(resume_start_index(&mut imgs, "backward", None), 0);
+    }
+
+    /// Resume index: random moves the saved image to the front.
+    #[test]
+    fn test_resume_start_index_random_moves_to_front() {
+        let mut imgs = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        assert_eq!(resume_start_index(&mut imgs, "random", Some("c")), 0);
+        assert_eq!(imgs[0], "c");
+        assert_eq!(imgs.len(), 3);
+    }
+
+    /// slideshow_start rejects intervals < 5 seconds.
     #[test]
     fn test_slideshow_start_rejects_short_interval() {
         let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         let result = slideshow_start(1, "forward", "fill", tmp.path().to_str().unwrap());
-        assert!(result.contains("at least 5 minutes"));
+        assert!(result.contains("at least 5 seconds"));
     }
 
     /// slideshow_start rejects invalid fit modes.
@@ -709,7 +857,7 @@ mod tests {
     fn test_slideshow_start_rejects_invalid_fit() {
         let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
-        let result = slideshow_start(5, "forward", "zoom", tmp.path().to_str().unwrap());
+        let result = slideshow_start(300, "forward", "zoom", tmp.path().to_str().unwrap());
         assert!(result.contains("invalid fit mode"));
     }
 
@@ -718,7 +866,7 @@ mod tests {
     fn test_slideshow_start_rejects_invalid_order() {
         let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
-        let result = slideshow_start(5, "sideways", "fill", tmp.path().to_str().unwrap());
+        let result = slideshow_start(300, "sideways", "fill", tmp.path().to_str().unwrap());
         assert!(result.contains("invalid order"));
     }
 
@@ -726,7 +874,7 @@ mod tests {
     #[test]
     fn test_slideshow_start_rejects_missing_folder() {
         let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let result = slideshow_start(5, "forward", "fill", "/no/such/path/abc123");
+        let result = slideshow_start(300, "forward", "fill", "/no/such/path/abc123");
         assert!(result.contains("folder not found"));
     }
 
@@ -735,7 +883,7 @@ mod tests {
     fn test_slideshow_start_rejects_empty_folder() {
         let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
-        let result = slideshow_start(5, "forward", "fill", tmp.path().to_str().unwrap());
+        let result = slideshow_start(300, "forward", "fill", tmp.path().to_str().unwrap());
         assert!(result.contains("no valid images"));
     }
 
@@ -771,7 +919,7 @@ mod tests {
         let s = SlideshowState::default();
         assert!(!s.running);
         assert!(s.folder.is_empty());
-        assert_eq!(s.interval_minutes, 0);
+        assert_eq!(s.interval_seconds, 0);
         assert!(s.images.is_empty());
         assert_eq!(s.current_index, 0);
     }
@@ -835,7 +983,7 @@ mod tests {
         std::fs::write(tmp.path().join("b.png"), "x").unwrap();
         // set_wallpaper may fail in CI but slideshow_start still validates input
         // and either succeeds or returns "failed to set first wallpaper".
-        let result = slideshow_start(5, "forward", "fill", tmp.path().to_str().unwrap());
+        let result = slideshow_start(300, "forward", "fill", tmp.path().to_str().unwrap());
         // Either succeeded or hit the wallpaper-set failure branch — both exercise validation.
         assert!(result.contains("\"ok\":true") || result.contains("failed to set first wallpaper"));
         slideshow_cancel();

@@ -19,6 +19,38 @@ interface SettingsPanelProps {
 }
 
 /** Settings panel with two tabs: General and Tiling. Auto-saves after each change. */
+/** Minimum slideshow interval in seconds (mirrors backend `MIN_SLIDESHOW_INTERVAL_SECS`). */
+const MIN_SLIDESHOW_INTERVAL_SECS = 5;
+/** Minute choices for the slideshow interval (1m and 3m included for quick testing). */
+const SLIDESHOW_MINUTE_OPTIONS = [0, 1, 3, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+/** Second choices for the slideshow interval. */
+const SLIDESHOW_SECOND_OPTIONS = [0, 5, 10, 15, 20, 30, 45];
+
+/**
+ * Returns `options` plus `current` (sorted) when a hand-edited value is not a preset,
+ * so the dropdown still shows the persisted value.
+ * @param options preset values
+ * @param current currently persisted value
+ * @returns sorted option list containing `current`
+ */
+function withCurrent(options: number[], current: number): number[] {
+  return options.includes(current) ? options : [...options, current].sort((a, b) => a - b);
+}
+
+/**
+ * Formats an interval as e.g. `1 hour 3 minutes 30 seconds`. Zero units are
+ * skipped so the text jumps to the next smaller non-zero unit.
+ * @param h hours
+ * @param m minutes
+ * @param sec seconds
+ * @returns human-readable interval string
+ */
+export function formatInterval(h: number, m: number, sec: number): string {
+  const unit = (n: number, name: string) => (n ? `${n} ${name}${n === 1 ? '' : 's'}` : '');
+  const parts = [unit(h, 'hour'), unit(m, 'minute'), unit(sec, 'second')].filter(Boolean);
+  return parts.length ? parts.join(' ') : '0 seconds';
+}
+
 export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsPanelProps) {
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [audioOutputState, setAudioOutputState] = useState<AudioOutputState | null>(null);
@@ -151,6 +183,36 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     setPrefs((prev) => {
       if (!prev) return prev;
       const next = { ...prev, [key]: value };
+      savePreferences(next);
+      return next;
+    });
+  };
+
+  const intervalTotalMinutes = prefs?.wallpaper?.slideshowIntervalMinutes ?? 30;
+  const intervalHours = Math.floor(intervalTotalMinutes / 60);
+  const intervalMinutes = intervalTotalMinutes % 60;
+  const intervalSeconds = prefs?.wallpaper?.slideshowIntervalSeconds ?? 0;
+
+  /**
+   * Persists a new slideshow interval, enforcing the minimum total of
+   * `MIN_SLIDESHOW_INTERVAL_SECS` (bumps seconds when everything is zero).
+   * @param h hours
+   * @param m minutes
+   * @param sec seconds
+   */
+  const updateSlideshowInterval = (h: number, m: number, sec: number) => {
+    const totalMinutes = h * 60 + m;
+    const seconds = totalMinutes === 0 ? Math.max(MIN_SLIDESHOW_INTERVAL_SECS, sec) : sec;
+    setPrefs((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        wallpaper: {
+          ...prev.wallpaper,
+          slideshowIntervalMinutes: totalMinutes,
+          slideshowIntervalSeconds: seconds,
+        },
+      };
       savePreferences(next);
       return next;
     });
@@ -606,14 +668,14 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       <label className='settings-label'>Hours</label>
                       <Dropdown
                         className='settings-dropdown'
-                        value={Math.floor((prefs.wallpaper?.slideshowIntervalMinutes ?? 30) / 60)}
-                        onChange={(e) => {
-                          const hours = parseInt(e.target.value);
-                          const currentMinutes =
-                            (prefs.wallpaper?.slideshowIntervalMinutes ?? 30) % 60;
-                          const total = Math.max(5, hours * 60 + currentMinutes);
-                          updateWallpaper('slideshowIntervalMinutes', total);
-                        }}>
+                        value={intervalHours}
+                        onChange={(e) =>
+                          updateSlideshowInterval(
+                            parseInt(e.target.value),
+                            intervalMinutes,
+                            intervalSeconds,
+                          )
+                        }>
                         {Array.from({ length: 25 }, (_, i) => (
                           <option key={i} value={i}>
                             {i}h
@@ -625,21 +687,36 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       <label className='settings-label'>Minutes</label>
                       <Dropdown
                         className='settings-dropdown'
-                        value={
-                          Math.round(((prefs.wallpaper?.slideshowIntervalMinutes ?? 30) % 60) / 5) *
-                          5
-                        }
-                        onChange={(e) => {
-                          const minutes = parseInt(e.target.value);
-                          const currentHours = Math.floor(
-                            (prefs.wallpaper?.slideshowIntervalMinutes ?? 30) / 60,
-                          );
-                          const total = Math.max(5, currentHours * 60 + minutes);
-                          updateWallpaper('slideshowIntervalMinutes', total);
-                        }}>
-                        {Array.from({ length: 12 }, (_, i) => (
-                          <option key={i * 5} value={i * 5}>
-                            {i * 5}m
+                        value={intervalMinutes}
+                        onChange={(e) =>
+                          updateSlideshowInterval(
+                            intervalHours,
+                            parseInt(e.target.value),
+                            intervalSeconds,
+                          )
+                        }>
+                        {withCurrent(SLIDESHOW_MINUTE_OPTIONS, intervalMinutes).map((m) => (
+                          <option key={m} value={m}>
+                            {m}m
+                          </option>
+                        ))}
+                      </Dropdown>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label className='settings-label'>Seconds</label>
+                      <Dropdown
+                        className='settings-dropdown'
+                        value={intervalSeconds}
+                        onChange={(e) =>
+                          updateSlideshowInterval(
+                            intervalHours,
+                            intervalMinutes,
+                            parseInt(e.target.value),
+                          )
+                        }>
+                        {withCurrent(SLIDESHOW_SECOND_OPTIONS, intervalSeconds).map((sec) => (
+                          <option key={sec} value={sec}>
+                            {sec}s
                           </option>
                         ))}
                       </Dropdown>
@@ -652,14 +729,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       marginTop: '2px',
                       display: 'block',
                     }}>
-                    Every{' '}
-                    {Math.floor((prefs.wallpaper?.slideshowIntervalMinutes ?? 30) / 60) > 0
-                      ? `${Math.floor((prefs.wallpaper?.slideshowIntervalMinutes ?? 30) / 60)}h `
-                      : ''}
-                    {(prefs.wallpaper?.slideshowIntervalMinutes ?? 30) % 60 > 0
-                      ? `${(prefs.wallpaper?.slideshowIntervalMinutes ?? 30) % 60}m`
-                      : ''}{' '}
-                    (min 5m)
+                    Changes every {formatInterval(intervalHours, intervalMinutes, intervalSeconds)}
                   </span>
                 </div>
 
@@ -669,9 +739,11 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     className='settings-dropdown'
                     value={prefs.wallpaper?.slideshowOrder ?? 'forward'}
                     onChange={(e) => updateWallpaper('slideshowOrder', e.target.value)}>
-                    <option value='forward'>Forward (A→Z, loop)</option>
-                    <option value='backward'>Backward (Z→A, loop)</option>
-                    <option value='random'>Random (shuffle)</option>
+                    <option value='forward'>File name (A → Z)</option>
+                    <option value='backward'>File name (Z → A)</option>
+                    <option value='oldest'>Date modified (oldest first)</option>
+                    <option value='newest'>Date modified (newest first)</option>
+                    <option value='random'>Shuffle</option>
                   </Dropdown>
                 </div>
               </>

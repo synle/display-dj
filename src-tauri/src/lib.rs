@@ -982,6 +982,8 @@ pub fn run() {
                 log::info!("startup probe + cache pre-warm complete");
                 // Realign hardware to the last values set from Display DJ.
                 restore_last_known_values(&startup_handle);
+                // Persist each slideshow image so the next launch resumes there.
+                wallpaper::register_slideshow_change_hook(startup_handle.clone());
                 // Resume wallpaper slideshow if it was enabled before shutdown
                 wallpaper::resume_slideshow_if_enabled(&state);
             });

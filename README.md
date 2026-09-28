@@ -296,13 +296,15 @@ The Settings panel (General tab) has controls for:
 
 Slideshow can also be configured in `preferences.json` under the `wallpaper` key:
 
-| Setting                              | Default     | Description                                           |
-| ------------------------------------ | ----------- | ----------------------------------------------------- |
-| `wallpaper.fit`                      | `"fill"`    | Default fit mode for wallpaper commands               |
-| `wallpaper.slideshowEnabled`         | `false`     | Whether the slideshow is active                       |
-| `wallpaper.slideshowFolder`          | `""`        | Absolute path to the image folder                     |
-| `wallpaper.slideshowIntervalMinutes` | `30`        | Cycle interval in minutes (minimum 5)                 |
-| `wallpaper.slideshowOrder`           | `"forward"` | Cycle order: `"forward"`, `"backward"`, or `"random"` |
+| Setting                              | Default     | Description                                                                                          |
+| ------------------------------------ | ----------- | ---------------------------------------------------------------------------------------------------- |
+| `wallpaper.fit`                      | `"fill"`    | Default fit mode for wallpaper commands                                                              |
+| `wallpaper.slideshowEnabled`         | `false`     | Whether the slideshow is active                                                                      |
+| `wallpaper.slideshowFolder`          | `""`        | Absolute path to the image folder                                                                    |
+| `wallpaper.slideshowIntervalMinutes` | `30`        | Cycle interval, minutes part                                                                         |
+| `wallpaper.slideshowIntervalSeconds` | `0`         | Extra seconds (0-59); total interval minimum 5s                                                      |
+| `wallpaper.slideshowOrder`           | `"forward"` | `"forward"` (name A→Z), `"backward"` (name Z→A), `"oldest"` / `"newest"` (date modified), `"random"` |
+| `wallpaper.slideshowLastPath`        | `null`      | Last image shown; slideshow resumes from it on startup                                               |
 
 ### Enabling Tiling
 

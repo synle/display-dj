@@ -147,8 +147,10 @@ export interface WallpaperPreferences {
   slideshowEnabled: boolean;
   /** Folder path for slideshow images. */
   slideshowFolder: string | null;
-  /** Slideshow interval in minutes (minimum 5). */
+  /** Slideshow interval minutes component (combined with seconds). */
   slideshowIntervalMinutes: number;
+  /** Extra seconds added to the slideshow interval (0-59; total minimum 5s). */
+  slideshowIntervalSeconds: number;
   /** Slideshow cycling order: "forward", "backward", "random". */
   slideshowOrder: string;
 }

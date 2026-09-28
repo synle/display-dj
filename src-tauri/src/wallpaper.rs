@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 /// Valid image file extensions for wallpapers.
 const VALID_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "bmp", "tiff", "tif", "gif", "heic", "webp",
+    "jpg", "jpeg", "png", "bmp", "tiff", "tif", "gif", "heic", "webp", "avif",
 ];
 
 /// Known wallpaper fit modes. Used to distinguish a fit token from the start of a file path.
@@ -465,7 +465,7 @@ pub(crate) fn parse_slideshow_args(remainder: &str) -> (Option<u32>, Option<&str
             // Next token should be order (forward/backward/random)
             if let Some(slash2) = after_interval.find('/') {
                 let order_candidate = &after_interval[..slash2];
-                if matches!(order_candidate, "forward" | "backward" | "random") {
+                if crate::core::wallpaper::SLIDESHOW_ORDERS.contains(&order_candidate) {
                     let path = &after_interval[slash2 + 1..];
                     return (Some(interval), Some(order_candidate), path);
                 }
@@ -490,26 +490,29 @@ pub(crate) fn start_slideshow(
         .map(|p| {
             (
                 p.wallpaper.fit.clone(),
-                p.wallpaper.slideshow_interval_minutes,
+                p.wallpaper.slideshow_interval_total_secs(),
                 p.wallpaper.slideshow_order.clone(),
             )
         })
-        .unwrap_or_else(|_| ("fill".into(), 30, "forward".into()));
+        .unwrap_or_else(|_| ("fill".into(), 30 * 60, "forward".into()));
 
-    let interval = interval.unwrap_or(default_interval).max(5);
+    // Command-supplied interval is in minutes; preference default is total seconds.
+    let interval_secs = interval
+        .map(|m| (m as u64 * 60).max(crate::core::wallpaper::MIN_SLIDESHOW_INTERVAL_SECS))
+        .unwrap_or(default_interval);
     let order = order.unwrap_or(&default_order);
 
     crate::config::write_debug_log(
         state,
         &format!(
-            "wallpaper: starting slideshow — folder={}, interval={}min, order={}, fit={}",
-            folder, interval, order, fit
+            "wallpaper: starting slideshow — folder={}, interval={}s, order={}, fit={}",
+            folder, interval_secs, order, fit
         ),
     );
 
     // Start the slideshow via the in-process platform layer.
     // Returns a JSON status string; if it contains an "error" field we treat the call as failed.
-    let resp = crate::core::wallpaper::slideshow_start(interval as u64, order, &fit, folder);
+    let resp = crate::core::wallpaper::slideshow_start(interval_secs, order, &fit, folder);
     if resp.contains("\"error\"") {
         let msg = format!("wallpaper: slideshow start failed: {}", resp);
         crate::config::write_debug_log(state, &msg);
@@ -520,13 +523,37 @@ pub(crate) fn start_slideshow(
         if let Ok(mut prefs) = state.preferences.lock() {
             prefs.wallpaper.slideshow_enabled = true;
             prefs.wallpaper.slideshow_folder = Some(folder.to_string());
-            prefs.wallpaper.slideshow_interval_minutes = interval;
+            if let Some(minutes) = interval {
+                prefs.wallpaper.slideshow_interval_minutes = minutes;
+                prefs.wallpaper.slideshow_interval_seconds = 0;
+            }
             prefs.wallpaper.slideshow_order = order.to_string();
             if let Err(error) = crate::config::save_preferences_to_disk(&prefs) {
                 log::warn!("wallpaper: failed to persist slideshow: {}", error);
             }
         }
     }
+}
+
+/// Registers the core slideshow hook that persists each displayed image to
+/// `preferences.wallpaper.slideshowLastPath` (memory + disk).
+///
+/// Side effects: one preferences write per slideshow change.
+pub(crate) fn register_slideshow_change_hook(app: tauri::AppHandle) {
+    crate::core::wallpaper::set_slideshow_change_hook(Box::new(move |path: &str| {
+        use tauri::Manager;
+        let state = app.state::<crate::AppState>();
+        let Ok(mut prefs) = state.preferences.lock() else {
+            return;
+        };
+        if prefs.wallpaper.slideshow_last_path.as_deref() == Some(path) {
+            return;
+        }
+        prefs.wallpaper.slideshow_last_path = Some(path.to_string());
+        if let Err(error) = crate::config::save_preferences_to_disk(&prefs) {
+            log::warn!("wallpaper: failed to persist slideshow last path: {}", error);
+        }
+    }));
 }
 
 /// Stops the active wallpaper slideshow via the in-process platform layer.
@@ -545,13 +572,14 @@ pub(crate) fn stop_slideshow(state: &crate::AppState) {
 /// Resumes a slideshow from saved preferences on app startup.
 /// Called during app setup.
 pub(crate) fn resume_slideshow_if_enabled(state: &crate::AppState) {
-    let (enabled, folder, interval, order, fit) = match state.preferences.lock() {
+    let (enabled, folder, interval, order, fit, last_path) = match state.preferences.lock() {
         Ok(p) => (
             p.wallpaper.slideshow_enabled,
             p.wallpaper.slideshow_folder.clone(),
-            p.wallpaper.slideshow_interval_minutes,
+            p.wallpaper.slideshow_interval_total_secs(),
             p.wallpaper.slideshow_order.clone(),
             p.wallpaper.fit.clone(),
+            p.wallpaper.slideshow_last_path.clone(),
         ),
         Err(_) => return,
     };
@@ -573,8 +601,19 @@ pub(crate) fn resume_slideshow_if_enabled(state: &crate::AppState) {
         ),
     );
 
-    let resp =
-        crate::core::wallpaper::slideshow_start(interval.max(5) as u64, &order, &fit, &folder);
+    // Resume from the last-shown image when it still exists in the folder.
+    let resume = last_path.filter(|p| Path::new(p).is_file());
+    crate::config::write_debug_log(
+        state,
+        &format!("wallpaper: slideshow resume path={:?}", resume),
+    );
+    let resp = crate::core::wallpaper::slideshow_start_at(
+        interval,
+        &order,
+        &fit,
+        &folder,
+        resume.as_deref(),
+    );
     if resp.contains("\"error\"") {
         log::warn!("wallpaper: failed to resume slideshow on startup: {}", resp);
     } else {

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import '../App.css';
-import SettingsPanel from './SettingsPanel';
+import SettingsPanel, { formatInterval } from './SettingsPanel';
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -53,6 +53,7 @@ function buildPrefs(overrides: Record<string, unknown> = {}) {
       slideshowEnabled: false,
       slideshowFolder: null,
       slideshowIntervalMinutes: 30,
+      slideshowIntervalSeconds: 0,
       slideshowOrder: 'forward',
     },
     ...overrides,
@@ -397,6 +398,40 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('Slideshow Folder')).toBeInTheDocument();
     expect(screen.getByText('Interval')).toBeInTheDocument();
     expect(screen.getByText('Slideshow Order')).toBeInTheDocument();
+  });
+
+  /** Seconds column: 0h 0m 10s persists minutes=0 / seconds=10. */
+  it('saves a seconds-level slideshow interval', async () => {
+    setupInvoke({});
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
+
+    await user.click(screen.getByLabelText('Enable Wallpaper Slideshow'));
+    await user.selectOptions(screen.getByDisplayValue('30m'), '0');
+    await user.selectOptions(screen.getByDisplayValue('5s'), '10');
+    await waitForSave();
+
+    expect(mockInvoke).toHaveBeenLastCalledWith(
+      'save_preferences',
+      expect.objectContaining({
+        preferences: expect.objectContaining({
+          wallpaper: expect.objectContaining({
+            slideshowIntervalMinutes: 0,
+            slideshowIntervalSeconds: 10,
+          }),
+        }),
+      }),
+    );
+    expect(screen.getByText('Changes every 10 seconds')).toBeInTheDocument();
+  });
+
+  /** Zero units are skipped; singular/plural handled. */
+  it('formats slideshow interval skipping zero units', () => {
+    expect(formatInterval(0, 3, 5)).toBe('3 minutes 5 seconds');
+    expect(formatInterval(1, 0, 30)).toBe('1 hour 30 seconds');
+    expect(formatInterval(2, 1, 0)).toBe('2 hours 1 minute');
+    expect(formatInterval(0, 0, 0)).toBe('0 seconds');
   });
 
   it('renders monitor rows with reorder buttons and visibility toggle', async () => {
