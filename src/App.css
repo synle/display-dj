@@ -538,6 +538,32 @@ body,
   opacity: 0.5;
 }
 
+.settings-text-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: 32px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--dropdown-bg);
+  color: var(--text-primary);
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 12px;
+  transition: border-color 0.15s;
+}
+
+.settings-text-input:hover {
+  border-color: var(--text-secondary);
+}
+
+.settings-text-input:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  outline-offset: 1px;
+}
+
 .audio-output-state {
   flex-shrink: 0;
   min-width: 84px;

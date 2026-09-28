@@ -372,7 +372,7 @@ Images are validated (existing path, valid extension, > 1 KB), then copied to `{
 
 ### Slideshow
 
-Managed in-process by `core::wallpaper` (timer thread, state, cycling). GUI starts/stops via `core::wallpaper::start_slideshow(interval, order, fit, folder)` / `core::wallpaper::stop_slideshow()`. On startup, `resume_slideshow_if_enabled()` resumes if `slideshowEnabled`, starting from `slideshowLastPath` when that file is still in the folder (persisted by a core change hook on every slideshow image). Saving slideshow settings restarts it live. Manual `command/wallpaper/change` auto-stops the running slideshow.
+Managed in-process by `core::wallpaper` (timer thread, state, cycling). GUI starts/stops via `core::wallpaper::start_slideshow(interval, order, fit, folder)` / `core::wallpaper::stop_slideshow()`. On startup, `resume_slideshow_if_enabled()` resumes if `slideshowEnabled`, starting from `slideshowLastPath` when that file is still in the folder (persisted by a core change hook on every slideshow image). Saving changed slideshow settings clears `slideshowLastPath` and restarts from the beginning. Manual `command/wallpaper/change` auto-stops the running slideshow.
 
 **Remote packs**: `command/wallpaper/slideshow_remote/{url}` downloads a `.zip` via `reqwest::blocking::get`, extracts valid images to `wallpapers/remote-{md5(url)}/`, then starts a slideshow there. Only `.zip`; max 500 MB; idempotent (skips download if folder exists with images). Uses the `zip` crate.
 

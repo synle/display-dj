@@ -656,8 +656,9 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     type='text'
                     value={prefs.wallpaper?.slideshowFolder ?? ''}
                     placeholder='/path/to/wallpapers'
+                    className='settings-text-input'
+                    spellCheck={false}
                     onChange={(e) => updateWallpaper('slideshowFolder', e.target.value || null)}
-                    style={{ marginTop: '4px', width: '100%', boxSizing: 'border-box' }}
                   />
                 </div>
 

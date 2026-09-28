@@ -1246,6 +1246,13 @@ pub async fn save_preferences(
     // for the next app launch. Runs off the async runtime: starting sets the
     // first wallpaper synchronously.
     if old_slideshow.as_ref() != Some(&slideshow_signature(&preferences.wallpaper)) {
+        // A settings change starts the slideshow fresh: drop the resume point.
+        if let Ok(mut prefs) = state.preferences.lock() {
+            prefs.wallpaper.slideshow_last_path = None;
+            if let Err(error) = save_preferences_to_disk(&prefs) {
+                log::warn!("save_preferences: failed to clear slideshow last path: {}", error);
+            }
+        }
         let enabled = preferences.wallpaper.slideshow_enabled;
         let app_handle = app.clone();
         tauri::async_runtime::spawn_blocking(move || {
