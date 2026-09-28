@@ -1,6 +1,6 @@
 // =========================================================================
 // Volume control — adjusts the default/currently-selected audio output.
-// Cross-platform: macOS (osascript), Windows (PowerShell), Linux (pactl/amixer).
+// Cross-platform: macOS (CoreAudio), Windows (IAudioEndpointVolume), Linux (pactl/amixer).
 // Vendored from display-dj-cli main.rs.
 // =========================================================================
 
@@ -13,45 +13,51 @@ pub struct VolumeInfo {
     pub muted: bool, // true if the default output is muted
 }
 
-// --- macOS volume: osascript wrapping AppleScript commands ---
+// --- macOS volume: native CoreAudio, osascript fallback ---
+// CoreAudio avoids a ~250ms osascript process spawn per call (measured 0.24-0.30s
+// for a read). osascript stays as a fallback for devices CoreAudio rejects.
 
-/// Get current volume and mute state on macOS via `osascript`.
-/// Makes two osascript calls: one for volume level, one for mute state.
+/// Runs one AppleScript snippet and returns trimmed stdout on success.
+#[cfg(target_os = "macos")]
+fn osascript(script: &str) -> Option<String> {
+    let output = std::process::Command::new("osascript").args(["-e", script]).output().ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Get current volume and mute state on macOS (CoreAudio, then osascript).
 #[cfg(target_os = "macos")]
 pub fn get_volume() -> Option<VolumeInfo> {
-    let output = std::process::Command::new("osascript")
-        .args(["-e", "output volume of (get volume settings)"])
-        .output().ok()?;
-    if !output.status.success() { return None; }
-    let volume: u32 = String::from_utf8_lossy(&output.stdout).trim().parse().ok()?;
-
-    let output = std::process::Command::new("osascript")
-        .args(["-e", "output muted of (get volume settings)"])
-        .output().ok()?;
-    let muted = String::from_utf8_lossy(&output.stdout).trim().to_lowercase() == "true";
-
+    match super::audio_output::get_default_volume() {
+        Ok((volume, muted)) => return Some(VolumeInfo { volume, muted }),
+        Err(error) => log::warn!("CoreAudio get volume failed, using osascript: {}", error),
+    }
+    let volume: u32 = osascript("output volume of (get volume settings)")?.parse().ok()?;
+    let muted = osascript("output muted of (get volume settings)")
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
     Some(VolumeInfo { volume, muted })
 }
 
-/// Set system volume on macOS via osascript. Level is 0-100.
+/// Set system volume on macOS (CoreAudio, then osascript). Level is 0-100.
 #[cfg(target_os = "macos")]
 pub fn set_volume(level: u16) -> bool {
-    std::process::Command::new("osascript")
-        .args(["-e", &format!("set volume output volume {}", level)])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    match super::audio_output::set_default_volume(level) {
+        Ok(()) => return true,
+        Err(error) => log::warn!("CoreAudio set volume failed, using osascript: {}", error),
+    }
+    osascript(&format!("set volume output volume {}", level)).is_some()
 }
 
-/// Toggle mute on macOS via osascript.
+/// Set mute on macOS (CoreAudio, then osascript).
 #[cfg(target_os = "macos")]
 pub fn set_mute(mute: bool) -> bool {
-    let val = if mute { "true" } else { "false" };
-    std::process::Command::new("osascript")
-        .args(["-e", &format!("set volume output muted {}", val)])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    match super::audio_output::set_default_mute(mute) {
+        Ok(()) => return true,
+        Err(error) => log::warn!("CoreAudio set mute failed, using osascript: {}", error),
+    }
+    osascript(&format!("set volume output muted {}", mute)).is_some()
 }
 
 // --- Windows volume: native Core Audio endpoint-volume API ---

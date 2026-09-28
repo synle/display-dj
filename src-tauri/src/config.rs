@@ -460,6 +460,10 @@ pub struct LastKnownValues {
     pub all_brightness: Option<u32>,
     /// Per-monitor brightness keyed by monitor `uid`.
     pub monitor_brightness: std::collections::BTreeMap<String, u32>,
+    /// Aggregate "All Monitors" contrast slider.
+    pub all_contrast: Option<u32>,
+    /// Per-monitor contrast keyed by monitor `uid`.
+    pub monitor_contrast: std::collections::BTreeMap<String, u32>,
     /// Aggregate "All Speakers" volume slider.
     pub all_volume: Option<u32>,
     /// Per-speaker volume keyed by stable audio-output device ID.
@@ -474,6 +478,8 @@ pub struct LastKnownValues {
 pub struct LastKnownValuesPatch {
     pub all_brightness: Option<u32>,
     pub monitor_brightness: std::collections::BTreeMap<String, u32>,
+    pub all_contrast: Option<u32>,
+    pub monitor_contrast: std::collections::BTreeMap<String, u32>,
     pub all_volume: Option<u32>,
     pub speaker_volume: std::collections::BTreeMap<String, u32>,
     pub selected_speaker_id: Option<String>,
@@ -491,6 +497,12 @@ impl LastKnownValues {
         for (k, v) in patch.monitor_brightness {
             self.monitor_brightness.insert(k, v.min(100));
         }
+        if let Some(v) = patch.all_contrast {
+            self.all_contrast = Some(v.min(100));
+        }
+        for (k, v) in patch.monitor_contrast {
+            self.monitor_contrast.insert(k, v.min(100));
+        }
         if let Some(v) = patch.all_volume {
             self.all_volume = Some(v.min(100));
         }
@@ -506,6 +518,8 @@ impl LastKnownValues {
     pub fn sanitize(&mut self) {
         self.all_brightness = self.all_brightness.map(|v| v.min(100));
         self.all_volume = self.all_volume.map(|v| v.min(100));
+        self.all_contrast = self.all_contrast.map(|v| v.min(100));
+        self.monitor_contrast.values_mut().for_each(|v| *v = (*v).min(100));
         self.monitor_brightness.values_mut().for_each(|v| *v = (*v).min(100));
         self.speaker_volume.values_mut().for_each(|v| *v = (*v).min(100));
     }
@@ -2319,8 +2333,10 @@ mod last_known_values_tests {
     #[test]
     fn sanitize_clamps_hand_edited_values() {
         let mut p: Preferences =
-            serde_json::from_str(r#"{"lastKnownValues":{"allVolume":500,"monitorBrightness":{"x":900}}}"#).unwrap();
+            serde_json::from_str(r#"{"lastKnownValues":{"allVolume":500,"monitorBrightness":{"x":900},"allContrast":300,"monitorContrast":{"y":700}}}"#).unwrap();
         p.sanitize();
+        assert_eq!(p.last_known_values.all_contrast, Some(100));
+        assert_eq!(p.last_known_values.monitor_contrast.get("y"), Some(&100));
         assert_eq!(p.last_known_values.all_volume, Some(100));
         assert_eq!(p.last_known_values.monitor_brightness.get("x"), Some(&100));
     }

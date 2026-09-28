@@ -138,6 +138,24 @@ pub fn set_audio_output_device(device_id: &str) -> Result<AudioOutputState, Stri
     Ok(post_state)
 }
 
+/// Returns volume and mute state for the default macOS output (CoreAudio).
+#[cfg(target_os = "macos")]
+pub fn get_default_volume() -> Result<(u32, bool), String> {
+    macos::get_default_volume()
+}
+
+/// Sets volume for the default macOS output (CoreAudio).
+#[cfg(target_os = "macos")]
+pub fn set_default_volume(level: u16) -> Result<(), String> {
+    macos::set_default_volume(level)
+}
+
+/// Sets mute state for the default macOS output (CoreAudio).
+#[cfg(target_os = "macos")]
+pub fn set_default_mute(mute: bool) -> Result<(), String> {
+    macos::set_default_mute(mute)
+}
+
 /// Returns volume and mute state for the selected Windows playback endpoint.
 #[cfg(target_os = "windows")]
 pub fn get_default_volume() -> Result<(u32, bool), String> {

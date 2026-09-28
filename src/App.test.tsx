@@ -481,6 +481,56 @@ describe('App smoke test', () => {
     expect(sliders.map((el) => (el as HTMLInputElement).value)).toEqual(['30', '50']);
   });
 
+  /** Contrast renders last-known values (default 50) and hides for non-DDC monitors. */
+  it('renders last-known contrast values instead of live monitor readings', async () => {
+    const monitors = [
+      {
+        id: '1',
+        uid: 'one',
+        name: 'One',
+        originalName: 'One',
+        brightness: 80,
+        contrast: 90,
+        supportsBrightness: true,
+        isBuiltIn: false,
+        hidden: false,
+      },
+      {
+        id: '2',
+        uid: 'two',
+        name: 'Two',
+        originalName: 'Two',
+        brightness: 20,
+        contrast: 10,
+        supportsBrightness: true,
+        isBuiltIn: false,
+        hidden: false,
+      },
+    ];
+    const original = mockInvoke.getMockImplementation()!;
+    mockInvoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === 'fetch_all_state') return { monitors, isDark: false, volume: 90 };
+      if (command === 'get_preferences') {
+        const prefs = (await original(command, args as never)) as object;
+        return {
+          ...prefs,
+          showContrast: true,
+          lastKnownValues: { allContrast: 70, monitorContrast: { one: 30 } },
+        };
+      }
+      return original(command, args as never);
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('slider', { name: 'Contrast for all monitors' })).toHaveValue('70'),
+    );
+    await user.click(screen.getByTitle('Show individual monitors'));
+    const sliders = screen.getAllByRole('slider', { name: /^Contrast for (One|Two)$/ });
+    expect(sliders.map((el) => (el as HTMLInputElement).value)).toEqual(['30', '50']);
+  });
+
   /** Aggregate brightness changes are recorded even when hardware rejects them. */
   it('records aggregate brightness as last-known value without an error bar', async () => {
     const original = mockInvoke.getMockImplementation()!;
@@ -1127,5 +1177,25 @@ describe('App smoke test', () => {
       expect(screen.getByRole('slider', { name: 'System volume' })).toHaveValue('0');
     });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  /** Rapid slider changes persist once, as a single merged patch. */
+  it('coalesces rapid last-known changes into one persisted patch', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const icon = await screen.findByRole('button', { name: 'Mute system volume' });
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('get_audio_output_devices'));
+    await act(async () => {});
+
+    await user.click(icon);
+    await user.click(screen.getByRole('button', { name: 'Unmute system volume' }));
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('record_last_known_values', {
+        patch: { allVolume: 100, speakerVolume: { speakers: 100 } },
+      }),
+    );
+    expect(
+      mockInvoke.mock.calls.filter(([cmd]) => cmd === 'record_last_known_values'),
+    ).toHaveLength(1);
   });
 });

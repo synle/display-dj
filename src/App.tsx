@@ -19,9 +19,16 @@ const ABSOLUTE_MIN_BRIGHTNESS = 5;
 /** Slider value rendered when no last-known value was recorded. */
 const DEFAULT_SLIDER_VALUE = 50;
 
-/** Records last-known slider values in preferences; failures are ignored. */
-function recordLastKnown(patch: LastKnownValues) {
-  invoke('record_last_known_values', { patch }).catch(() => {});
+/** Delay before persisting last-known values, so a drag saves once it settles. */
+const LAST_KNOWN_PERSIST_MS = 200;
+
+/** Merges two last-known patches: scalars overwrite, per-id maps combine. */
+function mergeLastKnown(a: LastKnownValues, b: LastKnownValues): LastKnownValues {
+  const merged: LastKnownValues = { ...a, ...b };
+  for (const key of ['monitorBrightness', 'monitorContrast', 'speakerVolume'] as const) {
+    if (a[key] || b[key]) merged[key] = { ...a[key], ...b[key] };
+  }
+  return merged;
 }
 
 /** Root component: manages all app state (monitors, dark mode, volume, preferences)
@@ -46,6 +53,26 @@ function App() {
   const appRef = useRef<HTMLDivElement>(null);
   const audioOutputFetchInFlight = useRef(false);
   const audioOutputStateVersion = useRef(0);
+  const pendingLastKnown = useRef<LastKnownValues | null>(null);
+  const lastKnownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Sends the coalesced pending last-known patch; failures are ignored. */
+  const flushLastKnown = useCallback(() => {
+    if (lastKnownTimer.current) clearTimeout(lastKnownTimer.current);
+    lastKnownTimer.current = null;
+    const patch = pendingLastKnown.current;
+    pendingLastKnown.current = null;
+    if (patch) invoke('record_last_known_values', { patch }).catch(() => {});
+  }, []);
+
+  /** Queues last-known slider values; persisted once after 200ms of quiet. */
+  const recordLastKnown = (patch: LastKnownValues) => {
+    pendingLastKnown.current = pendingLastKnown.current
+      ? mergeLastKnown(pendingLastKnown.current, patch)
+      : patch;
+    if (lastKnownTimer.current) clearTimeout(lastKnownTimer.current);
+    lastKnownTimer.current = setTimeout(flushLastKnown, LAST_KNOWN_PERSIST_MS);
+  };
   const showAccessibilityGate = isMac && !accessibilityTrusted;
   const mainViewVisible = !showAccessibilityGate && !aboutOpen && !settingsOpen;
 
@@ -172,6 +199,7 @@ function App() {
     // Close the About panel when the window loses focus (user clicks away)
     const handleBlur = () => {
       setAboutOpen(false);
+      flushLastKnown();
     };
     window.addEventListener('blur', handleBlur);
 
@@ -182,8 +210,16 @@ function App() {
       unlisten5.then((f) => f());
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('blur', handleBlur);
+      flushLastKnown();
     };
-  }, [fetchAllState, fetchMonitors, fetchDarkMode, fetchPreferences, fetchKeepAwake]);
+  }, [
+    fetchAllState,
+    fetchMonitors,
+    fetchDarkMode,
+    fetchPreferences,
+    fetchKeepAwake,
+    flushLastKnown,
+  ]);
 
   // The backend owns hot-plug probing. Poll its shared snapshot while the main
   // panel is visible as a fallback, retaining the last successful state.
@@ -274,25 +310,34 @@ function App() {
     }
   };
 
-  /** Sets contrast for all monitors with optimistic UI update. */
+  /** Sets contrast for all monitors and records it as the last-known value. */
   const handleAllContrast = async (value: number) => {
-    const previous = monitors;
-    setMonitors((prev) => prev.map((m) => (m.contrast !== null ? { ...m, contrast: value } : m)));
+    const targets = monitors.filter((m) => !m.hidden && m.contrast !== null);
+    const monitorContrast = Object.fromEntries(targets.map((m) => [m.uid, value]));
+    setLastKnown((prev) => ({
+      ...prev,
+      allContrast: value,
+      monitorContrast: { ...prev.monitorContrast, ...monitorContrast },
+    }));
+    recordLastKnown({ allContrast: value, monitorContrast });
     try {
       await invoke('set_all_contrast', { value });
     } catch {
-      setMonitors(previous);
+      // Keep the last-known value; hardware errors are not surfaced.
     }
   };
 
-  /** Sets contrast for a single monitor with optimistic UI update. */
+  /** Sets contrast for one monitor and records it as the last-known value. */
   const handleMonitorContrast = async (monitorId: string, uid: string, value: number) => {
-    const previous = monitors;
-    setMonitors((prev) => prev.map((m) => (m.uid === uid ? { ...m, contrast: value } : m)));
+    setLastKnown((prev) => ({
+      ...prev,
+      monitorContrast: { ...prev.monitorContrast, [uid]: value },
+    }));
+    recordLastKnown({ monitorContrast: { [uid]: value } });
     try {
       await invoke('set_contrast', { monitorId, value });
     } catch {
-      setMonitors(previous);
+      // Keep the last-known value; hardware errors are not surfaced.
     }
   };
 
@@ -443,13 +488,16 @@ function App() {
   // (rather than only auto-opening System Settings on launch) makes the
   // recovery loop a single round-trip.
   // Only show non-hidden monitors in the main UI
-  // Brightness and volume render last-known values recorded from this app
-  // (default 50%), never live hardware reads.
+  // Brightness, contrast, and volume render last-known values recorded from
+  // this app (default 50%), never live hardware reads. A null live contrast
+  // still means the monitor has no DDC contrast support.
   const visibleMonitors = monitors
     .filter((m) => !m.hidden)
     .map((m) => ({
       ...m,
       brightness: lastKnown.monitorBrightness?.[m.uid] ?? DEFAULT_SLIDER_VALUE,
+      contrast:
+        m.contrast === null ? null : (lastKnown.monitorContrast?.[m.uid] ?? DEFAULT_SLIDER_VALUE),
     }));
   const allBrightness = lastKnown.allBrightness ?? DEFAULT_SLIDER_VALUE;
   const selectedSpeakerId = audioOutputState?.selectedDeviceId ?? null;
@@ -459,12 +507,8 @@ function App() {
     : (lastKnown.allVolume ?? DEFAULT_SLIDER_VALUE);
 
   // Whether any visible monitor supports contrast (used to show/hide the contrast slider)
-  const contrastValues = visibleMonitors.flatMap((m) => (m.contrast === null ? [] : [m.contrast]));
-  const hasContrast = contrastValues.length > 0;
-  const allContrast = hasContrast
-    ? Math.round(contrastValues.reduce((sum, value) => sum + value, 0) / contrastValues.length)
-    : 0;
-  const contrastMixed = contrastValues.some((value) => value !== contrastValues[0]);
+  const hasContrast = visibleMonitors.some((m) => m.contrast !== null);
+  const allContrast = lastKnown.allContrast ?? DEFAULT_SLIDER_VALUE;
 
   return (
     <div className='app' ref={appRef} data-theme={darkMode ? 'dark' : 'light'}>
@@ -502,7 +546,7 @@ function App() {
                 brightnessMixed={false}
                 onBrightnessChange={handleAllBrightness}
                 contrast={hasContrast ? allContrast : null}
-                contrastMixed={contrastMixed}
+                contrastMixed={false}
                 onContrastChange={handleAllContrast}
                 showContrast={showContrast}
                 monitorCount={visibleMonitors.length}

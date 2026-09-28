@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Slider from './Slider';
 
@@ -98,5 +98,36 @@ describe('Slider', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Toggle brightness' })).toBeInTheDocument();
+  });
+  /** throttleMs sends the first drag value immediately and the final one after the window. */
+  it('sends leading and trailing values when throttled', () => {
+    const onChange = vi.fn();
+    render(<Slider label='Volume' value={50} onChange={onChange} throttleMs={30} />);
+    const input = screen.getByRole('slider', { name: 'Volume' });
+
+    fireEvent.change(input, { target: { value: '60' } });
+    expect(onChange).toHaveBeenCalledWith(60);
+    fireEvent.change(input, { target: { value: '65' } });
+    fireEvent.change(input, { target: { value: '70' } });
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    act(() => vi.advanceTimersByTime(30));
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith(70);
+  });
+
+  /** Without throttleMs, only the final value is sent after a 50ms quiet period. */
+  it('debounces to the final value when not throttled', () => {
+    const onChange = vi.fn();
+    render(<Slider label='Brightness' value={50} onChange={onChange} />);
+    const input = screen.getByRole('slider', { name: 'Brightness' });
+
+    fireEvent.change(input, { target: { value: '60' } });
+    fireEvent.change(input, { target: { value: '70' } });
+    act(() => vi.advanceTimersByTime(49));
+    expect(onChange).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(70);
   });
 });

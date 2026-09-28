@@ -14,6 +14,9 @@ interface VolumeControlProps {
   onMoveOutput: (id: string, direction: 'up' | 'down') => void;
 }
 
+/** Live-drag send interval; native volume calls take ~1-4ms. */
+const VOLUME_THROTTLE_MS = 30;
+
 /** System volume slider with independently expandable output controls. */
 export default function VolumeControl({
   value,
@@ -92,6 +95,7 @@ export default function VolumeControl({
         iconLabel={value === 0 ? 'Unmute system volume' : 'Mute system volume'}
         value={value}
         onChange={onChange}
+        throttleMs={VOLUME_THROTTLE_MS}
         onIconClick={() => onChange(value > 0 ? 0 : 100)}
       />
       {expanded && outputState && (

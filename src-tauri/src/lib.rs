@@ -734,7 +734,8 @@ mod tests {
 /// and the cache pre-warm finish.
 ///
 /// Sets brightness for every connected monitor with a recorded value
-/// (routed through its `brightnessMode`), re-selects the last speaker when it
+/// (routed through its `brightnessMode`) and contrast (DDC-capable monitors
+/// only), re-selects the last speaker when it
 /// is present and `enabled`, then restores that speaker's volume. Failures are
 /// logged and never abort startup. Other speakers' volumes cannot be set
 /// without making them the default output, so only the selected one is applied.
@@ -745,6 +746,17 @@ fn restore_last_known_values(app: &tauri::AppHandle) {
         Err(_) => return,
     };
     for monitor in state.sidecar_cache.get_monitors().unwrap_or_default() {
+        if let (Some(&contrast), Some(_)) =
+            (lkv.monitor_contrast.get(&monitor.uid), monitor.contrast)
+        {
+            let ok = core::display::set_one_contrast(&monitor.id, contrast.min(100) as u16);
+            log::info!(
+                "restore_last_known_values: contrast uid={} value={} ok={}",
+                monitor.uid,
+                contrast,
+                ok
+            );
+        }
         let Some(&value) = lkv.monitor_brightness.get(&monitor.uid) else {
             continue;
         };

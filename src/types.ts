@@ -178,6 +178,9 @@ export interface LastKnownValues {
   allBrightness?: number | null;
   /** Keyed by monitor uid. */
   monitorBrightness?: Record<string, number>;
+  allContrast?: number | null;
+  /** Keyed by monitor uid. */
+  monitorContrast?: Record<string, number>;
   allVolume?: number | null;
   /** Keyed by audio-output device ID. */
   speakerVolume?: Record<string, number>;

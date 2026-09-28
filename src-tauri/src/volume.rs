@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use crate::core::audio_output::{AudioOutputDeviceState, AudioOutputState};
 use tauri::{Emitter, Manager};
 
@@ -530,6 +531,11 @@ pub async fn get_volume(state: tauri::State<'_, crate::AppState>) -> Result<u32,
     Ok(volume)
 }
 
+/// Monotonic ticket for `set_volume` requests; the newest ticket wins.
+static VOLUME_REQUEST_SEQ: AtomicU64 = AtomicU64::new(0);
+/// Serializes platform volume writes so they cannot finish out of order.
+static VOLUME_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Sets the system volume (clamped to 0-100) via the in-process platform layer.
 /// Updates the cached is_muted state and refreshes the tray icon.
 #[tauri::command]
@@ -543,11 +549,22 @@ pub async fn set_volume(value: u32, app: tauri::AppHandle) -> Result<(), String>
             &format!("set_volume: value={} clamped={} — START", value, clamped),
         );
     }
-    let ok = tauri::async_runtime::spawn_blocking(move || {
-        crate::core::volume::set_volume(clamped as u16)
+    // Latest-wins: writes run one at a time, and a request superseded by a
+    // newer one while it waited is skipped, so the final value always sticks.
+    let ticket = VOLUME_REQUEST_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
+    let applied = tauri::async_runtime::spawn_blocking(move || {
+        let _guard = VOLUME_WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        if VOLUME_REQUEST_SEQ.load(Ordering::SeqCst) != ticket {
+            return None;
+        }
+        Some(crate::core::volume::set_volume(clamped as u16))
     })
     .await
     .map_err(|e| format!("set_volume task join failed: {}", e))?;
+    let Some(ok) = applied else {
+        log::info!("set_volume: value={} superseded, skipped", clamped);
+        return Ok(());
+    };
     if !ok {
         return Err("set_volume failed: platform layer reported failure".into());
     }

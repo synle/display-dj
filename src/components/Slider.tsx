@@ -12,7 +12,16 @@ interface SliderProps {
   unit?: string;
   onIconClick?: () => void;
   mixed?: boolean;
+  /**
+   * When set, send values live during a drag at most once per this many ms
+   * (leading + trailing, final value always sent). When unset, use a 50ms
+   * trailing debounce — right for slow DDC/CI hardware.
+   */
+  throttleMs?: number;
 }
+
+/** Trailing debounce used when `throttleMs` is not set. */
+const DEFAULT_DEBOUNCE_MS = 50;
 
 /** Reusable range slider with optional icon, debounced onChange, and value display. */
 export default function Slider({
@@ -27,10 +36,12 @@ export default function Slider({
   unit = '%',
   onIconClick,
   mixed = false,
+  throttleMs,
 }: SliderProps) {
   const [localValue, setLocalValue] = useState(value);
   const [prevPropValue, setPrevPropValue] = useState(value);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSentAtRef = useRef(0);
 
   // Sync external value changes (backend updates, profile applies) into local
   // state by adjusting during render — the pattern React recommends instead of
@@ -41,7 +52,7 @@ export default function Slider({
     setLocalValue(value);
   }
 
-  /** Debounces slider input to avoid flooding the backend with brightness/volume calls. */
+  /** Throttles (live) or debounces (trailing) slider input before calling onChange. */
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newValue = Number(e.target.value);
@@ -49,12 +60,25 @@ export default function Slider({
 
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
-      timeoutRef.current = setTimeout(() => {
+      const send = () => {
+        lastSentAtRef.current = Date.now();
+        timeoutRef.current = null;
         onChange(newValue);
-      }, 50);
+      };
+      if (throttleMs === undefined) {
+        timeoutRef.current = setTimeout(send, DEFAULT_DEBOUNCE_MS);
+        return;
+      }
+      const wait = throttleMs - (Date.now() - lastSentAtRef.current);
+      if (wait <= 0) {
+        send();
+        return;
+      }
+      timeoutRef.current = setTimeout(send, wait);
     },
-    [onChange],
+    [onChange, throttleMs],
   );
 
   const percentage = ((localValue - min) / (max - min)) * 100;

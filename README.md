@@ -49,7 +49,8 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Dynamic tray icon** -- the system tray icon updates to reflect app state: dark/light mode (border color), keep-awake active (blue fill), and muted (red X overlay)
 - **Multi-monitor popup placement** -- left-click opens on the clicked tray icon's display, including vertically stacked mixed-DPI layouts with overlapping reported bounds; bottom-edge trays place the popup above so it remains fully visible
 - **Settings panel** -- tabbed UI (General + Tiling) with lossless, ordered auto-save and visible save status. Configure brightness, contrast, monitors, night mode, snap zones, exposé grid size, layout strategy, and launch at login. The popup stays screen-bounded with internal scrolling, and controls expose keyboard focus and screen-reader state
-- **Truthful status feedback** -- failed platform reads and writes appear in the popup instead of silently becoming zero/default values; optimistic controls return to their confirmed value after a failed operation
+- **Last-known slider values** -- brightness, contrast, and volume sliders show the last value set from Display DJ (50% when unknown), persisted in preferences and re-applied on launch; no noisy status bar
+- **Instant volume** -- macOS volume uses CoreAudio directly (~1-4ms per change) and follows the slider live while dragging
 - **About / Update check** -- "About Display DJ" in the tray menu shows current version, latest GitHub release, engine, platform, build date, and homepage. Green "Up to date" or orange "Update available" badge with download link. macOS section includes quarantine fix and Accessibility settings commands
 - **System tray app** -- lives in your menu bar / system tray with no dock or taskbar clutter
 

@@ -69,6 +69,31 @@ extern "C" {
     ) -> OsStatus;
 }
 
+// AudioHardwareService exposes the same "virtual main volume" that the
+// menu-bar slider and `osascript set volume` drive, across multi-channel devices.
+#[link(name = "AudioToolbox", kind = "framework")]
+extern "C" {
+    fn AudioHardwareServiceGetPropertyData(
+        object_id: AudioObjectId,
+        address: *const AudioObjectPropertyAddress,
+        qualifier_data_size: u32,
+        qualifier_data: *const c_void,
+        data_size: *mut u32,
+        data: *mut c_void,
+    ) -> OsStatus;
+    fn AudioHardwareServiceSetPropertyData(
+        object_id: AudioObjectId,
+        address: *const AudioObjectPropertyAddress,
+        qualifier_data_size: u32,
+        qualifier_data: *const c_void,
+        data_size: u32,
+        data: *const c_void,
+    ) -> OsStatus;
+}
+
+const PROPERTY_VIRTUAL_MAIN_VOLUME: AudioObjectPropertySelector = four_cc(*b"vmvc");
+const PROPERTY_MUTE: AudioObjectPropertySelector = four_cc(*b"mute");
+
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
     fn CFStringGetLength(value: CfStringRef) -> CfIndex;
@@ -334,6 +359,64 @@ fn write_u32(
         )
     };
     check_status(status, "write CoreAudio property")
+}
+
+/// Returns `(volume 0-100, muted)` for the default output via CoreAudio.
+///
+/// # Errors
+/// Returns an error when the default device or its virtual main volume is unreadable.
+pub fn get_default_volume() -> Result<(u32, bool), String> {
+    let device = read_u32(AUDIO_SYSTEM_OBJECT, PROPERTY_DEFAULT_OUTPUT, SCOPE_GLOBAL)?;
+    let property_address = address(PROPERTY_VIRTUAL_MAIN_VOLUME, SCOPE_OUTPUT);
+    let mut scalar: f32 = 0.0;
+    let mut data_size = size_of::<f32>() as u32;
+    let status = unsafe {
+        AudioHardwareServiceGetPropertyData(
+            device,
+            &property_address,
+            0,
+            ptr::null(),
+            &mut data_size,
+            &mut scalar as *mut f32 as *mut c_void,
+        )
+    };
+    check_status(status, "read CoreAudio virtual main volume")?;
+    let muted = read_u32(device, PROPERTY_MUTE, SCOPE_OUTPUT).unwrap_or(0) != 0;
+    Ok(((scalar.clamp(0.0, 1.0) * 100.0).round() as u32, muted))
+}
+
+/// Sets the default output's virtual main volume (0-100) via CoreAudio.
+///
+/// # Errors
+/// Returns an error when the default device rejects the write.
+pub fn set_default_volume(level: u16) -> Result<(), String> {
+    let device = read_u32(AUDIO_SYSTEM_OBJECT, PROPERTY_DEFAULT_OUTPUT, SCOPE_GLOBAL)?;
+    let property_address = address(PROPERTY_VIRTUAL_MAIN_VOLUME, SCOPE_OUTPUT);
+    let scalar = f32::from(level.min(100)) / 100.0;
+    let status = unsafe {
+        AudioHardwareServiceSetPropertyData(
+            device,
+            &property_address,
+            0,
+            ptr::null(),
+            size_of::<f32>() as u32,
+            &scalar as *const f32 as *const c_void,
+        )
+    };
+    check_status(status, "write CoreAudio virtual main volume")?;
+    // Match osascript semantics: a non-zero level unmutes; failure is non-fatal
+    // for devices without a mute control.
+    let _ = write_u32(device, PROPERTY_MUTE, SCOPE_OUTPUT, u32::from(level == 0));
+    Ok(())
+}
+
+/// Sets the default output's mute state via CoreAudio.
+///
+/// # Errors
+/// Returns an error when the device has no writable mute control.
+pub fn set_default_mute(mute: bool) -> Result<(), String> {
+    let device = read_u32(AUDIO_SYSTEM_OBJECT, PROPERTY_DEFAULT_OUTPUT, SCOPE_GLOBAL)?;
+    write_u32(device, PROPERTY_MUTE, SCOPE_OUTPUT, u32::from(mute))
 }
 
 /// Converts a non-zero CoreAudio status into a useful error.
