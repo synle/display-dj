@@ -98,6 +98,71 @@ pub async fn resolve_monitor_rect(
 /// clamped to `[min_brightness, 100]`. Returns whether the platform call
 /// succeeded — `false` is the trigger for the soft-overlay fallback in
 /// "auto" mode.
+/// Latest-wins + dedupe bookkeeping for hardware brightness writes.
+///
+/// `seq` holds the newest ticket per target (`"*"` = all monitors, else a
+/// monitor id); a request whose ticket was superseded while it waited for
+/// `BRIGHTNESS_WRITE_LOCK` is skipped. `last` holds the last value written per
+/// target and when, so an identical value within `DEDUPE_WINDOW` is skipped.
+struct BrightnessTracker {
+    seq: std::collections::HashMap<String, u64>,
+    last: std::collections::HashMap<String, (u32, std::time::Instant)>,
+}
+
+static BRIGHTNESS_TRACKER: std::sync::LazyLock<std::sync::Mutex<BrightnessTracker>> =
+    std::sync::LazyLock::new(|| {
+        std::sync::Mutex::new(BrightnessTracker {
+            seq: Default::default(),
+            last: Default::default(),
+        })
+    });
+/// Serializes hardware brightness writes so they cannot finish out of order.
+static BRIGHTNESS_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+/// Target key used for aggregate "all monitors" writes.
+const ALL_MONITORS_KEY: &str = "*";
+/// Repeated identical values inside this window are skipped. Bounded so an
+/// out-of-band change (brightness keys, OSD) can still be overridden later.
+const DEDUPE_WINDOW: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Outcome of the latest-wins / dedupe gate.
+enum WriteGate {
+    Write,
+    Superseded,
+    Duplicate,
+}
+
+/// Issues a ticket for `key`; returns the ticket.
+fn brightness_ticket(key: &str) -> u64 {
+    let mut t = BRIGHTNESS_TRACKER.lock().unwrap_or_else(|p| p.into_inner());
+    let next = t.seq.get(key).copied().unwrap_or(0) + 1;
+    t.seq.insert(key.to_string(), next);
+    next
+}
+
+/// Decides whether a ticketed write for `key` should hit hardware.
+fn brightness_gate(key: &str, ticket: u64, value: u32) -> WriteGate {
+    let t = BRIGHTNESS_TRACKER.lock().unwrap_or_else(|p| p.into_inner());
+    if t.seq.get(key).copied() != Some(ticket) {
+        return WriteGate::Superseded;
+    }
+    match t.last.get(key) {
+        Some((v, at)) if *v == value && at.elapsed() < DEDUPE_WINDOW => WriteGate::Duplicate,
+        _ => WriteGate::Write,
+    }
+}
+
+/// Records a successful write. An aggregate write clears per-monitor entries
+/// (their values changed); a per-monitor write clears the aggregate entry.
+fn brightness_record(key: &str, value: u32) {
+    let mut t = BRIGHTNESS_TRACKER.lock().unwrap_or_else(|p| p.into_inner());
+    if key == ALL_MONITORS_KEY {
+        t.last.clear();
+    } else {
+        t.last.remove(ALL_MONITORS_KEY);
+    }
+    t.last.insert(key.to_string(), (value, std::time::Instant::now()));
+}
+
 async fn set_monitor_brightness(
     monitor_id: &str,
     value: u32,
@@ -105,6 +170,7 @@ async fn set_monitor_brightness(
     mode: &str,
 ) -> Result<bool, String> {
     let clamped = value.clamp(min_brightness, 100);
+    let ticket = brightness_ticket(monitor_id);
     let id = monitor_id.to_string();
     let mode_owned = mode.to_string();
     log::info!(
@@ -116,7 +182,31 @@ async fn set_monitor_brightness(
         mode_owned,
     );
     let ok = tauri::async_runtime::spawn_blocking(move || {
-        crate::core::display::set_one_brightness(&id, clamped as u16, &mode_owned)
+        let _guard = BRIGHTNESS_WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        match brightness_gate(&id, ticket, clamped) {
+            WriteGate::Superseded => {
+                log::info!("set_monitor_brightness: id={} value={} superseded, skipped", id, clamped);
+                return true;
+            }
+            WriteGate::Duplicate => {
+                log::info!("set_monitor_brightness: id={} value={} duplicate, skipped", id, clamped);
+                return true;
+            }
+            WriteGate::Write => {}
+        }
+        let t0 = std::time::Instant::now();
+        let ok = crate::core::display::set_one_brightness(&id, clamped as u16, &mode_owned);
+        log::info!(
+            "set_monitor_brightness: id={} value={} ok={} hw_elapsed={:.1}ms",
+            id,
+            clamped,
+            ok,
+            t0.elapsed().as_secs_f64() * 1000.0
+        );
+        if ok {
+            brightness_record(&id, clamped);
+        }
+        ok
     })
     .await
     .map_err(|e| format!("brightness task join failed: {}", e))?;
@@ -142,8 +232,29 @@ async fn set_all_monitors_brightness(
         clamped,
         min_brightness
     );
+    let ticket = brightness_ticket(ALL_MONITORS_KEY);
     let results = tauri::async_runtime::spawn_blocking(move || {
-        crate::core::display::set_all_brightness(clamped as u16, "force")
+        let _guard = BRIGHTNESS_WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        match brightness_gate(ALL_MONITORS_KEY, ticket, clamped) {
+            WriteGate::Superseded | WriteGate::Duplicate => {
+                log::info!("set_all_monitors_brightness: value={} superseded/duplicate, skipped", clamped);
+                // Empty result: nothing written, nothing failed.
+                return Vec::new();
+            }
+            WriteGate::Write => {}
+        }
+        let t0 = std::time::Instant::now();
+        let results = crate::core::display::set_all_brightness(clamped as u16, "force");
+        log::info!(
+            "set_all_monitors_brightness: value={} results={:?} hw_elapsed={:.1}ms",
+            clamped,
+            results,
+            t0.elapsed().as_secs_f64() * 1000.0
+        );
+        if results.iter().all(|(_, ok)| *ok) {
+            brightness_record(ALL_MONITORS_KEY, clamped);
+        }
+        results
     })
     .await
     .map_err(|e| format!("set_all_brightness task join failed: {}", e))?;
@@ -891,6 +1002,46 @@ pub(crate) fn resolve_monitor(monitors: &[Monitor], query: &str) -> Option<(usiz
                 || m.original_name.to_lowercase().contains(&needle)
         })
         .map(|(i, m)| (i, m.clone()))
+}
+
+#[cfg(test)]
+mod brightness_gate_tests {
+    use super::*;
+
+    /// The tracker is process-global; serialize tests that mutate it.
+    static TRACKER_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// A newer ticket for the same monitor supersedes the older request.
+    #[test]
+    fn older_ticket_is_superseded_by_newer_one() {
+        let _serial = TRACKER_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let key = "gate-test-superseded";
+        let old = brightness_ticket(key);
+        let new = brightness_ticket(key);
+        assert!(matches!(brightness_gate(key, old, 40), WriteGate::Superseded));
+        assert!(matches!(brightness_gate(key, new, 40), WriteGate::Write));
+    }
+
+    /// The same value written again within the dedupe window is skipped.
+    #[test]
+    fn repeated_value_is_duplicate_but_new_value_writes() {
+        let _serial = TRACKER_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let key = "gate-test-duplicate";
+        brightness_record(key, 60);
+        let ticket = brightness_ticket(key);
+        assert!(matches!(brightness_gate(key, ticket, 60), WriteGate::Duplicate));
+        assert!(matches!(brightness_gate(key, ticket, 61), WriteGate::Write));
+    }
+
+    /// A per-monitor write clears the aggregate entry so "All" can re-send it.
+    #[test]
+    fn per_monitor_write_clears_aggregate_dedupe() {
+        let _serial = TRACKER_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        brightness_record(ALL_MONITORS_KEY, 70);
+        brightness_record("gate-test-one-monitor", 30);
+        let ticket = brightness_ticket(ALL_MONITORS_KEY);
+        assert!(matches!(brightness_gate(ALL_MONITORS_KEY, ticket, 70), WriteGate::Write));
+    }
 }
 
 #[cfg(test)]
