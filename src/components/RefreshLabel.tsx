@@ -15,7 +15,7 @@ export default function RefreshLabel({ text, className = '', onRefresh }: Refres
       className={`section-label section-label-refresh ${className}`.trim()}
       onClick={onRefresh}
       title='Refresh displays and speakers'>
-      {text}
+      <span className='refresh-label-text'>{text}</span>
       <span className='refresh-icon' aria-hidden='true'>
         &#8635;
       </span>

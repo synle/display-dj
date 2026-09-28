@@ -76,7 +76,7 @@ describe('AllMonitorsControl', () => {
         onBrightnessChange={onBrightnessChange}
       />,
     );
-    await user.click(screen.getByText('☀'));
+    await user.click(document.querySelector('[data-icon="allDisplays"]')!.closest('button')!);
     expect(onBrightnessChange).toHaveBeenCalledWith(10);
   });
 
@@ -91,7 +91,7 @@ describe('AllMonitorsControl', () => {
         onBrightnessChange={onBrightnessChange}
       />,
     );
-    await user.click(screen.getByText('☀'));
+    await user.click(document.querySelector('[data-icon="allDisplays"]')!.closest('button')!);
     expect(onBrightnessChange).toHaveBeenCalledWith(100);
   });
 

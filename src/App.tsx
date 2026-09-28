@@ -1,3 +1,4 @@
+import { Icon } from './components/Icons';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -573,7 +574,9 @@ function App() {
                     aria-expanded='true'
                     aria-controls='monitor-controls'
                     title='Show all monitors control'>
-                    <span className='chevron expanded'>&#9662;</span>
+                    <span className='chevron expanded'>
+                      <Icon name='chevronRight' size={14} />
+                    </span>
                   </button>
                 </div>
                 {visibleMonitors.map((monitor, index) => (

@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { Monitor } from '../types';
+import { Icon } from './Icons';
 import Slider from './Slider';
 
 interface MonitorControlProps {
@@ -83,21 +84,21 @@ export default function MonitorControl({
               onClick={onMoveUp}
               disabled={isFirst}
               title='Move up'>
-              ▲
+              <Icon name='chevronUp' size={12} />
             </button>
             <button
               className='monitor-reorder-btn'
               onClick={onMoveDown}
               disabled={isLast}
               title='Move down'>
-              ▼
+              <Icon name='chevronDown' size={12} />
             </button>
           </div>
         )}
       </div>
       <Slider
         label={`Brightness for ${monitor.name || monitor.originalName}`}
-        icon={monitor.isBuiltIn ? '\uD83D\uDCBB' : '\uD83D\uDDA5'}
+        icon={<Icon name={monitor.isBuiltIn ? 'laptop' : 'monitor'} />}
         iconLabel={`Toggle brightness for ${monitor.name || monitor.originalName}`}
         value={monitor.brightness}
         min={minBrightness}

@@ -134,7 +134,7 @@ describe('MonitorControl', () => {
         minBrightness={10}
       />,
     );
-    expect(screen.getByText('\uD83D\uDDA5')).toBeInTheDocument();
+    expect(document.querySelector('[data-icon="monitor"]')).not.toBeNull();
   });
 
   it('shows laptop icon for built-in display', () => {
@@ -146,7 +146,7 @@ describe('MonitorControl', () => {
         minBrightness={10}
       />,
     );
-    expect(screen.getByText('\uD83D\uDCBB')).toBeInTheDocument();
+    expect(document.querySelector('[data-icon="laptop"]')).not.toBeNull();
   });
 
   it('renders reorder buttons when callbacks provided', () => {

@@ -50,19 +50,29 @@ describe('VolumeControl', () => {
 
   it('shows muted icon when volume is 0', () => {
     renderVolumeControl({ value: 0 });
-    expect(screen.getByText('\uD83D\uDD07')).toBeInTheDocument();
+    expect(document.querySelector('[data-icon="speakerMuted"]')).not.toBeNull();
   });
 
-  it('shows speaker icon when volume is above 0', () => {
-    renderVolumeControl();
-    expect(screen.getByText('\uD83D\uDD0A')).toBeInTheDocument();
+  it('shows medium speaker icon when volume is 50', () => {
+    renderVolumeControl({ value: 50 });
+    expect(document.querySelector('[data-icon="speakerMedium"]')).not.toBeNull();
+  });
+
+  it('shows medium speaker icon when volume is 1', () => {
+    renderVolumeControl({ value: 1 });
+    expect(document.querySelector('[data-icon="speakerMedium"]')).not.toBeNull();
+  });
+
+  it('shows full speaker icon when volume is 51', () => {
+    renderVolumeControl({ value: 51 });
+    expect(document.querySelector('[data-icon="speaker"]')).not.toBeNull();
   });
 
   it('mutes (calls onChange with 0) when icon clicked at non-zero volume', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
     renderVolumeControl({ onChange });
-    await user.click(screen.getByText('\uD83D\uDD0A'));
+    await user.click(document.querySelector('[data-icon="speakerMedium"]')!.closest('button')!);
     expect(onChange).toHaveBeenCalledWith(0);
   });
 
@@ -70,14 +80,16 @@ describe('VolumeControl', () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
     renderVolumeControl({ value: 0, onChange });
-    await user.click(screen.getByText('\uD83D\uDD07'));
+    await user.click(document.querySelector('[data-icon="speakerMuted"]')!.closest('button')!);
     expect(onChange).toHaveBeenCalledWith(100);
   });
 
   it('shows the selected output name in collapsed mode without device controls', () => {
     renderVolumeControl();
 
-    expect(screen.getByText('All Speakers (2) - Desk Speakers')).toHaveClass('section-label');
+    expect(screen.getByText('All Speakers (2) - Desk Speakers').closest('button')).toHaveClass(
+      'section-label',
+    );
     expect(screen.getByTitle('Show output speakers')).toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Rename MacBook Pro Speakers')).not.toBeInTheDocument();
@@ -107,7 +119,7 @@ describe('VolumeControl', () => {
   it('shows every output row including the selected device in expanded mode', () => {
     renderVolumeControl({ expanded: true });
 
-    expect(screen.getByText('All Speakers (2)')).toHaveClass('section-label');
+    expect(screen.getByText('All Speakers (2)').closest('button')).toHaveClass('section-label');
     expect(screen.getByTitle('Hide output speakers')).toBeInTheDocument();
     expect(
       screen.queryByTitle('Rename active output MacBook Pro Speakers'),

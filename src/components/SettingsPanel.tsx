@@ -1,3 +1,4 @@
+import { Icon } from './Icons';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -385,14 +386,14 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                           disabled={index === 0}
                           onClick={() => swapMonitorOrder(index, index - 1)}
                           title='Move up'>
-                          ▲
+                          <Icon name='chevronUp' size={12} />
                         </button>
                         <button
                           className='monitor-reorder-btn'
                           disabled={index === configs.length - 1}
                           onClick={() => swapMonitorOrder(index, index + 1)}
                           title='Move down'>
-                          ▼
+                          <Icon name='chevronDown' size={12} />
                         </button>
                       </div>
                       <div className='settings-monitor-name'>
@@ -470,14 +471,14 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         disabled={index === 0}
                         onClick={() => moveAudioOutput(index, 'up')}
                         title={`Move ${device.name} up`}>
-                        ▲
+                        <Icon name='chevronUp' size={12} />
                       </button>
                       <button
                         className='monitor-reorder-btn'
                         disabled={index === audioOutputState.devices.length - 1}
                         onClick={() => moveAudioOutput(index, 'down')}
                         title={`Move ${device.name} down`}>
-                        ▼
+                        <Icon name='chevronDown' size={12} />
                       </button>
                     </div>
                     <span className='settings-audio-output-name'>{device.name}</span>

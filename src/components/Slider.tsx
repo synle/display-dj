@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 
 interface SliderProps {
   label: string;
-  icon?: string;
+  icon?: React.ReactNode;
   iconLabel?: string;
   value: number;
   min?: number;

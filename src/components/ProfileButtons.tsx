@@ -1,3 +1,4 @@
+import { Icon } from './Icons';
 import { useState, useRef, useEffect } from 'react';
 import { Profile } from '../types';
 
@@ -92,7 +93,7 @@ export default function ProfileButtons({ profiles, onActivate }: ProfileButtonsP
             aria-haspopup='menu'
             aria-expanded={menuOpen}
             title='More profiles'>
-            {'\u25BE'}
+            <Icon name='chevronDown' size={14} />
           </button>
           {menuOpen && (
             <div className='profile-overflow-menu' role='menu' onKeyDown={handleMenuKeyDown}>

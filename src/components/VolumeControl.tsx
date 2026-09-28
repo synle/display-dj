@@ -1,6 +1,16 @@
 import RefreshLabel from './RefreshLabel';
 import { useRef, useState } from 'react';
 import { AudioOutputDevice, AudioOutputState } from '../types';
+import { Icon, type IconName } from './Icons';
+
+/** Volume at or below this shows the medium (one-wave) speaker icon. */
+const MEDIUM_VOLUME_MAX = 50;
+
+/** Picks the speaker icon for a volume: muted at 0, medium up to 50%, full above. */
+function speakerIconFor(value: number): IconName {
+  if (value === 0) return 'speakerMuted';
+  return value <= MEDIUM_VOLUME_MAX ? 'speakerMedium' : 'speaker';
+}
 import Slider from './Slider';
 
 interface VolumeControlProps {
@@ -93,12 +103,14 @@ export default function VolumeControl({
           aria-expanded={expanded}
           aria-controls='audio-output-list'
           title={expanded ? 'Hide output speakers' : 'Show output speakers'}>
-          <span className={`chevron${expanded ? ' expanded' : ''}`}>&#9662;</span>
+          <span className={`chevron${expanded ? ' expanded' : ''}`}>
+            <Icon name='chevronRight' size={14} />
+          </span>
         </button>
       </div>
       <Slider
         label='System volume'
-        icon={value === 0 ? '\uD83D\uDD07' : '\uD83D\uDD0A'}
+        icon={<Icon name={speakerIconFor(value)} />}
         iconLabel={value === 0 ? 'Unmute system volume' : 'Mute system volume'}
         value={value}
         onChange={onChange}
@@ -156,14 +168,14 @@ export default function VolumeControl({
                         disabled={visibleDevices.indexOf(device) === 0}
                         onClick={() => onMoveOutput(device.id, 'up')}
                         title={`Move ${device.name} up`}>
-                        ▲
+                        <Icon name='chevronUp' size={12} />
                       </button>
                       <button
                         className='monitor-reorder-btn'
                         disabled={visibleDevices.indexOf(device) === visibleDevices.length - 1}
                         onClick={() => onMoveOutput(device.id, 'down')}
                         title={`Move ${device.name} down`}>
-                        ▼
+                        <Icon name='chevronDown' size={12} />
                       </button>
                     </div>
                   </div>

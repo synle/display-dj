@@ -253,7 +253,9 @@ describe('App smoke test', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('All Speakers (2) - Desk Speakers')).toHaveClass('section-label');
+      expect(screen.getByText('All Speakers (2) - Desk Speakers').closest('button')).toHaveClass(
+        'section-label',
+      );
     });
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
@@ -850,7 +852,7 @@ describe('App smoke test', () => {
     });
 
     // Click the monitor icon to toggle brightness (triggers set_brightness)
-    const icon = screen.getByText('\uD83D\uDDA5');
+    const icon = document.querySelector('[data-icon="monitor"]')!.closest('button')!;
     await user.click(icon);
 
     await waitFor(() => {
@@ -1167,7 +1169,7 @@ describe('App smoke test', () => {
 
     // The volume slider's mute icon click triggers handleVolume(0).
     // There are multiple volume icons rendered depending on state; click the volume Slider.
-    const volumeIcon = screen.getByText('\uD83D\uDD0A'); // 🔊
+    const volumeIcon = document.querySelector('[data-icon^="speaker"]')!.closest('button')!;
     await user.click(volumeIcon);
 
     await waitFor(() => {

@@ -1,3 +1,4 @@
+import { Icon } from './Icons';
 import RefreshLabel from './RefreshLabel';
 import Slider from './Slider';
 
@@ -41,12 +42,14 @@ export default function AllMonitorsControl({
           title='Show individual monitors'
           aria-expanded='false'
           aria-controls='monitor-controls'>
-          <span className='chevron'>&#9662;</span>
+          <span className='chevron'>
+            <Icon name='chevronRight' size={14} />
+          </span>
         </button>
       </div>
       <Slider
         label='Brightness for all monitors'
-        icon='☀'
+        icon={<Icon name='allDisplays' />}
         iconLabel='Toggle brightness for all monitors'
         value={brightness}
         mixed={brightnessMixed}

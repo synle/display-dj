@@ -99,8 +99,8 @@ body,
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 4px 6px;
+  border-radius: 6px;
   font-size: 16px;
   line-height: 1;
   transition: all 0.2s;
@@ -115,7 +115,7 @@ body,
 
 .header-toggle .chevron {
   transition: transform 0.2s ease;
-  display: inline-block;
+  display: inline-flex;
 }
 
 .header-toggle .chevron.expanded {
@@ -180,6 +180,8 @@ body,
 }
 
 .monitor-reorder-btn {
+  display: inline-flex;
+  align-items: center;
   background: none;
   border: none;
   color: var(--text-secondary);
@@ -233,6 +235,9 @@ body,
   background: none;
   border: 0;
   padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .slider-icon-clickable {
@@ -357,6 +362,8 @@ body,
   color: #2eaa4a;
   font-size: 12px;
   text-transform: none;
+  flex-shrink: 0;
+  margin-left: 2px;
 }
 
 .section-label-refresh:hover .refresh-icon {
@@ -391,7 +398,7 @@ body,
 
 .section-toggle .chevron {
   transition: transform 0.2s ease;
-  display: inline-block;
+  display: inline-flex;
 }
 
 .section-toggle .chevron.expanded {
@@ -406,8 +413,13 @@ body,
 }
 
 .audio-output-active-name {
-  display: block;
   max-width: 100%;
+  min-width: 0;
+}
+
+/* Only the text truncates; the refresh icon always stays visible. */
+.section-label-refresh .refresh-label-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

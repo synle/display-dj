@@ -1,3 +1,4 @@
+import { Icon } from './Icons';
 interface HeaderProps {
   version: string;
   onSettingsToggle: () => void;
@@ -27,8 +28,9 @@ export default function Header({ version, onSettingsToggle, settingsOpen }: Head
         <button
           className={`header-toggle ${settingsOpen ? 'active' : ''}`}
           onClick={onSettingsToggle}
-          title='Settings'>
-          &#9881;
+          title='Settings'
+          aria-label='Settings'>
+          <Icon name='settings' size={18} strokeWidth={1.5} />
         </button>
       </div>
     </div>
