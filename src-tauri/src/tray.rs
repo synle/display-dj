@@ -243,10 +243,76 @@ fn show_popup_window(app: &AppHandle) {
         position_popup_from_last_tray_click(app, &window);
         let _ = window.show();
         let _ = window.set_focus();
-        let _ = app.emit("monitors-changed", ());
+        // The popup renders its in-memory monitor/speaker lists immediately;
+        // a background rescan then emits change events only if hardware moved.
+        refresh_devices_on_show(app.clone());
         let _ = app.emit("dark-mode-changed", ());
         let _ = app.emit("volume-changed", ());
     }
+}
+
+/// Identity of a monitor list for change detection: which displays exist and
+/// how they present, ignoring live brightness/contrast readings.
+fn monitor_list_signature(monitors: &[crate::display::Monitor]) -> Vec<(String, String, bool, bool, bool)> {
+    monitors
+        .iter()
+        .map(|m| {
+            (
+                m.uid.clone(),
+                m.name.clone(),
+                m.hidden,
+                m.supports_brightness,
+                m.contrast.is_some(),
+            )
+        })
+        .collect()
+}
+
+/// Rescans displays and audio outputs off the main thread after the popup is
+/// shown, so connects/disconnects appear without blocking or flicker.
+///
+/// Displays: fresh `list_all()` (which also refreshes the write-control
+/// cache), merged with saved configs; `monitors-changed` is emitted only when
+/// the list identity differs from the cached one. Speakers: re-enumerated via
+/// `refresh_audio_output_state`, which emits `audio-output-changed` only on
+/// change. A rescan already in flight makes later calls no-ops.
+fn refresh_devices_on_show(app: AppHandle) {
+    static IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if IN_FLIGHT.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(move || {
+        let t0 = std::time::Instant::now();
+        if let Some(state) = app.try_state::<crate::AppState>() {
+            let fresh: Vec<crate::display::Monitor> = crate::core::display::list_all()
+                .into_iter()
+                .map(crate::display::into_monitor)
+                .collect();
+            let merged = match state.preferences.lock() {
+                Ok(prefs) => crate::display::merge_with_configs(fresh, &prefs.monitor_configs),
+                Err(_) => fresh,
+            };
+            let previous = state.sidecar_cache.get_monitors().unwrap_or_default();
+            let changed = monitor_list_signature(&previous) != monitor_list_signature(&merged);
+            state.sidecar_cache.set_monitors(merged);
+            if changed {
+                log::info!("refresh_devices_on_show: monitor list changed");
+                let _ = app.emit("monitors-changed", ());
+            }
+        }
+        match crate::volume::refresh_audio_output_state(&app) {
+            Ok((output_state, true)) => {
+                crate::volume::notify_audio_output_state_changed(&app, &output_state)
+            }
+            Ok(_) => {}
+            Err(error) => log::warn!("refresh_devices_on_show: audio refresh failed: {}", error),
+        }
+        log::info!(
+            "refresh_devices_on_show: done in {:.1}ms",
+            t0.elapsed().as_secs_f64() * 1000.0
+        );
+        IN_FLIGHT.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
 }
 
 /// Reuses the latest left- or right-click tray anchor for shared popup placement.
@@ -1761,6 +1827,44 @@ fn build_command_url(_command: &str, _base: &str, _min_brightness: u32) -> Optio
 pub fn apply_profile(app: AppHandle, index: usize) -> Result<(), String> {
     execute_command(&app, &format!("command/changeProfile/{}", index));
     Ok(())
+}
+
+#[cfg(test)]
+mod refresh_on_show_tests {
+    use super::*;
+
+    /// Builds a minimal monitor for signature comparisons.
+    fn monitor(uid: &str, brightness: u32) -> crate::display::Monitor {
+        let mut m = crate::display::into_monitor(crate::core::DisplayInfo {
+            id: uid.into(),
+            name: uid.into(),
+            display_type: "external".into(),
+            brightness: Some(brightness),
+            contrast: None,
+            ddc_supported: true,
+            monitor_rect: None,
+        });
+        m.uid = uid.into();
+        m
+    }
+
+    /// Live brightness readings alone do not count as a list change.
+    #[test]
+    fn signature_ignores_brightness_readings() {
+        assert_eq!(
+            monitor_list_signature(&[monitor("a", 10)]),
+            monitor_list_signature(&[monitor("a", 90)])
+        );
+    }
+
+    /// Connecting or disconnecting a display changes the signature.
+    #[test]
+    fn signature_detects_connect_and_disconnect() {
+        let two = [monitor("a", 50), monitor("b", 50)];
+        let three = [monitor("a", 50), monitor("b", 50), monitor("c", 50)];
+        assert_ne!(monitor_list_signature(&two), monitor_list_signature(&three));
+        assert_ne!(monitor_list_signature(&three), monitor_list_signature(&two[..1]));
+    }
 }
 
 #[cfg(test)]
