@@ -163,15 +163,40 @@ All platforms: Git, Node.js 20+, Rust stable.
 
 Verify: `node --version`, `rustc --version`, and on Linux `ddcutil detect`.
 
+- **Linux (Arch/KDE super alpha)** -- use the release AppImage rather than
+  rebuilding on Arch. The release pipeline already builds x64 and ARM64
+  AppImages on Ubuntu 22.04, Tauri's compatibility baseline. Install runtime
+  display helpers with:
+
+  ```bash
+  sudo pacman -S --needed fuse2 ddcutil brightnessctl i2c-tools xorg-xrandr
+  sudo modprobe i2c-dev
+  sudo usermod -aG i2c,video $USER
+  ```
+
+  KDE dark mode uses `plasma-apply-colorscheme`; wallpaper uses
+  `plasma-apply-wallpaperimage` from Plasma. Use Plasma X11 for tiling, Tile
+  Snap, and the most reliable global shortcuts. Plasma Wayland remains
+  diagnostic-only: hardware brightness and `pactl` audio may work, but KWin is
+  not a wlroots compositor, so the current `wlr-randr` gamma path does not
+  cover it.
+
+  Enable **Debug → Enable Logging** before reproducing. The first dump records
+  `/etc/os-release` identity, desktop/session, package format, helper-tool
+  availability, selected backends, bounded command stdout/stderr, and DDC /
+  display-server probes. Rust panics always land in `crash.log` with a forced
+  backtrace and the last 80 debug-log lines. Native Linux crashes still require
+  the host's system-coredump tooling for a native stack.
+
 ## Known Limitations
 
-| Limitation                  | Details                                                               |
-| --------------------------- | --------------------------------------------------------------------- |
-| DDC/CI not universal        | Budget models and some HDMI connections don't implement it.           |
-| Built-in HDMI on base M1/M2 | No DDC/CI. Use USB-C/DisplayPort.                                     |
-| Global shortcuts on Wayland | Wayland restricts global hotkeys. Works on X11.                       |
-| Tray left-click on Linux    | AppIndicator doesn't always fire left-click; right-click works.       |
-| Dark mode on non-GNOME      | `gsettings` is GNOME-specific; KDE/XFCE unsupported for theme writes. |
+| Limitation                  | Details                                                                                               |
+| --------------------------- | ----------------------------------------------------------------------------------------------------- |
+| DDC/CI not universal        | Budget models and some HDMI connections don't implement it.                                           |
+| Built-in HDMI on base M1/M2 | No DDC/CI. Use USB-C/DisplayPort.                                                                     |
+| Global shortcuts on Wayland | Wayland restricts global hotkeys. Works on X11.                                                       |
+| Tray left-click on Linux    | AppIndicator doesn't always fire left-click; right-click works.                                       |
+| Dark mode on other desktops | GNOME, KDE Plasma, and XFCE have dedicated backends; other desktops use best-effort fallback probing. |
 
 ## Troubleshooting
 
@@ -179,7 +204,7 @@ Verify: `node --version`, `rustc --version`, and on Linux `ddcutil detect`.
 - **First `tauri dev` slow** — normal; cached in `src-tauri/target/`.
 - **Can't find the app** — tray app, no window (see Quick Start).
 - **"No displays found"** — Linux: `ddcutil detect` as your user; check `i2c` group membership. Windows: enable DDC/CI in the monitor OSD. macOS: try USB-C/DP instead of HDMI.
-- **Dark mode does nothing on Linux** — requires GNOME (`echo $XDG_CURRENT_DESKTOP`).
+- **Dark mode does nothing on Linux** — enable Debug Logging and inspect the detected desktop plus `theme_backend`; KDE needs `plasma-apply-colorscheme`, GNOME needs `gsettings`, and XFCE needs `xfconf-query`.
 - **Two snap previews appear on Windows** — disable **Settings → System → Multitasking → Snap windows**, then retry the drag. Display DJ Tile Snap defaults off on Windows for this reason.
 - **Task View or Show Desktop shortcut does nothing across an elevation boundary** — system shortcuts dispatch after arrow release. On Windows, Task View releases the trigger modifiers and sends `Win+Tab` at Display DJ's current integrity level; restart Display DJ as administrator only when Windows blocks injected input across that boundary. Show Desktop uses `Shell.ToggleDesktop()` and injects no keys. On macOS, Display DJ sends Mission Control and Show Desktop notifications directly to the Dock; verify the matching `Ctrl+Super+Shift+Up/Down` defaults open Mission Control and toggle the desktop.
 - **Two snap previews appear on XFCE/X11** — clear **Window Manager Tweaks → Accessibility → Automatically tile windows when moving toward the screen edge**, then retry the drag.

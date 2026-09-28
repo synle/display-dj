@@ -88,10 +88,12 @@ binary; the x64 installer also works there via emulation, but runs slower.
 ### Linux
 
 > [!WARNING]
-> **Linux support is in BETA.** Builds ship and the app runs on X11 desktops
-> (verified on Ubuntu 24.04 / Mint 22 with XFCE), but Linux is not yet
-> battle-tested: features may break, be incomplete, or behave differently
-> across desktop environments — and Wayland is largely unsupported (X11 only).
+> **Linux support is in BETA. Arch Linux and KDE Plasma are SUPER ALPHA.**
+> Builds ship and the app runs on X11 desktops (verified on Ubuntu 24.04 /
+> Mint 22 with XFCE). The AppImage can run on other glibc-based distributions,
+> but Arch/KDE coverage is diagnostic-first rather than battle-tested. Wayland
+> brightness may work through hardware backends, but window tiling, Tile Snap,
+> gamma dimming, and global shortcuts remain limited or unsupported.
 > Use at your own discretion and [report issues](https://github.com/synle/display-dj/issues).
 
 | Format           | File                                |
@@ -115,13 +117,25 @@ Note the suffix differs by format: `.deb` uses `arm64`, `.AppImage` uses `aarch6
    ./"Display DJ_x.x.x_amd64.AppImage"
    ```
 
-2. Install the required display-control dependencies:
+2. Install the required runtime and display-control dependencies:
    ```bash
+   # Debian / Ubuntu
    sudo apt install ddcutil brightnessctl i2c-tools
+
+   # Arch Linux
+   sudo pacman -S --needed fuse2 ddcutil brightnessctl i2c-tools xorg-xrandr
+
    sudo modprobe i2c-dev
-   sudo usermod -aG i2c $USER
+   sudo usermod -aG i2c,video $USER
    ```
-3. The app appears in your **top panel** (you may need the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/) on GNOME)
+3. The app appears in your **top panel**. GNOME may need the
+   [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/);
+   KDE Plasma provides Status Notifier tray support.
+
+On KDE Plasma, dark/light switching uses `plasma-apply-colorscheme`, and
+wallpaper changes use `plasma-apply-wallpaperimage`. Wallpaper fit selection is
+currently best-effort because Plasma keeps its configured fill mode. Prefer an
+**X11 Plasma session** for tiling and shortcuts during the super-alpha period.
 
 ## Configuration
 
@@ -133,7 +147,13 @@ Config files are stored in:
 
 The main config file is **`preferences.json`** -- it holds keyboard shortcuts, min brightness, night mode schedule, profiles, and per-monitor metadata (labels, sort order).
 
-To diagnose output switching, open the tray menu and choose **Debug → Enable Logging**, reproduce the device change, then choose **Debug → Open Debug Log**. The log lists detected audio endpoints, the requested and active device IDs, post-switch volume, and on Windows the console/multimedia/communications defaults before and after selection. Background refreshes log only when the endpoint snapshot changes.
+To diagnose Linux, output-switching, or monitor problems, choose **Debug →
+Enable Logging**. Enabling logging immediately writes a support snapshot with
+the distro, desktop/session type, AppImage status, available helper tools,
+selected feature backends, display-server output, and DDC detection results.
+Each later line includes thread + source context. Reproduce the problem, then
+choose **Debug → Open Debug Log**. Rust panics always write `crash.log` with a
+forced backtrace and recent debug-log tail, even when debug logging was off.
 
 ### Default Keyboard Shortcuts
 

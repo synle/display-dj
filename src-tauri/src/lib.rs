@@ -31,6 +31,9 @@ static STARTUP_DUMP_WRITTEN: AtomicBool = AtomicBool::new(false);
 /// even succeeded for each panel before we tried any writes.
 fn write_startup_dump<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     use tauri::Manager;
+    if !config::DEBUG_LOG_ENABLED.load(Ordering::Relaxed) {
+        return;
+    }
     if STARTUP_DUMP_WRITTEN.swap(true, Ordering::Relaxed) {
         return; // already wrote it
     }
@@ -48,6 +51,9 @@ fn write_startup_dump<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         std::env::consts::ARCH
     ));
     lines.push(format!("backend: in-process (display-dj-cli vendored)"));
+    lines.push("rust_panic_backtrace: enabled (crash.log)".into());
+    #[cfg(target_os = "linux")]
+    lines.push("native_linux_crash_stack: system coredump (not captured in-app)".into());
 
     // Live enumerate — same code path the brightness slider hits.
     let displays = crate::core::display::list_all();
@@ -249,6 +255,21 @@ struct TeeLogger {
     inner: env_logger::Logger,
 }
 
+/// Format one debug-log record with thread and source context.
+fn format_debug_log_line(
+    level: log::Level,
+    module_path: Option<&str>,
+    line: Option<u32>,
+    thread_name: &str,
+    message: &str,
+) -> String {
+    let module_path = module_path.unwrap_or("?");
+    let source = line
+        .map(|line| format!("{module_path}:{line}"))
+        .unwrap_or_else(|| module_path.to_string());
+    format!("[{level}] [thread={thread_name}] {source}: {message}")
+}
+
 impl log::Log for TeeLogger {
     /// Defer to env_logger's level/target filtering.
     fn enabled(&self, metadata: &log::Metadata) -> bool {
@@ -256,17 +277,17 @@ impl log::Log for TeeLogger {
     }
 
     /// Forward to env_logger (stderr) and append a formatted line to
-    /// `debug.log`. The debug-log line includes the module path + level
-    /// prefix so a single dump shows where each line came from
-    /// (`core::windows`, `display`, `tray`, …).
+    /// `debug.log`. Each line includes level, thread, module, and source line.
     fn log(&self, record: &log::Record) {
         self.inner.log(record);
         if self.inner.enabled(record.metadata()) {
-            let line = format!(
-                "[{}] {}: {}",
+            let thread = std::thread::current();
+            let line = format_debug_log_line(
                 record.level(),
-                record.module_path().unwrap_or("?"),
-                record.args(),
+                record.module_path(),
+                record.line(),
+                thread.name().unwrap_or("<unnamed>"),
+                &record.args().to_string(),
             );
             config::write_debug_log_unbound(&line);
         }
@@ -687,6 +708,21 @@ mod tests {
     fn test_write_startup_dump_smoke() {
         let app = make_test_app();
         write_startup_dump(&app.handle());
+    }
+
+    /// Debug log lines retain severity, thread, module, source line, and message.
+    #[test]
+    fn formats_debug_log_line_with_execution_context() {
+        assert_eq!(
+            format_debug_log_line(
+                log::Level::Warn,
+                Some("display_dj_lib::core::linux"),
+                Some(42),
+                "linux-worker",
+                "ddcutil failed",
+            ),
+            "[WARN] [thread=linux-worker] display_dj_lib::core::linux:42: ddcutil failed",
+        );
     }
 
     /// get_dark_mode command completes with a truthful platform result.

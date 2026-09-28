@@ -153,6 +153,19 @@ Logs go to stdout (plus `debug.log` in the config dir when enabled). A clean sta
 
 **Linux verification status (as of v7.2.0):** build (`.deb` + `.AppImage`), global shortcuts, tray icon, z-order commands, and Exposé layout math all pass on Mint 22.2/XFCE/X11 with only a built-in eDP panel. DDC/CI against real external monitors remains untested. Linux Tile Snap now has X11 pointer/geometry polling plus shared WebView overlays; runtime verification on a real XFCE/X11 desktop remains required.
 
+**Arch/KDE super-alpha diagnostics:** the existing Ubuntu 22.04 release jobs
+already produce x64 + ARM64 AppImages, so no Arch-specific build is required.
+KDE-aware backend selection prevents an installed `gsettings` binary from
+shadowing Plasma: theme writes use `plasma-apply-colorscheme`, Plasma 6 reads
+prefer `kreadconfig6`, and wallpaper writes use
+`plasma-apply-wallpaperimage`. Enabling Debug Logging immediately emits a full
+snapshot from `core::LinuxPlatform::debug_info()`: os-release identity,
+desktop/session and package format, helper-tool availability, selected feature
+backends, bounded command stdout/stderr, backlight state, DDC detection, and
+X11/Wayland output probing. Normal log lines include thread, module, and source
+line. Plasma Wayland remains diagnostic-only for tiling/global shortcuts and
+KWin gamma control.
+
 ### Windows Tile Snap
 
 `tiling/windows.rs` installs a `SetWinEventHook` listener for system move/size start and end events. Resize-border gestures are rejected with `WM_NCHITTEST`; title-bar moves poll the physical cursor, use shared zone geometry from `tiling/mod.rs`, and render through one transparent `tiling/snap_overlay.rs` WebView per display. Each WebView subscribes to a display-scoped event name supplied in its page URL, preventing one monitor's zone or preview payload from overwriting another's. Windows passes each monitor's effective DPI scale to the overlay, which converts physical Win32 rectangles into CSS pixels; this keeps bottom zones inside the work-area viewport above the taskbar. Maximized windows receive `SW_RESTORE` before their original drag bounds are captured, matching native Windows unsnap behavior. Lazy WebView creation dispatches to Tauri's main thread while Win32 polling stays on its monitor thread. Releasing inside a zone applies the exact preview rectangle to the original HWND.
@@ -183,7 +196,7 @@ The monitor reuses `tiling/snap_overlay.rs` and shared geometry from `tiling/mod
 
 ## Crash Logging
 
-Every Rust panic plus every macOS native crash (`.ips` from `~/Library/Logs/DiagnosticReports/`) lands in `{config_dir}/display-dj/crash.log` (same folder as `preferences.json`; "Open App Folder" reveals it). Panics are captured by an in-process `std::panic::set_hook`; native crashes are summarized into the same file by `crash_log.rs::import_macos_native_crashes` at each launch, so both crash modes appear chronologically without Console.app.
+Every Rust panic plus every macOS native crash (`.ips` from `~/Library/Logs/DiagnosticReports/`) lands in `{config_dir}/display-dj/crash.log` (same folder as `preferences.json`; "Open App Folder" reveals it). Panics are captured by an in-process `std::panic::set_hook`; native macOS crashes are summarized into the same file by `crash_log.rs::import_macos_native_crashes` at each launch, so both crash modes appear chronologically without Console.app. Native Linux crashes are not intercepted in-process; use the host's system-coredump tooling for those stacks.
 
 Each record carries timestamp, app version, OS/arch, thread, location, payload, backtrace, the last 80 lines of `debug.log`, and a full preferences snapshot (native crashes add incident id, exception type/signal, top 40 frames). `crash_log.rs::rotate_if_needed` trims at the next `==========` boundary past ~2 MB, newest preserved. Never gated on `debug_logging`.
 

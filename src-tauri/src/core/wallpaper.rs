@@ -223,11 +223,21 @@ pub fn get_wallpaper() -> Option<WallpaperInfo> {
 #[cfg(target_os = "windows")]
 pub fn is_wallpaper_supported() -> bool { true }
 
-// --- Linux: gsettings (GNOME), xfconf-query (XFCE), feh fallback ---
+// --- Linux: desktop-aware KDE / GNOME / XFCE routing with feh fallback ---
 
-/// Set wallpaper on Linux. Tries GNOME (gsettings), XFCE (xfconf-query), and feh in order.
+/// Set wallpaper through KDE Plasma's supported command-line helper.
 #[cfg(target_os = "linux")]
-pub fn set_wallpaper(path: &str, fit: &str) -> bool {
+fn set_kde_wallpaper(path: &str, fit: &str) -> bool {
+    log::info!(
+        "set_wallpaper[linux/kde]: requested_fit={} plasma_preserves_configured_fill_mode=true",
+        fit,
+    );
+    super::linux_desktop::run_checked("plasma-apply-wallpaperimage", &[path], "set wallpaper")
+}
+
+/// Set wallpaper and fit mode through GNOME-compatible gsettings.
+#[cfg(target_os = "linux")]
+fn set_gnome_wallpaper(path: &str, fit: &str) -> bool {
     let gnome_mode = match fit {
         "fill" => "zoom",
         "fit" => "scaled",
@@ -236,38 +246,59 @@ pub fn set_wallpaper(path: &str, fit: &str) -> bool {
         "tile" => "wallpaper",
         _ => "zoom",
     };
-
-    // Try GNOME (gsettings)
-    let mode_ok = std::process::Command::new("gsettings")
-        .args(["set", "org.gnome.desktop.background", "picture-options", gnome_mode])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if mode_ok {
-        let uri = format!("file://{}", path);
-        let set_ok = std::process::Command::new("gsettings")
-            .args(["set", "org.gnome.desktop.background", "picture-uri", &uri])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        // Also set picture-uri-dark for GNOME 42+ dark mode wallpaper
-        let _ = std::process::Command::new("gsettings")
-            .args(["set", "org.gnome.desktop.background", "picture-uri-dark", &uri])
-            .output();
-        if set_ok { return true; }
+    if !super::linux_desktop::run_checked(
+        "gsettings",
+        &[
+            "set",
+            "org.gnome.desktop.background",
+            "picture-options",
+            gnome_mode,
+        ],
+        "set wallpaper fit",
+    ) {
+        return false;
     }
-
-    // Try XFCE (xfconf-query)
-    if std::process::Command::new("xfconf-query")
-        .args(["-c", "xfce4-desktop", "-p", "/backdrop/screen0/monitor0/workspace0/last-image", "-s", path])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        return true;
+    let uri = format!("file://{}", path);
+    if !super::linux_desktop::run_checked(
+        "gsettings",
+        &["set", "org.gnome.desktop.background", "picture-uri", &uri],
+        "set wallpaper",
+    ) {
+        return false;
     }
+    let _ = super::linux_desktop::run_checked(
+        "gsettings",
+        &[
+            "set",
+            "org.gnome.desktop.background",
+            "picture-uri-dark",
+            &uri,
+        ],
+        "set dark wallpaper",
+    );
+    true
+}
 
-    // Fallback: feh
+/// Set wallpaper through XFCE's xfconf settings.
+#[cfg(target_os = "linux")]
+fn set_xfce_wallpaper(path: &str) -> bool {
+    super::linux_desktop::run_checked(
+        "xfconf-query",
+        &[
+            "-c",
+            "xfce4-desktop",
+            "-p",
+            "/backdrop/screen0/monitor0/workspace0/last-image",
+            "-s",
+            path,
+        ],
+        "set wallpaper",
+    )
+}
+
+/// Set wallpaper through feh on lightweight X11 desktops.
+#[cfg(target_os = "linux")]
+fn set_feh_wallpaper(path: &str, fit: &str) -> bool {
     let feh_mode = match fit {
         "fill" => "--bg-fill",
         "fit" => "--bg-max",
@@ -276,16 +307,35 @@ pub fn set_wallpaper(path: &str, fit: &str) -> bool {
         "tile" => "--bg-tile",
         _ => "--bg-fill",
     };
-    std::process::Command::new("feh")
-        .args([feh_mode, path])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    super::linux_desktop::run_checked("feh", &[feh_mode, path], "set wallpaper")
+}
+
+/// Set wallpaper on Linux through the active desktop's native backend.
+/// Unknown desktops retain best-effort probing for backward compatibility.
+#[cfg(target_os = "linux")]
+pub fn set_wallpaper(path: &str, fit: &str) -> bool {
+    match super::linux_desktop::current() {
+        super::linux_desktop::LinuxDesktop::Kde => set_kde_wallpaper(path, fit),
+        super::linux_desktop::LinuxDesktop::Gnome => set_gnome_wallpaper(path, fit),
+        super::linux_desktop::LinuxDesktop::Xfce => set_xfce_wallpaper(path),
+        super::linux_desktop::LinuxDesktop::Other => {
+            set_gnome_wallpaper(path, fit)
+                || set_kde_wallpaper(path, fit)
+                || set_xfce_wallpaper(path)
+                || set_feh_wallpaper(path, fit)
+        }
+    }
 }
 
 /// Get current wallpaper on Linux via gsettings (GNOME).
 #[cfg(target_os = "linux")]
 pub fn get_wallpaper() -> Option<WallpaperInfo> {
+    if !matches!(
+        super::linux_desktop::current(),
+        super::linux_desktop::LinuxDesktop::Gnome | super::linux_desktop::LinuxDesktop::Other
+    ) {
+        return None;
+    }
     // Try GNOME
     let uri_output = std::process::Command::new("gsettings")
         .args(["get", "org.gnome.desktop.background", "picture-uri"])
@@ -319,26 +369,18 @@ pub fn get_wallpaper() -> Option<WallpaperInfo> {
 /// Returns true if any supported DE/tool is available.
 #[cfg(target_os = "linux")]
 pub fn is_wallpaper_supported() -> bool {
-    // GNOME
-    if std::process::Command::new("gsettings")
-        .args(["get", "org.gnome.desktop.background", "picture-uri"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    { return true; }
-    // XFCE
-    if std::process::Command::new("xfconf-query")
-        .args(["--version"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    { return true; }
-    // feh
-    std::process::Command::new("feh")
-        .args(["--version"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    let available = super::linux_desktop::command_available;
+    match super::linux_desktop::current() {
+        super::linux_desktop::LinuxDesktop::Kde => available("plasma-apply-wallpaperimage"),
+        super::linux_desktop::LinuxDesktop::Gnome => available("gsettings"),
+        super::linux_desktop::LinuxDesktop::Xfce => available("xfconf-query"),
+        super::linux_desktop::LinuxDesktop::Other => {
+            available("plasma-apply-wallpaperimage")
+                || available("gsettings")
+                || available("xfconf-query")
+                || available("feh")
+        }
+    }
 }
 
 // =========================================================================

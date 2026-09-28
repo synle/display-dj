@@ -190,6 +190,21 @@ Linux Tile Snap runs a dedicated X11 thread that polls `QueryPointer` and `_NET_
 - Windows and Linux share `tiling/snap_overlay.rs`, so both draw the same zones and apply the exact preview rectangle on release.
 - On XFCE, disable **Window Manager Tweaks → Accessibility → Automatically tile windows when moving toward the screen edge** if native tiling competes with Display DJ.
 
+### Linux distro / desktop super-alpha diagnostics
+
+The release pipeline already ships x64 + ARM64 AppImages built on Ubuntu 22.04,
+so Arch/KDE testing uses those artifacts rather than a distro-specific binary.
+`core::linux_desktop` selects GNOME-, KDE-, or XFCE-specific theme/wallpaper
+backends before fallback probing; KDE uses `plasma-apply-colorscheme`,
+`kreadconfig6`/`kreadconfig5`, and `plasma-apply-wallpaperimage`.
+
+With Debug Logging enabled, `core::LinuxPlatform::debug_info()` records bounded
+os-release, desktop/session/package, helper-tool, selected-backend, DDC, and
+display-server diagnostics. Enabling logging from the tray triggers the dump
+immediately. Each normal log line includes thread + module/source context, and
+Rust panics always write a forced backtrace plus recent debug-log tail to
+`crash.log`. Native Linux crashes still require system-coredump tooling.
+
 ## Soft-Overlay Brightness Fallback
 
 Some panels (e.g. Samsung Smart Monitor M7/M8 over USB-C on Intel Iris Xe) ignore DDC/CI and reject `SetDeviceGammaRamp`. The industry workaround (Twinkle Tray, Lunar) is a transparent, always-on-top, click-through window per monitor whose opacity rises as brightness falls — the OS compositor blends it with everything underneath, so it works on any GPU/driver.

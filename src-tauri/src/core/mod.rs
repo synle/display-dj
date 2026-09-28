@@ -8,6 +8,8 @@ pub mod macos;
 pub mod windows;
 #[cfg(target_os = "linux")]
 pub mod linux;
+#[cfg(target_os = "linux")]
+pub(crate) mod linux_desktop;
 
 // Windows-only helper for spawning powershell/reg without flashing a console
 // window. Local to display-dj — not present in the display-dj-cli upstream.

@@ -1,6 +1,25 @@
 use super::{DisplayControl, DisplayInfo, Platform, BUILTIN_ID, VCP_BRIGHTNESS, VCP_CONTRAST};
+use std::collections::BTreeMap;
 use std::fs;
 use std::process::Command;
+
+const MAX_DIAGNOSTIC_OUTPUT_CHARS: usize = 16 * 1024;
+const DIAGNOSTIC_TOOLS: &[&str] = &[
+    "ddcutil",
+    "brightnessctl",
+    "xrandr",
+    "wlr-randr",
+    "busctl",
+    "pactl",
+    "amixer",
+    "gsettings",
+    "plasma-apply-colorscheme",
+    "plasma-apply-wallpaperimage",
+    "kreadconfig6",
+    "kreadconfig5",
+    "xfconf-query",
+    "feh",
+];
 
 // =========================================================================
 // Display server detection — Linux can run X11, Wayland, or neither (TTY).
@@ -20,18 +39,184 @@ enum DisplayServer {
 /// Detect whether we're on X11 or Wayland by checking environment variables.
 /// XDG_SESSION_TYPE is the most reliable, with WAYLAND_DISPLAY/DISPLAY as fallbacks.
 fn detect_display_server() -> DisplayServer {
-    // std::env::var returns Result<String, VarError> — Ok if the var exists
-    if let Ok(session) = std::env::var("XDG_SESSION_TYPE") {
+    detect_display_server_from(
+        std::env::var("XDG_SESSION_TYPE").ok().as_deref(),
+        std::env::var_os("WAYLAND_DISPLAY").is_some(),
+        std::env::var_os("DISPLAY").is_some(),
+    )
+}
+
+/// Classify display-server environment without mutating process-global state.
+fn detect_display_server_from(
+    session_type: Option<&str>,
+    wayland_display_set: bool,
+    display_set: bool,
+) -> DisplayServer {
+    if let Some(session) = session_type {
         match session.to_lowercase().as_str() {
             "wayland" => return DisplayServer::Wayland,
             "x11" => return DisplayServer::X11,
-            _ => {} // empty match arm = do nothing, fall through
+            _ => {}
         }
     }
-    // .is_ok() = the env var exists (we don't care about the value)
-    if std::env::var("WAYLAND_DISPLAY").is_ok() { return DisplayServer::Wayland; }
-    if std::env::var("DISPLAY").is_ok() { return DisplayServer::X11; }
+    if wayland_display_set {
+        return DisplayServer::Wayland;
+    }
+    if display_set {
+        return DisplayServer::X11;
+    }
     DisplayServer::Unknown
+}
+
+/// Parse support-safe distro identity fields from os-release content.
+fn parse_os_release(content: &str) -> BTreeMap<String, String> {
+    const KEYS: &[&str] = &["PRETTY_NAME", "NAME", "ID", "VERSION_ID", "ID_LIKE"];
+    content
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .filter(|(key, _)| KEYS.contains(key))
+        .map(|(key, value)| {
+            let value = value
+                .trim()
+                .trim_matches(|character| character == '"' || character == '\'')
+                .replace("\\\"", "\"")
+                .replace("\\\\", "\\");
+            (key.to_lowercase(), value)
+        })
+        .collect()
+}
+
+/// Read distro identity from the standard os-release locations.
+fn os_release_info() -> BTreeMap<String, String> {
+    fs::read_to_string("/etc/os-release")
+        .or_else(|_| fs::read_to_string("/usr/lib/os-release"))
+        .map(|content| parse_os_release(&content))
+        .unwrap_or_default()
+}
+
+/// Bound tool output before embedding it in the debug log.
+fn bounded_diagnostic_text(bytes: &[u8]) -> String {
+    let value = String::from_utf8_lossy(bytes);
+    let mut chars = value.trim().chars();
+    let prefix: String = chars.by_ref().take(MAX_DIAGNOSTIC_OUTPUT_CHARS).collect();
+    if chars.next().is_some() {
+        format!("{prefix}…")
+    } else {
+        prefix
+    }
+}
+
+/// Execute one read-only diagnostic command and retain success plus bounded output.
+fn command_diagnostic(program: &str, args: &[&str]) -> serde_json::Value {
+    match Command::new(program).args(args).output() {
+        Ok(output) => serde_json::json!({
+            "success": output.status.success(),
+            "exit_code": output.status.code(),
+            "stdout": bounded_diagnostic_text(&output.stdout),
+            "stderr": bounded_diagnostic_text(&output.stderr),
+        }),
+        Err(error) => serde_json::json!({
+            "success": false,
+            "error_kind": format!("{:?}", error.kind()),
+            "error": error.to_string(),
+        }),
+    }
+}
+
+/// Identify how this Linux binary was packaged without logging local paths.
+fn package_format() -> &'static str {
+    if std::env::var_os("APPIMAGE").is_some() || std::env::var_os("APPDIR").is_some() {
+        "appimage"
+    } else if std::path::Path::new("/.flatpak-info").exists() {
+        "flatpak"
+    } else if std::env::var_os("SNAP").is_some() {
+        "snap"
+    } else {
+        "native-or-unknown"
+    }
+}
+
+/// Summarize feature backends selected for the active Linux session.
+fn capability_info(
+    display_server: DisplayServer,
+    desktop: super::linux_desktop::LinuxDesktop,
+    tools: &BTreeMap<String, bool>,
+    has_backlight: bool,
+) -> serde_json::Value {
+    let available = |name: &str| tools.get(name).copied().unwrap_or(false);
+    let gamma_backend = match display_server {
+        DisplayServer::X11 if available("xrandr") => "xrandr",
+        DisplayServer::Wayland if available("wlr-randr") => "wlr-randr",
+        DisplayServer::Wayland if available("busctl") => "wl-gammarelay-via-busctl-unverified",
+        DisplayServer::Wayland if available("xrandr") && std::env::var_os("DISPLAY").is_some() => {
+            "xrandr-via-xwayland-limited"
+        }
+        _ => "unavailable",
+    };
+    let theme_backend = match desktop {
+        super::linux_desktop::LinuxDesktop::Kde if available("plasma-apply-colorscheme") => {
+            "kde-plasma"
+        }
+        super::linux_desktop::LinuxDesktop::Gnome if available("gsettings") => "gnome-gsettings",
+        super::linux_desktop::LinuxDesktop::Xfce if available("xfconf-query") => "xfce",
+        super::linux_desktop::LinuxDesktop::Other if available("gsettings") => {
+            "fallback-gnome-gsettings"
+        }
+        super::linux_desktop::LinuxDesktop::Other if available("plasma-apply-colorscheme") => {
+            "fallback-kde-plasma"
+        }
+        super::linux_desktop::LinuxDesktop::Other if available("xfconf-query") => "fallback-xfce",
+        _ => "unavailable",
+    };
+    let wallpaper_backend = match desktop {
+        super::linux_desktop::LinuxDesktop::Kde if available("plasma-apply-wallpaperimage") => {
+            "kde-plasma"
+        }
+        super::linux_desktop::LinuxDesktop::Gnome if available("gsettings") => "gnome-gsettings",
+        super::linux_desktop::LinuxDesktop::Xfce if available("xfconf-query") => "xfce",
+        super::linux_desktop::LinuxDesktop::Other if available("gsettings") => {
+            "fallback-gnome-gsettings"
+        }
+        super::linux_desktop::LinuxDesktop::Other if available("plasma-apply-wallpaperimage") => {
+            "fallback-kde-plasma"
+        }
+        super::linux_desktop::LinuxDesktop::Other if available("xfconf-query") => "fallback-xfce",
+        super::linux_desktop::LinuxDesktop::Other if available("feh") => "fallback-feh",
+        _ => "unavailable",
+    };
+    let audio_backend = if available("pactl") {
+        "pactl"
+    } else if available("amixer") {
+        "amixer"
+    } else {
+        "unavailable"
+    };
+
+    serde_json::json!({
+        "builtin_brightness": {
+            "backlight_found": has_backlight,
+            "brightnessctl_fallback": available("brightnessctl"),
+        },
+        "external_brightness": {
+            "ddcutil": available("ddcutil"),
+        },
+        "gamma_backend": gamma_backend,
+        "audio_backend": audio_backend,
+        "theme_backend": theme_backend,
+        "wallpaper_backend": wallpaper_backend,
+        "tiling": if display_server == DisplayServer::X11 {
+            "x11"
+        } else {
+            "unsupported-wayland-or-headless"
+        },
+        "global_shortcuts": if display_server == DisplayServer::X11 {
+            "x11"
+        } else {
+            "wayland-unverified"
+        },
+        "rust_panic_backtrace": "crash.log",
+        "native_linux_crash_stack": "system-coredump-not-captured-in-app",
+    })
 }
 
 // =========================================================================
@@ -491,11 +676,19 @@ impl Platform for LinuxPlatform {
         reset_gamma_all(detect_display_server());
     }
 
-    /// Dump raw platform diagnostics for the `debug` command.
-    /// Returns display server type, sysfs backlight info, ddcutil version and detect
-    /// output, external output names, and raw xrandr/wlr-randr output.
+    /// Dump bounded Linux distro, session, tool, capability, and display diagnostics.
     fn debug_info() -> serde_json::Value {
         let display_server = detect_display_server();
+        let desktop = super::linux_desktop::current();
+        let tools: BTreeMap<String, bool> = DIAGNOSTIC_TOOLS
+            .iter()
+            .map(|program| {
+                (
+                    (*program).to_string(),
+                    super::linux_desktop::command_available(program),
+                )
+            })
+            .collect();
 
         // --- Backlight (built-in) ---
         let backlight = find_backlight().map(|bl| {
@@ -508,16 +701,7 @@ impl Platform for LinuxPlatform {
                 "current_raw": current_raw,
             })
         });
-
-        // --- ddcutil version ---
-        let ddcutil_version = Command::new("ddcutil").arg("--version").output().ok()
-            .filter(|o| o.status.success())
-            .and_then(|o| String::from_utf8_lossy(&o.stdout).lines().next().map(|s| s.to_string()));
-
-        // --- ddcutil detect (full output) ---
-        let ddcutil_detect = Command::new("ddcutil").args(["detect"]).output().ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).to_string());
+        let has_backlight = backlight.is_some();
 
         // --- External output names ---
         let external_outputs = match display_server {
@@ -526,24 +710,99 @@ impl Platform for LinuxPlatform {
             DisplayServer::Unknown => vec![],
         };
 
-        // --- Raw xrandr/wlr-randr output ---
-        let randr_output = match display_server {
-            DisplayServer::X11 => Command::new("xrandr").arg("--query").output().ok()
-                .filter(|o| o.status.success())
-                .map(|o| String::from_utf8_lossy(&o.stdout).to_string()),
-            DisplayServer::Wayland => Command::new("wlr-randr").output().ok()
-                .filter(|o| o.status.success())
-                .map(|o| String::from_utf8_lossy(&o.stdout).to_string()),
-            DisplayServer::Unknown => None,
+        let display_query = match display_server {
+            DisplayServer::X11 => command_diagnostic("xrandr", &["--query"]),
+            DisplayServer::Wayland => command_diagnostic("wlr-randr", &[]),
+            DisplayServer::Unknown => serde_json::json!({
+                "success": false,
+                "error": "no display server detected",
+            }),
         };
+        let capabilities = capability_info(display_server, desktop, &tools, has_backlight);
+        let kde_full_session = super::linux_desktop::env_value("KDE_FULL_SESSION")
+            .map(|value| value != "0")
+            .unwrap_or(false);
 
         serde_json::json!({
+            "distro": os_release_info(),
+            "session": {
+                "desktop": desktop.as_str(),
+                "xdg_current_desktop": super::linux_desktop::env_value("XDG_CURRENT_DESKTOP"),
+                "xdg_session_desktop": super::linux_desktop::env_value("XDG_SESSION_DESKTOP"),
+                "xdg_session_type": super::linux_desktop::env_value("XDG_SESSION_TYPE"),
+                "display_set": std::env::var_os("DISPLAY").is_some(),
+                "wayland_display_set": std::env::var_os("WAYLAND_DISPLAY").is_some(),
+                "kde_full_session": kde_full_session,
+                "package_format": package_format(),
+            },
             "display_server": format!("{:?}", display_server),
             "backlight": backlight,
-            "ddcutil_version": ddcutil_version,
-            "ddcutil_detect_raw": ddcutil_detect,
+            "tools": tools,
+            "capabilities": capabilities,
+            "ddcutil_version": command_diagnostic("ddcutil", &["--version"]),
+            "ddcutil_detect": command_diagnostic("ddcutil", &["detect", "--brief"]),
             "external_output_names": external_outputs,
-            "randr_output_raw": randr_output,
+            "display_query": display_query,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Explicit session type takes precedence over fallback display variables.
+    #[test]
+    fn detects_display_server_from_session_type() {
+        assert_eq!(
+            detect_display_server_from(Some("wayland"), false, true),
+            DisplayServer::Wayland
+        );
+        assert_eq!(
+            detect_display_server_from(Some("x11"), true, false),
+            DisplayServer::X11
+        );
+    }
+
+    /// Environment fallbacks distinguish Wayland, X11, and headless sessions.
+    #[test]
+    fn detects_display_server_from_fallback_variables() {
+        assert_eq!(
+            detect_display_server_from(None, true, true),
+            DisplayServer::Wayland
+        );
+        assert_eq!(
+            detect_display_server_from(None, false, true),
+            DisplayServer::X11
+        );
+        assert_eq!(
+            detect_display_server_from(None, false, false),
+            DisplayServer::Unknown
+        );
+    }
+
+    /// os-release parsing keeps only stable support fields and removes quotes.
+    #[test]
+    fn parses_support_safe_os_release_fields() {
+        let parsed = parse_os_release(
+            "NAME=\"Arch Linux\"\nID=arch\nVERSION_ID='rolling'\nHOME_URL=\"https://archlinux.org/\"\n",
+        );
+        assert_eq!(parsed.get("name").map(String::as_str), Some("Arch Linux"));
+        assert_eq!(parsed.get("id").map(String::as_str), Some("arch"));
+        assert_eq!(
+            parsed.get("version_id").map(String::as_str),
+            Some("rolling")
+        );
+        assert!(!parsed.contains_key("home_url"));
+    }
+
+    /// Diagnostic output remains bounded and visibly marks truncation.
+    #[test]
+    fn bounds_diagnostic_command_output() {
+        assert_eq!(bounded_diagnostic_text(b" short "), "short");
+        let oversized = "x".repeat(MAX_DIAGNOSTIC_OUTPUT_CHARS + 1);
+        let bounded = bounded_diagnostic_text(oversized.as_bytes());
+        assert_eq!(bounded.chars().count(), MAX_DIAGNOSTIC_OUTPUT_CHARS + 1);
+        assert!(bounded.ends_with('…'));
     }
 }

@@ -821,10 +821,15 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                 rebuild_tray_menu(app);
             }
             "debug_enable" => {
+                let mut enabled = false;
                 if let Some(state) = app.try_state::<crate::AppState>() {
-                    if let Err(error) = crate::config::set_debug_logging(&state, true) {
-                        log::warn!("failed to enable debug logging: {}", error);
+                    match crate::config::set_debug_logging(&state, true) {
+                        Ok(()) => enabled = true,
+                        Err(error) => log::warn!("failed to enable debug logging: {}", error),
                     }
+                }
+                if enabled {
+                    dump_debug_info(app);
                 }
                 rebuild_tray_menu(app);
             }
@@ -1331,6 +1336,9 @@ fn dump_debug_info(app: &AppHandle) {
         std::env::consts::ARCH
     ));
     lines.push("backend: in-process (display-dj-cli vendored)".to_string());
+    lines.push("rust_panic_backtrace: enabled (crash.log)".into());
+    #[cfg(target_os = "linux")]
+    lines.push("native_linux_crash_stack: system coredump (not captured in-app)".into());
 
     if let Some(state) = app.try_state::<crate::AppState>() {
         if let Ok(prefs) = state.preferences.lock() {
@@ -1447,11 +1455,6 @@ fn dump_debug_info(app: &AppHandle) {
     lines.push("=== END DEBUG INFO ===".into());
     let output = lines.join("\n");
     log::info!("{}", output);
-
-    // Also write to debug log file regardless of debug_logging preference
-    if let Some(state) = app.try_state::<crate::AppState>() {
-        crate::config::write_debug_log(&state, &output);
-    }
 }
 
 /// Dispatches a command string (e.g. "command/changeBrightness/50") to the

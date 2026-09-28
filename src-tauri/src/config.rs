@@ -1319,6 +1319,13 @@ pub fn set_debug_logging(state: &crate::AppState, enabled: bool) -> Result<(), S
     if let Ok(mut prefs) = state.preferences.lock() {
         prefs.debug_logging = enabled;
         save_preferences_to_disk(&prefs)?;
+        if !enabled {
+            write_debug_log_unbound("debug logging disabled");
+        }
+        DEBUG_LOG_ENABLED.store(enabled, std::sync::atomic::Ordering::Relaxed);
+        if enabled {
+            write_debug_log_unbound("debug logging enabled");
+        }
         return Ok(());
     }
     Err("preferences lock poisoned".into())
@@ -1417,6 +1424,27 @@ mod tests {
             .unwrap();
             assert_eq!(primary.min_brightness, 37);
             assert_eq!(backup.min_brightness, 37);
+        });
+    }
+
+    /// Tray debug toggles update both persisted preferences and unbound logging.
+    #[test]
+    fn debug_logging_toggle_syncs_global_gate() {
+        with_temp_config_dir(|directory| {
+            DEBUG_LOG_ENABLED.store(false, std::sync::atomic::Ordering::Relaxed);
+            let state = crate::AppState::default();
+
+            set_debug_logging(&state, true).unwrap();
+            assert!(DEBUG_LOG_ENABLED.load(std::sync::atomic::Ordering::Relaxed));
+            assert!(debug_log_path().exists());
+
+            set_debug_logging(&state, false).unwrap();
+            assert!(!DEBUG_LOG_ENABLED.load(std::sync::atomic::Ordering::Relaxed));
+            let persisted: Preferences = serde_json::from_str(
+                &std::fs::read_to_string(directory.join("preferences.json")).unwrap(),
+            )
+            .unwrap();
+            assert!(!persisted.debug_logging);
         });
     }
 

@@ -108,59 +108,77 @@ pub fn get_dark_mode() -> Option<bool> {
     }
 }
 
-// --- Linux dark mode: tries desktop environments in order (GNOME -> KDE -> XFCE) ---
+// --- Linux dark mode: desktop-aware GNOME / KDE / XFCE routing ---
 
-/// Set dark/light mode on Linux. Tries GNOME (gsettings color-scheme + gtk-theme),
-/// KDE (plasma-apply-colorscheme), and XFCE (xfconf-query) in order.
-/// Returns true on first success, false if no supported DE was found.
+/// Set GNOME-compatible dark/light appearance through gsettings.
 #[cfg(target_os = "linux")]
-pub fn set_dark_mode(dark: bool) -> bool {
+fn set_gnome_dark_mode(dark: bool) -> bool {
     let gtk_theme = if dark { "Adwaita-dark" } else { "Adwaita" };
     let color_scheme = if dark { "prefer-dark" } else { "prefer-light" };
-
-    // GNOME 42+ uses color-scheme (the modern way)
-    if std::process::Command::new("gsettings")
-        .args(["set", "org.gnome.desktop.interface", "color-scheme", color_scheme])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        // Also set gtk-theme for older GTK3 apps that don't read color-scheme
-        let _ = std::process::Command::new("gsettings")
-            .args(["set", "org.gnome.desktop.interface", "gtk-theme", gtk_theme])
-            .output();
-        return true;
+    if !super::linux_desktop::run_checked(
+        "gsettings",
+        &[
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            color_scheme,
+        ],
+        "set dark mode",
+    ) {
+        return false;
     }
-
-    // KDE Plasma
-    if std::process::Command::new("plasma-apply-colorscheme")
-        .arg(if dark { "BreezeDark" } else { "BreezeLight" })
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        return true;
-    }
-
-    // XFCE — uses xfconf for settings
-    let xfce_theme = if dark { "Adwaita-dark" } else { "Adwaita" };
-    if std::process::Command::new("xfconf-query")
-        .args(["-c", "xsettings", "-p", "/Net/ThemeName", "-s", xfce_theme])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        return true;
-    }
-
-    false // no supported desktop environment found
+    let _ = super::linux_desktop::run_checked(
+        "gsettings",
+        &["set", "org.gnome.desktop.interface", "gtk-theme", gtk_theme],
+        "set GTK theme",
+    );
+    true
 }
 
-/// Get current dark mode state on Linux. Tries GNOME color-scheme, GNOME gtk-theme
-/// (fallback), and KDE color scheme in order. Returns None if no DE detected.
+/// Set KDE Plasma's active color scheme.
 #[cfg(target_os = "linux")]
-pub fn get_dark_mode() -> Option<bool> {
-    // GNOME: check color-scheme first (more reliable than theme name)
+fn set_kde_dark_mode(dark: bool) -> bool {
+    super::linux_desktop::run_checked(
+        "plasma-apply-colorscheme",
+        &[if dark { "BreezeDark" } else { "BreezeLight" }],
+        "set dark mode",
+    )
+}
+
+/// Set XFCE's GTK theme through xfconf.
+#[cfg(target_os = "linux")]
+fn set_xfce_dark_mode(dark: bool) -> bool {
+    super::linux_desktop::run_checked(
+        "xfconf-query",
+        &[
+            "-c",
+            "xsettings",
+            "-p",
+            "/Net/ThemeName",
+            "-s",
+            if dark { "Adwaita-dark" } else { "Adwaita" },
+        ],
+        "set dark mode",
+    )
+}
+
+/// Set dark/light mode on Linux through the active desktop's native backend.
+/// Unknown desktops retain best-effort probing for backward compatibility.
+#[cfg(target_os = "linux")]
+pub fn set_dark_mode(dark: bool) -> bool {
+    match super::linux_desktop::current() {
+        super::linux_desktop::LinuxDesktop::Gnome => set_gnome_dark_mode(dark),
+        super::linux_desktop::LinuxDesktop::Kde => set_kde_dark_mode(dark),
+        super::linux_desktop::LinuxDesktop::Xfce => set_xfce_dark_mode(dark),
+        super::linux_desktop::LinuxDesktop::Other => {
+            set_gnome_dark_mode(dark) || set_kde_dark_mode(dark) || set_xfce_dark_mode(dark)
+        }
+    }
+}
+
+/// Read GNOME-compatible dark mode from color-scheme or GTK theme.
+#[cfg(target_os = "linux")]
+fn get_gnome_dark_mode() -> Option<bool> {
     if let Ok(output) = std::process::Command::new("gsettings")
         .args(["get", "org.gnome.desktop.interface", "color-scheme"])
         .output()
@@ -182,19 +200,55 @@ pub fn get_dark_mode() -> Option<bool> {
             return Some(val.contains("dark"));
         }
     }
+    None
+}
 
-    // KDE: read the color scheme name
-    if let Ok(output) = std::process::Command::new("kreadconfig5")
-        .args(["--group", "General", "--key", "ColorScheme"])
-        .output()
-    {
-        if output.status.success() {
-            let val = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
-            return Some(val.contains("dark"));
+/// Read KDE Plasma's color scheme, preferring Plasma 6's kreadconfig6.
+#[cfg(target_os = "linux")]
+fn get_kde_dark_mode() -> Option<bool> {
+    for program in ["kreadconfig6", "kreadconfig5"] {
+        if let Ok(output) = std::process::Command::new(program)
+            .args(["--group", "General", "--key", "ColorScheme"])
+            .output()
+        {
+            if output.status.success() {
+                let val = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+                return Some(val.contains("dark"));
+            }
         }
     }
+    None
+}
 
-    None // couldn't detect theme on any DE
+/// Read XFCE's configured GTK theme.
+#[cfg(target_os = "linux")]
+fn get_xfce_dark_mode() -> Option<bool> {
+    let output = std::process::Command::new("xfconf-query")
+        .args(["-c", "xsettings", "-p", "/Net/ThemeName"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(
+        String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .to_lowercase()
+            .contains("dark"),
+    )
+}
+
+/// Get current Linux dark mode through the active desktop's native backend.
+#[cfg(target_os = "linux")]
+pub fn get_dark_mode() -> Option<bool> {
+    match super::linux_desktop::current() {
+        super::linux_desktop::LinuxDesktop::Gnome => get_gnome_dark_mode(),
+        super::linux_desktop::LinuxDesktop::Kde => get_kde_dark_mode(),
+        super::linux_desktop::LinuxDesktop::Xfce => get_xfce_dark_mode(),
+        super::linux_desktop::LinuxDesktop::Other => get_gnome_dark_mode()
+            .or_else(get_kde_dark_mode)
+            .or_else(get_xfce_dark_mode),
+    }
 }
 
 #[cfg(test)]
