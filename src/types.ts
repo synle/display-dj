@@ -164,6 +164,8 @@ export interface Preferences {
   showContrast: boolean;
   debugLogging: boolean;
   launchAtLogin: boolean;
+  /** Windows only: re-enable Loudness Equalization on the active speaker. */
+  loudnessEqualizationPreferred: boolean;
   monitorConfigs: MonitorMetadata[];
   /** User-defined labels for audio output devices. */
   audioOutputConfigs: AudioOutputMetadata[];

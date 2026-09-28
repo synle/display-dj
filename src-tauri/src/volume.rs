@@ -721,3 +721,34 @@ mod tests {
         assert_eq!(configs[0].sort_order, Some(0));
     }
 }
+
+/// Fire-and-forget: when `loudnessEqualizationPreferred` is on, try to enable
+/// Windows Loudness Equalization on the currently active playback device only.
+///
+/// Spawns a background thread; never blocks the caller and never surfaces
+/// errors (they are logged). No-op on macOS/Linux.
+pub(crate) fn ensure_loudness_for_active_output(app: &tauri::AppHandle) {
+    if !cfg!(target_os = "windows") {
+        return;
+    }
+    let preferred = app
+        .try_state::<crate::AppState>()
+        .and_then(|state| state.preferences.lock().ok().map(|p| p.loudness_equalization_preferred))
+        .unwrap_or(false);
+    if !preferred {
+        return;
+    }
+    std::thread::spawn(|| {
+        let Some(id) = crate::core::audio_output::get_audio_output_state()
+            .ok()
+            .and_then(|s| s.selected_device_id)
+        else {
+            return;
+        };
+        match crate::core::loudness::ensure_loudness_equalization(&id) {
+            Ok(true) => log::info!("loudness equalization enabled on {}", id),
+            Ok(false) => {}
+            Err(error) => log::info!("loudness equalization skipped on {}: {}", id, error),
+        }
+    });
+}

@@ -451,6 +451,9 @@ pub struct Preferences {
     pub show_contrast: bool,
     pub debug_logging: bool,
     pub launch_at_login: bool,
+    /// Windows only: best-effort re-enable Loudness Equalization on the active
+    /// speaker at startup and each popup open. Defaults on.
+    pub loudness_equalization_preferred: bool,
     pub monitor_configs: Vec<MonitorMetadata>,
     /// User-defined labels for audio output devices, keyed by stable platform ID.
     pub audio_output_configs: Vec<AudioOutputMetadata>,
@@ -727,6 +730,7 @@ impl Default for Preferences {
             show_contrast: false,
             debug_logging: false,
             launch_at_login: false,
+            loudness_equalization_preferred: true,
             monitor_configs: Vec::new(),
             audio_output_configs: Vec::new(),
             tiling: TilingPreferences::default(),
@@ -1394,6 +1398,14 @@ pub fn get_about_info() -> std::collections::HashMap<String, String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// Loudness Equalization preference defaults on, including for old configs.
+    #[test]
+    fn loudness_equalization_preferred_defaults_true() {
+        assert!(Preferences::default().loudness_equalization_preferred);
+        let p: Preferences = serde_json::from_str("{}").unwrap();
+        assert!(p.loudness_equalization_preferred);
+    }
     use super::*;
 
     /// Runs a config test against an isolated process-wide config directory.

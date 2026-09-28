@@ -23,6 +23,7 @@ pub mod volume;
 pub mod wallpaper;
 pub mod display;
 pub mod audio_output;
+pub mod loudness;
 
 use serde::{Deserialize, Serialize};
 

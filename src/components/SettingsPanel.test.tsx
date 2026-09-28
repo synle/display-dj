@@ -27,6 +27,7 @@ function buildPrefs(overrides: Record<string, unknown> = {}) {
     showContrast: false,
     debugLogging: false,
     launchAtLogin: false,
+    loudnessEqualizationPreferred: true,
     monitorConfigs: [],
     audioOutputConfigs: [],
     tiling: {
@@ -806,6 +807,27 @@ describe('SettingsPanel', () => {
 
     await user.click(screen.getByText(/Windows Snap may interfere/));
     expect(mockInvoke).toHaveBeenCalledWith('open_windows_multitasking_settings');
+  });
+
+  it('shows Loudness Equalization toggle on Windows and saves when unchecked', async () => {
+    setupInvoke({ platform: 'Windows', windowsElevated: true, windowsSnapEnabled: false });
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    const box = await screen.findByRole('checkbox', { name: 'Prefer Loudness Equalization' });
+    expect(box).toBeChecked();
+    await user.click(box);
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('save_preferences', {
+        preferences: expect.objectContaining({ loudnessEqualizationPreferred: false }),
+      }),
+    );
+  });
+
+  it('hides Loudness Equalization toggle off Windows', async () => {
+    setupInvoke({ platform: 'macOS' });
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await screen.findByText('Speakers');
+    expect(screen.queryByText('Prefer Loudness Equalization')).not.toBeInTheDocument();
   });
 
   it('omits Tile Snap status when native Windows Snap is disabled', async () => {

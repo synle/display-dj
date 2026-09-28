@@ -564,6 +564,19 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
               </div>
             </div>
 
+            {platform === 'windows' && (
+              <div className='settings-section'>
+                <label className='settings-checkbox-row'>
+                  <input
+                    type='checkbox'
+                    checked={prefs.loudnessEqualizationPreferred ?? true}
+                    onChange={(e) => updateField('loudnessEqualizationPreferred', e.target.checked)}
+                  />
+                  <span>Prefer Loudness Equalization</span>
+                </label>
+              </div>
+            )}
+
             <div className='settings-divider' />
 
             <div className='settings-section'>

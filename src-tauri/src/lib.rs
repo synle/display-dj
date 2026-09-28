@@ -641,6 +641,7 @@ mod tests {
             ("core/volume.rs", include_str!("core/volume.rs")),
             ("core/theme.rs", include_str!("core/theme.rs")),
             ("core/wallpaper.rs", include_str!("core/wallpaper.rs")),
+            ("core/loudness.rs", include_str!("core/loudness.rs")),
         ];
         let banned = [r#"Command::new("powershell")"#, r#"Command::new("reg")"#];
         for (path, src) in files {
@@ -1018,6 +1019,8 @@ pub fn run() {
                 log::info!("startup probe + cache pre-warm complete");
                 // Realign hardware to the last values set from Display DJ.
                 restore_last_known_values(&startup_handle);
+                // Fire-and-forget: re-enable Loudness Equalization (Windows only).
+                volume::ensure_loudness_for_active_output(&startup_handle);
                 // Persist each slideshow image so the next launch resumes there.
                 wallpaper::register_slideshow_change_hook(startup_handle.clone());
                 // Resume wallpaper slideshow if it was enabled before shutdown

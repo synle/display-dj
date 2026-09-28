@@ -315,6 +315,7 @@ fn refresh_devices_on_show(app: AppHandle) {
             Ok(_) => {}
             Err(error) => log::warn!("refresh_devices_on_show: audio refresh failed: {}", error),
         }
+        crate::volume::ensure_loudness_for_active_output(&app);
         log::info!(
             "refresh_devices_on_show: done in {:.1}ms",
             t0.elapsed().as_secs_f64() * 1000.0
