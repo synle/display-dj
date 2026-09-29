@@ -62,6 +62,13 @@ body,
   flex-direction: column;
 }
 
+/* Uncapped wrapper measured by the window auto-resize observer in App.tsx. */
+.app-inner {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
 /* Header */
 .header {
   display: flex;

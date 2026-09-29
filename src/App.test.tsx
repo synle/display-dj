@@ -185,6 +185,28 @@ describe('App smoke test', () => {
     expect(container.querySelector('.app')).toBeInTheDocument();
   });
 
+  /**
+   * `.app` is clamped to 100vh, so observing it stops reporting growth once
+   * content outgrows the window. Auto-resize must watch the uncapped wrapper.
+   */
+  it('auto-resizes from the uncapped inner wrapper, not the height-clamped .app', () => {
+    const observed: Element[] = [];
+    const original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      observe(target: Element) {
+        observed.push(target);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      const { container } = render(<App />);
+      expect(observed).toEqual([container.querySelector('.app > .app-inner')]);
+    } finally {
+      globalThis.ResizeObserver = original;
+    }
+  });
+
   it('renders the header with title', () => {
     render(<App />);
     expect(screen.getByText('Display DJ')).toBeInTheDocument();

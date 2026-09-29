@@ -411,18 +411,23 @@ describe('SettingsPanel', () => {
     await user.click(screen.getByLabelText('Enable Wallpaper Slideshow'));
     await user.selectOptions(screen.getByDisplayValue('30m'), '0');
     await user.selectOptions(screen.getByDisplayValue('5s'), '10');
-    await waitForSave();
 
-    expect(mockInvoke).toHaveBeenLastCalledWith(
-      'save_preferences',
-      expect.objectContaining({
-        preferences: expect.objectContaining({
-          wallpaper: expect.objectContaining({
-            slideshowIntervalMinutes: 0,
-            slideshowIntervalSeconds: 10,
+    // Each user step can flush its own debounced save on slow runners, so wait
+    // until the final save carries the seconds-level interval.
+    await waitFor(
+      () =>
+        expect(mockInvoke).toHaveBeenLastCalledWith(
+          'save_preferences',
+          expect.objectContaining({
+            preferences: expect.objectContaining({
+              wallpaper: expect.objectContaining({
+                slideshowIntervalMinutes: 0,
+                slideshowIntervalSeconds: 10,
+              }),
+            }),
           }),
-        }),
-      }),
+        ),
+      { timeout: 2000 },
     );
     expect(screen.getByText('Changes every 10 seconds')).toBeInTheDocument();
   });
