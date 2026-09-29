@@ -250,7 +250,7 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={onClose} onPreferencesSaved={() => {}} />);
     await screen.findByText('Settings');
 
-    await user.click(screen.getByLabelText('Show Contrast Slider'));
+    await user.click(await screen.findByLabelText('Show Contrast Slider'));
     await user.click(screen.getByTitle('Close'));
 
     await waitFor(() => {
@@ -283,7 +283,7 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await screen.findByText('Settings');
 
-    await user.click(screen.getByLabelText('Show Contrast Slider'));
+    await user.click(await screen.findByLabelText('Show Contrast Slider'));
     await waitFor(() => expect(saveCalls).toBe(1));
     await user.click(screen.getByLabelText('Launch at Login'));
     await new Promise((resolve) => setTimeout(resolve, 150));
@@ -327,7 +327,7 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={onPreferencesSaved} />);
     await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
 
-    await user.click(screen.getByLabelText('Show Contrast Slider'));
+    await user.click(await screen.findByLabelText('Show Contrast Slider'));
     await waitForSave();
     await waitFor(() => expect(onPreferencesSaved).toHaveBeenCalled());
 
@@ -345,7 +345,7 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
 
-    await user.click(screen.getByLabelText('Launch at Login'));
+    await user.click(await screen.findByLabelText('Launch at Login'));
     await waitForSave();
     expect(mockInvoke).toHaveBeenCalledWith(
       'save_preferences',
@@ -395,7 +395,7 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
 
-    await user.click(screen.getByLabelText('Enable Wallpaper Slideshow'));
+    await user.click(await screen.findByLabelText('Enable Wallpaper Slideshow'));
     expect(screen.getByText('Slideshow Folder')).toBeInTheDocument();
     expect(screen.getByText('Interval')).toBeInTheDocument();
     expect(screen.getByText('Slideshow Order')).toBeInTheDocument();
@@ -408,7 +408,7 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
 
-    await user.click(screen.getByLabelText('Enable Wallpaper Slideshow'));
+    await user.click(await screen.findByLabelText('Enable Wallpaper Slideshow'));
     await user.selectOptions(screen.getByDisplayValue('30m'), '0');
     await user.selectOptions(screen.getByDisplayValue('5s'), '10');
 
