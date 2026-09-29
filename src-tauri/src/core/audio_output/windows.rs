@@ -53,20 +53,8 @@ struct IPolicyConfigVtable {
     set_processing_period: usize,
     get_share_mode: usize,
     set_share_mode: usize,
-    get_property_value: unsafe extern "system" fn(
-        *mut c_void,
-        PCWSTR,
-        i32,
-        *const PROPERTYKEY,
-        *mut PROPVARIANT,
-    ) -> HRESULT,
-    set_property_value: unsafe extern "system" fn(
-        *mut c_void,
-        PCWSTR,
-        i32,
-        *const PROPERTYKEY,
-        *const PROPVARIANT,
-    ) -> HRESULT,
+    get_property_value: usize,
+    set_property_value: usize,
     set_default_endpoint: unsafe extern "system" fn(*mut c_void, PCWSTR, ERole) -> HRESULT,
     set_endpoint_visibility: usize,
 }
@@ -220,83 +208,51 @@ pub fn get_audio_output_state() -> Result<AudioOutputState, String> {
     })
 }
 
-/// `bFxStore` flag for PolicyConfig property calls: target the endpoint's
-/// `FxProperties` store instead of its general `Properties` store.
-const FX_STORE: i32 = 1;
-
-/// Writes a `VT_BOOL` into an endpoint's FX property store through the
-/// private PolicyConfig API, then reads it back.
-///
-/// The Windows audio service performs the write, so this works where a direct
-/// HKLM registry write is denied (even for Administrators). Returns the value
-/// read back after the write, or a descriptive error for either COM call.
-pub fn set_fx_bool_property(
+/// Writes a `VT_BOOL` into one system-effects **user** property store of an
+/// endpoint via the public `IAudioSystemEffectsPropertyStore` (Windows 11
+/// 22H2+), the store the Sound settings toggles actually use
+/// (`FxProperties\{context}\User`). `context` is the property-store context
+/// GUID (the subkey name). Returns `(before, after)` read from the same store;
+/// `None` means unset or not a boolean.
+pub fn set_fx_user_bool_property(
     device_id: &str,
+    context: GUID,
     fmtid: GUID,
     pid: u32,
     value: bool,
-) -> Result<bool, String> {
+) -> Result<(Option<bool>, Option<bool>), String> {
+    use windows::Win32::Media::Audio::IAudioSystemEffectsPropertyStore;
+    use windows::Win32::System::Com::StructuredStorage::InitPropVariantFromCLSID;
+    use windows::Win32::System::Com::STGM_READWRITE;
     let _apartment = ComApartment::initialize()?;
-    let policy: IPolicyConfig = unsafe {
-        CoCreateInstance(&CLSID_POLICY_CONFIG_CLIENT, None, CLSCTX_ALL)
-            .map_err(|error| format!("create Windows PolicyConfig client failed: {}", error))?
-    };
+    let enumerator = create_enumerator()?;
     let wide_id: Vec<u16> = device_id.encode_utf16().chain(Some(0)).collect();
+    let device = unsafe { enumerator.GetDevice(PCWSTR(wide_id.as_ptr())) }
+        .map_err(|error| format!("open endpoint failed: {}", error))?;
+    let params = unsafe { InitPropVariantFromCLSID(&context) }
+        .map_err(|error| format!("build context PROPVARIANT failed: {}", error))?;
+    let effects: IAudioSystemEffectsPropertyStore =
+        unsafe { device.Activate(CLSCTX_ALL, Some(&params)) }.map_err(|error| {
+            format!(
+                "activate IAudioSystemEffectsPropertyStore failed (needs Windows 11 22H2+): {}",
+                error
+            )
+        })?;
+    let store = unsafe { effects.OpenUserPropertyStore(STGM_READWRITE.0) }
+        .map_err(|error| format!("OpenUserPropertyStore(READWRITE) failed: {}", error))?;
     let key = PROPERTYKEY { fmtid, pid };
+    let read = |label: &str| -> Result<Option<bool>, String> {
+        let value = unsafe { store.GetValue(&key) }
+            .map_err(|error| format!("GetValue ({}) failed: {}", label, error))?;
+        Ok(if value.is_empty() { None } else { bool::try_from(&value).ok() })
+    };
+    let before = read("before")?;
     let input = PROPVARIANT::from(value);
-    unsafe {
-        (policy.vtable().set_property_value)(
-            policy.as_raw(),
-            PCWSTR(wide_id.as_ptr()),
-            FX_STORE,
-            &key,
-            &input,
-        )
-    }
-    .ok()
-    .map_err(|error| format!("PolicyConfig SetPropertyValue failed: {}", error))?;
-    let mut output = PROPVARIANT::default();
-    unsafe {
-        (policy.vtable().get_property_value)(
-            policy.as_raw(),
-            PCWSTR(wide_id.as_ptr()),
-            FX_STORE,
-            &key,
-            &mut output,
-        )
-    }
-    .ok()
-    .map_err(|error| format!("PolicyConfig GetPropertyValue failed: {}", error))?;
-    bool::try_from(&output).map_err(|error| format!("read-back is not a boolean: {}", error))
-}
-
-/// Reads a boolean from an endpoint's FX property store via PolicyConfig.
-///
-/// Returns `Ok(None)` when the property is unset (`VT_EMPTY`) or not a boolean.
-pub fn get_fx_bool_property(device_id: &str, fmtid: GUID, pid: u32) -> Result<Option<bool>, String> {
-    let _apartment = ComApartment::initialize()?;
-    let policy: IPolicyConfig = unsafe {
-        CoCreateInstance(&CLSID_POLICY_CONFIG_CLIENT, None, CLSCTX_ALL)
-            .map_err(|error| format!("create Windows PolicyConfig client failed: {}", error))?
-    };
-    let wide_id: Vec<u16> = device_id.encode_utf16().chain(Some(0)).collect();
-    let key = PROPERTYKEY { fmtid, pid };
-    let mut output = PROPVARIANT::default();
-    unsafe {
-        (policy.vtable().get_property_value)(
-            policy.as_raw(),
-            PCWSTR(wide_id.as_ptr()),
-            FX_STORE,
-            &key,
-            &mut output,
-        )
-    }
-    .ok()
-    .map_err(|error| format!("PolicyConfig GetPropertyValue failed: {}", error))?;
-    if output.is_empty() {
-        return Ok(None);
-    }
-    Ok(bool::try_from(&output).ok())
+    unsafe { store.SetValue(&key, &input) }
+        .map_err(|error| format!("SetValue failed: {}", error))?;
+    unsafe { store.Commit() }.map_err(|error| format!("Commit failed: {}", error))?;
+    let after = read("after")?;
+    Ok((before, after))
 }
 
 /// Changes all Windows default render roles through the private PolicyConfig API.

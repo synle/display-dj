@@ -7,10 +7,11 @@
 //! `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render\{guid}\FxProperties`.
 //! Loudness Equalization is property `{fc52a749-4be9-4510-896e-966ba6525980},3`
 //! (a `VT_BOOL`). This key layout is undocumented and was inferred from
-//! community tooling. HKLM here is writable only by the audio service, so the
-//! primary path asks that service to write it via the private PolicyConfig
-//! `SetPropertyValue` (the Sound control panel's path); a direct registry write
-//! is the fallback. Every step is fire-and-forget and logged per option.
+//! community tooling plus a before/after diff of the Sound settings toggle:
+//! the live value is in `FxProperties\{context}\User` (the root copy never
+//! moves). The primary path writes it through the public
+//! `IAudioSystemEffectsPropertyStore` user store; a direct registry write is
+//! the fallback. Every step is fire-and-forget and logged per option.
 //!
 //! On non-Windows targets the entry point is a no-op.
 
@@ -101,7 +102,7 @@ const LOUDNESS_ON_BLOB_HEX: &str = "0b00000001000000ffff0000";
 
 /// Longest reg output kept in one attempt log line.
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-const MAX_LOG_OUTPUT_CHARS: usize = 1500;
+const MAX_LOG_OUTPUT_CHARS: usize = 8000;
 
 /// Outcome of every strategy tried for one endpoint.
 ///
@@ -138,15 +139,67 @@ fn is_access_denied(text: &str) -> bool {
     text.to_ascii_lowercase().contains("access is denied")
 }
 
+/// Property-store context observed holding the live Sound-settings toggle
+/// (`FxProperties\{b13412ee-...}\User`), used when the dump finds none.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+const DEFAULT_FX_CONTEXT: &str = "{b13412ee-07af-4c57-b08b-e327f8db085b}";
+
+/// Parse `{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}` into its 128-bit value.
+///
+/// Returns `None` unless exactly 32 hex digits remain after dropping braces
+/// and dashes (never panics, unlike `GUID::from(&str)`).
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub(crate) fn parse_guid_u128(text: &str) -> Option<u128> {
+    let hex: String = text.chars().filter(|c| !matches!(c, '{' | '}' | '-')).collect();
+    if hex.len() != 32 {
+        return None;
+    }
+    u128::from_str_radix(&hex, 16).ok()
+}
+
+/// Find property-store contexts whose `User` subkey holds the loudness value.
+///
+/// Walks `reg query <FxProperties> /s` output; a context is the subkey name
+/// directly under `FxProperties`. Falls back to [`DEFAULT_FX_CONTEXT`] when no
+/// `User` subkey carries the value. The root `FxProperties` copy is ignored:
+/// it does not track the Sound settings toggle.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub(crate) fn loudness_contexts(listing: &str) -> Vec<String> {
+    let mut contexts: Vec<String> = Vec::new();
+    let mut current: Option<String> = None;
+    for line in listing.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("HKEY_") {
+            current = trimmed
+                .split("\\FxProperties\\")
+                .nth(1)
+                .and_then(|rest| rest.strip_suffix("\\User"))
+                .filter(|context| !context.contains('\\'))
+                .map(str::to_string);
+        } else if trimmed.starts_with(LOUDNESS_VALUE_NAME) {
+            if let Some(context) = &current {
+                if !contexts.contains(context) {
+                    contexts.push(context.clone());
+                }
+            }
+        }
+    }
+    if contexts.is_empty() {
+        contexts.push(DEFAULT_FX_CONTEXT.to_string());
+    }
+    contexts
+}
+
 /// Try to switch Loudness Equalization on for one playback endpoint.
 ///
 /// Ordered strategies, each recorded in [`LoudnessReport::attempts`]:
-/// 0 dump `FxProperties` (and subkeys) read-only; 1 write the property through
-/// the audio service with PolicyConfig `SetPropertyValue` and read it back
-/// (works where HKLM is locked even for Administrators); 2 registry fallback:
-/// create the `FxProperties` key, then create or flip the loudness value;
-/// 3 restart `audiosrv` only after a registry write. Blocking; call from a
-/// background thread.
+/// 0 dump `FxProperties` with subkeys (read-only) and pick the live
+/// `{context}\User` stores; 1 write the value through the public
+/// `IAudioSystemEffectsPropertyStore` user store (Windows 11 22H2+, the store
+/// Sound settings writes); 2 registry fallback into `{context}\User`, creating
+/// the key first; 3 restart `audiosrv` only after a registry write. The root
+/// `FxProperties` copy is never touched: it does not track the toggle.
+/// Blocking; call from a background thread.
 #[cfg(target_os = "windows")]
 pub fn ensure_loudness_equalization(device_id: &str) -> LoudnessReport {
     use super::win_cmd::hidden_command;
@@ -162,52 +215,77 @@ pub fn ensure_loudness_equalization(device_id: &str) -> LoudnessReport {
         r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render\{guid}\FxProperties"
     );
 
-    // Option 0: read-only dump of the endpoint's FX store, including subkeys.
-    match hidden_command("reg").args(["query", &key, "/s"]).output() {
-        Ok(out) if out.status.success() => attempts.push(format!(
-            "option 0 (inspect FxProperties): values={:?}",
-            clip(&out.stdout)
-        )),
-        Ok(out) => attempts.push(format!(
-            "option 0 (inspect FxProperties): key missing (reg_exit={:?} stderr={:?})",
-            out.status.code(),
-            clip(&out.stderr)
-        )),
-        Err(e) => attempts.push(format!("option 0 (inspect FxProperties): spawn failed: {e}")),
-    }
-
-    // Option 1: let the audio service write the property (Sound panel path).
-    let policy_error = match crate::core::audio_output::get_fx_bool_property(
-        device_id,
-        LOUDNESS_FMTID,
-        LOUDNESS_PID,
-    ) {
-        Ok(Some(true)) => {
-            attempts.push("option 1 (PolicyConfig SetPropertyValue): already on".into());
-            return LoudnessReport { result: Ok(false), attempts };
+    // Option 0: read-only dump; derive the live User-store contexts from it.
+    let listing = match hidden_command("reg").args(["query", &key, "/s"]).output() {
+        Ok(out) if out.status.success() => {
+            attempts.push(format!(
+                "option 0 (inspect FxProperties): values={:?}",
+                clip(&out.stdout)
+            ));
+            String::from_utf8_lossy(&out.stdout).into_owned()
         }
-        Ok(current) => match crate::core::audio_output::set_fx_bool_property(
+        Ok(out) => {
+            attempts.push(format!(
+                "option 0 (inspect FxProperties): key missing (reg_exit={:?} stderr={:?})",
+                out.status.code(),
+                clip(&out.stderr)
+            ));
+            String::new()
+        }
+        Err(e) => {
+            attempts.push(format!("option 0 (inspect FxProperties): spawn failed: {e}"));
+            String::new()
+        }
+    };
+    let contexts = loudness_contexts(&listing);
+    attempts.push(format!("option 0 (inspect FxProperties): live contexts={contexts:?}"));
+
+    // Option 1: public system-effects user store (what Sound settings writes).
+    let mut errors: Vec<String> = Vec::new();
+    let mut written = false;
+    for context in &contexts {
+        let Some(context_guid) = parse_guid_u128(context).map(windows::core::GUID::from_u128)
+        else {
+            let msg = format!("option 1 (IAudioSystemEffectsPropertyStore {context}): bad context guid");
+            attempts.push(msg.clone());
+            errors.push(msg);
+            continue;
+        };
+        match crate::core::audio_output::set_fx_user_bool_property(
             device_id,
+            context_guid,
             LOUDNESS_FMTID,
             LOUDNESS_PID,
             true,
         ) {
-            Ok(true) => {
+            Ok((Some(true), _)) => attempts.push(format!(
+                "option 1 (IAudioSystemEffectsPropertyStore {context}): already on"
+            )),
+            Ok((before, Some(true))) => {
                 attempts.push(format!(
-                    "option 1 (PolicyConfig SetPropertyValue): written (was {current:?}, read back true)"
+                    "option 1 (IAudioSystemEffectsPropertyStore {context}): written (was {before:?}, read back true)"
                 ));
-                return LoudnessReport { result: Ok(true), attempts };
+                written = true;
             }
-            Ok(false) => format!(
-                "option 1 (PolicyConfig SetPropertyValue): write accepted but read back false (was {current:?})"
-            ),
-            Err(e) => format!("option 1 (PolicyConfig SetPropertyValue): failed {e}"),
-        },
-        Err(e) => format!("option 1 (PolicyConfig SetPropertyValue): read failed {e}"),
-    };
-    attempts.push(policy_error.clone());
+            Ok((before, after)) => {
+                let msg = format!(
+                    "option 1 (IAudioSystemEffectsPropertyStore {context}): write did not stick (was {before:?}, read back {after:?})"
+                );
+                attempts.push(msg.clone());
+                errors.push(msg);
+            }
+            Err(e) => {
+                let msg = format!("option 1 (IAudioSystemEffectsPropertyStore {context}): failed {e}");
+                attempts.push(msg.clone());
+                errors.push(msg);
+            }
+        }
+    }
+    if errors.is_empty() {
+        return LoudnessReport { result: Ok(written), attempts };
+    }
 
-    // Option 2: registry fallback. Create the key first, then the value.
+    // Option 2: registry fallback into each {context}\User; create key first.
     /// Run `reg add` with extra args; Ok on exit 0, else exit code + stderr.
     fn reg_add(args: &[&str]) -> Result<(), String> {
         let out = super::win_cmd::hidden_command("reg")
@@ -222,52 +300,64 @@ pub fn ensure_loudness_equalization(device_id: &str) -> LoudnessReport {
             Err(format!("reg_exit={:?} stderr={:?}", out.status.code(), clip(&out.stderr)))
         }
     }
-    let registry = reg_add(&[key.as_str()])
-        .map_err(|e| format!("create key {e}"))
-        .and_then(|()| {
-            let query = hidden_command("reg")
-                .args(["query", &key, "/v", LOUDNESS_VALUE_NAME])
-                .output()
-                .map_err(|e| format!("query spawn failed: {e}"))?;
-            let existing = query
-                .status
-                .success()
-                .then(|| parse_reg_binary(&String::from_utf8_lossy(&query.stdout)))
-                .flatten();
-            let hex: String = match existing {
-                Some(bytes) if bytes.first() == Some(&VT_BOOL) => match enabled_blob(&bytes) {
-                    None => return Ok(false),
-                    Some(next) => next.iter().map(|b| format!("{b:02x}")).collect(),
-                },
-                Some(bytes) => return Err(format!("unknown blob layout {bytes:02x?}, not written")),
-                None => LOUDNESS_ON_BLOB_HEX.to_string(),
-            };
-            reg_add(&[key.as_str(), "/v", LOUDNESS_VALUE_NAME, "/t", "REG_BINARY", "/d", &hex])
-                .map(|()| true)
-                .map_err(|e| format!("set value {e}"))
-        });
-    let wrote = match registry {
-        Ok(false) => {
-            attempts.push("option 2 (registry: create key, then value): already on".into());
-            attempts.push("option 3 (restart audiosrv): skipped, nothing written".into());
-            return LoudnessReport { result: Ok(false), attempts };
+    let mut registry_wrote = false;
+    let mut denied = false;
+    for context in &contexts {
+        let user_key = format!(r"{key}\{context}\User");
+        let result = reg_add(&[user_key.as_str()])
+            .map_err(|e| format!("create key {e}"))
+            .and_then(|()| {
+                let query = hidden_command("reg")
+                    .args(["query", &user_key, "/v", LOUDNESS_VALUE_NAME])
+                    .output()
+                    .map_err(|e| format!("query spawn failed: {e}"))?;
+                let existing = query
+                    .status
+                    .success()
+                    .then(|| parse_reg_binary(&String::from_utf8_lossy(&query.stdout)))
+                    .flatten();
+                let hex: String = match existing {
+                    Some(bytes) if bytes.first() == Some(&VT_BOOL) => match enabled_blob(&bytes) {
+                        None => return Ok(false),
+                        Some(next) => next.iter().map(|b| format!("{b:02x}")).collect(),
+                    },
+                    Some(bytes) => {
+                        return Err(format!("unknown blob layout {bytes:02x?}, not written"))
+                    }
+                    None => LOUDNESS_ON_BLOB_HEX.to_string(),
+                };
+                reg_add(&[user_key.as_str(), "/v", LOUDNESS_VALUE_NAME, "/t", "REG_BINARY", "/d", &hex])
+                    .map(|()| true)
+                    .map_err(|e| format!("set value {e}"))
+            });
+        match result {
+            Ok(false) => attempts.push(format!("option 2 (registry {context}\\User): already on")),
+            Ok(true) => {
+                attempts.push(format!("option 2 (registry {context}\\User): written"));
+                registry_wrote = true;
+            }
+            Err(e) => {
+                let msg = format!("option 2 (registry {context}\\User): failed {e}");
+                denied |= is_access_denied(&msg);
+                attempts.push(msg.clone());
+                errors.push(msg);
+            }
         }
-        Ok(true) => {
-            attempts.push("option 2 (registry: create key, then value): written".into());
-            true
-        }
-        Err(e) => {
-            let msg = format!("option 2 (registry: create key, then value): failed {e}");
-            attempts.push(msg.clone());
-            attempts.push("option 3 (restart audiosrv): skipped, nothing written".into());
-            let reason = format!("{policy_error}; {msg}");
-            let error = if is_access_denied(&msg) { Denied(reason) } else { Failed(reason) };
-            return LoudnessReport { result: Err(error), attempts };
-        }
-    };
+    }
 
+    if !registry_wrote {
+        attempts.push("option 3 (restart audiosrv): skipped, nothing written to registry".into());
+        let reason = errors.join("; ");
+        let result = if written {
+            Ok(true)
+        } else if denied {
+            Err(Denied(reason))
+        } else {
+            Err(Failed(reason))
+        };
+        return LoudnessReport { result, attempts };
+    }
     // Option 3: the audio engine reloads registry FX settings only on restart.
-    debug_assert!(wrote);
     match hidden_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", "Restart-Service audiosrv -Force"])
         .output()
@@ -362,6 +452,33 @@ mod tests {
         assert_eq!(enabled_blob(&bytes), None);
     }
 
+    /// The live toggle lives in `{context}\User`; the root copy is ignored.
+    #[test]
+    fn loudness_contexts_picks_user_store_not_root() {
+        let listing = "HKEY_LOCAL_MACHINE\\X\\FxProperties\r\n    {fc52a749-4be9-4510-896e-966ba6525980},3    REG_BINARY    0B00000001000000FFFF0000\r\n\r\nHKEY_LOCAL_MACHINE\\X\\FxProperties\\{08e54ab7-ff00-4b50-92bb-63d6dc1ef8ea}\\User\r\n\r\nHKEY_LOCAL_MACHINE\\X\\FxProperties\\{b13412ee-07af-4c57-b08b-e327f8db085b}\\User\r\n    {01fb17e3-796c-4451-8163-68cdc1321a60},3    REG_BINARY    0B0000000100000000000000\r\n    {fc52a749-4be9-4510-896e-966ba6525980},3    REG_BINARY    0B0000000100000000000000\r\n";
+        assert_eq!(
+            loudness_contexts(listing),
+            vec!["{b13412ee-07af-4c57-b08b-e327f8db085b}".to_string()]
+        );
+    }
+
+    /// Braced GUID text parses to its u128; malformed text is rejected.
+    #[test]
+    fn parse_guid_u128_reads_braced_guid() {
+        assert_eq!(
+            parse_guid_u128("{b13412ee-07af-4c57-b08b-e327f8db085b}"),
+            Some(0xb13412ee_07af_4c57_b08b_e327f8db085b)
+        );
+        assert_eq!(parse_guid_u128("{b13412ee}"), None);
+        assert_eq!(parse_guid_u128("{zz3412ee-07af-4c57-b08b-e327f8db085b}"), None);
+    }
+
+    /// No User store with the value falls back to the observed default context.
+    #[test]
+    fn loudness_contexts_falls_back_to_default() {
+        assert_eq!(loudness_contexts(""), vec![DEFAULT_FX_CONTEXT.to_string()]);
+    }
+
     /// reg.exe permission failures are recognized case-insensitively.
     #[test]
     fn access_denied_is_detected() {
@@ -373,7 +490,7 @@ mod tests {
     #[test]
     fn clip_joins_lines_and_bounds_length() {
         assert_eq!(clip(b"  a\r\nb \n"), "a | b");
-        assert_eq!(clip(&vec![b'x'; 5000]).len(), MAX_LOG_OUTPUT_CHARS);
+        assert_eq!(clip(&vec![b'x'; MAX_LOG_OUTPUT_CHARS + 100]).len(), MAX_LOG_OUTPUT_CHARS);
     }
 
     /// Unknown type tag or short blob is never rewritten.

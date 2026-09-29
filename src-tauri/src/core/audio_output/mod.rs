@@ -168,26 +168,17 @@ pub fn set_default_volume(level: u16) -> Result<(), String> {
     windows::set_default_volume(level)
 }
 
-/// Reads a boolean FX property on one Windows endpoint (`None` when unset).
+/// Writes a boolean into one endpoint system-effects user property store and
+/// returns `(before, after)`. See `windows::set_fx_user_bool_property`.
 #[cfg(target_os = "windows")]
-pub fn get_fx_bool_property(
+pub fn set_fx_user_bool_property(
     device_id: &str,
-    fmtid: ::windows::core::GUID,
-    pid: u32,
-) -> Result<Option<bool>, String> {
-    windows::get_fx_bool_property(device_id, fmtid, pid)
-}
-
-/// Writes a boolean FX property on one Windows endpoint via the audio service
-/// and returns the read-back value. See `windows::set_fx_bool_property`.
-#[cfg(target_os = "windows")]
-pub fn set_fx_bool_property(
-    device_id: &str,
+    context: ::windows::core::GUID,
     fmtid: ::windows::core::GUID,
     pid: u32,
     value: bool,
-) -> Result<bool, String> {
-    windows::set_fx_bool_property(device_id, fmtid, pid, value)
+) -> Result<(Option<bool>, Option<bool>), String> {
+    windows::set_fx_user_bool_property(device_id, context, fmtid, pid, value)
 }
 
 /// Sets mute state for the selected Windows playback endpoint.
