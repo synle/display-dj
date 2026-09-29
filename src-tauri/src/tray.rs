@@ -315,7 +315,7 @@ fn refresh_devices_on_show(app: AppHandle) {
             Ok(_) => {}
             Err(error) => log::warn!("refresh_devices_on_show: audio refresh failed: {}", error),
         }
-        crate::volume::ensure_loudness_for_active_output(&app);
+        crate::volume::ensure_loudness_for_enabled_outputs(&app);
         log::info!(
             "refresh_devices_on_show: done in {:.1}ms",
             t0.elapsed().as_secs_f64() * 1000.0
@@ -1435,6 +1435,7 @@ fn dump_debug_info(app: &AppHandle) {
     // Live hardware probe — exercises the same code path the brightness slider
     // uses, so we can tell whether DDC enumerate/get/set succeed for each panel.
     // Mirrors the rich diagnostics the standalone display-dj-cli used to print.
+    lines.push("--- Monitor Meta Data ---".into());
     lines.push("--- live displays (core::display::list_all) ---".into());
     for d in crate::core::display::list_all() {
         lines.push(format!(
@@ -1452,6 +1453,7 @@ fn dump_debug_info(app: &AppHandle) {
         Ok(s) => lines.push(s),
         Err(e) => lines.push(format!("(serialize failed: {})", e)),
     }
+    lines.extend(crate::volume::speaker_debug_lines(app));
 
     lines.push("=== END DEBUG INFO ===".into());
     let output = lines.join("\n");

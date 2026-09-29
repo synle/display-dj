@@ -67,7 +67,9 @@ fn audio_output_state_summary(context: &str, output_state: &AudioOutputState) ->
 }
 
 /// Loads a platform snapshot and overlays persisted labels and states.
-fn load_audio_output_state_unlocked(app: &tauri::AppHandle) -> Result<AudioOutputState, String> {
+fn load_audio_output_state_unlocked<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<AudioOutputState, String> {
     let state = app
         .try_state::<crate::AppState>()
         .ok_or_else(|| "app state unavailable before audio output refresh".to_string())?;
@@ -705,6 +707,23 @@ mod tests {
         assert!(configs.is_empty());
     }
 
+    /// Speaker log labels read `<device id> (<display name>)`.
+    #[test]
+    fn speaker_log_label_appends_display_name_to_id() {
+        let device = crate::core::audio_output::AudioOutputDevice {
+            id: "{0.0.0.00000000}.{9e745fd2-2c10-4ec9-b5c5-17fbefefc36b}".into(),
+            name: "Right Speaker".into(),
+            original_name: "Speakers (Realtek)".into(),
+            state: AudioOutputDeviceState::Enabled,
+            is_built_in: false,
+        };
+
+        assert_eq!(
+            speaker_log_label(&device),
+            "{0.0.0.00000000}.{9e745fd2-2c10-4ec9-b5c5-17fbefefc36b} (Right Speaker)"
+        );
+    }
+
     /// Clearing default label and state keeps metadata that owns a custom position.
     #[test]
     fn normalize_audio_output_configs_retains_custom_order() {
@@ -722,12 +741,36 @@ mod tests {
     }
 }
 
-/// Fire-and-forget: when `loudnessEqualizationPreferred` is on, try to enable
-/// Windows Loudness Equalization on the currently active playback device only.
+/// Formats a speaker for logs as `<device id> (<display name>)`.
 ///
-/// Spawns a background thread; never blocks the caller and never surfaces
-/// errors (they are logged). No-op on macOS/Linux.
-pub(crate) fn ensure_loudness_for_active_output(app: &tauri::AppHandle) {
+/// The display name is the user's label when set, otherwise the OS name.
+pub(crate) fn speaker_log_label(device: &crate::core::audio_output::AudioOutputDevice) -> String {
+    format!("{} ({})", device.id, device.name)
+}
+
+/// Builds the `--- Speaker Meta Data ---` block for debug dumps: every known
+/// speaker with its label, OS name, enabled/disabled/hidden state, and
+/// selection. Enumeration failures are rendered inline and logged as errors.
+pub(crate) fn speaker_debug_lines<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Vec<String> {
+    let mut lines = vec!["--- Speaker Meta Data ---".to_string()];
+    match run_audio_output_operation(|| load_audio_output_state_unlocked(app)) {
+        Ok(output_state) => lines.push(audio_output_state_summary("debug dump", &output_state)),
+        Err(error) => {
+            log::error!("speaker debug dump: enumerate audio outputs failed: {}", error);
+            lines.push(format!("(enumerate audio outputs failed: {})", error));
+        }
+    }
+    lines
+}
+
+/// Fire-and-forget: when `loudnessEqualizationPreferred` is on, try to enable
+/// Windows Loudness Equalization on every **enabled** playback device (not just
+/// the active one), so switching outputs keeps the setting.
+///
+/// Spawns a background thread; never blocks the caller. Each device is logged
+/// as `<id> (<name>)`: unsupported endpoints at info, real failures at error.
+/// No-op on macOS/Linux.
+pub(crate) fn ensure_loudness_for_enabled_outputs(app: &tauri::AppHandle) {
     if !cfg!(target_os = "windows") {
         return;
     }
@@ -738,21 +781,30 @@ pub(crate) fn ensure_loudness_for_active_output(app: &tauri::AppHandle) {
     if !preferred {
         return;
     }
-    std::thread::spawn(|| {
-        let Some(id) = crate::core::audio_output::get_audio_output_state()
-            .ok()
-            .and_then(|s| s.selected_device_id)
-        else {
-            return;
-        };
-        match crate::core::loudness::ensure_loudness_equalization(&id) {
-            Ok(true) => log::info!("loudness equalization enabled on {}", id),
-            Ok(false) => {}
-            Err(crate::core::loudness::LoudnessError::Unsupported(reason)) => {
-                log::info!("loudness equalization skipped on {}: {}", id, reason)
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let output_state = match run_audio_output_operation(|| load_audio_output_state_unlocked(&app)) {
+            Ok(output_state) => output_state,
+            Err(error) => {
+                log::error!("loudness equalization: enumerate audio outputs failed: {}", error);
+                return;
             }
-            Err(crate::core::loudness::LoudnessError::Failed(error)) => {
-                log::error!("loudness equalization failed on {}: {}", id, error)
+        };
+        for device in output_state
+            .devices
+            .iter()
+            .filter(|device| device.state == AudioOutputDeviceState::Enabled)
+        {
+            let label = speaker_log_label(device);
+            match crate::core::loudness::ensure_loudness_equalization(&device.id) {
+                Ok(true) => log::info!("loudness equalization enabled on {}", label),
+                Ok(false) => log::info!("loudness equalization already on for {}", label),
+                Err(crate::core::loudness::LoudnessError::Unsupported(reason)) => {
+                    log::info!("loudness equalization skipped on {}: {}", label, reason)
+                }
+                Err(crate::core::loudness::LoudnessError::Failed(error)) => {
+                    log::error!("loudness equalization failed on {}: {}", label, error)
+                }
             }
         }
     });

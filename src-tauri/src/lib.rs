@@ -55,6 +55,7 @@ fn write_startup_dump<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     #[cfg(target_os = "linux")]
     lines.push("native_linux_crash_stack: system coredump (not captured in-app)".into());
 
+    lines.push("--- Monitor Meta Data ---".into());
     // Live enumerate — same code path the brightness slider hits.
     let displays = crate::core::display::list_all();
     lines.push(format!(
@@ -76,6 +77,7 @@ fn write_startup_dump<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         Ok(s) => lines.push(s),
         Err(e) => lines.push(format!("(serialize failed: {})", e)),
     }
+    lines.extend(volume::speaker_debug_lines(app));
     lines.push("=== END STARTUP DUMP ===".into());
 
     config::write_debug_log(&state, &lines.join("\n"));
@@ -1025,7 +1027,7 @@ pub fn run() {
                 // Realign hardware to the last values set from Display DJ.
                 restore_last_known_values(&startup_handle);
                 // Fire-and-forget: re-enable Loudness Equalization (Windows only).
-                volume::ensure_loudness_for_active_output(&startup_handle);
+                volume::ensure_loudness_for_enabled_outputs(&startup_handle);
                 // Persist each slideshow image so the next launch resumes there.
                 wallpaper::register_slideshow_change_hook(startup_handle.clone());
                 // Resume wallpaper slideshow if it was enabled before shutdown
