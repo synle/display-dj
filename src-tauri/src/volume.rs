@@ -796,7 +796,11 @@ pub(crate) fn ensure_loudness_for_enabled_outputs(app: &tauri::AppHandle) {
             .filter(|device| device.state == AudioOutputDeviceState::Enabled)
         {
             let label = speaker_log_label(device);
-            match crate::core::loudness::ensure_loudness_equalization(&device.id) {
+            let report = crate::core::loudness::ensure_loudness_equalization(&device.id);
+            for attempt in &report.attempts {
+                log::info!("loudness equalization {}: {}", label, attempt);
+            }
+            match report.result {
                 Ok(true) => log::info!("loudness equalization enabled on {}", label),
                 Ok(false) => log::info!("loudness equalization already on for {}", label),
                 Err(crate::core::loudness::LoudnessError::Unsupported(reason)) => {
