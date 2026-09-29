@@ -65,6 +65,13 @@ jobs:
             } >&2
             exit 1
           fi
+          # The tag must match the built version, or the release name and
+          # asset filenames disagree (v11.3.0 shipped 11.4.3 assets).
+          CONF_VERSION=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf-8')).version)")
+          if [ "$CANDIDATE" != "$CONF_VERSION" ]; then
+            echo "::error::Resolved tag 'v${CANDIDATE}' does not match src-tauri/tauri.conf.json version '${CONF_VERSION}'. Leave the tag input empty or bump package.json + run npm run format." >&2
+            exit 1
+          fi
           echo "Tag candidate valid: v${CANDIDATE}"
 
       - uses: synle/workflows/actions/release/begin-release@main
