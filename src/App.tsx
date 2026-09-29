@@ -52,7 +52,7 @@ function App() {
   const [audioOutputState, setAudioOutputState] = useState<AudioOutputState | null>(null);
   const [updatingAudioOutputId, setUpdatingAudioOutputId] = useState<string | null>(null);
   const [lastKnown, setLastKnown] = useState<LastKnownValues>({});
-  const appInnerRef = useRef<HTMLDivElement>(null);
+  const appRef = useRef<HTMLDivElement>(null);
   const audioOutputFetchInFlight = useRef(false);
   const audioOutputStateVersion = useRef(0);
   const pendingLastKnown = useRef<LastKnownValues | null>(null);
@@ -265,16 +265,13 @@ function App() {
     };
   }, [fetchAudioOutputs, mainViewVisible]);
 
-  // Auto-resize window to fit content. Observe the uncapped inner wrapper, not
-  // `.app`: `.app` is clamped to 100vh, so once content outgrows the window its
-  // box stops changing and the observer never fires (seen on Windows). Round up
-  // so fractional DPI heights (125%/150% scaling) never leave a 1px scrollbar.
+  // Auto-resize window to fit content
   useEffect(() => {
-    const el = appInnerRef.current;
+    const el = appRef.current;
     if (!el) return;
     const win = getCurrentWindow();
     const observer = new ResizeObserver(() => {
-      const height = Math.ceil(el.getBoundingClientRect().height);
+      const height = el.scrollHeight;
       if (height > 0) {
         const availableHeight = window.screen.availHeight || window.innerHeight;
         win.setSize(new LogicalSize(400, Math.min(height, availableHeight)));
@@ -521,106 +518,102 @@ function App() {
   const allContrast = lastKnown.allContrast ?? DEFAULT_SLIDER_VALUE;
 
   return (
-    <div className='app' data-theme={darkMode ? 'dark' : 'light'}>
-      <div className='app-inner' ref={appInnerRef}>
-        <Header
-          version={version}
-          onSettingsToggle={() => setSettingsOpen(!settingsOpen)}
-          settingsOpen={settingsOpen}
+    <div className='app' ref={appRef} data-theme={darkMode ? 'dark' : 'light'}>
+      <Header
+        version={version}
+        onSettingsToggle={() => setSettingsOpen(!settingsOpen)}
+        settingsOpen={settingsOpen}
+      />
+
+      {showAccessibilityGate ? (
+        <AccessibilityGate
+          onGranted={() => {
+            setAccessibilityTrusted(true);
+            fetchAllState();
+            fetchPreferences();
+            fetchKeepAwake();
+          }}
         />
-
-        {showAccessibilityGate ? (
-          <AccessibilityGate
-            onGranted={() => {
-              setAccessibilityTrusted(true);
-              fetchAllState();
-              fetchPreferences();
-              fetchKeepAwake();
-            }}
-          />
-        ) : aboutOpen ? (
-          <AboutPanel onClose={() => setAboutOpen(false)} />
-        ) : settingsOpen ? (
-          <SettingsPanel
-            onClose={() => setSettingsOpen(false)}
-            onPreferencesSaved={() => {
-              fetchPreferences();
-              fetchMonitors();
-            }}
-          />
-        ) : (
-          <div className='app-content'>
-            {visibleMonitors.length > 0 &&
-              (!monitorsExpanded ? (
-                <AllMonitorsControl
-                  brightness={allBrightness}
-                  brightnessMixed={false}
-                  onBrightnessChange={handleAllBrightness}
-                  contrast={hasContrast ? allContrast : null}
-                  contrastMixed={false}
-                  onContrastChange={handleAllContrast}
-                  showContrast={showContrast}
-                  monitorCount={visibleMonitors.length}
-                  minBrightness={minBrightness}
-                  onExpand={() => setMonitorsExpanded(true)}
-                  onRefresh={handleRefreshDevices}
-                />
-              ) : (
-                <div className='monitors-list' id='monitor-controls'>
-                  <div className='section-label-row'>
-                    <RefreshLabel
-                      text={`All Monitors (${visibleMonitors.length})`}
-                      onRefresh={handleRefreshDevices}
-                    />
-                    <button
-                      className='section-toggle'
-                      onClick={() => setMonitorsExpanded(false)}
-                      aria-expanded='true'
-                      aria-controls='monitor-controls'
-                      title='Show all monitors control'>
-                      <span className='chevron expanded'>
-                        <Icon name='chevronRight' size={14} />
-                      </span>
-                    </button>
-                  </div>
-                  {visibleMonitors.map((monitor, index) => (
-                    <MonitorControl
-                      key={monitor.uid}
-                      monitor={monitor}
-                      onBrightnessChange={(v) =>
-                        handleMonitorBrightness(monitor.id, monitor.uid, v)
-                      }
-                      onContrastChange={(v) => handleMonitorContrast(monitor.id, monitor.uid, v)}
-                      showContrast={showContrast}
-                      onRename={(name) => handleRename(monitor.uid, name)}
-                      onMoveUp={() => handleReorder(index, 'up')}
-                      onMoveDown={() => handleReorder(index, 'down')}
-                      isFirst={index === 0}
-                      isLast={index === visibleMonitors.length - 1}
-                      minBrightness={minBrightness}
-                    />
-                  ))}
+      ) : aboutOpen ? (
+        <AboutPanel onClose={() => setAboutOpen(false)} />
+      ) : settingsOpen ? (
+        <SettingsPanel
+          onClose={() => setSettingsOpen(false)}
+          onPreferencesSaved={() => {
+            fetchPreferences();
+            fetchMonitors();
+          }}
+        />
+      ) : (
+        <div className='app-content'>
+          {visibleMonitors.length > 0 &&
+            (!monitorsExpanded ? (
+              <AllMonitorsControl
+                brightness={allBrightness}
+                brightnessMixed={false}
+                onBrightnessChange={handleAllBrightness}
+                contrast={hasContrast ? allContrast : null}
+                contrastMixed={false}
+                onContrastChange={handleAllContrast}
+                showContrast={showContrast}
+                monitorCount={visibleMonitors.length}
+                minBrightness={minBrightness}
+                onExpand={() => setMonitorsExpanded(true)}
+                onRefresh={handleRefreshDevices}
+              />
+            ) : (
+              <div className='monitors-list' id='monitor-controls'>
+                <div className='section-label-row'>
+                  <RefreshLabel
+                    text={`All Monitors (${visibleMonitors.length})`}
+                    onRefresh={handleRefreshDevices}
+                  />
+                  <button
+                    className='section-toggle'
+                    onClick={() => setMonitorsExpanded(false)}
+                    aria-expanded='true'
+                    aria-controls='monitor-controls'
+                    title='Show all monitors control'>
+                    <span className='chevron expanded'>
+                      <Icon name='chevronRight' size={14} />
+                    </span>
+                  </button>
                 </div>
-              ))}
+                {visibleMonitors.map((monitor, index) => (
+                  <MonitorControl
+                    key={monitor.uid}
+                    monitor={monitor}
+                    onBrightnessChange={(v) => handleMonitorBrightness(monitor.id, monitor.uid, v)}
+                    onContrastChange={(v) => handleMonitorContrast(monitor.id, monitor.uid, v)}
+                    showContrast={showContrast}
+                    onRename={(name) => handleRename(monitor.uid, name)}
+                    onMoveUp={() => handleReorder(index, 'up')}
+                    onMoveDown={() => handleReorder(index, 'down')}
+                    isFirst={index === 0}
+                    isLast={index === visibleMonitors.length - 1}
+                    minBrightness={minBrightness}
+                  />
+                ))}
+              </div>
+            ))}
 
-            <VolumeControl
-              value={volume}
-              onChange={handleVolume}
-              onRefresh={handleRefreshDevices}
-              outputState={audioOutputState}
-              expanded={speakersExpanded}
-              onToggleExpanded={() => setSpeakersExpanded((current) => !current)}
-              updatingDeviceId={updatingAudioOutputId}
-              onSelectOutput={handleAudioOutputSelect}
-              onRenameOutput={handleAudioOutputRename}
-              onMoveOutput={handleAudioOutputMove}
-            />
-            <DarkModeToggle isDarkMode={darkMode} onChange={handleDarkMode} />
-            <ProfileButtons profiles={profiles} onActivate={handleProfile} />
-            <KeepAwakeToggle isActive={keepAwake} onChange={handleKeepAwake} />
-          </div>
-        )}
-      </div>
+          <VolumeControl
+            value={volume}
+            onChange={handleVolume}
+            onRefresh={handleRefreshDevices}
+            outputState={audioOutputState}
+            expanded={speakersExpanded}
+            onToggleExpanded={() => setSpeakersExpanded((current) => !current)}
+            updatingDeviceId={updatingAudioOutputId}
+            onSelectOutput={handleAudioOutputSelect}
+            onRenameOutput={handleAudioOutputRename}
+            onMoveOutput={handleAudioOutputMove}
+          />
+          <DarkModeToggle isDarkMode={darkMode} onChange={handleDarkMode} />
+          <ProfileButtons profiles={profiles} onActivate={handleProfile} />
+          <KeepAwakeToggle isActive={keepAwake} onChange={handleKeepAwake} />
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import App from './App';
+import { readFileSync } from 'node:fs';
 
 const mockInvoke = vi.mocked(invoke);
 const mockListen = vi.mocked(listen);
@@ -185,26 +186,13 @@ describe('App smoke test', () => {
     expect(container.querySelector('.app')).toBeInTheDocument();
   });
 
-  /**
-   * `.app` is clamped to 100vh, so observing it stops reporting growth once
-   * content outgrows the window. Auto-resize must watch the uncapped wrapper.
-   */
-  it('auto-resizes from the uncapped inner wrapper, not the height-clamped .app', () => {
-    const observed: Element[] = [];
-    const original = globalThis.ResizeObserver;
-    globalThis.ResizeObserver = class {
-      observe(target: Element) {
-        observed.push(target);
-      }
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
-    try {
-      const { container } = render(<App />);
-      expect(observed).toEqual([container.querySelector('.app > .app-inner')]);
-    } finally {
-      globalThis.ResizeObserver = original;
-    }
+  /** Main view stays measurable so the Tauri window can grow when displays/speakers expand. */
+  // Vitest does not apply plain CSS to jsdom, so assert on the stylesheet source.
+  it('does not clip the main view inside the current viewport', () => {
+    const appCss = readFileSync(`${process.cwd()}/src/App.css`, 'utf8');
+    const appRule = appCss.match(/\n\.app \{([^}]*)\}/)?.[1];
+    expect(appRule).toBeDefined();
+    expect(appRule).not.toMatch(/max-height|overflow/);
   });
 
   it('renders the header with title', () => {

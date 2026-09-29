@@ -54,19 +54,19 @@ body,
   user-select: none;
 }
 
-.app {
-  background: var(--bg-primary);
+/* Only the root scrolls, and only when content exceeds the screen height the
+   window is clamped to. Keep `.app` uncapped (same as the settings panel fix):
+   a 100vh cap on it stops ResizeObserver seeing growth, so the window never
+   resized on Windows and the main view showed a scrollbar instead. */
+#root {
   max-height: 100vh;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
 }
 
-/* Uncapped wrapper measured by the window auto-resize observer in App.tsx. */
-.app-inner {
+.app {
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
 }
 
 /* Header */
