@@ -748,7 +748,12 @@ pub(crate) fn ensure_loudness_for_active_output(app: &tauri::AppHandle) {
         match crate::core::loudness::ensure_loudness_equalization(&id) {
             Ok(true) => log::info!("loudness equalization enabled on {}", id),
             Ok(false) => {}
-            Err(error) => log::info!("loudness equalization skipped on {}: {}", id, error),
+            Err(crate::core::loudness::LoudnessError::Unsupported(reason)) => {
+                log::info!("loudness equalization skipped on {}: {}", id, reason)
+            }
+            Err(crate::core::loudness::LoudnessError::Failed(error)) => {
+                log::error!("loudness equalization failed on {}: {}", id, error)
+            }
         }
     });
 }

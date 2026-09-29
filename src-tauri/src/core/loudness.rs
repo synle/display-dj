@@ -72,28 +72,62 @@ pub(crate) fn enabled_blob(existing: &[u8]) -> Option<Vec<u8>> {
     Some(next)
 }
 
+/// Why a Loudness Equalization attempt did not change anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoudnessError {
+    /// Endpoint has no Microsoft loudness value (expected; log at info).
+    Unsupported(String),
+    /// Real failure: spawn error, unparseable value, or rejected write (log at error).
+    Failed(String),
+}
+
+impl std::fmt::Display for LoudnessError {
+    /// Renders the inner diagnostic message.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unsupported(message) | Self::Failed(message) => f.write_str(message),
+        }
+    }
+}
+
 /// Try to switch Loudness Equalization on for one playback endpoint.
 ///
 /// Only rewrites an existing value, so endpoints whose driver does not expose
 /// the Microsoft enhancement are skipped. Blocking (spawns `reg.exe`); call
-/// from a background thread. Errors are returned for logging only.
+/// from a background thread.
+///
+/// Returns `Ok(true)` when written, `Ok(false)` when already on, or a
+/// [`LoudnessError`] separating unsupported endpoints from real failures.
 #[cfg(target_os = "windows")]
-pub fn ensure_loudness_equalization(device_id: &str) -> Result<bool, String> {
+pub fn ensure_loudness_equalization(device_id: &str) -> Result<bool, LoudnessError> {
     use super::win_cmd::hidden_command;
-    let guid =
-        endpoint_guid(device_id).ok_or_else(|| format!("unrecognized device id {device_id}"))?;
+    use LoudnessError::{Failed, Unsupported};
+    let guid = endpoint_guid(device_id)
+        .ok_or_else(|| Failed(format!("unrecognized device id {device_id}")))?;
     let key = format!(
         r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render\{guid}\FxProperties"
     );
     let query = hidden_command("reg")
         .args(["query", &key, "/v", LOUDNESS_VALUE_NAME])
         .output()
-        .map_err(|e| format!("reg query spawn failed: {e}"))?;
+        .map_err(|e| Failed(format!("reg query spawn failed: {e}")))?;
     if !query.status.success() {
-        return Err("loudness equalization not supported on this endpoint".into());
+        // Nonzero exit = key or value absent (driver without the Microsoft
+        // enhancement, or Enhancements never opened). Surface reg's own text so
+        // "key missing" vs "value missing" vs other failures are distinguishable.
+        return Err(Unsupported(format!(
+            "loudness equalization not supported on this endpoint (key={key} reg_exit={:?} reg_stderr={:?} reg_stdout={:?})",
+            query.status.code(),
+            String::from_utf8_lossy(&query.stderr).trim(),
+            String::from_utf8_lossy(&query.stdout).trim()
+        )));
     }
-    let existing = parse_reg_binary(&String::from_utf8_lossy(&query.stdout))
-        .ok_or("unparseable loudness value")?;
+    let existing = parse_reg_binary(&String::from_utf8_lossy(&query.stdout)).ok_or_else(|| {
+        Failed(format!(
+            "unparseable loudness value (key={key} reg_stdout={:?})",
+            String::from_utf8_lossy(&query.stdout).trim()
+        ))
+    })?;
     let Some(next) = enabled_blob(&existing) else {
         return Ok(false);
     };
@@ -111,19 +145,20 @@ pub fn ensure_loudness_equalization(device_id: &str) -> Result<bool, String> {
             "/f",
         ])
         .output()
-        .map_err(|e| format!("reg add spawn failed: {e}"))?;
+        .map_err(|e| Failed(format!("reg add spawn failed: {e}")))?;
     if !add.status.success() {
-        return Err(format!(
-            "reg add failed (admin rights likely required): {}",
+        return Err(Failed(format!(
+            "reg add failed (admin rights likely required) key={key} reg_exit={:?}: {}",
+            add.status.code(),
             String::from_utf8_lossy(&add.stderr).trim()
-        ));
+        )));
     }
     Ok(true)
 }
 
 /// Non-Windows stub: loudness equalization is a Windows-only enhancement.
 #[cfg(not(target_os = "windows"))]
-pub fn ensure_loudness_equalization(_device_id: &str) -> Result<bool, String> {
+pub fn ensure_loudness_equalization(_device_id: &str) -> Result<bool, LoudnessError> {
     Ok(false)
 }
 
