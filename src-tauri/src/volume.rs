@@ -2,6 +2,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::core::audio_output::{AudioOutputDeviceState, AudioOutputState};
 use tauri::{Emitter, Manager};
 
+/// Endpoint ids whose loudness attempt already failed this session; skipped on
+/// later popup opens so a locked endpoint is not retried (and logged) forever.
+static LOUDNESS_FAILED_DEVICES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
 static AUDIO_OUTPUT_PLATFORM_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Acquires the platform-operation gate shared by enumeration and switching.
@@ -768,7 +772,9 @@ pub(crate) fn speaker_debug_lines<R: tauri::Runtime>(app: &tauri::AppHandle<R>) 
 /// the active one), so switching outputs keeps the setting.
 ///
 /// Spawns a background thread; never blocks the caller. Each device is logged
-/// as `<id> (<name>)`: unsupported endpoints at info, real failures at error.
+/// as `<id> (<name>)`: unsupported endpoints at info, permission refusals at
+/// warn, real failures at error. A device that failed is not retried until
+/// the app restarts.
 /// No-op on macOS/Linux.
 pub(crate) fn ensure_loudness_for_enabled_outputs(app: &tauri::AppHandle) {
     if !cfg!(target_os = "windows") {
@@ -795,8 +801,20 @@ pub(crate) fn ensure_loudness_for_enabled_outputs(app: &tauri::AppHandle) {
             .iter()
             .filter(|device| device.state == AudioOutputDeviceState::Enabled)
         {
+            let already_failed = LOUDNESS_FAILED_DEVICES
+                .lock()
+                .map(|failed| failed.contains(&device.id))
+                .unwrap_or(false);
+            if already_failed {
+                continue;
+            }
             let label = speaker_log_label(device);
             let report = crate::core::loudness::ensure_loudness_equalization(&device.id);
+            if report.result.is_err() {
+                if let Ok(mut failed) = LOUDNESS_FAILED_DEVICES.lock() {
+                    failed.push(device.id.clone());
+                }
+            }
             for attempt in &report.attempts {
                 log::info!("loudness equalization {}: {}", label, attempt);
             }
@@ -805,6 +823,9 @@ pub(crate) fn ensure_loudness_for_enabled_outputs(app: &tauri::AppHandle) {
                 Ok(false) => log::info!("loudness equalization already on for {}", label),
                 Err(crate::core::loudness::LoudnessError::Unsupported(reason)) => {
                     log::info!("loudness equalization skipped on {}: {}", label, reason)
+                }
+                Err(crate::core::loudness::LoudnessError::Denied(reason)) => {
+                    log::warn!("loudness equalization denied on {}: {}", label, reason)
                 }
                 Err(crate::core::loudness::LoudnessError::Failed(error)) => {
                     log::error!("loudness equalization failed on {}: {}", label, error)

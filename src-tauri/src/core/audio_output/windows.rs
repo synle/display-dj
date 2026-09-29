@@ -3,7 +3,10 @@
 use super::{AudioOutputDevice, AudioOutputDeviceState, AudioOutputState};
 use std::ffi::c_void;
 use std::ops::Deref;
-use windows::core::{IUnknown, IUnknown_Vtbl, Interface, GUID, HRESULT, PCWSTR, PWSTR};
+use windows::core::{
+    IUnknown, IUnknown_Vtbl, Interface, GUID, HRESULT, PCWSTR, PROPVARIANT, PWSTR,
+};
+use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{
@@ -50,8 +53,20 @@ struct IPolicyConfigVtable {
     set_processing_period: usize,
     get_share_mode: usize,
     set_share_mode: usize,
-    get_property_value: usize,
-    set_property_value: usize,
+    get_property_value: unsafe extern "system" fn(
+        *mut c_void,
+        PCWSTR,
+        i32,
+        *const PROPERTYKEY,
+        *mut PROPVARIANT,
+    ) -> HRESULT,
+    set_property_value: unsafe extern "system" fn(
+        *mut c_void,
+        PCWSTR,
+        i32,
+        *const PROPERTYKEY,
+        *const PROPVARIANT,
+    ) -> HRESULT,
     set_default_endpoint: unsafe extern "system" fn(*mut c_void, PCWSTR, ERole) -> HRESULT,
     set_endpoint_visibility: usize,
 }
@@ -203,6 +218,85 @@ pub fn get_audio_output_state() -> Result<AudioOutputState, String> {
         devices,
         selected_device_id: default_id,
     })
+}
+
+/// `bFxStore` flag for PolicyConfig property calls: target the endpoint's
+/// `FxProperties` store instead of its general `Properties` store.
+const FX_STORE: i32 = 1;
+
+/// Writes a `VT_BOOL` into an endpoint's FX property store through the
+/// private PolicyConfig API, then reads it back.
+///
+/// The Windows audio service performs the write, so this works where a direct
+/// HKLM registry write is denied (even for Administrators). Returns the value
+/// read back after the write, or a descriptive error for either COM call.
+pub fn set_fx_bool_property(
+    device_id: &str,
+    fmtid: GUID,
+    pid: u32,
+    value: bool,
+) -> Result<bool, String> {
+    let _apartment = ComApartment::initialize()?;
+    let policy: IPolicyConfig = unsafe {
+        CoCreateInstance(&CLSID_POLICY_CONFIG_CLIENT, None, CLSCTX_ALL)
+            .map_err(|error| format!("create Windows PolicyConfig client failed: {}", error))?
+    };
+    let wide_id: Vec<u16> = device_id.encode_utf16().chain(Some(0)).collect();
+    let key = PROPERTYKEY { fmtid, pid };
+    let input = PROPVARIANT::from(value);
+    unsafe {
+        (policy.vtable().set_property_value)(
+            policy.as_raw(),
+            PCWSTR(wide_id.as_ptr()),
+            FX_STORE,
+            &key,
+            &input,
+        )
+    }
+    .ok()
+    .map_err(|error| format!("PolicyConfig SetPropertyValue failed: {}", error))?;
+    let mut output = PROPVARIANT::default();
+    unsafe {
+        (policy.vtable().get_property_value)(
+            policy.as_raw(),
+            PCWSTR(wide_id.as_ptr()),
+            FX_STORE,
+            &key,
+            &mut output,
+        )
+    }
+    .ok()
+    .map_err(|error| format!("PolicyConfig GetPropertyValue failed: {}", error))?;
+    bool::try_from(&output).map_err(|error| format!("read-back is not a boolean: {}", error))
+}
+
+/// Reads a boolean from an endpoint's FX property store via PolicyConfig.
+///
+/// Returns `Ok(None)` when the property is unset (`VT_EMPTY`) or not a boolean.
+pub fn get_fx_bool_property(device_id: &str, fmtid: GUID, pid: u32) -> Result<Option<bool>, String> {
+    let _apartment = ComApartment::initialize()?;
+    let policy: IPolicyConfig = unsafe {
+        CoCreateInstance(&CLSID_POLICY_CONFIG_CLIENT, None, CLSCTX_ALL)
+            .map_err(|error| format!("create Windows PolicyConfig client failed: {}", error))?
+    };
+    let wide_id: Vec<u16> = device_id.encode_utf16().chain(Some(0)).collect();
+    let key = PROPERTYKEY { fmtid, pid };
+    let mut output = PROPVARIANT::default();
+    unsafe {
+        (policy.vtable().get_property_value)(
+            policy.as_raw(),
+            PCWSTR(wide_id.as_ptr()),
+            FX_STORE,
+            &key,
+            &mut output,
+        )
+    }
+    .ok()
+    .map_err(|error| format!("PolicyConfig GetPropertyValue failed: {}", error))?;
+    if output.is_empty() {
+        return Ok(None);
+    }
+    Ok(bool::try_from(&output).ok())
 }
 
 /// Changes all Windows default render roles through the private PolicyConfig API.
