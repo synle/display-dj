@@ -91,9 +91,7 @@ export default function VolumeControl({
         <RefreshLabel
           className='audio-output-active-name'
           text={`All Speakers (${enabledOutputCount})${
-            !expanded && selectedDevice
-              ? ` - ${selectedDevice.name || selectedDevice.originalName}`
-              : ''
+            selectedDevice ? ` - ${selectedDevice.name || selectedDevice.originalName}` : ''
           }`}
           onRefresh={onRefresh}
         />

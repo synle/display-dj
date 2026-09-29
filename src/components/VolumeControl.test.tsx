@@ -119,7 +119,9 @@ describe('VolumeControl', () => {
   it('shows every output row including the selected device in expanded mode', () => {
     renderVolumeControl({ expanded: true });
 
-    expect(screen.getByText('All Speakers (2)').closest('button')).toHaveClass('section-label');
+    expect(screen.getByText('All Speakers (2) - Desk Speakers').closest('button')).toHaveClass(
+      'section-label',
+    );
     expect(screen.getByTitle('Hide output speakers')).toBeInTheDocument();
     expect(
       screen.queryByTitle('Rename active output MacBook Pro Speakers'),
