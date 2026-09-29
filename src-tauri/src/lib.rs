@@ -289,7 +289,12 @@ impl log::Log for TeeLogger {
                 thread.name().unwrap_or("<unnamed>"),
                 &record.args().to_string(),
             );
-            config::write_debug_log_unbound(&line);
+            // Errors are always persisted; lower levels honor the debug-log toggle.
+            if record.level() == log::Level::Error {
+                config::write_debug_log_forced(&line);
+            } else {
+                config::write_debug_log_unbound(&line);
+            }
         }
     }
 

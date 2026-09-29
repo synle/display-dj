@@ -25,7 +25,10 @@ struct IPolicyConfig(IUnknown);
 
 unsafe impl Interface for IPolicyConfig {
     type Vtable = IPolicyConfigVtable;
-    const IID: GUID = GUID::from_u128(0x568b9108_44bf_40b4_9006_86afe5b5a620);
+    // Windows 7+ `IPolicyConfig`. The older `IPolicyConfigVista` IID
+    // (568b9108-…) is not exposed by `CPolicyConfigClient` on Windows 10/11 and
+    // fails `CoCreateInstance` with E_NOINTERFACE (0x80004002).
+    const IID: GUID = GUID::from_u128(0xf8679f50_850a_41cf_9c72_430f290290c8);
 }
 
 impl Deref for IPolicyConfig {
@@ -229,7 +232,7 @@ pub fn set_audio_output_device(device_id: &str) -> Result<(), String> {
                 device_id
             ),
             Err(error) => {
-                log::warn!(
+                log::error!(
                     "Windows audio output role update failed: role={} requested_device_id={:?} error={}",
                     role_name,
                     device_id,

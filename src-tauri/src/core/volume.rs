@@ -68,7 +68,7 @@ pub fn get_volume() -> Option<VolumeInfo> {
     match super::audio_output::get_default_volume() {
         Ok((volume, muted)) => Some(VolumeInfo { volume, muted }),
         Err(error) => {
-            log::warn!("get Windows volume failed: {}", error);
+            log::error!("get Windows volume failed: {}", error);
             None
         }
     }
@@ -80,7 +80,7 @@ pub fn set_volume(level: u16) -> bool {
     match super::audio_output::set_default_volume(level) {
         Ok(()) => true,
         Err(error) => {
-            log::warn!("set Windows volume failed: {}", error);
+            log::error!("set Windows volume failed: {}", error);
             false
         }
     }
@@ -92,7 +92,7 @@ pub fn set_mute(mute: bool) -> bool {
     match super::audio_output::set_default_mute(mute) {
         Ok(()) => true,
         Err(error) => {
-            log::warn!("set Windows mute failed: {}", error);
+            log::error!("set Windows mute failed: {}", error);
             false
         }
     }

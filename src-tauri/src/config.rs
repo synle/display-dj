@@ -776,7 +776,28 @@ pub fn write_debug_log_unbound(message: &str) {
     if !DEBUG_LOG_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
         return;
     }
+    write_debug_log_forced(message);
+}
+
+/// Append a line to the debug log regardless of `DEBUG_LOG_ENABLED`.
+///
+/// Used for `ERROR`-level records so real failures are always persisted even
+/// when the user has not turned on debug logging. Truncates the file to its
+/// last 80% when it exceeds `MAX_DEBUG_LOG_SIZE` so forced writes stay bounded.
+pub fn write_debug_log_forced(message: &str) {
     let path = debug_log_path();
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > MAX_DEBUG_LOG_SIZE {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let trim_at = content.len() - content.len() * 80 / 100;
+                let start = content[trim_at..]
+                    .find('\n')
+                    .map(|i| trim_at + i + 1)
+                    .unwrap_or(trim_at);
+                std::fs::write(&path, &content[start..]).ok();
+            }
+        }
+    }
     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
     let line = format!("[{}] {}\n", timestamp, message);
     if let Ok(mut file) = std::fs::OpenOptions::new()
