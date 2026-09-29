@@ -800,27 +800,6 @@ select:focus-visible {
   color: var(--text-primary);
 }
 
-.save-status {
-  margin-left: auto;
-  padding-right: 8px;
-  color: var(--text-secondary);
-  font-size: 10px;
-}
-
-.save-status-error {
-  color: #d46600;
-}
-
-.save-status button {
-  margin-left: 6px;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
 .settings-close {
   background: none;
   border: none;
@@ -902,6 +881,42 @@ select:focus-visible {
   font-size: 12px;
   color: var(--text-primary);
   cursor: pointer;
+}
+
+/* Hover/focus tooltip (Tooltip.tsx). Shrinks to content; bubble fixed-positioned by JS, flips above near bottom. */
+.tooltip {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.tooltip-bubble {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  width: max-content;
+  max-width: 240px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  font-size: 11px;
+  font-weight: normal;
+  line-height: 1.35;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease;
+}
+
+.tooltip-bubble-visible {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0.35s;
 }
 
 .settings-checkbox-row input[type='checkbox'] {
