@@ -24,6 +24,7 @@ pub mod wallpaper;
 pub mod display;
 pub mod audio_output;
 pub mod loudness;
+pub mod dpi;
 
 use serde::{Deserialize, Serialize};
 

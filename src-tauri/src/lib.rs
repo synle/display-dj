@@ -943,6 +943,8 @@ pub fn run() {
             display::set_all_brightness,
             display::set_contrast,
             display::set_all_contrast,
+            display::get_dpi_displays,
+            display::set_display_dpi,
             display::rename_monitor,
             display::save_monitor_order,
             display::set_monitor_visibility,

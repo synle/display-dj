@@ -13,6 +13,7 @@ import {
 import Dropdown from './Dropdown';
 import Tooltip from './Tooltip';
 import Slider from './Slider';
+import DpiSettings from './DpiSettings';
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -415,6 +416,21 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 </label>
               </Tooltip>
             </div>
+
+            <DpiSettings
+              enabled={prefs.showDpiSettings ?? false}
+              minPercent={prefs.dpiMinPercent ?? 60}
+              maxPercent={prefs.dpiMaxPercent ?? 200}
+              onEnabledChange={(v) => updateField('showDpiSettings', v)}
+              onRangeChange={(min, max) =>
+                setPrefs((prev) => {
+                  if (!prev) return prev;
+                  const next = { ...prev, dpiMinPercent: min, dpiMaxPercent: max };
+                  savePreferences(next);
+                  return next;
+                })
+              }
+            />
 
             <div className='settings-divider' />
 

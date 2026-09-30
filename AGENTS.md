@@ -372,6 +372,16 @@ Stateless. Each call checks live z-order via platform `is_focused_window_at_fron
 
 The shared pure function `tiling::is_window_at_front(focused_id, &front_to_back_z_order)` compares against the first entry — testable on all platforms without a window server. If at front → dispatch to `move_to_back`; else → `move_to_front`. App-scope toggle uses the same check but dispatches to the app-scope variants.
 
+## DPI Scaling (Beta)
+
+`core::dpi` changes per-display UI scale. Settings → **Show DPI Settings (Beta)** (`showDpiSettings`, default off) reveals Min %/Max % integer inputs (`dpiMinPercent`=60, `dpiMaxPercent`=200; absolute caps 60–250, enforced by `Preferences::sanitize()` and `set_display_dpi`) and a **DPI Settings (Beta)** list with one scale dropdown per display. Not shown in the main popup.
+
+- **macOS**: display-mode switch; scale % = native pixel width / "looks like" width (`CGConfigureDisplayWithDisplayMode`, permanent). Built-in Retina defaults read as 200%.
+- **Windows**: undocumented `DisplayConfigGetDeviceInfo`/`SetDeviceInfo` packet types -3/-4 over steps 100–500%.
+- **Linux**: X11 only, `xrandr --output <name> --scale`; Wayland returns an error.
+
+Commands: `get_dpi_displays` (unfiltered; UI filters by band), `set_display_dpi { id, percent }`.
+
 ## Wallpaper (`wallpaper.rs`)
 
 Sets desktop wallpaper via:

@@ -449,6 +449,12 @@ pub struct Preferences {
     pub profiles: Vec<Profile>,
     pub night_mode_schedule: NightModeSchedule,
     pub show_contrast: bool,
+    /// Beta: show the per-display DPI scaling section in Settings. Defaults off.
+    pub show_dpi_settings: bool,
+    /// Lowest DPI scale percent offered; clamped to `[DPI_ABSOLUTE_MIN, DPI_ABSOLUTE_MAX]`.
+    pub dpi_min_percent: u32,
+    /// Highest DPI scale percent offered; clamped and kept `>= dpi_min_percent`.
+    pub dpi_max_percent: u32,
     pub debug_logging: bool,
     pub launch_at_login: bool,
     /// Windows only: best-effort re-enable Loudness Equalization on the active
@@ -622,6 +628,8 @@ impl Preferences {
         self.min_brightness = self
             .min_brightness
             .clamp(ABSOLUTE_MIN_BRIGHTNESS, ABSOLUTE_MAX_MIN_BRIGHTNESS);
+        (self.dpi_min_percent, self.dpi_max_percent) =
+            crate::core::dpi::clamp_dpi_range(self.dpi_min_percent, self.dpi_max_percent);
         self.tiling.sanitize();
         self.last_known_values.sanitize();
         self.night_mode_schedule.night_brightness = self
@@ -728,6 +736,9 @@ impl Default for Preferences {
             ],
             night_mode_schedule: NightModeSchedule::default(),
             show_contrast: false,
+            show_dpi_settings: false,
+            dpi_min_percent: crate::core::dpi::DPI_DEFAULT_MIN,
+            dpi_max_percent: crate::core::dpi::DPI_DEFAULT_MAX,
             debug_logging: false,
             launch_at_login: false,
             loudness_equalization_preferred: true,
@@ -1635,6 +1646,24 @@ mod tests {
             let clamped = 50u32.clamp(min, 100);
             assert!((min..=100).contains(&clamped));
         }
+    }
+
+    /// DPI prefs default off with a 60-200% band and hand-edits clamp to 60-250%.
+    #[test]
+    fn test_dpi_prefs_default_and_sanitize() {
+        let prefs = Preferences::default();
+        assert!(!prefs.show_dpi_settings);
+        assert_eq!((prefs.dpi_min_percent, prefs.dpi_max_percent), (60, 200));
+
+        let mut prefs: Preferences =
+            serde_json::from_str(r#"{"dpiMinPercent":10,"dpiMaxPercent":900}"#).unwrap();
+        prefs.sanitize();
+        assert_eq!((prefs.dpi_min_percent, prefs.dpi_max_percent), (60, 250));
+
+        prefs.dpi_min_percent = 150;
+        prefs.dpi_max_percent = 100;
+        prefs.sanitize();
+        assert_eq!((prefs.dpi_min_percent, prefs.dpi_max_percent), (150, 150));
     }
 
     /// `sanitize()` must bound every user-editable numeric, not just brightness.

@@ -207,3 +207,13 @@ Tauri commands: `get_crash_log` (contents as string), `open_crash_log` (opens in
 Three field crashes: abort inside the NSEvent global-monitor ObjC block. `catch_unwind` around the Rust handler was inert because `[profile.release].panic = "abort"` — panics skipped the catch and hit `abort()`. **Fix (v7.0.29):** `panic = "unwind"` in release + defensive `state.displays.get()` bounds check.
 
 **Rule:** any Rust closure wrapped in a foreign callback (ObjC block, C fn pointer, Win32 callback) requires `panic = "unwind"` or `catch_unwind` is documentation, not a safety net.
+
+## DPI Scaling (Beta)
+
+`core::dpi` changes per-display UI scale. Settings → **Show DPI Settings (Beta)** (`showDpiSettings`, default off) reveals Min %/Max % integer inputs (`dpiMinPercent`=60, `dpiMaxPercent`=200; absolute caps 60–250, enforced by `Preferences::sanitize()` and `set_display_dpi`) and a **DPI Settings (Beta)** list with one scale dropdown per display. Not shown in the main popup.
+
+- **macOS**: display-mode switch; scale % = native pixel width / "looks like" width (`CGConfigureDisplayWithDisplayMode`, permanent). Built-in Retina defaults read as 200%.
+- **Windows**: undocumented `DisplayConfigGetDeviceInfo`/`SetDeviceInfo` packet types -3/-4 over steps 100–500%.
+- **Linux**: X11 only, `xrandr --output <name> --scale`; Wayland returns an error.
+
+Commands: `get_dpi_displays` (unfiltered; UI filters by band), `set_display_dpi { id, percent }`.

@@ -162,6 +162,12 @@ export interface Preferences {
   profiles: Profile[];
   nightModeSchedule: NightModeSchedule;
   showContrast: boolean;
+  /** Beta: show the per-display DPI scaling section in Settings. */
+  showDpiSettings: boolean;
+  /** Lowest DPI scale percent offered (absolute floor 60). */
+  dpiMinPercent: number;
+  /** Highest DPI scale percent offered (absolute ceiling 250). */
+  dpiMaxPercent: number;
   debugLogging: boolean;
   launchAtLogin: boolean;
   /** Windows only: re-enable Loudness Equalization on the active speaker. */
@@ -199,4 +205,12 @@ export interface KeyBinding {
 export interface Profile {
   name: string;
   command: string | string[];
+}
+
+/** One display as reported by the DPI scaling backend (`get_dpi_displays`). */
+export interface DpiDisplay {
+  id: string;
+  name: string;
+  current: number | null;
+  options: number[];
 }

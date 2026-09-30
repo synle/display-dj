@@ -1191,3 +1191,40 @@ button.settings-status-error {
   background: var(--border);
   border-radius: 2px;
 }
+
+/* Beta DPI settings (DpiSettings.tsx) */
+.settings-dpi-beta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #b26a00;
+}
+
+.settings-dpi-range {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.settings-dpi-range label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-dpi-input {
+  width: 56px;
+  padding: 4px 6px;
+  font-size: 13px;
+}
+
+.settings-dpi-error {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #d93025;
+}
+
+.monitor-dpi-scale {
+  min-width: 90px;
+  margin-left: auto;
+}
