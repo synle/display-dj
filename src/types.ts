@@ -164,10 +164,12 @@ export interface Preferences {
   showContrast: boolean;
   /** Beta: show the per-display DPI scaling section in Settings. */
   showDpiSettings: boolean;
-  /** Lowest DPI scale percent offered (absolute floor 60). */
+  /** Lowest DPI scale percent offered (absolute floor 50). */
   dpiMinPercent: number;
-  /** Highest DPI scale percent offered (absolute ceiling 250). */
+  /** Highest DPI scale percent offered (absolute ceiling 500). */
   dpiMaxPercent: number;
+  /** Step interval for continuous-scale backends (1-100). */
+  dpiStepPercent: number;
   debugLogging: boolean;
   launchAtLogin: boolean;
   /** Windows only: re-enable Loudness Equalization on the active speaker. */
@@ -213,4 +215,6 @@ export interface DpiDisplay {
   name: string;
   current: number | null;
   options: number[];
+  /** True when any percent works (Linux/xrandr); UI builds options from min/max/step. */
+  continuous: boolean;
 }

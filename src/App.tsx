@@ -270,15 +270,42 @@ function App() {
     const el = appRef.current;
     if (!el) return;
     const win = getCurrentWindow();
-    const observer = new ResizeObserver(() => {
+    /** Sizes the window to content, capped at the current screen height. */
+    const fit = () => {
       const height = el.scrollHeight;
       if (height > 0) {
         const availableHeight = window.screen.availHeight || window.innerHeight;
-        win.setSize(new LogicalSize(400, Math.min(height, availableHeight)));
+        void win.setSize(new LogicalSize(400, Math.min(height, availableHeight)));
       }
-    });
+    };
+    const observer = new ResizeObserver(fit);
     observer.observe(el);
-    return () => observer.disconnect();
+
+    // A DPI change alters devicePixelRatio: refit, then re-anchor to the moved tray icon.
+    let dprQuery: MediaQueryList | null = null;
+    const onDprChange = () => {
+      fit();
+      void invoke('reanchor_popup_window').catch(() => undefined);
+      watchDpr();
+    };
+    /** (Re)subscribes to the next devicePixelRatio change (media query is value-specific). */
+    const watchDpr = () => {
+      dprQuery?.removeEventListener('change', onDprChange);
+      dprQuery = window.matchMedia?.(`(resolution: ${window.devicePixelRatio}dppx)`) ?? null;
+      dprQuery?.addEventListener('change', onDprChange);
+    };
+    watchDpr();
+    // Same-DPR scaling changes (macOS "looks like" modes) only move the screen/tray.
+    const onScreenChange = () => {
+      fit();
+      void invoke('reanchor_popup_window').catch(() => undefined);
+    };
+    window.addEventListener('dpi-changed', onScreenChange);
+    return () => {
+      observer.disconnect();
+      dprQuery?.removeEventListener('change', onDprChange);
+      window.removeEventListener('dpi-changed', onScreenChange);
+    };
   }, []);
 
   /** Sets brightness for all monitors with optimistic UI update. */

@@ -210,10 +210,16 @@ Three field crashes: abort inside the NSEvent global-monitor ObjC block. `catch_
 
 ## DPI Scaling (Beta)
 
-`core::dpi` changes per-display UI scale. Settings → **Show DPI Settings (Beta)** (`showDpiSettings`, default off) reveals Min %/Max % integer inputs (`dpiMinPercent`=60, `dpiMaxPercent`=200; absolute caps 60–250, enforced by `Preferences::sanitize()` and `set_display_dpi`) and a **DPI Settings (Beta)** list with one scale dropdown per display. Not shown in the main popup.
+Settings chips: `.beta-chip` (orange, beta) and `.beta-chip.platform-chip` (accent, e.g. `Windows`). `Tooltip` takes `ReactNode` text and follows the theme. Settings → Monitors is one section with `.settings-subheader` groups: **Min Brightness** slider, **Options** (Show Contrast Slider, Show DPI Settings), then **Displays** rows.
 
-- **macOS**: display-mode switch; scale % = native pixel width / "looks like" width (`CGConfigureDisplayWithDisplayMode`, permanent). Built-in Retina defaults read as 200%.
+`core::dpi` changes per-display UI scale. Settings → Monitors holds **Show DPI Settings** with an orange `beta` chip (`showDpiSettings`, default off); the beta warning lives in its tooltip. When on, each monitor row shows name → DPI scale → brightness mode → Hide; DPI displays matching no monitor config render as DPI-only rows (`matchDpiDisplay` in `DpiSettings.tsx`). Settings has no reorder arrows for monitors or speakers. Not shown in the main popup.
+
+- macOS and Windows show exactly the OS-offered scales (`DpiDisplay.continuous = false`); the user band is ignored.
+- Linux reports `continuous = true`; `dpiOptionsFor` builds `dpiMinPercent..=dpiMaxPercent` at `dpiStepPercent` (defaults 60/250/5; caps 50–500, step 1–100 via `Preferences::sanitize()`). `set_display_dpi` enforces the band on Linux only. The band inputs render `display: none` — edit `preferences.json`.
+- After an apply, on `devicePixelRatio` change, and on `WindowEvent::ScaleFactorChanged`, the popup refits and `reanchor_popup` (`tray.rs`) re-reads the live tray rect and re-places it.
+
+- **macOS**: display-mode switch; scale % = native pixel width / "looks like" width (`CGConfigureDisplayWithDisplayMode`, permanent). Only real modes exist, so arbitrary steps / sub-100% usually unavailable. Built-in Retina defaults read as 200%.
 - **Windows**: undocumented `DisplayConfigGetDeviceInfo`/`SetDeviceInfo` packet types -3/-4 over steps 100–500%.
 - **Linux**: X11 only, `xrandr --output <name> --scale`; Wayland returns an error.
 
-Commands: `get_dpi_displays` (unfiltered; UI filters by band), `set_display_dpi { id, percent }`.
+Commands: `get_dpi_displays`, `set_display_dpi { id, percent }`, `reanchor_popup_window`.

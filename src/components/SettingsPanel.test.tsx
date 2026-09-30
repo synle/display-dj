@@ -28,6 +28,7 @@ function buildPrefs(overrides: Record<string, unknown> = {}) {
     showDpiSettings: false,
     dpiMinPercent: 60,
     dpiMaxPercent: 200,
+    dpiStepPercent: 5,
     debugLogging: false,
     launchAtLogin: false,
     loudnessEqualizationPreferred: true,
@@ -500,7 +501,18 @@ describe('SettingsPanel', () => {
     );
   });
 
-  it('shows monitors before speakers and manages speaker state and order', async () => {
+  it('groups min brightness and contrast under the Monitors section subheaders', async () => {
+    setupInvoke({});
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    const monitors = await screen.findByText('Monitors');
+    const section = monitors.closest('.settings-section') as HTMLElement;
+    expect(section).toContainElement(screen.getByText('Min Brightness'));
+    expect(section).toContainElement(screen.getByText('Show Contrast Slider'));
+    expect(screen.getByText('Min Brightness')).toHaveClass('settings-subheader');
+    expect(screen.getByText('Displays')).toHaveClass('settings-subheader');
+  });
+
+  it('shows monitors before speakers and manages speaker state without reorder arrows', async () => {
     setupInvoke({});
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
@@ -521,10 +533,8 @@ describe('SettingsPanel', () => {
       deviceState: 'disabled',
     });
 
-    await user.click(screen.getByTitle('Move TYPEC up'));
-    expect(mockInvoke).toHaveBeenCalledWith('save_audio_output_order', {
-      orderedIds: ['dock', 'built-in'],
-    });
+    // Settings no longer offers reordering; order is managed from the popup.
+    expect(screen.queryByTitle('Move TYPEC up')).not.toBeInTheDocument();
   });
 
   it('changes a monitor brightnessMode via the dropdown and persists it', async () => {
@@ -590,44 +600,6 @@ describe('SettingsPanel', () => {
 
     // No dropdown for built-in (it has its own native brightness path).
     expect(screen.queryByDisplayValue('Auto')).not.toBeInTheDocument();
-  });
-
-  it('swaps monitors via up/down buttons', async () => {
-    setupInvoke({
-      prefs: buildPrefs({
-        monitorConfigs: [
-          {
-            uid: '1::Dell',
-            apiId: '1',
-            apiName: 'Dell',
-            label: '',
-            sortOrder: 0,
-            hidden: false,
-            brightnessMode: 'auto',
-          },
-          {
-            uid: '2::LG',
-            apiId: '2',
-            apiName: 'LG',
-            label: '',
-            sortOrder: 1,
-            hidden: false,
-            brightnessMode: 'auto',
-          },
-        ],
-      }),
-    });
-    const user = userEvent.setup();
-    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
-    await waitFor(() => expect(screen.getByText('Dell')).toBeInTheDocument());
-
-    const moveDowns = screen.getAllByTitle('Move down');
-    const moveUps = screen.getAllByTitle('Move up');
-    expect(moveUps[0]).toBeDisabled();
-    expect(moveDowns[moveDowns.length - 1]).toBeDisabled();
-
-    await user.click(moveDowns[0]);
-    await waitForSave();
   });
 
   it('enters and commits monitor label edit mode on Enter', async () => {
@@ -821,8 +793,9 @@ describe('SettingsPanel', () => {
     setupInvoke({ platform: 'Windows', windowsElevated: true, windowsSnapEnabled: false });
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
-    const box = await screen.findByRole('checkbox', { name: 'Prefer Loudness Equalization' });
+    const box = await screen.findByRole('checkbox', { name: /Prefer Loudness Equalization/ });
     expect(box).toBeChecked();
+    expect(screen.getByText('Windows')).toHaveClass('platform-chip');
     await user.click(box);
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('save_preferences', {

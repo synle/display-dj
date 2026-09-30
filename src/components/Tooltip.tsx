@@ -6,7 +6,7 @@ import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from '
  * @property children - The control (checkbox row, label, …) the tooltip describes.
  */
 interface TooltipProps {
-  text: string;
+  text: ReactNode;
   children: ReactNode;
 }
 

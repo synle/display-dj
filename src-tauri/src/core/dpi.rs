@@ -19,20 +19,29 @@
 use serde::Serialize;
 
 /// Hard lower bound for any user-selectable scale percent.
-pub const DPI_ABSOLUTE_MIN: u32 = 60;
+pub const DPI_ABSOLUTE_MIN: u32 = 50;
 /// Hard upper bound for any user-selectable scale percent.
-pub const DPI_ABSOLUTE_MAX: u32 = 250;
-/// Default user lower bound (Settings "Min DPI").
+pub const DPI_ABSOLUTE_MAX: u32 = 500;
+/// Default user lower bound (Linux only; preferences.json `dpiMinPercent`).
 pub const DPI_DEFAULT_MIN: u32 = 60;
-/// Default user upper bound (Settings "Max DPI").
-pub const DPI_DEFAULT_MAX: u32 = 200;
+/// Default user upper bound (Linux only; preferences.json `dpiMaxPercent`).
+pub const DPI_DEFAULT_MAX: u32 = 250;
 
 /// Scale steps Windows exposes, in order. Relative DPI indices address this table.
 pub const WINDOWS_DPI_STEPS: [u32; 12] =
     [100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500];
 
-/// Software scale steps offered on Linux/X11 (xrandr can do any factor).
-pub const LINUX_DPI_STEPS: [u32; 11] = [60, 75, 80, 90, 100, 125, 150, 175, 200, 225, 250];
+/// Smallest step interval (percent) for continuous-scale backends.
+pub const DPI_STEP_MIN: u32 = 1;
+/// Largest step interval (percent) for continuous-scale backends.
+pub const DPI_STEP_MAX: u32 = 100;
+/// Default step interval (percent) for continuous-scale backends.
+pub const DPI_DEFAULT_STEP: u32 = 5;
+
+/// Clamps a user step interval into `[DPI_STEP_MIN, DPI_STEP_MAX]`.
+pub fn clamp_dpi_step(step: u32) -> u32 {
+    step.clamp(DPI_STEP_MIN, DPI_STEP_MAX)
+}
 
 /// One display as seen by the scaling backend.
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -44,8 +53,13 @@ pub struct DpiDisplay {
     pub name: String,
     /// Current UI scale percent, if it could be determined.
     pub current: Option<u32>,
-    /// Every scale percent this display supports, ascending (unfiltered).
+    /// Every discrete scale percent this display supports, ascending (unfiltered).
+    /// Empty for continuous backends.
     pub options: Vec<u32>,
+    /// True when any percent in `[DPI_ABSOLUTE_MIN, DPI_ABSOLUTE_MAX]` works
+    /// (Linux/xrandr); the UI then builds options from the user's min/max/step.
+    /// macOS (display modes) and Windows (fixed OS steps) are discrete.
+    pub continuous: bool,
 }
 
 /// Clamps a user min/max pair into `[DPI_ABSOLUTE_MIN, DPI_ABSOLUTE_MAX]` and
@@ -401,6 +415,7 @@ mod platform {
                     name: names.get(&id).cloned().unwrap_or(fallback),
                     current,
                     options,
+                    continuous: false,
                 });
             }
         }
@@ -590,6 +605,7 @@ mod platform {
                 name: target_name(path).unwrap_or(fallback),
                 current: Some(current),
                 options,
+                continuous: false,
             });
         }
         Ok(out)
@@ -627,7 +643,7 @@ mod platform {
 // ---------------------------------------------------------------------------
 #[cfg(target_os = "linux")]
 mod platform {
-    use super::{parse_xrandr_query, scale_percent, DpiDisplay, LINUX_DPI_STEPS};
+    use super::{parse_xrandr_query, scale_percent, DpiDisplay};
     use std::process::Command;
 
     fn ensure_x11() -> Result<(), String> {
@@ -664,7 +680,8 @@ mod platform {
                 current: scale_percent(o.mode_width, o.logical_width),
                 id: o.name.clone(),
                 name: o.name,
-                options: LINUX_DPI_STEPS.to_vec(),
+                options: Vec::new(),
+                continuous: true,
             })
             .collect())
     }
@@ -709,7 +726,7 @@ mod tests {
     /// Range clamps both ends to the absolute caps and repairs inversion.
     #[test]
     fn clamp_dpi_range_bounds_and_orders() {
-        assert_eq!(clamp_dpi_range(10, 999), (60, 250));
+        assert_eq!(clamp_dpi_range(10, 999), (50, 500));
         assert_eq!(clamp_dpi_range(150, 100), (150, 150));
         assert_eq!(clamp_dpi_range(75, 200), (75, 200));
     }
@@ -720,7 +737,7 @@ mod tests {
         assert!(is_within_range(60, 60, 200));
         assert!(is_within_range(200, 60, 200));
         assert!(!is_within_range(225, 60, 200));
-        assert!(!is_within_range(50, 0, 200));
+        assert!(!is_within_range(40, 0, 200));
     }
 
     /// 4K panel "looks like 1920" is 200%; zero width is rejected.
@@ -787,7 +804,7 @@ mod tests {
     /// Absolute caps reject out-of-band percents before touching the OS.
     #[test]
     fn set_scale_rejects_out_of_band() {
-        assert!(set_scale("x", 59).unwrap_err().contains("outside"));
-        assert!(set_scale("x", 251).unwrap_err().contains("outside"));
+        assert!(set_scale("x", 49).unwrap_err().contains("outside"));
+        assert!(set_scale("x", 501).unwrap_err().contains("outside"));
     }
 }

@@ -324,6 +324,60 @@ fn refresh_devices_on_show(app: AppHandle) {
     });
 }
 
+/// Re-reads the live tray icon rectangle and re-places a visible popup.
+///
+/// Display scaling changes (DPI / "looks like" resolution) move the tray icon
+/// in global physical coordinates, so the anchor captured at click time goes
+/// stale and the popup lands shifted or off-screen. This refreshes
+/// `last_tray_rect` from `TrayIcon::rect()` (macOS/Windows; Linux keeps the
+/// stored anchor), resets the click anchor to the tray centre, and repositions.
+/// No-op while the popup is hidden.
+pub fn reanchor_popup(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if !window.is_visible().unwrap_or(false) {
+        return;
+    }
+    let Some(state) = app.try_state::<crate::AppState>() else {
+        return;
+    };
+    if let Some(rect) = app
+        .tray_by_id("main-tray")
+        .and_then(|tray| tray.rect().ok().flatten())
+    {
+        let scale = window.scale_factor().unwrap_or(1.0);
+        let (x, y) = match rect.position {
+            tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
+            tauri::Position::Logical(p) => (p.x * scale, p.y * scale),
+        };
+        let (w, h) = match rect.size {
+            tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
+            tauri::Size::Logical(s) => (s.width * scale, s.height * scale),
+        };
+        if let Ok(mut stored) = state.last_tray_rect.lock() {
+            *stored = Some(rect);
+        }
+        if let Ok(mut stored) = state.last_tray_click_position.lock() {
+            *stored = Some(tauri::PhysicalPosition::new(x + w / 2.0, y + h / 2.0));
+        }
+    }
+    let tray_rect = state.last_tray_rect.lock().ok().and_then(|r| *r);
+    let click = state.last_tray_click_position.lock().ok().and_then(|p| *p);
+    if let (Some(rect), Some(click)) = (tray_rect, click) {
+        let _ = position_window_near_tray(&window, rect, click, None);
+    }
+}
+
+/// Frontend hook for [`reanchor_popup`]; called after a DPI change or when the
+/// webview's device-pixel ratio changes. Async per the macOS tray pitfall.
+#[tauri::command]
+pub async fn reanchor_popup_window(app: AppHandle) -> Result<(), String> {
+    let handle = app.clone();
+    app.run_on_main_thread(move || reanchor_popup(&handle))
+        .map_err(|e| e.to_string())
+}
+
 /// Reuses the latest left- or right-click tray anchor for shared popup placement.
 fn position_popup_from_last_tray_click(app: &AppHandle, window: &tauri::WebviewWindow) {
     let Some(state) = app.try_state::<crate::AppState>() else {

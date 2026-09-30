@@ -571,12 +571,6 @@ body,
   outline-offset: 1px;
 }
 
-.audio-output-state {
-  flex-shrink: 0;
-  min-width: 84px;
-  color: var(--text-secondary);
-}
-
 .audio-output-hidden-toggle {
   align-self: flex-start;
   border: none;
@@ -868,6 +862,15 @@ select:focus-visible {
   letter-spacing: 0.5px;
 }
 
+/* In-section subheader: groups controls inside one section without a divider. */
+.settings-subheader {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  opacity: 0.75;
+}
+
 .settings-divider {
   height: 1px;
   background: var(--border);
@@ -899,8 +902,10 @@ select:focus-visible {
   max-width: 240px;
   padding: 5px 8px;
   border-radius: 6px;
-  background: var(--text-primary);
-  color: var(--bg-primary);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 35%);
   font-size: 11px;
   font-weight: normal;
   line-height: 1.35;
@@ -1015,6 +1020,7 @@ button.settings-status-error {
 }
 
 .monitor-visibility-btn {
+  flex-shrink: 0;
   height: 28px;
   font-size: 10px;
   font-weight: 600;
@@ -1033,14 +1039,17 @@ button.settings-status-error {
   color: var(--text-primary);
 }
 
-.monitor-brightness-mode {
-  height: 28px;
-  min-width: 94px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  line-height: 26px;
-  padding: 0 8px;
+/* Monitor/speaker row dropdowns share one compact, content-sized look. */
+.monitor-brightness-mode,
+.monitor-dpi-scale,
+.audio-output-state {
   flex-shrink: 0;
+  width: auto;
+  min-width: 0;
+  field-sizing: content;
+  padding: 0 6px;
+  font-weight: normal;
+  color: var(--text-secondary);
 }
 
 /* About panel */
@@ -1194,9 +1203,24 @@ button.settings-status-error {
 
 /* Beta DPI settings (DpiSettings.tsx) */
 .settings-dpi-beta {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #b26a00;
+  color: #e8871e;
+}
+
+/* Platform chip: same shape as the beta chip, accent-colored. */
+.beta-chip.platform-chip {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.beta-chip {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #e8871e;
+  border: 1px solid #e8871e;
 }
 
 .settings-dpi-range {
@@ -1213,18 +1237,30 @@ button.settings-status-error {
 }
 
 .settings-dpi-input {
-  width: 56px;
-  padding: 4px 6px;
-  font-size: 13px;
+  width: 48px;
+  height: 28px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--dropdown-bg);
+  color: var(--text-primary);
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.settings-dpi-input:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  outline-offset: 1px;
+}
+
+.settings-dpi-options {
+  margin-bottom: 0;
 }
 
 .settings-dpi-error {
   margin-top: 6px;
   font-size: 12px;
   color: #d93025;
-}
-
-.monitor-dpi-scale {
-  min-width: 90px;
-  margin-left: auto;
 }

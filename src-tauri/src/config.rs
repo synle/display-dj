@@ -455,6 +455,9 @@ pub struct Preferences {
     pub dpi_min_percent: u32,
     /// Highest DPI scale percent offered; clamped and kept `>= dpi_min_percent`.
     pub dpi_max_percent: u32,
+    /// Step interval (percent) for continuous-scale backends (Linux/xrandr);
+    /// clamped to `[DPI_STEP_MIN, DPI_STEP_MAX]`.
+    pub dpi_step_percent: u32,
     pub debug_logging: bool,
     pub launch_at_login: bool,
     /// Windows only: best-effort re-enable Loudness Equalization on the active
@@ -630,6 +633,7 @@ impl Preferences {
             .clamp(ABSOLUTE_MIN_BRIGHTNESS, ABSOLUTE_MAX_MIN_BRIGHTNESS);
         (self.dpi_min_percent, self.dpi_max_percent) =
             crate::core::dpi::clamp_dpi_range(self.dpi_min_percent, self.dpi_max_percent);
+        self.dpi_step_percent = crate::core::dpi::clamp_dpi_step(self.dpi_step_percent);
         self.tiling.sanitize();
         self.last_known_values.sanitize();
         self.night_mode_schedule.night_brightness = self
@@ -739,6 +743,7 @@ impl Default for Preferences {
             show_dpi_settings: false,
             dpi_min_percent: crate::core::dpi::DPI_DEFAULT_MIN,
             dpi_max_percent: crate::core::dpi::DPI_DEFAULT_MAX,
+            dpi_step_percent: crate::core::dpi::DPI_DEFAULT_STEP,
             debug_logging: false,
             launch_at_login: false,
             loudness_equalization_preferred: true,
@@ -1648,17 +1653,18 @@ mod tests {
         }
     }
 
-    /// DPI prefs default off with a 60-200% band and hand-edits clamp to 60-250%.
+    /// DPI prefs default off with a 60-250% band (5% step) and hand-edits clamp to 50-500%.
     #[test]
     fn test_dpi_prefs_default_and_sanitize() {
         let prefs = Preferences::default();
         assert!(!prefs.show_dpi_settings);
-        assert_eq!((prefs.dpi_min_percent, prefs.dpi_max_percent), (60, 200));
+        assert_eq!((prefs.dpi_min_percent, prefs.dpi_max_percent), (60, 250));
+        assert_eq!(prefs.dpi_step_percent, 5);
 
         let mut prefs: Preferences =
             serde_json::from_str(r#"{"dpiMinPercent":10,"dpiMaxPercent":900}"#).unwrap();
         prefs.sanitize();
-        assert_eq!((prefs.dpi_min_percent, prefs.dpi_max_percent), (60, 250));
+        assert_eq!((prefs.dpi_min_percent, prefs.dpi_max_percent), (50, 500));
 
         prefs.dpi_min_percent = 150;
         prefs.dpi_max_percent = 100;

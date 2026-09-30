@@ -1805,8 +1805,10 @@ pub async fn get_dpi_displays() -> Result<Vec<crate::core::dpi::DpiDisplay>, Str
         .map_err(|e| format!("get_dpi_displays join failed: {}", e))?
 }
 
-/// Beta: applies a UI scale percent to one display. Rejects values outside
-/// the user's `[dpiMinPercent, dpiMaxPercent]` band.
+/// Beta: applies a UI scale percent to one display. On Linux (continuous
+/// xrandr scaling) rejects values outside the user's `[dpiMinPercent,
+/// dpiMaxPercent]` band; macOS/Windows accept any OS-offered value (the core
+/// still enforces the absolute caps and OS support).
 ///
 /// # Errors
 /// Out of band, unknown display, unsupported percent, or OS rejection.
@@ -1816,12 +1818,14 @@ pub async fn set_display_dpi(
     id: String,
     percent: u32,
 ) -> Result<(), String> {
-    let (min, max) = {
-        let p = state.preferences.lock().map_err(|e| e.to_string())?;
-        (p.dpi_min_percent, p.dpi_max_percent)
-    };
-    if !crate::core::dpi::is_within_range(percent, min, max) {
-        return Err(format!("{}% outside configured range {}-{}%", percent, min, max));
+    if cfg!(target_os = "linux") {
+        let (min, max) = {
+            let p = state.preferences.lock().map_err(|e| e.to_string())?;
+            (p.dpi_min_percent, p.dpi_max_percent)
+        };
+        if !crate::core::dpi::is_within_range(percent, min, max) {
+            return Err(format!("{}% outside configured range {}-{}%", percent, min, max));
+        }
     }
     log::info!("set_display_dpi id={} percent={}", id, percent);
     tauri::async_runtime::spawn_blocking(move || crate::core::dpi::set_scale(&id, percent))

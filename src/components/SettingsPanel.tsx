@@ -1,10 +1,10 @@
-import { Icon } from './Icons';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Preferences,
   AudioOutputDeviceState,
   AudioOutputState,
+  DpiDisplay,
   MonitorMetadata,
   NightModeSchedule,
   TilingPreferences,
@@ -13,7 +13,7 @@ import {
 import Dropdown from './Dropdown';
 import Tooltip from './Tooltip';
 import Slider from './Slider';
-import DpiSettings from './DpiSettings';
+import { DpiOptions, DpiScaleDropdown, matchDpiDisplay, useDpiDisplays } from './DpiSettings';
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -143,6 +143,9 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     };
   }, [flushSave]);
 
+  const dpiEnabled = prefs?.showDpiSettings ?? false;
+  const dpi = useDpiDisplays(dpiEnabled);
+
   if (!prefs) {
     return (
       <div className='settings-panel'>
@@ -171,6 +174,32 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   const schedule = prefs.nightModeSchedule;
   const configs = [...prefs.monitorConfigs].toSorted(
     (a, b) => a.sortOrder - b.sortOrder || a.uid.localeCompare(b.uid),
+  );
+  const dpiMin = prefs.dpiMinPercent ?? 60;
+  const dpiMax = prefs.dpiMaxPercent ?? 250;
+  const dpiStep = prefs.dpiStepPercent ?? 5;
+  // Pair each monitor row with its DPI display; leftovers render as DPI-only rows.
+  const dpiMatches = new Map<string, DpiDisplay>();
+  const dpiTaken = new Set<string>();
+  for (const meta of configs) {
+    const match = matchDpiDisplay(meta, dpi.displays, dpiTaken);
+    if (match) {
+      dpiMatches.set(meta.uid, match);
+      dpiTaken.add(match.id);
+    }
+  }
+  const dpiUnmatched = dpi.displays.filter((d) => !dpiTaken.has(d.id));
+
+  /** DPI scale dropdown for one display, bound to the current band. */
+  const renderDpiDropdown = (d: DpiDisplay) => (
+    <DpiScaleDropdown
+      display={d}
+      minPercent={dpiMin}
+      maxPercent={dpiMax}
+      stepPercent={dpiStep}
+      disabled={dpi.applyingId !== null}
+      onApply={(id, percent) => void dpi.apply(id, percent)}
+    />
   );
 
   /** Updates a top-level preference field and triggers auto-save. */
@@ -271,27 +300,6 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     });
   };
 
-  /** Swaps the sort order of two monitors. */
-  const swapMonitorOrder = (indexA: number, indexB: number) => {
-    if (!prefs) return;
-    const a = configs[indexA];
-    const b = configs[indexB];
-    if (!a || !b) return;
-    setPrefs((prev) => {
-      if (!prev) return prev;
-      const next = {
-        ...prev,
-        monitorConfigs: prev.monitorConfigs.map((m) => {
-          if (m.uid === a.uid) return { ...m, sortOrder: b.sortOrder };
-          if (m.uid === b.uid) return { ...m, sortOrder: a.sortOrder };
-          return m;
-        }),
-      };
-      savePreferences(next);
-      return next;
-    });
-  };
-
   /** Enters inline label edit mode for a monitor config row. */
   const startEditingLabel = (meta: MonitorMetadata) => {
     setEditingUid(meta.uid);
@@ -305,26 +313,6 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
       updateMonitorConfig(editingUid, { label: editLabel.trim() });
     }
     setEditingUid(null);
-  };
-
-  /** Moves one speaker by one row and persists the complete device order. */
-  const moveAudioOutput = async (index: number, direction: 'up' | 'down') => {
-    if (!audioOutputState) return;
-    const swapIndex = direction === 'up' ? index - 1 : index + 1;
-    if (swapIndex < 0 || swapIndex >= audioOutputState.devices.length) return;
-    const devices = [...audioOutputState.devices];
-    [devices[index], devices[swapIndex]] = [devices[swapIndex], devices[index]];
-    setAudioOutputState({ ...audioOutputState, devices });
-    try {
-      const outputState = await invoke<AudioOutputState>('save_audio_output_order', {
-        orderedIds: devices.map((device) => device.id),
-      });
-      setAudioOutputState(outputState);
-      onPreferencesSaved();
-    } catch (error) {
-      setAudioOutputState(audioOutputState);
-      console.error('Failed to reorder audio output devices:', error);
-    }
   };
 
   /** Persists one speaker's enabled, disabled, or hidden state. */
@@ -392,8 +380,11 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         {activeTab === 'general' && (
           <>
             <div className='settings-section'>
+              <Tooltip text='Rename, scale, hide, or choose how each monitor is dimmed.'>
+                <label className='settings-label'>Monitors</label>
+              </Tooltip>
               <Tooltip text='Lowest brightness any slider or shortcut can set, so screens never go fully dark.'>
-                <label className='settings-label'>Min Brightness</label>
+                <div className='settings-subheader'>Min Brightness</div>
               </Tooltip>
               <Slider
                 label='Minimum brightness'
@@ -402,9 +393,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 max={100}
                 onChange={(v) => updateField('minBrightness', v)}
               />
-            </div>
-
-            <div className='settings-section'>
+              <div className='settings-subheader'>Options</div>
               <Tooltip text='Show a DDC/CI contrast slider for each external monitor.'>
                 <label className='settings-checkbox-row'>
                   <input
@@ -415,52 +404,37 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                   <span>Show Contrast Slider</span>
                 </label>
               </Tooltip>
-            </div>
-
-            <DpiSettings
-              enabled={prefs.showDpiSettings ?? false}
-              minPercent={prefs.dpiMinPercent ?? 60}
-              maxPercent={prefs.dpiMaxPercent ?? 200}
-              onEnabledChange={(v) => updateField('showDpiSettings', v)}
-              onRangeChange={(min, max) =>
-                setPrefs((prev) => {
-                  if (!prev) return prev;
-                  const next = { ...prev, dpiMinPercent: min, dpiMaxPercent: max };
-                  savePreferences(next);
-                  return next;
-                })
-              }
-            />
-
-            <div className='settings-divider' />
-
-            <div className='settings-section'>
-              <Tooltip text='Rename, reorder, hide, or choose how each monitor is dimmed.'>
-                <label className='settings-label'>Monitors</label>
-              </Tooltip>
+              <DpiOptions
+                enabled={dpiEnabled}
+                minPercent={dpiMin}
+                maxPercent={dpiMax}
+                stepPercent={dpiStep}
+                showStep={dpi.displays.some((d) => d.continuous)}
+                onEnabledChange={(v) => updateField('showDpiSettings', v)}
+                onRangeChange={(min, max, step) =>
+                  setPrefs((prev) => {
+                    if (!prev) return prev;
+                    const next = {
+                      ...prev,
+                      dpiMinPercent: min,
+                      dpiMaxPercent: max,
+                      dpiStepPercent: step,
+                    };
+                    savePreferences(next);
+                    return next;
+                  })
+                }
+              />
+              {dpiEnabled && dpi.error && <div className='settings-dpi-error'>{dpi.error}</div>}
+              <div className='settings-subheader'>Displays</div>
               <div className='settings-monitors-list'>
-                {configs.map((meta, index) => {
+                {configs.map((meta) => {
                   const displayName = meta.label || meta.apiName || meta.uid;
+                  const dpiDisplay = dpiEnabled ? dpiMatches.get(meta.uid) : undefined;
                   return (
                     <div
                       key={meta.uid}
                       className={`settings-monitor-row${meta.hidden ? ' settings-monitor-hidden' : ''}`}>
-                      <div className='settings-monitor-reorder'>
-                        <button
-                          className='monitor-reorder-btn'
-                          disabled={index === 0}
-                          onClick={() => swapMonitorOrder(index, index - 1)}
-                          title='Move up'>
-                          <Icon name='chevronUp' size={12} />
-                        </button>
-                        <button
-                          className='monitor-reorder-btn'
-                          disabled={index === configs.length - 1}
-                          onClick={() => swapMonitorOrder(index, index + 1)}
-                          title='Move down'>
-                          <Icon name='chevronDown' size={12} />
-                        </button>
-                      </div>
                       <div className='settings-monitor-name'>
                         {editingUid === meta.uid ? (
                           <input
@@ -481,6 +455,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                           </button>
                         )}
                       </div>
+                      {dpiDisplay && renderDpiDropdown(dpiDisplay)}
                       {meta.apiId !== 'builtin' && (
                         <>
                           <Dropdown
@@ -518,36 +493,27 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                     </div>
                   );
                 })}
+                {dpiEnabled &&
+                  dpiUnmatched.map((d) => (
+                    <div key={`dpi-${d.id}`} className='settings-monitor-row'>
+                      <span className='settings-audio-output-name'>{d.name}</span>
+                      {renderDpiDropdown(d)}
+                    </div>
+                  ))}
               </div>
             </div>
 
             <div className='settings-divider' />
 
             <div className='settings-section'>
-              <Tooltip text='Rename, reorder, or enable/disable/hide each audio output.'>
+              <Tooltip text='Rename or enable/disable/hide each audio output.'>
                 <label className='settings-label'>Speakers</label>
               </Tooltip>
               <div className='settings-monitors-list'>
-                {audioOutputState?.devices.map((device, index) => (
+                {audioOutputState?.devices.map((device) => (
                   <div
                     key={device.id}
                     className={`settings-monitor-row${device.state === 'hidden' ? ' settings-monitor-hidden' : ''}`}>
-                    <div className='settings-monitor-reorder'>
-                      <button
-                        className='monitor-reorder-btn'
-                        disabled={index === 0}
-                        onClick={() => moveAudioOutput(index, 'up')}
-                        title={`Move ${device.name} up`}>
-                        <Icon name='chevronUp' size={12} />
-                      </button>
-                      <button
-                        className='monitor-reorder-btn'
-                        disabled={index === audioOutputState.devices.length - 1}
-                        onClick={() => moveAudioOutput(index, 'down')}
-                        title={`Move ${device.name} down`}>
-                        <Icon name='chevronDown' size={12} />
-                      </button>
-                    </div>
                     <span className='settings-audio-output-name'>{device.name}</span>
                     <Dropdown
                       className='audio-output-state'
@@ -581,6 +547,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       }
                     />
                     <span>Prefer Loudness Equalization</span>
+                    <span className='beta-chip platform-chip'>Windows</span>
                   </label>
                 </Tooltip>
               </div>

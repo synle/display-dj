@@ -944,6 +944,7 @@ pub fn run() {
             display::set_contrast,
             display::set_all_contrast,
             display::get_dpi_displays,
+            tray::reanchor_popup_window,
             display::set_display_dpi,
             display::rename_monitor,
             display::save_monitor_order,
@@ -1170,6 +1171,10 @@ pub fn run() {
                             if !expecting {
                                 let _ = win_clone.hide();
                             }
+                        }
+                        tauri::WindowEvent::ScaleFactorChanged { .. } => {
+                            // DPI change: the stored tray anchor is stale.
+                            tray::reanchor_popup(&app_handle);
                         }
                         tauri::WindowEvent::Resized(_) => {
                             if win_clone.is_visible().unwrap_or(false) {
