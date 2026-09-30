@@ -65,6 +65,8 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   const [audioOutputState, setAudioOutputState] = useState<AudioOutputState | null>(null);
   const [updatingAudioOutputId, setUpdatingAudioOutputId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'general' | 'system' | 'tiling'>('general');
+  /** Profile index shown in the Profiles card editor; `null` = first in display order. */
+  const [selectedProfileIdx, setSelectedProfileIdx] = useState<number | null>(null);
   const [editingUid, setEditingUid] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const labelInputRef = useRef<HTMLInputElement>(null);
@@ -288,6 +290,12 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     ]),
   ];
 
+  // Selected profile falls back to the first listed one (day profile) when unset or stale.
+  const activeProfileIdx =
+    selectedProfileIdx !== null && editableProfileIndexes.includes(selectedProfileIdx)
+      ? selectedProfileIdx
+      : editableProfileIndexes[0];
+
   /**
    * Renders one schedule row: start time plus the profile applied at that time.
    * @param label - "Night" or "Day"
@@ -336,7 +344,6 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     const current = parseProfileSettings(profile);
     return (
       <div key={idx} className='settings-profile-editor'>
-        <div className='settings-subheader'>{profile.name}</div>
         <Dropdown
           className='settings-dropdown'
           aria-label={`${profile.name} theme`}
@@ -347,9 +354,9 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
               theme: (e.target.value || null) as ProfileSettings['theme'],
             })
           }>
-          <option value=''>Keep theme</option>
-          <option value='dark'>Dark</option>
-          <option value='light'>Light</option>
+          <option value=''>Theme: Keep current</option>
+          <option value='dark'>Theme: Dark</option>
+          <option value='light'>Theme: Light</option>
         </Dropdown>
         <Slider
           label={`${profile.name} brightness`}
@@ -870,7 +877,22 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
               <Tooltip text='What each profile applies. Used by the schedule and Shift+F1 / Shift+F2.'>
                 <div className='settings-card-title'>Profiles</div>
               </Tooltip>
-              {editableProfileIndexes.map((idx) => renderProfileEditor(idx))}
+              {editableProfileIndexes.length > 0 && (
+                <>
+                  <Dropdown
+                    className='settings-dropdown'
+                    aria-label='Profile to edit'
+                    value={String(activeProfileIdx)}
+                    onChange={(e) => setSelectedProfileIdx(Number(e.target.value))}>
+                    {editableProfileIndexes.map((idx) => (
+                      <option key={idx} value={idx}>
+                        {prefs.profiles[idx].name || `Profile ${idx + 1}`}
+                      </option>
+                    ))}
+                  </Dropdown>
+                  {renderProfileEditor(activeProfileIdx)}
+                </>
+              )}
             </div>
           </>
         )}

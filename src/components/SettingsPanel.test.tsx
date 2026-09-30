@@ -942,13 +942,13 @@ describe('SettingsPanel', () => {
     expect(titles()).toEqual(['Window Tiling', 'Tile Snap', 'Exposé']);
   });
 
-  /** Profiles card lists day profile, night profile, then the rest (Presentation). */
-  it('orders profile editors day, night, then others', async () => {
+  /** Profiles card shows one editor; the selector lists day, night, then other profiles. */
+  it('edits one profile at a time via the profile selector', async () => {
     setupInvoke({
       prefs: buildPrefs({
         profiles: [
-          { name: 'Presentation', command: [] },
-          { name: 'Focus', command: [] },
+          { name: 'Presentation', command: ['command/changeDarkMode/light'] },
+          { name: 'Focus', command: ['command/changeDarkMode/dark'] },
           { name: 'Daylight', command: [] },
         ],
       }),
@@ -959,12 +959,16 @@ describe('SettingsPanel', () => {
     );
     await screen.findByText('Settings');
     await user.click(screen.getByRole('button', { name: 'System' }));
-    const names = [
-      ...container.querySelectorAll(
-        '.settings-card-profiles .settings-profile-editor .settings-subheader',
-      ),
-    ].map((el) => el.textContent);
-    expect(names).toEqual(['Daylight', 'Focus', 'Presentation']);
+    const selector = screen.getByRole('combobox', { name: 'Profile to edit' });
+    expect([...selector.querySelectorAll('option')].map((o) => o.textContent)).toEqual([
+      'Daylight',
+      'Focus',
+      'Presentation',
+    ]);
+    expect(container.querySelectorAll('.settings-profile-editor')).toHaveLength(1);
+    expect(screen.getByRole('combobox', { name: 'Daylight theme' })).toHaveValue('');
+    await user.selectOptions(selector, 'Presentation');
+    expect(screen.getByRole('combobox', { name: 'Presentation theme' })).toHaveValue('light');
   });
 
   it('hides Loudness Equalization toggle off Windows', async () => {
