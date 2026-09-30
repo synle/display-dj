@@ -307,7 +307,7 @@ The zip is downloaded once (max 500 MB), extracted to the config directory, and 
 
 ### Slideshow Settings
 
-The Settings panel (General tab) has controls for:
+The Settings panel (System tab) has controls for:
 
 - **Wallpaper Fit** -- dropdown for fill/fit/stretch/center/tile
 - **Enable Slideshow** -- checkbox to start/stop

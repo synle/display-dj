@@ -1004,8 +1004,24 @@ button.settings-status-error {
 }
 
 .settings-monitor-name {
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+}
+
+.settings-device-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.settings-profile-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
 }
 
 .settings-audio-output-name {

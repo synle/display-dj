@@ -8,6 +8,8 @@ export type IconName =
   | 'speaker'
   | 'speakerMedium'
   | 'speakerMuted'
+  | 'headphones'
+  | 'speakerDevice'
   | 'settings'
   | 'chevronDown'
   | 'chevronUp'
@@ -56,6 +58,20 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       {SPEAKER_BODY}
       <path d='M16 9.5l5 5M21 9.5l-5 5' />
+    </>
+  ),
+  headphones: (
+    <>
+      <path d='M4 15v-3a8 8 0 0 1 16 0v3' />
+      <rect x='3' y='14' width='4.5' height='6.5' rx='1.5' {...TINT} />
+      <rect x='16.5' y='14' width='4.5' height='6.5' rx='1.5' {...TINT} />
+    </>
+  ),
+  speakerDevice: (
+    <>
+      <rect x='5.5' y='2.5' width='13' height='19' rx='2' {...TINT} />
+      <circle cx='12' cy='14.5' r='3.5' />
+      <circle cx='12' cy='6.8' r='1.2' />
     </>
   ),
   chevronDown: <path d='M6 9l6 6 6-6' />,

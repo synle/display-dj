@@ -1514,6 +1514,21 @@ fn dump_debug_info(app: &AppHandle) {
     log::info!("{}", output);
 }
 
+/// Resolve a profile by 0-based index, falling back to a case-insensitive name match.
+///
+/// Returns `None` when neither an index nor a name matches.
+pub(crate) fn find_profile<'a>(
+    profiles: &'a [crate::config::Profile],
+    key: &str,
+) -> Option<&'a crate::config::Profile> {
+    if let Ok(idx) = key.parse::<usize>() {
+        return profiles.get(idx);
+    }
+    profiles
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(key.trim()))
+}
+
 /// Dispatches a command string (e.g. "command/changeBrightness/50") to the
 /// appropriate in-process platform call. Used by keyboard shortcuts, profiles,
 /// tray menu actions, and the night mode schedule.
@@ -1691,8 +1706,8 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                 });
             }
         }
-        ["command", "changeProfile", idx_str] => {
-            if let Ok(idx) = idx_str.parse::<usize>() {
+        ["command", "changeProfile", key] => {
+            {
                 let profiles = app
                     .state::<crate::AppState>()
                     .preferences
@@ -1700,7 +1715,7 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                     .map(|p| p.profiles.clone())
                     .unwrap_or_default();
 
-                if let Some(profile) = profiles.get(idx) {
+                if let Some(profile) = find_profile(&profiles, key) {
                     let commands: Vec<String> = match &profile.command {
                         CommandValue::Single(cmd) => vec![cmd.clone()],
                         CommandValue::Multiple(cmds) => cmds.clone(),
@@ -1709,7 +1724,7 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                         execute_command(app, cmd);
                     }
                 } else {
-                    log::warn!("Profile index out of range: {}", idx);
+                    log::warn!("Profile not found: {}", key);
                 }
             }
         }
@@ -1947,6 +1962,16 @@ mod refresh_on_show_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Profiles resolve by index first, then case-insensitive name.
+    #[test]
+    fn find_profile_by_index_or_name() {
+        let profiles = crate::config::Preferences::default().profiles;
+        assert_eq!(find_profile(&profiles, "1").unwrap().name, "Focus");
+        assert_eq!(find_profile(&profiles, "daylight").unwrap().name, "Daylight");
+        assert!(find_profile(&profiles, "9").is_none());
+        assert!(find_profile(&profiles, "Nope").is_none());
+    }
 
     const BASE: &str = "http://127.0.0.1:51337";
 

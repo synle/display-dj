@@ -289,6 +289,11 @@ pub struct MonitorMetadata {
     pub brightness_mode: String,
 }
 
+/// Default profile applied by the night-mode schedule at night and by Shift+F1.
+pub const DEFAULT_NIGHT_PROFILE: &str = "Focus";
+/// Default profile applied by the night-mode schedule at day and by Shift+F2.
+pub const DEFAULT_DAY_PROFILE: &str = "Daylight";
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
 pub struct NightModeSchedule {
@@ -306,6 +311,11 @@ pub struct NightModeSchedule {
     /// Optional commands to execute when day mode activates.
     /// When non-empty, these replace the default brightness + light mode behavior.
     pub day_commands: Vec<String>,
+    /// Profile name applied when night mode activates (default "Focus").
+    /// Takes precedence over the legacy brightness fallback when it resolves.
+    pub night_profile: String,
+    /// Profile name applied when day mode activates (default "Daylight").
+    pub day_profile: String,
 }
 
 impl Default for NightModeSchedule {
@@ -318,6 +328,8 @@ impl Default for NightModeSchedule {
             day_brightness: 100,
             night_commands: Vec::new(),
             day_commands: Vec::new(),
+            night_profile: DEFAULT_NIGHT_PROFILE.into(),
+            day_profile: DEFAULT_DAY_PROFILE.into(),
         }
     }
 }
@@ -661,19 +673,15 @@ impl Default for Preferences {
             },
             KeyBinding {
                 key: "Shift+F1".into(),
-                command: CommandValue::Multiple(vec![
-                    "command/changeVolume/50".into(),
-                    "command/changeBrightness/65".into(),
-                    "command/changeDarkMode/light".into(),
-                ]),
+                command: CommandValue::Single(format!(
+                    "command/changeProfile/{DEFAULT_NIGHT_PROFILE}"
+                )),
             },
             KeyBinding {
                 key: "Shift+F2".into(),
-                command: CommandValue::Multiple(vec![
-                    "command/changeVolume/100".into(),
-                    "command/changeBrightness/100".into(),
-                    "command/changeDarkMode/light".into(),
-                ]),
+                command: CommandValue::Single(format!(
+                    "command/changeProfile/{DEFAULT_DAY_PROFILE}"
+                )),
             },
             KeyBinding {
                 key: "Shift+F3".into(),
@@ -723,14 +731,15 @@ impl Default for Preferences {
                     ]),
                 },
                 Profile {
-                    name: "Focus".into(),
+                    name: DEFAULT_NIGHT_PROFILE.into(),
                     command: CommandValue::Multiple(vec![
                         "command/changeBrightness/75".into(),
                         "command/changeDarkMode/dark".into(),
+                        "command/changeVolume/50".into(),
                     ]),
                 },
                 Profile {
-                    name: "Daylight".into(),
+                    name: DEFAULT_DAY_PROFILE.into(),
                     command: CommandValue::Multiple(vec![
                         "command/changeBrightness/100".into(),
                         "command/changeDarkMode/light".into(),
@@ -1809,8 +1818,7 @@ mod tests {
 
     #[test]
     fn test_default_keybindings_f1_f2_commands() {
-        // Shift+F1: 50% volume + 65% brightness + light mode;
-        // Shift+F2: 100% volume + brightness + light mode
+        // Shift+F1 activates the Focus profile; Shift+F2 activates Daylight.
         let prefs = Preferences::default();
         let commands: Vec<Vec<String>> = prefs
             .key_bindings
@@ -1824,18 +1832,27 @@ mod tests {
         assert_eq!(
             commands,
             vec![
-                vec![
-                    "command/changeVolume/50".to_string(),
-                    "command/changeBrightness/65".to_string(),
-                    "command/changeDarkMode/light".to_string(),
-                ],
-                vec![
-                    "command/changeVolume/100".to_string(),
-                    "command/changeBrightness/100".to_string(),
-                    "command/changeDarkMode/light".to_string(),
-                ],
+                vec!["command/changeProfile/Focus".to_string()],
+                vec!["command/changeProfile/Daylight".to_string()],
             ]
         );
+    }
+
+    /// Night schedule defaults to Focus at night and Daylight at day.
+    #[test]
+    fn test_night_schedule_default_profiles() {
+        let schedule = NightModeSchedule::default();
+        assert_eq!(schedule.night_profile, "Focus");
+        assert_eq!(schedule.day_profile, "Daylight");
+    }
+
+    /// Old preference files without profile fields load the default profiles.
+    #[test]
+    fn test_night_schedule_missing_profiles_use_defaults() {
+        let schedule: NightModeSchedule =
+            serde_json::from_str(r#"{"enabled":true,"nightStart":"22:00"}"#).unwrap();
+        assert_eq!(schedule.night_profile, "Focus");
+        assert_eq!(schedule.day_profile, "Daylight");
     }
 
     #[test]

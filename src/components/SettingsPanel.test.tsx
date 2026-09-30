@@ -23,6 +23,8 @@ function buildPrefs(overrides: Record<string, unknown> = {}) {
       dayBrightness: 100,
       nightCommands: [],
       dayCommands: [],
+      nightProfile: 'Focus',
+      dayProfile: 'Daylight',
     },
     showContrast: false,
     showDpiSettings: false,
@@ -207,7 +209,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Tiling' })).toBeInTheDocument();
     });
-    expect(screen.getByRole('button', { name: 'General' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Monitors & Speakers' })).toBeInTheDocument();
     expect(screen.getByText('Settings')).toBeInTheDocument();
   });
 
@@ -289,6 +291,7 @@ describe('SettingsPanel', () => {
 
     await user.click(await screen.findByLabelText('Show Contrast Slider'));
     await waitFor(() => expect(saveCalls).toBe(1));
+    await user.click(screen.getByRole('button', { name: 'System' }));
     await user.click(screen.getByLabelText('Launch at Login'));
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(saveCalls).toBe(1);
@@ -348,6 +351,7 @@ describe('SettingsPanel', () => {
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'System' }));
 
     await user.click(await screen.findByLabelText('Launch at Login'));
     await waitForSave();
@@ -364,6 +368,7 @@ describe('SettingsPanel', () => {
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'System' }));
 
     expect(screen.queryByText('Night')).not.toBeInTheDocument();
     await user.click(screen.getByLabelText('Night Mode Schedule'));
@@ -377,6 +382,8 @@ describe('SettingsPanel', () => {
     setupInvoke({});
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await screen.findByText('Settings');
+    await user.click(screen.getByRole('button', { name: 'System' }));
     await waitFor(() => expect(screen.getByText('Wallpaper Fit')).toBeInTheDocument());
 
     const fitSelect = screen.getByDisplayValue('Fill Screen') as HTMLSelectElement;
@@ -398,6 +405,7 @@ describe('SettingsPanel', () => {
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'System' }));
 
     await user.click(await screen.findByLabelText('Enable Wallpaper Slideshow'));
     expect(screen.getByText('Slideshow Folder')).toBeInTheDocument();
@@ -411,6 +419,7 @@ describe('SettingsPanel', () => {
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'System' }));
 
     await user.click(await screen.findByLabelText('Enable Wallpaper Slideshow'));
     await user.selectOptions(screen.getByDisplayValue('30m'), '0');
@@ -519,13 +528,11 @@ describe('SettingsPanel', () => {
 
     const speakersLabel = await screen.findByText('Speakers');
     const monitorsLabel = screen.getByText('Monitors');
-    const scheduleLabel = screen.getByText('Night Mode Schedule');
     expect(
       monitorsLabel.compareDocumentPosition(speakersLabel) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(
-      speakersLabel.compareDocumentPosition(scheduleLabel) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // System settings live on their own tab, not beside monitors/speakers.
+    expect(screen.queryByText('Night Mode Schedule')).not.toBeInTheDocument();
 
     await user.selectOptions(screen.getByRole('combobox', { name: 'State for TYPEC' }), 'disabled');
     expect(mockInvoke).toHaveBeenCalledWith('set_audio_output_device_state', {
@@ -721,7 +728,7 @@ describe('SettingsPanel', () => {
     setupInvoke({ elevationRejects: true });
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
 
-    expect(await screen.findByRole('button', { name: 'General' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Monitors & Speakers' })).toBeInTheDocument();
     expect(mockInvoke).toHaveBeenCalledWith('get_windows_elevation_status');
     expect(screen.queryByText(/elevated windows cannot be resized/)).not.toBeInTheDocument();
   });
@@ -800,6 +807,106 @@ describe('SettingsPanel', () => {
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('save_preferences', {
         preferences: expect.objectContaining({ loudnessEqualizationPreferred: false }),
+      }),
+    );
+  });
+
+  /** Headphone-like OS names get the headphone icon; others get the speaker-device icon. */
+  it('shows device-type icons for monitors and speakers', async () => {
+    setupInvoke({
+      prefs: buildPrefs({
+        monitorConfigs: [
+          {
+            uid: 'b',
+            apiId: 'builtin',
+            apiName: 'Built-in',
+            label: '',
+            hidden: false,
+            sortOrder: 0,
+          },
+          { uid: 'e', apiId: '1', apiName: 'Dell', label: '', hidden: false, sortOrder: 1 },
+        ],
+      }),
+    });
+    const baseImplementation = mockInvoke.getMockImplementation()!;
+    mockInvoke.mockImplementation((command: string, args?: unknown) => {
+      if (command === 'get_audio_output_devices') {
+        return Promise.resolve({
+          devices: [
+            {
+              id: 'a',
+              name: 'Pods',
+              originalName: 'Galaxy Ear-Buds2',
+              state: 'enabled',
+              isBuiltIn: false,
+            },
+            {
+              id: 'b',
+              name: 'Desk',
+              originalName: 'Studio Monitor',
+              state: 'enabled',
+              isBuiltIn: false,
+            },
+          ],
+          selectedDeviceId: 'a',
+        });
+      }
+      return baseImplementation(command, args as never);
+    });
+    const { container } = render(
+      <SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />,
+    );
+    await screen.findByText('Pods');
+    const icons = [...container.querySelectorAll('.settings-device-icon svg')].map((el) =>
+      el.getAttribute('data-icon'),
+    );
+    expect(icons).toEqual(['laptop', 'monitor', 'headphones', 'speakerDevice']);
+  });
+
+  /** Loudness tooltip states the Windows-only scope. */
+  it('marks the Loudness Equalization tooltip as Windows only', async () => {
+    setupInvoke({ platform: 'Windows', windowsElevated: true, windowsSnapEnabled: false });
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await screen.findByRole('checkbox', { name: /Prefer Loudness Equalization/ });
+    expect(document.body.innerHTML).toContain('Even out quiet and loud audio. Windows only.');
+  });
+
+  /** Schedule picks a profile per phase, and the profile editor rewrites profile commands. */
+  it('selects schedule profiles and edits profile theme', async () => {
+    setupInvoke({
+      prefs: buildPrefs({
+        profiles: [
+          {
+            name: 'Focus',
+            command: ['command/changeBrightness/75', 'command/changeDarkMode/dark'],
+          },
+          { name: 'Daylight', command: ['command/changeDarkMode/light'] },
+        ],
+        nightModeSchedule: { ...buildPrefs().nightModeSchedule, enabled: true },
+      }),
+    });
+    const user = userEvent.setup();
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    await screen.findByText('Settings');
+    await user.click(screen.getByRole('button', { name: 'System' }));
+
+    expect(screen.getByRole('combobox', { name: 'Night profile' })).toHaveValue('Focus');
+    expect(screen.getByRole('combobox', { name: 'Day profile' })).toHaveValue('Daylight');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Night profile' }), 'Daylight');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Daylight theme' }), 'dark');
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenLastCalledWith('save_preferences', {
+        preferences: expect.objectContaining({
+          nightModeSchedule: expect.objectContaining({ nightProfile: 'Daylight' }),
+          profiles: [
+            {
+              name: 'Focus',
+              command: ['command/changeBrightness/75', 'command/changeDarkMode/dark'],
+            },
+            { name: 'Daylight', command: ['command/changeDarkMode/dark'] },
+          ],
+        }),
       }),
     );
   });

@@ -13,6 +13,13 @@ import {
 import Dropdown from './Dropdown';
 import Tooltip from './Tooltip';
 import Slider from './Slider';
+import { Icon } from './Icons';
+import {
+  applyProfileSettings,
+  parseProfileSettings,
+  speakerKind,
+  type ProfileSettings,
+} from '../profileSettings';
 import { DpiOptions, DpiScaleDropdown, matchDpiDisplay, useDpiDisplays } from './DpiSettings';
 
 interface SettingsPanelProps {
@@ -20,7 +27,7 @@ interface SettingsPanelProps {
   onPreferencesSaved: () => void;
 }
 
-/** Settings panel with two tabs: General and Tiling. Auto-saves after each change. */
+/** Settings panel with tabs: Monitors & Speakers, System, and Tiling. Auto-saves after each change. */
 /** Minimum slideshow interval in seconds (mirrors backend `MIN_SLIDESHOW_INTERVAL_SECS`). */
 const MIN_SLIDESHOW_INTERVAL_SECS = 5;
 /** Minute choices for the slideshow interval (1m and 3m included for quick testing). */
@@ -57,7 +64,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [audioOutputState, setAudioOutputState] = useState<AudioOutputState | null>(null);
   const [updatingAudioOutputId, setUpdatingAudioOutputId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'general' | 'tiling'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'system' | 'tiling'>('general');
   const [editingUid, setEditingUid] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const labelInputRef = useRef<HTMLInputElement>(null);
@@ -258,6 +265,109 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     });
   };
 
+  /** Rewrites the theme / brightness / volume commands of profile `idx` and triggers auto-save. */
+  const updateProfileSettings = (idx: number, settings: ProfileSettings) => {
+    setPrefs((prev) => {
+      if (!prev || !prev.profiles[idx]) return prev;
+      const profiles = prev.profiles.map((p, i) =>
+        i === idx ? applyProfileSettings(p, settings) : p,
+      );
+      const next = { ...prev, profiles };
+      savePreferences(next);
+      return next;
+    });
+  };
+
+  // Profiles the schedule points at (night first), deduped; unknown names are skipped.
+  const editableProfileIndexes = [
+    ...new Set(
+      [schedule.nightProfile || 'Focus', schedule.dayProfile || 'Daylight']
+        .map((name) => prefs.profiles.findIndex((p) => p.name.toLowerCase() === name.toLowerCase()))
+        .filter((idx) => idx >= 0),
+    ),
+  ];
+
+  /**
+   * Renders one schedule row: start time plus the profile applied at that time.
+   * @param label - "Night" or "Day"
+   * @param timeKey - schedule field holding the "HH:MM" start
+   * @param profileKey - schedule field holding the profile name
+   */
+  const renderScheduleRow = (
+    label: string,
+    timeKey: 'nightStart' | 'dayStart',
+    profileKey: 'nightProfile' | 'dayProfile',
+  ) => (
+    <div className='settings-section'>
+      <div className='settings-schedule-header'>
+        <Tooltip text={`${label} start time and the profile it applies.`}>
+          <label className='settings-label'>{label}</label>
+        </Tooltip>
+        <input
+          type='time'
+          className='settings-time-input'
+          aria-label={`${label} start`}
+          value={schedule[timeKey]}
+          onChange={(e) => updateSchedule(timeKey, e.target.value)}
+        />
+      </div>
+      <Dropdown
+        className='settings-dropdown'
+        aria-label={`${label} profile`}
+        value={schedule[profileKey]}
+        onChange={(e) => updateSchedule(profileKey, e.target.value)}>
+        {prefs.profiles.map((p, i) => (
+          <option key={i} value={p.name}>
+            {p.name || `Profile ${i + 1}`}
+          </option>
+        ))}
+      </Dropdown>
+    </div>
+  );
+
+  /**
+   * Renders the theme / brightness / volume editor for one profile.
+   * Missing brightness or volume shows 100% / 50% until the user edits it.
+   * @param idx - index into `prefs.profiles`
+   */
+  const renderProfileEditor = (idx: number) => {
+    const profile = prefs.profiles[idx];
+    const current = parseProfileSettings(profile);
+    return (
+      <div key={idx} className='settings-profile-editor'>
+        <div className='settings-subheader'>{profile.name}</div>
+        <Dropdown
+          className='settings-dropdown'
+          aria-label={`${profile.name} theme`}
+          value={current.theme ?? ''}
+          onChange={(e) =>
+            updateProfileSettings(idx, {
+              ...current,
+              theme: (e.target.value || null) as ProfileSettings['theme'],
+            })
+          }>
+          <option value=''>Keep theme</option>
+          <option value='dark'>Dark</option>
+          <option value='light'>Light</option>
+        </Dropdown>
+        <Slider
+          label={`${profile.name} brightness`}
+          value={current.brightness ?? 100}
+          min={prefs.minBrightness}
+          max={100}
+          onChange={(v) => updateProfileSettings(idx, { ...current, brightness: v })}
+        />
+        <Slider
+          label={`${profile.name} volume`}
+          value={current.volume ?? 50}
+          min={0}
+          max={100}
+          onChange={(v) => updateProfileSettings(idx, { ...current, volume: v })}
+        />
+      </div>
+    );
+  };
+
   /** Updates a field within the tiling preferences and triggers auto-save. */
   const updateTiling = <K extends keyof TilingPreferences>(key: K, value: TilingPreferences[K]) => {
     setPrefs((prev) => {
@@ -361,20 +471,25 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         </button>
       </div>
 
-      {tilingSupported && (
-        <div className='settings-tabs'>
-          <button
-            className={`settings-tab${activeTab === 'general' ? ' settings-tab-active' : ''}`}
-            onClick={() => setActiveTab('general')}>
-            General
-          </button>
+      <div className='settings-tabs'>
+        <button
+          className={`settings-tab${activeTab === 'general' ? ' settings-tab-active' : ''}`}
+          onClick={() => setActiveTab('general')}>
+          Monitors &amp; Speakers
+        </button>
+        <button
+          className={`settings-tab${activeTab === 'system' ? ' settings-tab-active' : ''}`}
+          onClick={() => setActiveTab('system')}>
+          System
+        </button>
+        {tilingSupported && (
           <button
             className={`settings-tab${activeTab === 'tiling' ? ' settings-tab-active' : ''}`}
             onClick={() => setActiveTab('tiling')}>
             Tiling
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className='settings-body'>
         {activeTab === 'general' && (
@@ -436,6 +551,9 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       key={meta.uid}
                       className={`settings-monitor-row${meta.hidden ? ' settings-monitor-hidden' : ''}`}>
                       <div className='settings-monitor-name'>
+                        <span className='settings-device-icon'>
+                          <Icon name={meta.apiId === 'builtin' ? 'laptop' : 'monitor'} size={16} />
+                        </span>
                         {editingUid === meta.uid ? (
                           <input
                             ref={labelInputRef}
@@ -514,6 +632,16 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                   <div
                     key={device.id}
                     className={`settings-monitor-row${device.state === 'hidden' ? ' settings-monitor-hidden' : ''}`}>
+                    <span className='settings-device-icon'>
+                      <Icon
+                        name={
+                          speakerKind(device.originalName) === 'headphones'
+                            ? 'headphones'
+                            : 'speakerDevice'
+                        }
+                        size={16}
+                      />
+                    </span>
                     <span className='settings-audio-output-name'>{device.name}</span>
                     <Dropdown
                       className='audio-output-state'
@@ -537,7 +665,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
 
             {platform === 'windows' && (
               <div className='settings-section'>
-                <Tooltip text='Even out quiet and loud audio.'>
+                <Tooltip text='Even out quiet and loud audio. Windows only.'>
                   <label className='settings-checkbox-row'>
                     <input
                       type='checkbox'
@@ -552,11 +680,13 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 </Tooltip>
               </div>
             )}
+          </>
+        )}
 
-            <div className='settings-divider' />
-
+        {activeTab === 'system' && (
+          <>
             <div className='settings-section'>
-              <Tooltip text='Auto-switch brightness and theme by time.'>
+              <Tooltip text='Auto-switch profiles by time of day.'>
                 <label className='settings-checkbox-row'>
                   <input
                     type='checkbox'
@@ -570,49 +700,17 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
 
             {schedule.enabled && (
               <>
-                <div className='settings-section'>
-                  <div className='settings-schedule-header'>
-                    <Tooltip text='Night start time and brightness.'>
-                      <label className='settings-label'>Night</label>
-                    </Tooltip>
-                    <input
-                      type='time'
-                      className='settings-time-input'
-                      value={schedule.nightStart}
-                      onChange={(e) => updateSchedule('nightStart', e.target.value)}
-                    />
-                  </div>
-                  <Slider
-                    label='Night brightness'
-                    value={schedule.nightBrightness}
-                    min={5}
-                    max={100}
-                    onChange={(v) => updateSchedule('nightBrightness', v)}
-                  />
-                </div>
-
-                <div className='settings-section'>
-                  <div className='settings-schedule-header'>
-                    <Tooltip text='Day start time and brightness.'>
-                      <label className='settings-label'>Day</label>
-                    </Tooltip>
-                    <input
-                      type='time'
-                      className='settings-time-input'
-                      value={schedule.dayStart}
-                      onChange={(e) => updateSchedule('dayStart', e.target.value)}
-                    />
-                  </div>
-                  <Slider
-                    label='Day brightness'
-                    value={schedule.dayBrightness}
-                    min={5}
-                    max={100}
-                    onChange={(v) => updateSchedule('dayBrightness', v)}
-                  />
-                </div>
+                {renderScheduleRow('Night', 'nightStart', 'nightProfile')}
+                {renderScheduleRow('Day', 'dayStart', 'dayProfile')}
               </>
             )}
+
+            <div className='settings-section'>
+              <Tooltip text='What each profile applies. Also used by Shift+F1 / Shift+F2.'>
+                <label className='settings-label'>Profiles</label>
+              </Tooltip>
+              {editableProfileIndexes.map((idx) => renderProfileEditor(idx))}
+            </div>
 
             <div className='settings-divider' />
 

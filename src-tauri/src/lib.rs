@@ -416,14 +416,33 @@ fn check_night_mode_schedule(app: &tauri::AppHandle) {
         &schedule.day_commands
     };
 
+    let profile_name = if is_night {
+        &schedule.night_profile
+    } else {
+        &schedule.day_profile
+    };
+    let profile_exists = app
+        .state::<AppState>()
+        .preferences
+        .lock()
+        .map(|p| tray::find_profile(&p.profiles, profile_name).is_some())
+        .unwrap_or(false);
+
     let applied = if !commands.is_empty() {
         // Custom commands mode: execute each command in order
         for cmd in commands {
             tray::execute_command(app, cmd);
         }
         true
+    } else if profile_exists {
+        // Profile mode: run the Focus / Daylight (or user-chosen) profile.
+        tray::execute_command(app, &format!("command/changeProfile/{}", profile_name));
+        if let Some(is_dark) = core::theme::get_dark_mode() {
+            tray_icon::set_dark_mode_state(app, is_dark);
+        }
+        true
     } else {
-        // Default behavior: brightness + dark/light mode via the in-process platform layer
+        // Legacy fallback: brightness + dark/light mode via the in-process platform layer
         let (brightness, is_dark) = if is_night {
             (schedule.night_brightness, true)
         } else {

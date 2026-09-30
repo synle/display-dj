@@ -74,6 +74,10 @@ export interface NightModeSchedule {
   nightCommands: string[];
   /** Optional commands to run when day mode activates (replaces default brightness+light). */
   dayCommands: string[];
+  /** Profile name applied when night starts (default "Focus"). */
+  nightProfile: string;
+  /** Profile name applied when day starts (default "Daylight"). */
+  dayProfile: string;
 }
 
 export interface TilingPreferences {
