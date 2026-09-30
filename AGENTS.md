@@ -280,7 +280,7 @@ Tray popup placement selects the monitor from the physical mouse position in `Tr
 
 ## Settings & About
 
-- **Tabs**: **Monitors & Speakers** (monitors, speakers, Windows loudness), **System** (bordered cards in order: Startup → Wallpaper → Night Mode schedule → Profiles (one editor; selector lists day profile, night profile, then the rest, e.g. Presentation)); the selected tab renders as a solid accent pill. Every tab groups settings into `.settings-card` blocks (grey left stripe, accent title): Monitors, Speakers / Startup, Wallpaper, Night Mode, Profiles / Window Tiling, Tile Snap, Exposé, and **Tiling** (only when supported). Settings device rows show icons: laptop/monitor for displays; headphones when the speaker's OS name matches headphone/headset/earphone/bud (case-insensitive, space/dash/underscore tolerant), otherwise a speaker-box icon (`speakerKind()` in `src/profileSettings.ts`).
+- **Tabs**: **Monitors & Speakers** (monitors, speakers, Windows loudness), **System** (bordered cards in order: Startup → Wallpaper → Night Mode schedule → Profiles (one editor; selector lists day profile, night profile, then the rest, e.g. Presentation)); the selected tab renders as a solid accent pill. Every tab groups settings into `.settings-card` blocks (grey left stripe, `.section-header` title in primary text color): Monitors, Speakers / Startup, Wallpaper, Night Mode, Profiles / Window Tiling, Tile Snap, Exposé, and **Tiling** (only when supported). Settings device rows show icons: laptop/monitor for displays; headphones when the speaker's OS name matches headphone/headset/earphone/bud (case-insensitive, space/dash/underscore tolerant), otherwise a speaker-box icon (`speakerKind()` in `src/profileSettings.ts`). Settings device names are read-only primary-color text (`.settings-device-name`); renaming lives only in the main popup.
 
 - **Settings Panel**: auto-saves preferences (100ms debounce) with one serialized, coalescing queue. Closing or unmounting flushes the latest full snapshot; visible Saving/Saved/Error status reports persistence state.
 - **Refresh on popup show**: `show_popup_window` shows in-memory monitor/speaker lists immediately, then `refresh_devices_on_show()` (`tray.rs`) rescans displays (`list_all()`, also refreshing the write-control cache) and audio outputs on a background thread. `monitors-changed` / `audio-output-changed` fire only when the device set changed (live brightness readings are ignored), so connects/disconnects appear without flicker. Tray **Debug → Refresh Displays & Speakers** and clicking the popup's `All Monitors (n)` / `All Speakers (n)` labels (green ↻, `RefreshLabel.tsx` → `refresh_devices` command) run the same rescan on demand. There is no OS display hot-plug listener.
@@ -410,7 +410,7 @@ Managed in-process by `core::wallpaper` (timer thread, state, cycling). GUI star
 
 `wallpaper.{fit="fill", currentWallpaperPath, perMonitorWallpapers, slideshowEnabled=false, slideshowFolder, slideshowIntervalMinutes=30, slideshowIntervalSeconds=0 (total min 5s), slideshowOrder=forward|backward|oldest|newest|random, slideshowLastPath (backend-owned; resume point on startup)}`.
 
-Settings UI: Wallpaper Fit dropdown, Enable Slideshow checkbox, folder path, interval (hours + minutes, min 5), order dropdown.
+Settings UI: Enable Slideshow checkbox, Wallpaper Fit dropdown, folder path, interval (hours + minutes, min 5), order dropdown.
 
 ## Command Reference
 

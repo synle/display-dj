@@ -611,7 +611,8 @@ describe('SettingsPanel', () => {
     expect(screen.queryByDisplayValue('Auto')).not.toBeInTheDocument();
   });
 
-  it('enters and commits monitor label edit mode on Enter', async () => {
+  /** Settings shows monitor names as read-only text; renaming lives in the main popup only. */
+  it('renders the monitor name as read-only text with no rename input', async () => {
     setupInvoke({
       prefs: buildPrefs({
         monitorConfigs: [
@@ -631,46 +632,10 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     await waitFor(() => expect(screen.getByText('Dell U2723QE')).toBeInTheDocument());
 
-    await user.click(screen.getByText('Dell U2723QE'));
-    const input = screen.getByRole('textbox');
-    await user.clear(input);
-    await user.type(input, 'My Display{Enter}');
-    await waitForSave();
-    expect(mockInvoke).toHaveBeenCalledWith(
-      'save_preferences',
-      expect.objectContaining({
-        preferences: expect.objectContaining({
-          monitorConfigs: expect.arrayContaining([
-            expect.objectContaining({ uid: '1::Dell', label: 'My Display' }),
-          ]),
-        }),
-      }),
-    );
-  });
-
-  it('cancels monitor label edit on Escape', async () => {
-    setupInvoke({
-      prefs: buildPrefs({
-        monitorConfigs: [
-          {
-            uid: '1::Dell',
-            apiId: '1',
-            apiName: 'Dell',
-            label: '',
-            sortOrder: 0,
-            hidden: false,
-            brightnessMode: 'auto',
-          },
-        ],
-      }),
-    });
-    const user = userEvent.setup();
-    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
-    await waitFor(() => expect(screen.getByText('Dell')).toBeInTheDocument());
-
-    await user.click(screen.getByText('Dell'));
-    const input = screen.getByRole('textbox');
-    await user.type(input, 'Bogus{Escape}');
+    const name = screen.getByText('Dell U2723QE');
+    expect(name.tagName).toBe('SPAN');
+    expect(name).toHaveClass('settings-device-name');
+    await user.click(name);
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
@@ -923,9 +888,7 @@ describe('SettingsPanel', () => {
     await screen.findByText('Settings');
     await user.click(screen.getByRole('button', { name: 'System' }));
     expect(screen.getByRole('button', { name: 'System' })).toHaveClass('settings-tab-active');
-    const titles = [...container.querySelectorAll('.settings-card-title')].map(
-      (el) => el.textContent,
-    );
+    const titles = [...container.querySelectorAll('.section-header')].map((el) => el.textContent);
     expect(titles).toEqual(['Startup', 'Wallpaper', 'Night Mode', 'Profiles']);
   });
 
@@ -938,7 +901,7 @@ describe('SettingsPanel', () => {
     );
     await screen.findByText('Speakers');
     const titles = () =>
-      [...container.querySelectorAll('.settings-card-title')].map((el) => el.textContent);
+      [...container.querySelectorAll('.section-header')].map((el) => el.textContent);
     expect(titles()).toEqual(['Monitors', 'Speakers']);
     await user.click(screen.getByRole('button', { name: 'Tiling' }));
     expect(titles()).toEqual(['Window Tiling', 'Tile Snap', 'Exposé']);

@@ -68,9 +68,6 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   const [activeTab, setActiveTab] = useState<'general' | 'system' | 'tiling'>('general');
   /** Profile index shown in the Profiles card editor; `null` = first in display order. */
   const [selectedProfileIdx, setSelectedProfileIdx] = useState<number | null>(null);
-  const [editingUid, setEditingUid] = useState<string | null>(null);
-  const [editLabel, setEditLabel] = useState('');
-  const labelInputRef = useRef<HTMLInputElement>(null);
   const [tilingSupported, setTilingSupported] = useState(false);
   const [accessibilityTrusted, setAccessibilityTrusted] = useState(true);
   const [windowsElevated, setWindowsElevated] = useState<boolean | null>(null);
@@ -422,21 +419,6 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     });
   };
 
-  /** Enters inline label edit mode for a monitor config row. */
-  const startEditingLabel = (meta: MonitorMetadata) => {
-    setEditingUid(meta.uid);
-    setEditLabel(meta.label);
-    setTimeout(() => labelInputRef.current?.focus(), 0);
-  };
-
-  /** Commits the edited label and exits edit mode. */
-  const finishEditingLabel = () => {
-    if (editingUid) {
-      updateMonitorConfig(editingUid, { label: editLabel.trim() });
-    }
-    setEditingUid(null);
-  };
-
   /** Persists one speaker's enabled, disabled, or hidden state. */
   const updateAudioOutputState = async (id: string, deviceState: AudioOutputDeviceState) => {
     if (!audioOutputState) return;
@@ -508,7 +490,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
           <>
             <div className='settings-card settings-card-monitors'>
               <Tooltip text='Rename, scale, dim, or hide monitors.'>
-                <div className='settings-card-title'>Monitors</div>
+                <div className='section-header'>Monitors</div>
               </Tooltip>
               <Tooltip text='Brightness floor so screens never go black.'>
                 <div className='settings-subheader'>Min Brightness</div>
@@ -566,24 +548,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         <span className='settings-device-icon'>
                           <Icon name={meta.apiId === 'builtin' ? 'laptop' : 'monitor'} size={16} />
                         </span>
-                        {editingUid === meta.uid ? (
-                          <input
-                            ref={labelInputRef}
-                            className='monitor-name-input'
-                            value={editLabel}
-                            placeholder={meta.apiName}
-                            onChange={(e) => setEditLabel(e.target.value)}
-                            onBlur={finishEditingLabel}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') finishEditingLabel();
-                              if (e.key === 'Escape') setEditingUid(null);
-                            }}
-                          />
-                        ) : (
-                          <button className='monitor-name' onClick={() => startEditingLabel(meta)}>
-                            {displayName}
-                          </button>
-                        )}
+                        <span className='settings-device-name'>{displayName}</span>
                       </div>
                       {dpiDisplay && renderDpiDropdown(dpiDisplay)}
                       {meta.apiId !== 'builtin' && (
@@ -626,7 +591,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 {dpiEnabled &&
                   dpiUnmatched.map((d) => (
                     <div key={`dpi-${d.id}`} className='settings-monitor-row'>
-                      <span className='settings-audio-output-name'>{d.name}</span>
+                      <span className='settings-device-name'>{d.name}</span>
                       {renderDpiDropdown(d)}
                     </div>
                   ))}
@@ -634,8 +599,8 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             </div>
 
             <div className='settings-card settings-card-speakers'>
-              <Tooltip text='Rename, enable, or hide speakers.'>
-                <div className='settings-card-title'>Speakers</div>
+              <Tooltip text='Enable, disable, or hide speakers.'>
+                <div className='section-header'>Speakers</div>
               </Tooltip>
               <div className='settings-monitors-list'>
                 {audioOutputState?.devices.map((device) => (
@@ -652,7 +617,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         size={16}
                       />
                     </span>
-                    <span className='settings-audio-output-name'>{device.name}</span>
+                    <span className='settings-device-name'>{device.name}</span>
                     <Dropdown
                       className='audio-output-state'
                       aria-label={`State for ${device.name}`}
@@ -696,7 +661,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         {activeTab === 'system' && (
           <>
             <div className='settings-card settings-card-startup'>
-              <div className='settings-card-title'>Startup</div>
+              <div className='section-header'>Startup</div>
               <div className='settings-section'>
                 <Tooltip text='Start on sign in.'>
                   <label className='settings-checkbox-row'>
@@ -712,7 +677,20 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             </div>
 
             <div className='settings-card settings-card-wallpaper'>
-              <div className='settings-card-title'>Wallpaper</div>
+              <div className='section-header'>Wallpaper</div>
+              <div className='settings-section'>
+                <Tooltip text='Rotate wallpapers from a folder.'>
+                  <label className='settings-checkbox-row'>
+                    <input
+                      type='checkbox'
+                      checked={prefs.wallpaper?.slideshowEnabled ?? false}
+                      onChange={(e) => updateWallpaper('slideshowEnabled', e.target.checked)}
+                    />
+                    <span>Enable Wallpaper Slideshow</span>
+                  </label>
+                </Tooltip>
+              </div>
+
               <div className='settings-section'>
                 <Tooltip text='How the image fits the screen.'>
                   <label className='settings-label'>Wallpaper Fit</label>
@@ -727,21 +705,6 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                   <option value='center'>Center</option>
                   <option value='tile'>Tile</option>
                 </Dropdown>
-              </div>
-
-              <div className='settings-divider' />
-
-              <div className='settings-section'>
-                <Tooltip text='Rotate wallpapers from a folder.'>
-                  <label className='settings-checkbox-row'>
-                    <input
-                      type='checkbox'
-                      checked={prefs.wallpaper?.slideshowEnabled ?? false}
-                      onChange={(e) => updateWallpaper('slideshowEnabled', e.target.checked)}
-                    />
-                    <span>Enable Wallpaper Slideshow</span>
-                  </label>
-                </Tooltip>
               </div>
 
               {prefs.wallpaper?.slideshowEnabled && (
@@ -855,7 +818,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             </div>
 
             <div className='settings-card settings-card-night'>
-              <div className='settings-card-title'>Night Mode</div>
+              <div className='section-header'>Night Mode</div>
               <div className='settings-section'>
                 <Tooltip text='Auto-switch profiles by time of day.'>
                   <label className='settings-checkbox-row'>
@@ -879,7 +842,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
 
             <div className='settings-card settings-card-profiles'>
               <Tooltip text='What each profile applies. Used by the schedule and Shift+F1 / Shift+F2.'>
-                <div className='settings-card-title'>Profiles</div>
+                <div className='section-header'>Profiles</div>
               </Tooltip>
               {editableProfileIndexes.length > 0 && (
                 <>
@@ -904,7 +867,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         {activeTab === 'tiling' && (
           <>
             <div className='settings-card settings-card-tiling'>
-              <div className='settings-card-title'>Window Tiling</div>
+              <div className='section-header'>Window Tiling</div>
               <div className='settings-section'>
                 <div className='settings-status-row'>
                   <Tooltip text='Shortcuts to move and resize windows.'>
@@ -936,7 +899,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             {tiling?.enabled && (
               <>
                 <div className='settings-card settings-card-snap'>
-                  <div className='settings-card-title'>Tile Snap</div>
+                  <div className='section-header'>Tile Snap</div>
                   <div className='settings-section'>
                     <div className='settings-status-row'>
                       <Tooltip text='Drag to an edge or corner to snap.'>
@@ -1158,7 +1121,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 </div>
 
                 <div className='settings-card settings-card-expose'>
-                  <div className='settings-card-title'>Exposé</div>
+                  <div className='section-header'>Exposé</div>
                   <div className='settings-section'>
                     <Tooltip text='Show all windows in a grid.'>
                       <label className='settings-checkbox-row'>

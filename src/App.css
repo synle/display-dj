@@ -859,10 +859,11 @@ select:focus-visible {
   background: var(--bg-secondary);
 }
 
-.settings-card-title {
+/* Shared heading for a titled settings group. Plain text, not a link. */
+.section-header {
   font-size: var(--font-size-lg);
   font-weight: 700;
-  color: var(--accent);
+  color: var(--text-primary);
 }
 
 .settings-body {
@@ -1051,11 +1052,11 @@ button.settings-status-error {
   margin-bottom: 10px;
 }
 
-.settings-audio-output-name {
+.settings-device-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  color: var(--accent);
+  color: var(--text-primary);
   font-size: var(--font-size-md);
   font-weight: 600;
   text-overflow: ellipsis;

@@ -309,8 +309,8 @@ The zip is downloaded once (max 500 MB), extracted to the config directory, and 
 
 The Settings panel (System tab) has controls for:
 
-- **Wallpaper Fit** -- dropdown for fill/fit/stretch/center/tile
 - **Enable Slideshow** -- checkbox to start/stop
+- **Wallpaper Fit** -- dropdown for fill/fit/stretch/center/tile
 - **Folder** -- path to the image folder
 - **Interval** -- hours + minutes dropdowns (minimum 5 minutes)
 - **Order** -- Forward, Backward, or Random
