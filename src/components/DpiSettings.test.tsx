@@ -137,16 +137,14 @@ describe('DPI settings controls', () => {
   it('explains scaling in the dropdown tooltip', async () => {
     setup(true);
     await screen.findByLabelText('DPI scale for TYPEC');
-    expect(screen.getAllByText(/Higher % = bigger, easier-to-read elements/).length).toBe(2);
+    expect(screen.getAllByText(/Higher % = bigger text/).length).toBe(2);
   });
 
   /** Beta chip shows; the warning lives in the tooltip, band inputs are hidden. */
   it('shows beta chip, tooltip warning, and hides band inputs', () => {
     setup(true);
     expect(screen.getByText('beta')).toHaveClass('beta-chip');
-    expect(screen.getByText(/Beta: changes your OS display scaling/)).toHaveClass(
-      'settings-dpi-beta',
-    );
+    expect(screen.getByText(/Beta: changes OS scaling/)).toHaveClass('settings-dpi-beta');
     expect(screen.getByLabelText('Min % DPI percent').closest('.settings-dpi-range')).toHaveStyle({
       display: 'none',
     });

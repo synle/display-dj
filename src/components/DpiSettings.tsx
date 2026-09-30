@@ -198,10 +198,8 @@ export function DpiOptions({
       <Tooltip
         text={
           <>
-            Change each display’s UI scaling (like System Settings / Display Scale).{' '}
-            <span className='settings-dpi-beta'>
-              Beta: changes your OS display scaling. Apps may relayout or look blurry.
-            </span>
+            Per-display UI scaling.{' '}
+            <span className='settings-dpi-beta'>Beta: changes OS scaling; apps may blur.</span>
           </>
         }>
         <label className='settings-checkbox-row'>
@@ -230,11 +228,7 @@ export function DpiOptions({
 }
 
 /** Hover help for the per-display scale dropdown. */
-export const DPI_TOOLTIP =
-  'Display scaling: how large text, icons, and windows look on this screen. ' +
-  'Higher % = bigger, easier-to-read elements but less fits on screen; ' +
-  'lower % = smaller elements and more workspace. 100% = native pixels ' +
-  '(Retina screens usually default to 200%). Changes apply system-wide immediately.';
+export const DPI_TOOLTIP = 'UI size. Higher % = bigger text, less space. 100% = native.';
 
 interface DpiScaleDropdownProps {
   display: DpiDisplay;

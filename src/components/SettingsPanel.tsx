@@ -380,10 +380,10 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
         {activeTab === 'general' && (
           <>
             <div className='settings-section'>
-              <Tooltip text='Rename, scale, hide, or choose how each monitor is dimmed.'>
+              <Tooltip text='Rename, scale, dim, or hide monitors.'>
                 <label className='settings-label'>Monitors</label>
               </Tooltip>
-              <Tooltip text='Lowest brightness any slider or shortcut can set, so screens never go fully dark.'>
+              <Tooltip text='Brightness floor so screens never go black.'>
                 <div className='settings-subheader'>Min Brightness</div>
               </Tooltip>
               <Slider
@@ -394,7 +394,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 onChange={(v) => updateField('minBrightness', v)}
               />
               <div className='settings-subheader'>Options</div>
-              <Tooltip text='Show a DDC/CI contrast slider for each external monitor.'>
+              <Tooltip text='Contrast slider for external monitors.'>
                 <label className='settings-checkbox-row'>
                   <input
                     type='checkbox'
@@ -506,7 +506,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             <div className='settings-divider' />
 
             <div className='settings-section'>
-              <Tooltip text='Rename or enable/disable/hide each audio output.'>
+              <Tooltip text='Rename, enable, or hide speakers.'>
                 <label className='settings-label'>Speakers</label>
               </Tooltip>
               <div className='settings-monitors-list'>
@@ -537,7 +537,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
 
             {platform === 'windows' && (
               <div className='settings-section'>
-                <Tooltip text='Turn on Windows Loudness Equalization for enabled speakers so quiet and loud audio even out.'>
+                <Tooltip text='Even out quiet and loud audio.'>
                   <label className='settings-checkbox-row'>
                     <input
                       type='checkbox'
@@ -556,7 +556,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             <div className='settings-divider' />
 
             <div className='settings-section'>
-              <Tooltip text='Automatically switch brightness and dark/light mode at set night and day times.'>
+              <Tooltip text='Auto-switch brightness and theme by time.'>
                 <label className='settings-checkbox-row'>
                   <input
                     type='checkbox'
@@ -572,7 +572,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
               <>
                 <div className='settings-section'>
                   <div className='settings-schedule-header'>
-                    <Tooltip text='Time night mode starts and the brightness it applies.'>
+                    <Tooltip text='Night start time and brightness.'>
                       <label className='settings-label'>Night</label>
                     </Tooltip>
                     <input
@@ -593,7 +593,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
 
                 <div className='settings-section'>
                   <div className='settings-schedule-header'>
-                    <Tooltip text='Time day mode starts and the brightness it applies.'>
+                    <Tooltip text='Day start time and brightness.'>
                       <label className='settings-label'>Day</label>
                     </Tooltip>
                     <input
@@ -617,7 +617,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             <div className='settings-divider' />
 
             <div className='settings-section'>
-              <Tooltip text='How the wallpaper image is scaled to fill the screen.'>
+              <Tooltip text='How the image fits the screen.'>
                 <label className='settings-label'>Wallpaper Fit</label>
               </Tooltip>
               <Dropdown
@@ -635,7 +635,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             <div className='settings-divider' />
 
             <div className='settings-section'>
-              <Tooltip text='Rotate the desktop wallpaper through images in a folder.'>
+              <Tooltip text='Rotate wallpapers from a folder.'>
                 <label className='settings-checkbox-row'>
                   <input
                     type='checkbox'
@@ -650,7 +650,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             {prefs.wallpaper?.slideshowEnabled && (
               <>
                 <div className='settings-section'>
-                  <Tooltip text='Folder containing the images to rotate through.'>
+                  <Tooltip text='Image folder.'>
                     <label className='settings-label'>Slideshow Folder</label>
                   </Tooltip>
                   <input
@@ -664,7 +664,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 </div>
 
                 <div className='settings-section'>
-                  <Tooltip text='How long each wallpaper stays before switching.'>
+                  <Tooltip text='Time per wallpaper.'>
                     <label className='settings-label'>Interval</label>
                   </Tooltip>
                   <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
@@ -738,7 +738,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 </div>
 
                 <div className='settings-section'>
-                  <Tooltip text='Order in which slideshow images are shown.'>
+                  <Tooltip text='Image order.'>
                     <label className='settings-label'>Slideshow Order</label>
                   </Tooltip>
                   <Dropdown
@@ -758,7 +758,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
             <div className='settings-divider' />
 
             <div className='settings-section'>
-              <Tooltip text='Start Display DJ automatically when you sign in.'>
+              <Tooltip text='Start on sign in.'>
                 <label className='settings-checkbox-row'>
                   <input
                     type='checkbox'
@@ -776,7 +776,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
           <>
             <div className='settings-section'>
               <div className='settings-status-row'>
-                <Tooltip text='Enable keyboard shortcuts and menu actions that move and resize windows into layouts.'>
+                <Tooltip text='Shortcuts to move and resize windows.'>
                   <label className='settings-checkbox-row'>
                     <input
                       type='checkbox'
@@ -807,7 +807,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
 
                 <div className='settings-section'>
                   <div className='settings-status-row'>
-                    <Tooltip text='Drag a window to a screen edge or corner to snap it into place.'>
+                    <Tooltip text='Drag to an edge or corner to snap.'>
                       <label className='settings-checkbox-row'>
                         <input
                           type='checkbox'
@@ -829,11 +829,11 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
 
                 {tiling.tileSnapEnabled && (
                   <div className='settings-section'>
-                    <Tooltip text='How close (in pixels) the cursor must get to an edge or corner to trigger a snap.'>
+                    <Tooltip text='Snap trigger distance, in pixels.'>
                       <label className='settings-label'>Snap Zones</label>
                     </Tooltip>
                     <div style={{ marginTop: '4px' }}>
-                      <Tooltip text='Trigger distance from the left and right screen edges.'>
+                      <Tooltip text='Left/right edge distance.'>
                         <label className='settings-label'>Side Edge</label>
                       </Tooltip>
                       <Slider
@@ -846,7 +846,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       />
                     </div>
                     <div style={{ marginTop: '4px' }}>
-                      <Tooltip text='Trigger distance from the top screen edge.'>
+                      <Tooltip text='Top edge distance.'>
                         <label className='settings-label'>Top Edge</label>
                       </Tooltip>
                       <Slider
@@ -859,7 +859,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       />
                     </div>
                     <div style={{ marginTop: '4px' }}>
-                      <Tooltip text='Trigger size of each corner zone.'>
+                      <Tooltip text='Corner zone size.'>
                         <label className='settings-label'>Corner</label>
                       </Tooltip>
                       <Slider
@@ -878,7 +878,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         Grouped (edges / corners / bottom row) so the dialog
                         doesn't read as nine flat checkboxes. */}
                     <div style={{ marginTop: '12px' }}>
-                      <Tooltip text='Turn individual snap zones on or off. Disabled zones never trigger.'>
+                      <Tooltip text='Turn snap zones on or off.'>
                         <label className='settings-label'>Zone Visibility</label>
                       </Tooltip>
 
@@ -892,7 +892,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         }}>
                         Edges
                       </div>
-                      <Tooltip text='Drop on the top edge to maximize the window.'>
+                      <Tooltip text='Top edge: maximize.'>
                         <label className='settings-checkbox-row'>
                           <input
                             type='checkbox'
@@ -902,7 +902,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                           <span>Top edge (maximize)</span>
                         </label>
                       </Tooltip>
-                      <Tooltip text='Drop on the left edge to fill the left half.'>
+                      <Tooltip text='Left edge: left half.'>
                         <label className='settings-checkbox-row'>
                           <input
                             type='checkbox'
@@ -912,7 +912,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                           <span>Left edge (left half)</span>
                         </label>
                       </Tooltip>
-                      <Tooltip text='Drop on the right edge to fill the right half.'>
+                      <Tooltip text='Right edge: right half.'>
                         <label className='settings-checkbox-row'>
                           <input
                             type='checkbox'
@@ -933,7 +933,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         }}>
                         Corners
                       </div>
-                      <Tooltip text='Drop in the top-left corner to fill that quarter.'>
+                      <Tooltip text='Top-left quarter.'>
                         <label className='settings-checkbox-row'>
                           <input
                             type='checkbox'
@@ -945,7 +945,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                           <span>Top-left corner</span>
                         </label>
                       </Tooltip>
-                      <Tooltip text='Drop in the top-right corner to fill that quarter.'>
+                      <Tooltip text='Top-right quarter.'>
                         <label className='settings-checkbox-row'>
                           <input
                             type='checkbox'
@@ -957,7 +957,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                           <span>Top-right corner</span>
                         </label>
                       </Tooltip>
-                      <Tooltip text='Drop in the bottom-left corner to fill that quarter.'>
+                      <Tooltip text='Bottom-left quarter.'>
                         <label className='settings-checkbox-row'>
                           <input
                             type='checkbox'
@@ -969,7 +969,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                           <span>Bottom-left corner</span>
                         </label>
                       </Tooltip>
-                      <Tooltip text='Drop in the bottom-right corner to fill that quarter.'>
+                      <Tooltip text='Bottom-right quarter.'>
                         <label className='settings-checkbox-row'>
                           <input
                             type='checkbox'
@@ -992,7 +992,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                         }}>
                         Bottom row
                       </div>
-                      <Tooltip text='Show bottom-edge zones that snap the window to a left, center, or right third.'>
+                      <Tooltip text='Bottom edge: thirds.'>
                         <label className='settings-checkbox-row'>
                           <input
                             type='checkbox'
@@ -1004,7 +1004,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                           <span>1/3 splits (left / center / right thirds)</span>
                         </label>
                       </Tooltip>
-                      <Tooltip text='Show bottom-edge zones that snap the window to the left or right two-thirds.'>
+                      <Tooltip text='Bottom edge: two-thirds.'>
                         <label className='settings-checkbox-row'>
                           <input
                             type='checkbox'
@@ -1023,7 +1023,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                 <div className='settings-divider' />
 
                 <div className='settings-section'>
-                  <Tooltip text='Arrange all open windows into a grid so you can see them at once.'>
+                  <Tooltip text='Show all windows in a grid.'>
                     <label className='settings-checkbox-row'>
                       <input
                         type='checkbox'
@@ -1037,11 +1037,11 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
 
                 {(tiling?.exposeEnabled ?? true) && (
                   <div className='settings-section'>
-                    <Tooltip text='Maximum columns and rows of windows Exposé places on each display.'>
+                    <Tooltip text='Grid size per display.'>
                       <label className='settings-label'>Exposé Grid Size</label>
                     </Tooltip>
                     <div style={{ marginTop: '4px' }}>
-                      <Tooltip text='Windows per row in the Exposé grid.'>
+                      <Tooltip text='Grid columns.'>
                         <label className='settings-label'>Columns</label>
                       </Tooltip>
                       <Slider
@@ -1054,7 +1054,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       />
                     </div>
                     <div style={{ marginTop: '4px' }}>
-                      <Tooltip text='Rows of windows in the Exposé grid.'>
+                      <Tooltip text='Grid rows.'>
                         <label className='settings-label'>Rows</label>
                       </Tooltip>
                       <Slider
@@ -1077,7 +1077,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       screen
                     </span>
                     <div style={{ marginTop: '8px' }}>
-                      <Tooltip text='How Exposé spreads windows across multiple displays.'>
+                      <Tooltip text='How windows spread across displays.'>
                         <label className='settings-label'>Layout Strategy</label>
                       </Tooltip>
                       <Dropdown
@@ -1089,7 +1089,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       </Dropdown>
                     </div>
                     <div style={{ marginTop: '8px' }}>
-                      <Tooltip text='Smallest width a grid cell may be; extra windows overflow to the next display.'>
+                      <Tooltip text='Min cell width; extras overflow.'>
                         <label className='settings-label'>Min Cell Width</label>
                       </Tooltip>
                       <Slider
@@ -1102,7 +1102,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                       />
                     </div>
                     <div style={{ marginTop: '4px' }}>
-                      <Tooltip text='Smallest height a grid cell may be; extra windows overflow to the next display.'>
+                      <Tooltip text='Min cell height; extras overflow.'>
                         <label className='settings-label'>Min Cell Height</label>
                       </Tooltip>
                       <Slider
