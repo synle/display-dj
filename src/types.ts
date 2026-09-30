@@ -221,4 +221,6 @@ export interface DpiDisplay {
   options: number[];
   /** True when any percent works (Linux/xrandr); UI builds options from min/max/step. */
   continuous: boolean;
+  /** PnP hardware ID (e.g. `ACR0D1D`), Windows only; pairs with the `(ACR0D1D)` monitor-name suffix. */
+  hardwareId?: string | null;
 }

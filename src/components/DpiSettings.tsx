@@ -64,8 +64,44 @@ export function dpiOptionsFor(d: DpiDisplay, min: number, max: number, step: num
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /**
- * Finds the DPI display matching a monitor config: exact name, then
- * built-in ↔ built-in, then substring either way. Each DPI display matches once.
+ * Pairs every monitor config with a DPI display. Hardware-ID matches are
+ * claimed first for all rows so a loose name match on an earlier row can't
+ * steal a later row's exact display.
+ *
+ * @returns Map of monitor uid → DPI display, plus the unmatched DPI displays.
+ */
+export function pairDpiDisplays(
+  configs: MonitorMetadata[],
+  displays: DpiDisplay[],
+): { matches: Map<string, DpiDisplay>; unmatched: DpiDisplay[] } {
+  const matches = new Map<string, DpiDisplay>();
+  const taken = new Set<string>();
+  const claim = (meta: MonitorMetadata, d: DpiDisplay | undefined) => {
+    if (!d || matches.has(meta.uid)) return;
+    matches.set(meta.uid, d);
+    taken.add(d.id);
+  };
+  for (const meta of configs) {
+    const apiName = (meta.apiName ?? '').toUpperCase();
+    claim(
+      meta,
+      displays.find(
+        (d) =>
+          !taken.has(d.id) && !!d.hardwareId && apiName.includes(`(${d.hardwareId.toUpperCase()})`),
+      ),
+    );
+  }
+  for (const meta of configs) {
+    if (!matches.has(meta.uid)) claim(meta, matchDpiDisplay(meta, displays, taken));
+  }
+  return { matches, unmatched: displays.filter((d) => !taken.has(d.id)) };
+}
+
+/**
+ * Finds the DPI display matching a monitor config: hardware ID (e.g. the
+ * `ACR0D1D` in `Generic PnP Monitor (ACR0D1D)`), then exact name, then
+ * built-in ↔ built-in, then substring either way. Each DPI display matches once,
+ * so the Settings list dedupes to the same displays as the main screen.
  *
  * @returns The matched display, or undefined.
  */
@@ -77,7 +113,11 @@ export function matchDpiDisplay(
   const free = displays.filter((d) => !taken.has(d.id));
   const names = [meta.apiName, meta.label].filter(Boolean).map(norm);
   const isBuiltin = (d: DpiDisplay) => norm(d.name).includes('builtin');
+  const apiName = (meta.apiName ?? '').toUpperCase();
+  const byHardware = (d: DpiDisplay) =>
+    !!d.hardwareId && apiName.includes(`(${d.hardwareId.toUpperCase()})`);
   return (
+    free.find(byHardware) ??
     free.find((d) => names.includes(norm(d.name))) ??
     (meta.apiId === 'builtin' ? free.find(isBuiltin) : undefined) ??
     free.find(

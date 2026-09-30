@@ -20,7 +20,7 @@ import {
   speakerKind,
   type ProfileSettings,
 } from '../profileSettings';
-import { DpiOptions, DpiScaleDropdown, matchDpiDisplay, useDpiDisplays } from './DpiSettings';
+import { DpiOptions, DpiScaleDropdown, pairDpiDisplays, useDpiDisplays } from './DpiSettings';
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -188,16 +188,7 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   const dpiMax = prefs.dpiMaxPercent ?? 250;
   const dpiStep = prefs.dpiStepPercent ?? 5;
   // Pair each monitor row with its DPI display; leftovers render as DPI-only rows.
-  const dpiMatches = new Map<string, DpiDisplay>();
-  const dpiTaken = new Set<string>();
-  for (const meta of configs) {
-    const match = matchDpiDisplay(meta, dpi.displays, dpiTaken);
-    if (match) {
-      dpiMatches.set(meta.uid, match);
-      dpiTaken.add(match.id);
-    }
-  }
-  const dpiUnmatched = dpi.displays.filter((d) => !dpiTaken.has(d.id));
+  const { matches: dpiMatches, unmatched: dpiUnmatched } = pairDpiDisplays(configs, dpi.displays);
 
   /** DPI scale dropdown for one display, bound to the current band. */
   const renderDpiDropdown = (d: DpiDisplay) => (

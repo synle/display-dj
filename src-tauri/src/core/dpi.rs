@@ -60,6 +60,20 @@ pub struct DpiDisplay {
     /// (Linux/xrandr); the UI then builds options from the user's min/max/step.
     /// macOS (display modes) and Windows (fixed OS steps) are discrete.
     pub continuous: bool,
+    /// PnP hardware ID (e.g. `ACR0D1D`) when the OS exposes one (Windows only).
+    /// Matches the `(ACR0D1D)` suffix on monitor names, so Settings can pair a
+    /// DPI display with its monitor row even when the friendly names differ.
+    pub hardware_id: Option<String>,
+}
+
+/// Extracts the PnP hardware ID from a Windows monitor device path.
+///
+/// `\\?\DISPLAY#ACR0D1D#5&abc&0&UID4352#{guid}` → `Some("ACR0D1D")`.
+///
+/// @returns The upper-cased second `#` segment, or `None` when absent.
+pub fn hardware_id_from_device_path(path: &str) -> Option<String> {
+    let seg = path.split('#').nth(1)?.trim();
+    (!seg.is_empty()).then(|| seg.to_ascii_uppercase())
 }
 
 /// Clamps a user min/max pair into `[DPI_ABSOLUTE_MIN, DPI_ABSOLUTE_MAX]` and
@@ -416,6 +430,7 @@ mod platform {
                     current,
                     options,
                     continuous: false,
+                    hardware_id: None,
                 });
             }
         }
@@ -577,6 +592,23 @@ mod platform {
         (!name.trim().is_empty()).then_some(name)
     }
 
+    /// Reads the target's PnP hardware ID from its monitor device path.
+    fn target_hardware_id(path: &DISPLAYCONFIG_PATH_INFO) -> Option<String> {
+        let mut pkt = DISPLAYCONFIG_TARGET_DEVICE_NAME::default();
+        pkt.header = header(
+            DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME.0,
+            std::mem::size_of::<DISPLAYCONFIG_TARGET_DEVICE_NAME>(),
+            path.targetInfo.adapterId,
+            path.targetInfo.id,
+        );
+        if unsafe { DisplayConfigGetDeviceInfo(&mut pkt.header) } != 0 {
+            return None;
+        }
+        let raw = &pkt.monitorDevicePath;
+        let len = raw.iter().position(|c| *c == 0).unwrap_or(raw.len());
+        super::hardware_id_from_device_path(&String::from_utf16_lossy(&raw[..len]))
+    }
+
     pub fn list_displays() -> Result<Vec<DpiDisplay>, String> {
         let mut out: Vec<DpiDisplay> = Vec::new();
         for (n, path) in active_paths()?.iter().enumerate() {
@@ -606,6 +638,7 @@ mod platform {
                 current: Some(current),
                 options,
                 continuous: false,
+                hardware_id: target_hardware_id(path),
             });
         }
         Ok(out)
@@ -682,6 +715,7 @@ mod platform {
                 name: o.name,
                 options: Vec::new(),
                 continuous: true,
+                hardware_id: None,
             })
             .collect())
     }
@@ -802,6 +836,17 @@ mod tests {
     }
 
     /// Absolute caps reject out-of-band percents before touching the OS.
+    /// Windows device paths yield the PnP ID that suffixes monitor names.
+    #[test]
+    fn hardware_id_from_device_path_extracts_pnp_id() {
+        assert_eq!(
+            hardware_id_from_device_path(r"\\?\DISPLAY#acr0d1d#5&1a2b&0&UID4352#{e6f07b5f}"),
+            Some("ACR0D1D".to_string())
+        );
+        assert_eq!(hardware_id_from_device_path(""), None);
+        assert_eq!(hardware_id_from_device_path("DISPLAY##x"), None);
+    }
+
     #[test]
     fn set_scale_rejects_out_of_band() {
         assert!(set_scale("x", 49).unwrap_err().contains("outside"));

@@ -6,6 +6,7 @@ import {
   DpiOptions,
   DpiScaleDropdown,
   dpiOptionsFor,
+  pairDpiDisplays,
   useDpiDisplays,
   validateDpiRange,
 } from './DpiSettings';
@@ -210,5 +211,45 @@ describe('DPI settings controls', () => {
     mockInvoke.mockRejectedValue('DPI scaling requires an X11 session');
     setup();
     expect(await screen.findByText('DPI scaling requires an X11 session')).toBeInTheDocument();
+  });
+});
+
+/** Pairing DPI displays with monitor rows so Settings dedupes like the main screen. */
+describe('pairDpiDisplays', () => {
+  const meta = (uid: string, apiName: string, label: string) =>
+    ({ uid, apiId: uid.split('::')[0], apiName, label, sortOrder: 0, hidden: false }) as never;
+  const dpi = (id: string, name: string, hardwareId: string | null) => ({
+    id,
+    name,
+    current: 100,
+    options: [100, 125],
+    continuous: false,
+    hardwareId,
+  });
+
+  /** Generic PnP names differ from EDID friendly names; the hardware ID must bridge them. */
+  it('matches by hardware ID when friendly names differ, leaving no DPI-only rows', () => {
+    const configs = [
+      meta('1::Generic PnP Monitor (ACR0D1D)', 'Generic PnP Monitor (ACR0D1D)', 'Left'),
+      meta('2::ViewSonic VX2718-2KPC (VSCB73A)', 'ViewSonic VX2718-2KPC (VSCB73A)', 'Right'),
+    ];
+    const displays = [dpi('a', 'XZ322QU V3', 'ACR0D1D'), dpi('b', 'VX2718-2KPC', 'VSCB73A')];
+    const { matches, unmatched } = pairDpiDisplays(configs, displays);
+    expect(matches.get('1::Generic PnP Monitor (ACR0D1D)')?.id).toBe('a');
+    expect(matches.get('2::ViewSonic VX2718-2KPC (VSCB73A)')?.id).toBe('b');
+    expect(unmatched).toEqual([]);
+  });
+
+  /** A loose name match on an earlier row must not steal a later row's hardware match. */
+  it('claims hardware matches before name fallbacks', () => {
+    const configs = [
+      meta('1::Dell (DEL0001)', 'Dell (DEL0001)', 'Dell'),
+      meta('2::Dell U27 (DEL0002)', 'Dell U27 (DEL0002)', 'Dell U27'),
+    ];
+    const displays = [dpi('x', 'Dell U27', 'DEL0002'), dpi('y', 'Other', null)];
+    const { matches, unmatched } = pairDpiDisplays(configs, displays);
+    expect(matches.get('2::Dell U27 (DEL0002)')?.id).toBe('x');
+    expect(matches.has('1::Dell (DEL0001)')).toBe(false);
+    expect(unmatched.map((d) => d.id)).toEqual(['y']);
   });
 });
