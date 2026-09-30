@@ -5,6 +5,7 @@ import {
   AudioOutputDeviceState,
   AudioOutputState,
   DpiDisplay,
+  Monitor,
   MonitorMetadata,
   NightModeSchedule,
   TilingPreferences,
@@ -81,8 +82,20 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   const saveInFlightRef = useRef(false);
 
   /** Loads editable preferences and exposes failure instead of leaving a blank panel. */
+  /** uids of connected monitors; `null` until loaded (then all configs show). */
+  const [liveUids, setLiveUids] = useState<Set<string> | null>(null);
+
+  /**
+   * Loads monitors first (the backend dedupes moved/stale monitor configs
+   * there), then preferences, so Settings lists the same displays as the main screen.
+   */
   const loadPreferences = useCallback(() => {
-    invoke<Preferences>('get_preferences')
+    invoke<Monitor[]>('get_monitors')
+      .then((ms) =>
+        setLiveUids(Array.isArray(ms) && ms.length > 0 ? new Set(ms.map((m) => m.uid)) : null),
+      )
+      .catch(() => setLiveUids(null))
+      .then(() => invoke<Preferences>('get_preferences'))
       .then((p) => {
         setPrefs({ ...p, minBrightness: Math.max(5, Math.min(100, p.minBrightness)) });
       })
@@ -181,9 +194,9 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
   }
 
   const schedule = prefs.nightModeSchedule;
-  const configs = [...prefs.monitorConfigs].toSorted(
-    (a, b) => a.sortOrder - b.sortOrder || a.uid.localeCompare(b.uid),
-  );
+  const configs = prefs.monitorConfigs
+    .filter((m) => !liveUids || liveUids.has(m.uid))
+    .toSorted((a, b) => a.sortOrder - b.sortOrder || a.uid.localeCompare(b.uid));
   const dpiMin = prefs.dpiMinPercent ?? 60;
   const dpiMax = prefs.dpiMaxPercent ?? 250;
   const dpiStep = prefs.dpiStepPercent ?? 5;

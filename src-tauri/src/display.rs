@@ -417,6 +417,59 @@ fn reconcile_migrated_configs(
     changed
 }
 
+/// Collapses configs for a monitor whose OS id changed between enumerations.
+///
+/// uids are `{id}::{name}`, and ids follow enumeration order, so a reorder
+/// (e.g. after replugging) leaves a stale `1::X` beside a live `2::X`. For each
+/// live monitor, stale configs (uid not live) with the same `api_name` are
+/// folded in: the first stale entry's customizations (label, hidden, sort
+/// order, brightness mode) move onto the live uid unless the live entry
+/// already has a custom label, and every stale duplicate is removed.
+/// Stale configs whose name matches no live monitor are kept (disconnected).
+///
+/// @returns `true` when `configs` changed.
+fn dedupe_moved_configs(
+    monitors: &[Monitor],
+    configs: &mut Vec<crate::config::MonitorMetadata>,
+) -> bool {
+    let live: std::collections::HashSet<&str> = monitors.iter().map(|m| m.uid.as_str()).collect();
+    let mut changed = false;
+    for monitor in monitors {
+        let stale: Vec<usize> = configs
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                !live.contains(c.uid.as_str()) && c.api_name == monitor.original_name
+            })
+            .map(|(i, _)| i)
+            .collect();
+        let Some(&first) = stale.first() else {
+            continue;
+        };
+        let donor = configs[first].clone();
+        match configs.iter_mut().find(|c| c.uid == monitor.uid) {
+            Some(existing) if existing.label.is_empty() => {
+                existing.label = donor.label;
+                existing.hidden = donor.hidden;
+                existing.sort_order = donor.sort_order;
+                existing.brightness_mode = donor.brightness_mode;
+            }
+            Some(_) => {}
+            None => {
+                let mut moved = donor;
+                moved.uid = monitor.uid.clone();
+                moved.api_id = monitor.id.clone();
+                configs.push(moved);
+            }
+        }
+        for i in stale.into_iter().rev() {
+            configs.remove(i);
+        }
+        changed = true;
+    }
+    changed
+}
+
 /// Ensure every detected monitor has a metadata entry in preferences.
 /// New monitors get an entry with empty label (will display api_name).
 fn ensure_metadata_for_monitors(
@@ -484,6 +537,7 @@ pub async fn get_monitors(
     let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
 
     let mut dirty = reconcile_migrated_configs(&monitors, &mut prefs.monitor_configs);
+    dirty |= dedupe_moved_configs(&monitors, &mut prefs.monitor_configs);
     dirty |= ensure_metadata_for_monitors(&monitors, &mut prefs.monitor_configs);
     if dirty {
         crate::config::save_preferences_to_disk(&prefs)?;
@@ -1291,6 +1345,54 @@ mod tests {
         let m = into_monitor(info);
         assert_eq!(m.brightness, 50);
         assert_eq!(m.uid, "2::Unknown");
+    }
+
+    /// Builds a config entry for dedupe tests.
+    fn cfg(uid: &str, name: &str, label: &str, order: i32) -> crate::config::MonitorMetadata {
+        crate::config::MonitorMetadata {
+            uid: uid.into(),
+            api_id: uid.split("::").next().unwrap().into(),
+            api_name: name.into(),
+            label: label.into(),
+            sort_order: order,
+            hidden: false,
+            brightness_mode: crate::config::default_brightness_mode(),
+        }
+    }
+
+    /// Reordered ids leave a stale `1::X` beside a live `2::X`; the label moves over, the stale row goes.
+    #[test]
+    fn test_dedupe_moved_configs_folds_stale_id_into_live_uid() {
+        let monitors = vec![
+            make_monitor("1", "VX2718-2KPC", false),
+            make_monitor("2", "XZ322QU V3", false),
+        ];
+        let mut configs = vec![
+            cfg("1::XZ322QU V3", "XZ322QU V3", "Left", 0),
+            cfg("1::VX2718-2KPC", "VX2718-2KPC", "Right", 1),
+            cfg("2::XZ322QU V3", "XZ322QU V3", "", 2),
+        ];
+        assert!(dedupe_moved_configs(&monitors, &mut configs));
+        let uids: Vec<&str> = configs.iter().map(|c| c.uid.as_str()).collect();
+        assert_eq!(uids, vec!["1::VX2718-2KPC", "2::XZ322QU V3"]);
+        assert_eq!(configs[1].label, "Left");
+        assert_eq!(configs[1].sort_order, 0);
+        assert!(!dedupe_moved_configs(&monitors, &mut configs));
+    }
+
+    /// A stale config with no live entry is re-keyed; disconnected monitors are kept.
+    #[test]
+    fn test_dedupe_moved_configs_rekeys_and_keeps_disconnected() {
+        let monitors = vec![make_monitor("2", "XZ322QU V3", false)];
+        let mut configs = vec![
+            cfg("1::XZ322QU V3", "XZ322QU V3", "Left", 0),
+            cfg("3::Old Panel", "Old Panel", "Gone", 1),
+        ];
+        assert!(dedupe_moved_configs(&monitors, &mut configs));
+        let uids: Vec<&str> = configs.iter().map(|c| c.uid.as_str()).collect();
+        assert_eq!(uids, vec!["3::Old Panel", "2::XZ322QU V3"]);
+        assert_eq!(configs[1].label, "Left");
+        assert_eq!(configs[1].api_id, "2");
     }
 
     #[test]

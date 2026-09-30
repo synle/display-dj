@@ -79,6 +79,7 @@ function setupInvoke(opts: {
   tilingRejects?: boolean;
   accessRejects?: boolean;
   elevationRejects?: boolean;
+  monitors?: { uid: string }[];
 }) {
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((cmd: string) => {
@@ -104,6 +105,7 @@ function setupInvoke(opts: {
     if (cmd === 'get_about_info') {
       return Promise.resolve({ os: opts.platform ?? 'Linux' });
     }
+    if (cmd === 'get_monitors') return Promise.resolve(opts.monitors ?? []);
     if (cmd === 'save_preferences') return Promise.resolve(undefined);
     if (cmd === 'get_audio_output_devices') {
       return Promise.resolve({
@@ -1088,5 +1090,34 @@ describe('SettingsPanel', () => {
     });
     expect(container.firstChild).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Could not load settings');
+  });
+});
+
+/** Settings lists only connected monitors, matching the main screen. */
+describe('SettingsPanel stale monitor configs', () => {
+  it('hides monitor configs whose uid is not connected', async () => {
+    const meta = (uid: string, label: string, sortOrder: number) => ({
+      uid,
+      apiId: uid.split('::')[0],
+      apiName: uid.split('::')[1],
+      label,
+      sortOrder,
+      hidden: false,
+      brightnessMode: 'auto',
+    });
+    setupInvoke({
+      prefs: buildPrefs({
+        monitorConfigs: [
+          meta('1::VX2718-2KPC', 'Right', 0),
+          meta('2::XZ322QU V3', 'Left', 1),
+          meta('9::Stale Panel', 'Stale', 2),
+        ],
+      }),
+      monitors: [{ uid: '1::VX2718-2KPC' }, { uid: '2::XZ322QU V3' }],
+    });
+    render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
+    expect(await screen.findByText('Left')).toBeInTheDocument();
+    expect(screen.getByText('Right')).toBeInTheDocument();
+    expect(screen.queryByText('Stale')).not.toBeInTheDocument();
   });
 });
