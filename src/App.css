@@ -4,6 +4,13 @@
   box-sizing: border-box;
 }
 
+/* Font-size scale: the only three sizes the UI uses. Never hard-code font-size; use a token. */
+:root {
+  --font-size-sm: 10px;
+  --font-size-md: 12px; /* standard body text */
+  --font-size-lg: 14px;
+}
+
 :root,
 [data-theme='dark'] {
   --bg-primary: #1a1a2e;
@@ -48,7 +55,7 @@ body,
   padding: 0;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 13px;
+  font-size: var(--font-size-lg);
   color: var(--text-primary);
   background: transparent;
   user-select: none;
@@ -84,13 +91,13 @@ body,
 }
 
 .header-title {
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .header-version {
-  font-size: 11px;
+  font-size: var(--font-size-md);
   color: var(--text-secondary);
   margin-left: 6px;
   font-weight: 400;
@@ -108,7 +115,7 @@ body,
   cursor: pointer;
   padding: 4px 6px;
   border-radius: 6px;
-  font-size: 16px;
+  font-size: var(--font-size-lg);
   line-height: 1;
   transition: all 0.2s;
   display: flex;
@@ -153,7 +160,7 @@ body,
 }
 
 .monitor-name {
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--accent);
   text-decoration: underline;
@@ -192,7 +199,7 @@ body,
   background: none;
   border: none;
   color: var(--text-secondary);
-  font-size: 8px;
+  font-size: var(--font-size-sm);
   padding: 1px 4px;
   cursor: pointer;
   opacity: 0.4;
@@ -214,7 +221,7 @@ body,
 }
 
 .monitor-name-input {
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--accent);
   background: var(--bg-secondary);
@@ -234,7 +241,7 @@ body,
 }
 
 .slider-icon {
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   width: 24px;
   text-align: center;
   flex-shrink: 0;
@@ -333,7 +340,7 @@ body,
 }
 
 .slider-value {
-  font-size: 11px;
+  font-size: var(--font-size-md);
   color: var(--text-secondary);
   width: 32px;
   text-align: right;
@@ -342,12 +349,12 @@ body,
 
 .slider-value-mixed {
   width: 38px;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
 }
 
 /* Section label */
 .section-label {
-  font-size: 11px;
+  font-size: var(--font-size-md);
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -367,7 +374,7 @@ body,
 
 .section-label-refresh .refresh-icon {
   color: #2eaa4a;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   text-transform: none;
   flex-shrink: 0;
   margin-left: 2px;
@@ -391,7 +398,7 @@ body,
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   line-height: 1;
   transition: all 0.2s;
   display: flex;
@@ -486,7 +493,7 @@ body,
 .audio-output-name {
   flex: 1;
   padding: 3px 0;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   line-height: 1.25;
   min-width: 0;
@@ -510,7 +517,7 @@ body,
 
 .audio-output-name-input {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   min-width: 0;
 }
 
@@ -522,7 +529,7 @@ body,
   color: var(--text-primary);
   padding: 0 10px;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   line-height: 30px;
   cursor: pointer;
   transition:
@@ -557,7 +564,7 @@ body,
   color: var(--text-primary);
   padding: 0 10px;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   transition: border-color 0.15s;
 }
 
@@ -578,7 +585,7 @@ body,
   color: var(--text-secondary);
   padding: 3px 2px;
   font-family: inherit;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   text-decoration: underline;
   text-decoration-color: transparent;
@@ -590,7 +597,7 @@ body,
 
 .audio-output-empty {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-md);
 }
 
 /* Dark mode toggle */
@@ -610,7 +617,7 @@ body,
   padding: 8px 0;
   border: none;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   transition: all 0.2s;
   background: var(--toggle-inactive-bg);
@@ -627,7 +634,7 @@ body,
 }
 
 .dark-mode-btn .icon {
-  font-size: 16px;
+  font-size: var(--font-size-lg);
 }
 
 /* Profile buttons */
@@ -648,7 +655,7 @@ body,
   border: none;
   border-right: 1px solid var(--border);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   transition: all 0.2s;
   background: var(--toggle-inactive-bg);
@@ -697,7 +704,7 @@ body,
   border: none;
   background: none;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   text-align: left;
   cursor: pointer;
@@ -737,7 +744,7 @@ select:focus-visible {
   padding: 8px 0;
   border: none;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   transition: all 0.2s;
   background: var(--toggle-inactive-bg);
@@ -755,7 +762,7 @@ select:focus-visible {
 }
 
 .keep-awake-btn .icon {
-  font-size: 14px;
+  font-size: var(--font-size-lg);
 }
 
 /* Header actions */
@@ -789,7 +796,7 @@ select:focus-visible {
 }
 
 .settings-title {
-  font-size: 13px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -798,7 +805,7 @@ select:focus-visible {
   background: none;
   border: none;
   color: var(--text-secondary);
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
@@ -820,7 +827,7 @@ select:focus-visible {
 .settings-tab {
   flex: 1;
   padding: 8px 0;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--text-secondary);
   background: none;
@@ -853,7 +860,7 @@ select:focus-visible {
 }
 
 .settings-card-title {
-  font-size: 13px;
+  font-size: var(--font-size-lg);
   font-weight: 700;
   color: var(--accent);
 }
@@ -876,7 +883,7 @@ select:focus-visible {
 }
 
 .settings-label {
-  font-size: 11px;
+  font-size: var(--font-size-md);
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -885,7 +892,7 @@ select:focus-visible {
 /* In-section subheader: groups controls inside one section without a divider. */
 .settings-subheader {
   margin: 10px 0 4px;
-  font-size: 11px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--text-secondary);
   opacity: 0.75;
@@ -901,7 +908,7 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   color: var(--text-primary);
   cursor: pointer;
 }
@@ -926,7 +933,7 @@ select:focus-visible {
   background: var(--bg-secondary);
   color: var(--text-primary);
   box-shadow: 0 4px 12px rgb(0 0 0 / 35%);
-  font-size: 11px;
+  font-size: var(--font-size-md);
   font-weight: normal;
   line-height: 1.35;
   text-transform: none;
@@ -962,7 +969,7 @@ select:focus-visible {
   background: none;
   color: #d46600;
   font-family: inherit;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   line-height: 1.35;
   text-align: left;
 }
@@ -984,7 +991,7 @@ button.settings-status-error {
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: var(--font-size-md);
   padding: 3px 6px;
 }
 
@@ -1049,7 +1056,7 @@ button.settings-status-error {
   min-width: 0;
   overflow: hidden;
   color: var(--accent);
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1058,7 +1065,7 @@ button.settings-status-error {
 .monitor-visibility-btn {
   flex-shrink: 0;
   height: 28px;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-secondary);
   background: var(--dropdown-bg);
@@ -1097,7 +1104,7 @@ button.settings-status-error {
   color: #fff;
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: var(--font-size-md);
 }
 
 .about-badge-checking {
@@ -1140,7 +1147,7 @@ button.settings-status-error {
   border: 1px solid var(--border);
   padding: 6px 8px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: var(--font-size-md);
   user-select: all;
   margin-bottom: 8px;
   word-break: break-all;
@@ -1155,13 +1162,13 @@ button.settings-status-error {
 }
 
 .accessibility-gate-title {
-  font-size: 13px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .accessibility-gate-body {
-  font-size: 12px;
+  font-size: var(--font-size-md);
   color: var(--text-secondary);
   line-height: 1.5;
 }
@@ -1169,7 +1176,7 @@ button.settings-status-error {
 .accessibility-gate-steps {
   margin: 0;
   padding-left: 20px;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   color: var(--text-secondary);
   line-height: 1.6;
 }
@@ -1185,7 +1192,7 @@ button.settings-status-error {
 .accessibility-gate-button-secondary {
   width: 100%;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   border-radius: 6px;
   cursor: pointer;
@@ -1218,7 +1225,7 @@ button.settings-status-error {
 }
 
 .accessibility-gate-hint {
-  font-size: 11px;
+  font-size: var(--font-size-md);
   color: #e67700;
   margin-top: 4px;
 }
@@ -1252,7 +1259,7 @@ button.settings-status-error {
   margin-left: 6px;
   padding: 1px 6px;
   border-radius: 8px;
-  font-size: 10px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   text-transform: uppercase;
   color: #e8871e;
@@ -1263,7 +1270,7 @@ button.settings-status-error {
   display: flex;
   gap: 12px;
   margin-top: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-lg);
 }
 
 .settings-dpi-range label {
@@ -1282,7 +1289,7 @@ button.settings-status-error {
   color: var(--text-primary);
   padding: 0 8px;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-md);
 }
 
 .settings-dpi-input:focus {
@@ -1297,6 +1304,6 @@ button.settings-status-error {
 
 .settings-dpi-error {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   color: #d93025;
 }
