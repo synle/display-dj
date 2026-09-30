@@ -911,6 +911,22 @@ describe('SettingsPanel', () => {
     );
   });
 
+  /** System tab groups Startup, Wallpaper, then Night Mode as separate cards; selected tab is marked. */
+  it('orders System tab cards Startup, Wallpaper, Night Mode', async () => {
+    setupInvoke({});
+    const user = userEvent.setup();
+    const { container } = render(
+      <SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />,
+    );
+    await screen.findByText('Settings');
+    await user.click(screen.getByRole('button', { name: 'System' }));
+    expect(screen.getByRole('button', { name: 'System' })).toHaveClass('settings-tab-active');
+    const titles = [...container.querySelectorAll('.settings-card-title')].map(
+      (el) => el.textContent,
+    );
+    expect(titles).toEqual(['Startup', 'Wallpaper', 'Night Mode']);
+  });
+
   it('hides Loudness Equalization toggle off Windows', async () => {
     setupInvoke({ platform: 'macOS' });
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);

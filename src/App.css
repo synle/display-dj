@@ -812,8 +812,9 @@ select:focus-visible {
 
 .settings-tabs {
   display: flex;
+  gap: 4px;
   border-bottom: 1px solid var(--border);
-  padding: 0 16px;
+  padding: 6px 16px;
 }
 
 .settings-tab {
@@ -824,7 +825,7 @@ select:focus-visible {
   color: var(--text-secondary);
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-radius: 6px;
   cursor: pointer;
   text-align: center;
 }
@@ -833,9 +834,28 @@ select:focus-visible {
   color: var(--text-primary);
 }
 
-.settings-tab-active {
+.settings-tab-active,
+.settings-tab-active:hover {
+  color: var(--bg-primary);
+  background: var(--accent);
+}
+
+/* Grouped block on the System tab: bordered card with an accent title. */
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.settings-card-title {
+  font-size: 13px;
+  font-weight: 700;
   color: var(--accent);
-  border-bottom-color: var(--accent);
 }
 
 .settings-body {

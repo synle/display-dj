@@ -685,187 +685,193 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
 
         {activeTab === 'system' && (
           <>
-            <div className='settings-section'>
-              <Tooltip text='Auto-switch profiles by time of day.'>
-                <label className='settings-checkbox-row'>
-                  <input
-                    type='checkbox'
-                    checked={schedule.enabled}
-                    onChange={(e) => updateSchedule('enabled', e.target.checked)}
-                  />
-                  <span>Night Mode Schedule</span>
-                </label>
-              </Tooltip>
+            <div className='settings-card settings-card-startup'>
+              <div className='settings-card-title'>Startup</div>
+              <div className='settings-section'>
+                <Tooltip text='Start on sign in.'>
+                  <label className='settings-checkbox-row'>
+                    <input
+                      type='checkbox'
+                      checked={prefs.launchAtLogin}
+                      onChange={(e) => updateField('launchAtLogin', e.target.checked)}
+                    />
+                    <span>Launch at Login</span>
+                  </label>
+                </Tooltip>
+              </div>
             </div>
 
-            {schedule.enabled && (
-              <>
-                {renderScheduleRow('Night', 'nightStart', 'nightProfile')}
-                {renderScheduleRow('Day', 'dayStart', 'dayProfile')}
-              </>
-            )}
+            <div className='settings-card settings-card-wallpaper'>
+              <div className='settings-card-title'>Wallpaper</div>
+              <div className='settings-section'>
+                <Tooltip text='How the image fits the screen.'>
+                  <label className='settings-label'>Wallpaper Fit</label>
+                </Tooltip>
+                <Dropdown
+                  className='settings-dropdown'
+                  value={prefs.wallpaper?.fit ?? 'fill'}
+                  onChange={(e) => updateWallpaper('fit', e.target.value)}>
+                  <option value='fill'>Fill Screen</option>
+                  <option value='fit'>Fit to Screen</option>
+                  <option value='stretch'>Stretch</option>
+                  <option value='center'>Center</option>
+                  <option value='tile'>Tile</option>
+                </Dropdown>
+              </div>
 
-            <div className='settings-section'>
-              <Tooltip text='What each profile applies. Also used by Shift+F1 / Shift+F2.'>
-                <label className='settings-label'>Profiles</label>
-              </Tooltip>
-              {editableProfileIndexes.map((idx) => renderProfileEditor(idx))}
-            </div>
+              <div className='settings-divider' />
 
-            <div className='settings-divider' />
+              <div className='settings-section'>
+                <Tooltip text='Rotate wallpapers from a folder.'>
+                  <label className='settings-checkbox-row'>
+                    <input
+                      type='checkbox'
+                      checked={prefs.wallpaper?.slideshowEnabled ?? false}
+                      onChange={(e) => updateWallpaper('slideshowEnabled', e.target.checked)}
+                    />
+                    <span>Enable Wallpaper Slideshow</span>
+                  </label>
+                </Tooltip>
+              </div>
 
-            <div className='settings-section'>
-              <Tooltip text='How the image fits the screen.'>
-                <label className='settings-label'>Wallpaper Fit</label>
-              </Tooltip>
-              <Dropdown
-                className='settings-dropdown'
-                value={prefs.wallpaper?.fit ?? 'fill'}
-                onChange={(e) => updateWallpaper('fit', e.target.value)}>
-                <option value='fill'>Fill Screen</option>
-                <option value='fit'>Fit to Screen</option>
-                <option value='stretch'>Stretch</option>
-                <option value='center'>Center</option>
-                <option value='tile'>Tile</option>
-              </Dropdown>
-            </div>
-
-            <div className='settings-divider' />
-
-            <div className='settings-section'>
-              <Tooltip text='Rotate wallpapers from a folder.'>
-                <label className='settings-checkbox-row'>
-                  <input
-                    type='checkbox'
-                    checked={prefs.wallpaper?.slideshowEnabled ?? false}
-                    onChange={(e) => updateWallpaper('slideshowEnabled', e.target.checked)}
-                  />
-                  <span>Enable Wallpaper Slideshow</span>
-                </label>
-              </Tooltip>
-            </div>
-
-            {prefs.wallpaper?.slideshowEnabled && (
-              <>
-                <div className='settings-section'>
-                  <Tooltip text='Image folder.'>
-                    <label className='settings-label'>Slideshow Folder</label>
-                  </Tooltip>
-                  <input
-                    type='text'
-                    value={prefs.wallpaper?.slideshowFolder ?? ''}
-                    placeholder='/path/to/wallpapers'
-                    className='settings-text-input'
-                    spellCheck={false}
-                    onChange={(e) => updateWallpaper('slideshowFolder', e.target.value || null)}
-                  />
-                </div>
-
-                <div className='settings-section'>
-                  <Tooltip text='Time per wallpaper.'>
-                    <label className='settings-label'>Interval</label>
-                  </Tooltip>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                    <div style={{ flex: 1 }}>
-                      <label className='settings-label'>Hours</label>
-                      <Dropdown
-                        className='settings-dropdown'
-                        value={intervalHours}
-                        onChange={(e) =>
-                          updateSlideshowInterval(
-                            parseInt(e.target.value),
-                            intervalMinutes,
-                            intervalSeconds,
-                          )
-                        }>
-                        {Array.from({ length: 25 }, (_, i) => (
-                          <option key={i} value={i}>
-                            {i}h
-                          </option>
-                        ))}
-                      </Dropdown>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label className='settings-label'>Minutes</label>
-                      <Dropdown
-                        className='settings-dropdown'
-                        value={intervalMinutes}
-                        onChange={(e) =>
-                          updateSlideshowInterval(
-                            intervalHours,
-                            parseInt(e.target.value),
-                            intervalSeconds,
-                          )
-                        }>
-                        {withCurrent(SLIDESHOW_MINUTE_OPTIONS, intervalMinutes).map((m) => (
-                          <option key={m} value={m}>
-                            {m}m
-                          </option>
-                        ))}
-                      </Dropdown>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label className='settings-label'>Seconds</label>
-                      <Dropdown
-                        className='settings-dropdown'
-                        value={intervalSeconds}
-                        onChange={(e) =>
-                          updateSlideshowInterval(
-                            intervalHours,
-                            intervalMinutes,
-                            parseInt(e.target.value),
-                          )
-                        }>
-                        {withCurrent(SLIDESHOW_SECOND_OPTIONS, intervalSeconds).map((sec) => (
-                          <option key={sec} value={sec}>
-                            {sec}s
-                          </option>
-                        ))}
-                      </Dropdown>
-                    </div>
+              {prefs.wallpaper?.slideshowEnabled && (
+                <>
+                  <div className='settings-section'>
+                    <Tooltip text='Image folder.'>
+                      <label className='settings-label'>Slideshow Folder</label>
+                    </Tooltip>
+                    <input
+                      type='text'
+                      value={prefs.wallpaper?.slideshowFolder ?? ''}
+                      placeholder='/path/to/wallpapers'
+                      className='settings-text-input'
+                      spellCheck={false}
+                      onChange={(e) => updateWallpaper('slideshowFolder', e.target.value || null)}
+                    />
                   </div>
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      color: '#666',
-                      marginTop: '2px',
-                      display: 'block',
-                    }}>
-                    Changes every {formatInterval(intervalHours, intervalMinutes, intervalSeconds)}
-                  </span>
-                </div>
 
-                <div className='settings-section'>
-                  <Tooltip text='Image order.'>
-                    <label className='settings-label'>Slideshow Order</label>
-                  </Tooltip>
-                  <Dropdown
-                    className='settings-dropdown'
-                    value={prefs.wallpaper?.slideshowOrder ?? 'forward'}
-                    onChange={(e) => updateWallpaper('slideshowOrder', e.target.value)}>
-                    <option value='forward'>File name (A → Z)</option>
-                    <option value='backward'>File name (Z → A)</option>
-                    <option value='oldest'>Date modified (oldest first)</option>
-                    <option value='newest'>Date modified (newest first)</option>
-                    <option value='random'>Shuffle</option>
-                  </Dropdown>
-                </div>
-              </>
-            )}
+                  <div className='settings-section'>
+                    <Tooltip text='Time per wallpaper.'>
+                      <label className='settings-label'>Interval</label>
+                    </Tooltip>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                      <div style={{ flex: 1 }}>
+                        <label className='settings-label'>Hours</label>
+                        <Dropdown
+                          className='settings-dropdown'
+                          value={intervalHours}
+                          onChange={(e) =>
+                            updateSlideshowInterval(
+                              parseInt(e.target.value),
+                              intervalMinutes,
+                              intervalSeconds,
+                            )
+                          }>
+                          {Array.from({ length: 25 }, (_, i) => (
+                            <option key={i} value={i}>
+                              {i}h
+                            </option>
+                          ))}
+                        </Dropdown>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label className='settings-label'>Minutes</label>
+                        <Dropdown
+                          className='settings-dropdown'
+                          value={intervalMinutes}
+                          onChange={(e) =>
+                            updateSlideshowInterval(
+                              intervalHours,
+                              parseInt(e.target.value),
+                              intervalSeconds,
+                            )
+                          }>
+                          {withCurrent(SLIDESHOW_MINUTE_OPTIONS, intervalMinutes).map((m) => (
+                            <option key={m} value={m}>
+                              {m}m
+                            </option>
+                          ))}
+                        </Dropdown>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label className='settings-label'>Seconds</label>
+                        <Dropdown
+                          className='settings-dropdown'
+                          value={intervalSeconds}
+                          onChange={(e) =>
+                            updateSlideshowInterval(
+                              intervalHours,
+                              intervalMinutes,
+                              parseInt(e.target.value),
+                            )
+                          }>
+                          {withCurrent(SLIDESHOW_SECOND_OPTIONS, intervalSeconds).map((sec) => (
+                            <option key={sec} value={sec}>
+                              {sec}s
+                            </option>
+                          ))}
+                        </Dropdown>
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        color: '#666',
+                        marginTop: '2px',
+                        display: 'block',
+                      }}>
+                      Changes every{' '}
+                      {formatInterval(intervalHours, intervalMinutes, intervalSeconds)}
+                    </span>
+                  </div>
 
-            <div className='settings-divider' />
+                  <div className='settings-section'>
+                    <Tooltip text='Image order.'>
+                      <label className='settings-label'>Slideshow Order</label>
+                    </Tooltip>
+                    <Dropdown
+                      className='settings-dropdown'
+                      value={prefs.wallpaper?.slideshowOrder ?? 'forward'}
+                      onChange={(e) => updateWallpaper('slideshowOrder', e.target.value)}>
+                      <option value='forward'>File name (A → Z)</option>
+                      <option value='backward'>File name (Z → A)</option>
+                      <option value='oldest'>Date modified (oldest first)</option>
+                      <option value='newest'>Date modified (newest first)</option>
+                      <option value='random'>Shuffle</option>
+                    </Dropdown>
+                  </div>
+                </>
+              )}
+            </div>
 
-            <div className='settings-section'>
-              <Tooltip text='Start on sign in.'>
-                <label className='settings-checkbox-row'>
-                  <input
-                    type='checkbox'
-                    checked={prefs.launchAtLogin}
-                    onChange={(e) => updateField('launchAtLogin', e.target.checked)}
-                  />
-                  <span>Launch at Login</span>
-                </label>
-              </Tooltip>
+            <div className='settings-card settings-card-night'>
+              <div className='settings-card-title'>Night Mode</div>
+              <div className='settings-section'>
+                <Tooltip text='Auto-switch profiles by time of day.'>
+                  <label className='settings-checkbox-row'>
+                    <input
+                      type='checkbox'
+                      checked={schedule.enabled}
+                      onChange={(e) => updateSchedule('enabled', e.target.checked)}
+                    />
+                    <span>Night Mode Schedule</span>
+                  </label>
+                </Tooltip>
+              </div>
+
+              {schedule.enabled && (
+                <>
+                  {renderScheduleRow('Night', 'nightStart', 'nightProfile')}
+                  {renderScheduleRow('Day', 'dayStart', 'dayProfile')}
+                </>
+              )}
+
+              <div className='settings-section'>
+                <Tooltip text='What each profile applies. Also used by Shift+F1 / Shift+F2.'>
+                  <label className='settings-label'>Profiles</label>
+                </Tooltip>
+                {editableProfileIndexes.map((idx) => renderProfileEditor(idx))}
+              </div>
             </div>
           </>
         )}
