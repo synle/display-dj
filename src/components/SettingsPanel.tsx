@@ -278,13 +278,14 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
     });
   };
 
-  // Profiles the schedule points at (night first), deduped; unknown names are skipped.
+  // Day profile, then night profile, then every other profile (e.g. Presentation); deduped.
   const editableProfileIndexes = [
-    ...new Set(
-      [schedule.nightProfile || 'Focus', schedule.dayProfile || 'Daylight']
+    ...new Set([
+      ...[schedule.dayProfile || 'Daylight', schedule.nightProfile || 'Focus']
         .map((name) => prefs.profiles.findIndex((p) => p.name.toLowerCase() === name.toLowerCase()))
         .filter((idx) => idx >= 0),
-    ),
+      ...prefs.profiles.map((_, i) => i),
+    ]),
   ];
 
   /**
@@ -494,9 +495,9 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
       <div className='settings-body'>
         {activeTab === 'general' && (
           <>
-            <div className='settings-section'>
+            <div className='settings-card settings-card-monitors'>
               <Tooltip text='Rename, scale, dim, or hide monitors.'>
-                <label className='settings-label'>Monitors</label>
+                <div className='settings-card-title'>Monitors</div>
               </Tooltip>
               <Tooltip text='Brightness floor so screens never go black.'>
                 <div className='settings-subheader'>Min Brightness</div>
@@ -621,11 +622,9 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
               </div>
             </div>
 
-            <div className='settings-divider' />
-
-            <div className='settings-section'>
+            <div className='settings-card settings-card-speakers'>
               <Tooltip text='Rename, enable, or hide speakers.'>
-                <label className='settings-label'>Speakers</label>
+                <div className='settings-card-title'>Speakers</div>
               </Tooltip>
               <div className='settings-monitors-list'>
                 {audioOutputState?.devices.map((device) => (
@@ -661,25 +660,25 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                   </div>
                 ))}
               </div>
-            </div>
 
-            {platform === 'windows' && (
-              <div className='settings-section'>
-                <Tooltip text='Even out quiet and loud audio. Windows only.'>
-                  <label className='settings-checkbox-row'>
-                    <input
-                      type='checkbox'
-                      checked={prefs.loudnessEqualizationPreferred ?? true}
-                      onChange={(e) =>
-                        updateField('loudnessEqualizationPreferred', e.target.checked)
-                      }
-                    />
-                    <span>Prefer Loudness Equalization</span>
-                    <span className='beta-chip platform-chip'>Windows</span>
-                  </label>
-                </Tooltip>
-              </div>
-            )}
+              {platform === 'windows' && (
+                <div className='settings-section'>
+                  <Tooltip text='Even out quiet and loud audio. Windows only.'>
+                    <label className='settings-checkbox-row'>
+                      <input
+                        type='checkbox'
+                        checked={prefs.loudnessEqualizationPreferred ?? true}
+                        onChange={(e) =>
+                          updateField('loudnessEqualizationPreferred', e.target.checked)
+                        }
+                      />
+                      <span>Prefer Loudness Equalization</span>
+                      <span className='beta-chip platform-chip'>Windows</span>
+                    </label>
+                  </Tooltip>
+                </div>
+              )}
+            </div>
           </>
         )}
 
@@ -865,370 +864,379 @@ export default function SettingsPanel({ onClose, onPreferencesSaved }: SettingsP
                   {renderScheduleRow('Day', 'dayStart', 'dayProfile')}
                 </>
               )}
+            </div>
 
-              <div className='settings-section'>
-                <Tooltip text='What each profile applies. Also used by Shift+F1 / Shift+F2.'>
-                  <label className='settings-label'>Profiles</label>
-                </Tooltip>
-                {editableProfileIndexes.map((idx) => renderProfileEditor(idx))}
-              </div>
+            <div className='settings-card settings-card-profiles'>
+              <Tooltip text='What each profile applies. Used by the schedule and Shift+F1 / Shift+F2.'>
+                <div className='settings-card-title'>Profiles</div>
+              </Tooltip>
+              {editableProfileIndexes.map((idx) => renderProfileEditor(idx))}
             </div>
           </>
         )}
 
         {activeTab === 'tiling' && (
           <>
-            <div className='settings-section'>
-              <div className='settings-status-row'>
-                <Tooltip text='Shortcuts to move and resize windows.'>
-                  <label className='settings-checkbox-row'>
-                    <input
-                      type='checkbox'
-                      checked={tiling?.enabled ?? true}
-                      onChange={(e) => updateTiling('enabled', e.target.checked)}
-                    />
-                    <span>Enable Window Tiling</span>
-                  </label>
-                </Tooltip>
-              </div>
-              {platform === 'macos' && !accessibilityTrusted && (
-                <button
-                  className='settings-status-error'
-                  onClick={() => invoke('open_accessibility_settings')}>
-                  Accessibility permission required. Open Settings
-                </button>
-              )}
-              {platform === 'windows' && windowsElevated === false && (
-                <div className='settings-status-error' role='status'>
-                  Not running as administrator; elevated windows cannot be resized.
+            <div className='settings-card settings-card-tiling'>
+              <div className='settings-card-title'>Window Tiling</div>
+              <div className='settings-section'>
+                <div className='settings-status-row'>
+                  <Tooltip text='Shortcuts to move and resize windows.'>
+                    <label className='settings-checkbox-row'>
+                      <input
+                        type='checkbox'
+                        checked={tiling?.enabled ?? true}
+                        onChange={(e) => updateTiling('enabled', e.target.checked)}
+                      />
+                      <span>Enable Window Tiling</span>
+                    </label>
+                  </Tooltip>
                 </div>
-              )}
+                {platform === 'macos' && !accessibilityTrusted && (
+                  <button
+                    className='settings-status-error'
+                    onClick={() => invoke('open_accessibility_settings')}>
+                    Accessibility permission required. Open Settings
+                  </button>
+                )}
+                {platform === 'windows' && windowsElevated === false && (
+                  <div className='settings-status-error' role='status'>
+                    Not running as administrator; elevated windows cannot be resized.
+                  </div>
+                )}
+              </div>
             </div>
 
             {tiling?.enabled && (
               <>
-                <div className='settings-divider' />
-
-                <div className='settings-section'>
-                  <div className='settings-status-row'>
-                    <Tooltip text='Drag to an edge or corner to snap.'>
-                      <label className='settings-checkbox-row'>
-                        <input
-                          type='checkbox'
-                          checked={tiling.tileSnapEnabled}
-                          onChange={(e) => updateTiling('tileSnapEnabled', e.target.checked)}
-                        />
-                        <span>Enable Tile Snap (drag to edge)</span>
-                      </label>
-                    </Tooltip>
-                  </div>
-                  {platform === 'windows' && windowsSnapEnabled === true && (
-                    <button
-                      className='settings-status-error'
-                      onClick={() => invoke('open_windows_multitasking_settings')}>
-                      Windows Snap may interfere. Open Multitasking Settings
-                    </button>
-                  )}
-                </div>
-
-                {tiling.tileSnapEnabled && (
+                <div className='settings-card settings-card-snap'>
+                  <div className='settings-card-title'>Tile Snap</div>
                   <div className='settings-section'>
-                    <Tooltip text='Snap trigger distance, in pixels.'>
-                      <label className='settings-label'>Snap Zones</label>
-                    </Tooltip>
-                    <div style={{ marginTop: '4px' }}>
-                      <Tooltip text='Left/right edge distance.'>
-                        <label className='settings-label'>Side Edge</label>
+                    <div className='settings-status-row'>
+                      <Tooltip text='Drag to an edge or corner to snap.'>
+                        <label className='settings-checkbox-row'>
+                          <input
+                            type='checkbox'
+                            checked={tiling.tileSnapEnabled}
+                            onChange={(e) => updateTiling('tileSnapEnabled', e.target.checked)}
+                          />
+                          <span>Enable Tile Snap (drag to edge)</span>
+                        </label>
                       </Tooltip>
-                      <Slider
-                        label='Side edge trigger'
-                        value={tiling?.sideEdgeTrigger ?? 18}
-                        min={5}
-                        max={50}
-                        unit='px'
-                        onChange={(v) => updateTiling('sideEdgeTrigger', v)}
-                      />
                     </div>
-                    <div style={{ marginTop: '4px' }}>
-                      <Tooltip text='Top edge distance.'>
-                        <label className='settings-label'>Top Edge</label>
-                      </Tooltip>
-                      <Slider
-                        label='Top edge trigger'
-                        value={tiling?.topEdgeTrigger ?? 18}
-                        min={10}
-                        max={50}
-                        unit='px'
-                        onChange={(v) => updateTiling('topEdgeTrigger', v)}
-                      />
-                    </div>
-                    <div style={{ marginTop: '4px' }}>
-                      <Tooltip text='Corner zone size.'>
-                        <label className='settings-label'>Corner</label>
-                      </Tooltip>
-                      <Slider
-                        label='Corner trigger'
-                        value={tiling?.cornerTrigger ?? 30}
-                        min={25}
-                        max={150}
-                        unit='px'
-                        onChange={(v) => updateTiling('cornerTrigger', v)}
-                      />
-                    </div>
+                    {platform === 'windows' && windowsSnapEnabled === true && (
+                      <button
+                        className='settings-status-error'
+                        onClick={() => invoke('open_windows_multitasking_settings')}>
+                        Windows Snap may interfere. Open Multitasking Settings
+                      </button>
+                    )}
+                  </div>
 
-                    {/* Per-zone visibility toggles. Each checkbox disables both
+                  {tiling.tileSnapEnabled && (
+                    <div className='settings-section'>
+                      <Tooltip text='Snap trigger distance, in pixels.'>
+                        <label className='settings-label'>Snap Zones</label>
+                      </Tooltip>
+                      <div style={{ marginTop: '4px' }}>
+                        <Tooltip text='Left/right edge distance.'>
+                          <label className='settings-label'>Side Edge</label>
+                        </Tooltip>
+                        <Slider
+                          label='Side edge trigger'
+                          value={tiling?.sideEdgeTrigger ?? 18}
+                          min={5}
+                          max={50}
+                          unit='px'
+                          onChange={(v) => updateTiling('sideEdgeTrigger', v)}
+                        />
+                      </div>
+                      <div style={{ marginTop: '4px' }}>
+                        <Tooltip text='Top edge distance.'>
+                          <label className='settings-label'>Top Edge</label>
+                        </Tooltip>
+                        <Slider
+                          label='Top edge trigger'
+                          value={tiling?.topEdgeTrigger ?? 18}
+                          min={10}
+                          max={50}
+                          unit='px'
+                          onChange={(v) => updateTiling('topEdgeTrigger', v)}
+                        />
+                      </div>
+                      <div style={{ marginTop: '4px' }}>
+                        <Tooltip text='Corner zone size.'>
+                          <label className='settings-label'>Corner</label>
+                        </Tooltip>
+                        <Slider
+                          label='Corner trigger'
+                          value={tiling?.cornerTrigger ?? 30}
+                          min={25}
+                          max={150}
+                          unit='px'
+                          onChange={(v) => updateTiling('cornerTrigger', v)}
+                        />
+                      </div>
+
+                      {/* Per-zone visibility toggles. Each checkbox disables both
                         the drawn drop-zone indicator AND the cursor hit-test
                         for that zone, so a disabled zone is truly inert.
                         Grouped (edges / corners / bottom row) so the dialog
                         doesn't read as nine flat checkboxes. */}
-                    <div style={{ marginTop: '12px' }}>
-                      <Tooltip text='Turn snap zones on or off.'>
-                        <label className='settings-label'>Zone Visibility</label>
-                      </Tooltip>
+                      <div style={{ marginTop: '12px' }}>
+                        <Tooltip text='Turn snap zones on or off.'>
+                          <label className='settings-label'>Zone Visibility</label>
+                        </Tooltip>
 
-                      <div
-                        style={{
-                          marginTop: '6px',
-                          fontSize: '11px',
-                          opacity: 0.7,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.04em',
-                        }}>
-                        Edges
-                      </div>
-                      <Tooltip text='Top edge: maximize.'>
-                        <label className='settings-checkbox-row'>
-                          <input
-                            type='checkbox'
-                            checked={tiling?.snapTopEdgeEnabled ?? true}
-                            onChange={(e) => updateTiling('snapTopEdgeEnabled', e.target.checked)}
-                          />
-                          <span>Top edge (maximize)</span>
-                        </label>
-                      </Tooltip>
-                      <Tooltip text='Left edge: left half.'>
-                        <label className='settings-checkbox-row'>
-                          <input
-                            type='checkbox'
-                            checked={tiling?.snapLeftEdgeEnabled ?? true}
-                            onChange={(e) => updateTiling('snapLeftEdgeEnabled', e.target.checked)}
-                          />
-                          <span>Left edge (left half)</span>
-                        </label>
-                      </Tooltip>
-                      <Tooltip text='Right edge: right half.'>
-                        <label className='settings-checkbox-row'>
-                          <input
-                            type='checkbox'
-                            checked={tiling?.snapRightEdgeEnabled ?? true}
-                            onChange={(e) => updateTiling('snapRightEdgeEnabled', e.target.checked)}
-                          />
-                          <span>Right edge (right half)</span>
-                        </label>
-                      </Tooltip>
+                        <div
+                          style={{
+                            marginTop: '6px',
+                            fontSize: '11px',
+                            opacity: 0.7,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                          }}>
+                          Edges
+                        </div>
+                        <Tooltip text='Top edge: maximize.'>
+                          <label className='settings-checkbox-row'>
+                            <input
+                              type='checkbox'
+                              checked={tiling?.snapTopEdgeEnabled ?? true}
+                              onChange={(e) => updateTiling('snapTopEdgeEnabled', e.target.checked)}
+                            />
+                            <span>Top edge (maximize)</span>
+                          </label>
+                        </Tooltip>
+                        <Tooltip text='Left edge: left half.'>
+                          <label className='settings-checkbox-row'>
+                            <input
+                              type='checkbox'
+                              checked={tiling?.snapLeftEdgeEnabled ?? true}
+                              onChange={(e) =>
+                                updateTiling('snapLeftEdgeEnabled', e.target.checked)
+                              }
+                            />
+                            <span>Left edge (left half)</span>
+                          </label>
+                        </Tooltip>
+                        <Tooltip text='Right edge: right half.'>
+                          <label className='settings-checkbox-row'>
+                            <input
+                              type='checkbox'
+                              checked={tiling?.snapRightEdgeEnabled ?? true}
+                              onChange={(e) =>
+                                updateTiling('snapRightEdgeEnabled', e.target.checked)
+                              }
+                            />
+                            <span>Right edge (right half)</span>
+                          </label>
+                        </Tooltip>
 
-                      <div
-                        style={{
-                          marginTop: '8px',
-                          fontSize: '11px',
-                          opacity: 0.7,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.04em',
-                        }}>
-                        Corners
-                      </div>
-                      <Tooltip text='Top-left quarter.'>
-                        <label className='settings-checkbox-row'>
-                          <input
-                            type='checkbox'
-                            checked={tiling?.snapTopLeftCornerEnabled ?? true}
-                            onChange={(e) =>
-                              updateTiling('snapTopLeftCornerEnabled', e.target.checked)
-                            }
-                          />
-                          <span>Top-left corner</span>
-                        </label>
-                      </Tooltip>
-                      <Tooltip text='Top-right quarter.'>
-                        <label className='settings-checkbox-row'>
-                          <input
-                            type='checkbox'
-                            checked={tiling?.snapTopRightCornerEnabled ?? true}
-                            onChange={(e) =>
-                              updateTiling('snapTopRightCornerEnabled', e.target.checked)
-                            }
-                          />
-                          <span>Top-right corner</span>
-                        </label>
-                      </Tooltip>
-                      <Tooltip text='Bottom-left quarter.'>
-                        <label className='settings-checkbox-row'>
-                          <input
-                            type='checkbox'
-                            checked={tiling?.snapBottomLeftCornerEnabled ?? true}
-                            onChange={(e) =>
-                              updateTiling('snapBottomLeftCornerEnabled', e.target.checked)
-                            }
-                          />
-                          <span>Bottom-left corner</span>
-                        </label>
-                      </Tooltip>
-                      <Tooltip text='Bottom-right quarter.'>
-                        <label className='settings-checkbox-row'>
-                          <input
-                            type='checkbox'
-                            checked={tiling?.snapBottomRightCornerEnabled ?? true}
-                            onChange={(e) =>
-                              updateTiling('snapBottomRightCornerEnabled', e.target.checked)
-                            }
-                          />
-                          <span>Bottom-right corner</span>
-                        </label>
-                      </Tooltip>
+                        <div
+                          style={{
+                            marginTop: '8px',
+                            fontSize: '11px',
+                            opacity: 0.7,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                          }}>
+                          Corners
+                        </div>
+                        <Tooltip text='Top-left quarter.'>
+                          <label className='settings-checkbox-row'>
+                            <input
+                              type='checkbox'
+                              checked={tiling?.snapTopLeftCornerEnabled ?? true}
+                              onChange={(e) =>
+                                updateTiling('snapTopLeftCornerEnabled', e.target.checked)
+                              }
+                            />
+                            <span>Top-left corner</span>
+                          </label>
+                        </Tooltip>
+                        <Tooltip text='Top-right quarter.'>
+                          <label className='settings-checkbox-row'>
+                            <input
+                              type='checkbox'
+                              checked={tiling?.snapTopRightCornerEnabled ?? true}
+                              onChange={(e) =>
+                                updateTiling('snapTopRightCornerEnabled', e.target.checked)
+                              }
+                            />
+                            <span>Top-right corner</span>
+                          </label>
+                        </Tooltip>
+                        <Tooltip text='Bottom-left quarter.'>
+                          <label className='settings-checkbox-row'>
+                            <input
+                              type='checkbox'
+                              checked={tiling?.snapBottomLeftCornerEnabled ?? true}
+                              onChange={(e) =>
+                                updateTiling('snapBottomLeftCornerEnabled', e.target.checked)
+                              }
+                            />
+                            <span>Bottom-left corner</span>
+                          </label>
+                        </Tooltip>
+                        <Tooltip text='Bottom-right quarter.'>
+                          <label className='settings-checkbox-row'>
+                            <input
+                              type='checkbox'
+                              checked={tiling?.snapBottomRightCornerEnabled ?? true}
+                              onChange={(e) =>
+                                updateTiling('snapBottomRightCornerEnabled', e.target.checked)
+                              }
+                            />
+                            <span>Bottom-right corner</span>
+                          </label>
+                        </Tooltip>
 
-                      <div
-                        style={{
-                          marginTop: '8px',
-                          fontSize: '11px',
-                          opacity: 0.7,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.04em',
-                        }}>
-                        Bottom row
+                        <div
+                          style={{
+                            marginTop: '8px',
+                            fontSize: '11px',
+                            opacity: 0.7,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                          }}>
+                          Bottom row
+                        </div>
+                        <Tooltip text='Bottom edge: thirds.'>
+                          <label className='settings-checkbox-row'>
+                            <input
+                              type='checkbox'
+                              checked={tiling?.snapBottomThirdsEnabled ?? true}
+                              onChange={(e) =>
+                                updateTiling('snapBottomThirdsEnabled', e.target.checked)
+                              }
+                            />
+                            <span>1/3 splits (left / center / right thirds)</span>
+                          </label>
+                        </Tooltip>
+                        <Tooltip text='Bottom edge: two-thirds.'>
+                          <label className='settings-checkbox-row'>
+                            <input
+                              type='checkbox'
+                              checked={tiling?.snapBottomTwoThirdsEnabled ?? true}
+                              onChange={(e) =>
+                                updateTiling('snapBottomTwoThirdsEnabled', e.target.checked)
+                              }
+                            />
+                            <span>2/3 splits (left-2/3 / right-2/3, 2× width)</span>
+                          </label>
+                        </Tooltip>
                       </div>
-                      <Tooltip text='Bottom edge: thirds.'>
-                        <label className='settings-checkbox-row'>
-                          <input
-                            type='checkbox'
-                            checked={tiling?.snapBottomThirdsEnabled ?? true}
-                            onChange={(e) =>
-                              updateTiling('snapBottomThirdsEnabled', e.target.checked)
-                            }
-                          />
-                          <span>1/3 splits (left / center / right thirds)</span>
-                        </label>
-                      </Tooltip>
-                      <Tooltip text='Bottom edge: two-thirds.'>
-                        <label className='settings-checkbox-row'>
-                          <input
-                            type='checkbox'
-                            checked={tiling?.snapBottomTwoThirdsEnabled ?? true}
-                            onChange={(e) =>
-                              updateTiling('snapBottomTwoThirdsEnabled', e.target.checked)
-                            }
-                          />
-                          <span>2/3 splits (left-2/3 / right-2/3, 2× width)</span>
-                        </label>
-                      </Tooltip>
                     </div>
-                  </div>
-                )}
-
-                <div className='settings-divider' />
-
-                <div className='settings-section'>
-                  <Tooltip text='Show all windows in a grid.'>
-                    <label className='settings-checkbox-row'>
-                      <input
-                        type='checkbox'
-                        checked={tiling?.exposeEnabled ?? true}
-                        onChange={(e) => updateTiling('exposeEnabled', e.target.checked)}
-                      />
-                      <span>Enable Exposé</span>
-                    </label>
-                  </Tooltip>
+                  )}
                 </div>
 
-                {(tiling?.exposeEnabled ?? true) && (
+                <div className='settings-card settings-card-expose'>
+                  <div className='settings-card-title'>Exposé</div>
                   <div className='settings-section'>
-                    <Tooltip text='Grid size per display.'>
-                      <label className='settings-label'>Exposé Grid Size</label>
+                    <Tooltip text='Show all windows in a grid.'>
+                      <label className='settings-checkbox-row'>
+                        <input
+                          type='checkbox'
+                          checked={tiling?.exposeEnabled ?? true}
+                          onChange={(e) => updateTiling('exposeEnabled', e.target.checked)}
+                        />
+                        <span>Enable Exposé</span>
+                      </label>
                     </Tooltip>
-                    <div style={{ marginTop: '4px' }}>
-                      <Tooltip text='Grid columns.'>
-                        <label className='settings-label'>Columns</label>
-                      </Tooltip>
-                      <Slider
-                        label='Exposé columns'
-                        value={exposeCols}
-                        min={1}
-                        max={5}
-                        unit=''
-                        onChange={(v) => updateTiling('exposeColumns', v)}
-                      />
-                    </div>
-                    <div style={{ marginTop: '4px' }}>
-                      <Tooltip text='Grid rows.'>
-                        <label className='settings-label'>Rows</label>
-                      </Tooltip>
-                      <Slider
-                        label='Exposé rows'
-                        value={exposeRows}
-                        min={1}
-                        max={5}
-                        unit=''
-                        onChange={(v) => updateTiling('exposeRows', v)}
-                      />
-                    </div>
-                    <span
-                      style={{
-                        fontSize: '11px',
-                        color: '#666',
-                        marginTop: '2px',
-                        display: 'block',
-                      }}>
-                      {exposeCols} &times; {exposeRows} = {exposeCols * exposeRows} windows per
-                      screen
-                    </span>
-                    <div style={{ marginTop: '8px' }}>
-                      <Tooltip text='How windows spread across displays.'>
-                        <label className='settings-label'>Layout Strategy</label>
-                      </Tooltip>
-                      <Dropdown
-                        className='settings-dropdown'
-                        value={tiling?.exposeLayoutStrategy ?? 'spread'}
-                        onChange={(e) => updateTiling('exposeLayoutStrategy', e.target.value)}>
-                        <option value='spread'>Spread (distribute evenly across displays)</option>
-                        <option value='fill'>Fill (pack each display before using next)</option>
-                      </Dropdown>
-                    </div>
-                    <div style={{ marginTop: '8px' }}>
-                      <Tooltip text='Min cell width; extras overflow.'>
-                        <label className='settings-label'>Min Cell Width</label>
-                      </Tooltip>
-                      <Slider
-                        label='Minimum cell width'
-                        value={tiling?.exposeMinWidth ?? 400}
-                        min={100}
-                        max={800}
-                        unit='px'
-                        onChange={(v) => updateTiling('exposeMinWidth', v)}
-                      />
-                    </div>
-                    <div style={{ marginTop: '4px' }}>
-                      <Tooltip text='Min cell height; extras overflow.'>
-                        <label className='settings-label'>Min Cell Height</label>
-                      </Tooltip>
-                      <Slider
-                        label='Minimum cell height'
-                        value={tiling?.exposeMinHeight ?? 300}
-                        min={100}
-                        max={600}
-                        unit='px'
-                        onChange={(v) => updateTiling('exposeMinHeight', v)}
-                      />
-                    </div>
-                    <span
-                      style={{
-                        fontSize: '11px',
-                        color: '#666',
-                        marginTop: '2px',
-                        display: 'block',
-                      }}>
-                      Minimum grid cell size in logical pixels (scaled by DPI on Windows)
-                    </span>
                   </div>
-                )}
+
+                  {(tiling?.exposeEnabled ?? true) && (
+                    <div className='settings-section'>
+                      <Tooltip text='Grid size per display.'>
+                        <label className='settings-label'>Exposé Grid Size</label>
+                      </Tooltip>
+                      <div style={{ marginTop: '4px' }}>
+                        <Tooltip text='Grid columns.'>
+                          <label className='settings-label'>Columns</label>
+                        </Tooltip>
+                        <Slider
+                          label='Exposé columns'
+                          value={exposeCols}
+                          min={1}
+                          max={5}
+                          unit=''
+                          onChange={(v) => updateTiling('exposeColumns', v)}
+                        />
+                      </div>
+                      <div style={{ marginTop: '4px' }}>
+                        <Tooltip text='Grid rows.'>
+                          <label className='settings-label'>Rows</label>
+                        </Tooltip>
+                        <Slider
+                          label='Exposé rows'
+                          value={exposeRows}
+                          min={1}
+                          max={5}
+                          unit=''
+                          onChange={(v) => updateTiling('exposeRows', v)}
+                        />
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          color: '#666',
+                          marginTop: '2px',
+                          display: 'block',
+                        }}>
+                        {exposeCols} &times; {exposeRows} = {exposeCols * exposeRows} windows per
+                        screen
+                      </span>
+                      <div style={{ marginTop: '8px' }}>
+                        <Tooltip text='How windows spread across displays.'>
+                          <label className='settings-label'>Layout Strategy</label>
+                        </Tooltip>
+                        <Dropdown
+                          className='settings-dropdown'
+                          value={tiling?.exposeLayoutStrategy ?? 'spread'}
+                          onChange={(e) => updateTiling('exposeLayoutStrategy', e.target.value)}>
+                          <option value='spread'>Spread (distribute evenly across displays)</option>
+                          <option value='fill'>Fill (pack each display before using next)</option>
+                        </Dropdown>
+                      </div>
+                      <div style={{ marginTop: '8px' }}>
+                        <Tooltip text='Min cell width; extras overflow.'>
+                          <label className='settings-label'>Min Cell Width</label>
+                        </Tooltip>
+                        <Slider
+                          label='Minimum cell width'
+                          value={tiling?.exposeMinWidth ?? 400}
+                          min={100}
+                          max={800}
+                          unit='px'
+                          onChange={(v) => updateTiling('exposeMinWidth', v)}
+                        />
+                      </div>
+                      <div style={{ marginTop: '4px' }}>
+                        <Tooltip text='Min cell height; extras overflow.'>
+                          <label className='settings-label'>Min Cell Height</label>
+                        </Tooltip>
+                        <Slider
+                          label='Minimum cell height'
+                          value={tiling?.exposeMinHeight ?? 300}
+                          min={100}
+                          max={600}
+                          unit='px'
+                          onChange={(v) => updateTiling('exposeMinHeight', v)}
+                        />
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          color: '#666',
+                          marginTop: '2px',
+                          display: 'block',
+                        }}>
+                        Minimum grid cell size in logical pixels (scaled by DPI on Windows)
+                      </span>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </>

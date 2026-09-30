@@ -514,7 +514,7 @@ describe('SettingsPanel', () => {
     setupInvoke({});
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
     const monitors = await screen.findByText('Monitors');
-    const section = monitors.closest('.settings-section') as HTMLElement;
+    const section = monitors.closest('.settings-card') as HTMLElement;
     expect(section).toContainElement(screen.getByText('Min Brightness'));
     expect(section).toContainElement(screen.getByText('Show Contrast Slider'));
     expect(screen.getByText('Min Brightness')).toHaveClass('settings-subheader');
@@ -924,7 +924,47 @@ describe('SettingsPanel', () => {
     const titles = [...container.querySelectorAll('.settings-card-title')].map(
       (el) => el.textContent,
     );
-    expect(titles).toEqual(['Startup', 'Wallpaper', 'Night Mode']);
+    expect(titles).toEqual(['Startup', 'Wallpaper', 'Night Mode', 'Profiles']);
+  });
+
+  /** Monitors & Speakers and Tiling tabs use the same card grouping as System. */
+  it('groups other tabs into cards', async () => {
+    setupInvoke({});
+    const user = userEvent.setup();
+    const { container } = render(
+      <SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />,
+    );
+    await screen.findByText('Speakers');
+    const titles = () =>
+      [...container.querySelectorAll('.settings-card-title')].map((el) => el.textContent);
+    expect(titles()).toEqual(['Monitors', 'Speakers']);
+    await user.click(screen.getByRole('button', { name: 'Tiling' }));
+    expect(titles()).toEqual(['Window Tiling', 'Tile Snap', 'Exposé']);
+  });
+
+  /** Profiles card lists day profile, night profile, then the rest (Presentation). */
+  it('orders profile editors day, night, then others', async () => {
+    setupInvoke({
+      prefs: buildPrefs({
+        profiles: [
+          { name: 'Presentation', command: [] },
+          { name: 'Focus', command: [] },
+          { name: 'Daylight', command: [] },
+        ],
+      }),
+    });
+    const user = userEvent.setup();
+    const { container } = render(
+      <SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />,
+    );
+    await screen.findByText('Settings');
+    await user.click(screen.getByRole('button', { name: 'System' }));
+    const names = [
+      ...container.querySelectorAll(
+        '.settings-card-profiles .settings-profile-editor .settings-subheader',
+      ),
+    ].map((el) => el.textContent);
+    expect(names).toEqual(['Daylight', 'Focus', 'Presentation']);
   });
 
   it('hides Loudness Equalization toggle off Windows', async () => {
