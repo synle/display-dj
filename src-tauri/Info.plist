@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Menu-bar-only agent app: never show a Dock icon, even during launch
+	     before setup() runs set_activation_policy(Accessory). Tauri merges this
+	     file into the bundle's generated Info.plist. -->
+	<key>LSUIElement</key>
+	<true/>
+</dict>
+</plist>

@@ -1056,7 +1056,9 @@ pub fn run() {
                 wallpaper::resume_slideshow_if_enabled(&state);
             });
 
-            // Hide dock icon on macOS
+            // Hide dock icon on macOS. `src-tauri/Info.plist` sets LSUIElement so
+            // bundled builds never show a Dock icon at launch; this runtime call
+            // covers `tauri dev` binaries that run outside a bundle.
             #[cfg(target_os = "macos")]
             {
                 app.set_activation_policy(tauri::ActivationPolicy::Accessory);

@@ -253,6 +253,10 @@ Each Tauri brightness command snapshots `min_brightness`, the per-monitor `brigh
 - Contrast is DDC-only (`Option<u32>` / `number | null`); a live `null` only gates visibility — the rendered value comes from `lastKnownValues`. The slider is hidden by default and toggled via `showContrast` in Settings.
 - Keep Awake uses the `keepawake` crate (v0.6) — guard stored as `Mutex<Option<KeepAwake>>` in `AppState`. Creating enables; dropping (set to `None`) releases. Works on macOS (IOKit), Windows (`SetThreadExecutionState`), Linux (D-Bus). The `set_keep_awake` command is `async` (tray pitfall).
 
+## macOS Dock Visibility
+
+Display DJ is menu-bar only. `src-tauri/Info.plist` sets `LSUIElement=true` (merged into the bundle's Info.plist by Tauri) so no Dock icon appears, even at launch. `lib.rs` setup also calls `set_activation_policy(Accessory)` for unbundled `tauri dev` runs.
+
 ## Dynamic Tray Icon (`tray_icon.rs`)
 
 Drawn programmatically at 128x128 from percentage-based layout constants (no PNG assets). Reflects three states:
