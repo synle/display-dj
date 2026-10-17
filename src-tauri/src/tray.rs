@@ -1738,6 +1738,30 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
                 log::warn!("show_desktop: {error}");
             }
         }
+        ["command", "system", "lockScreen"] => {
+            let preferred_method = app
+                .state::<crate::AppState>()
+                .preferences
+                .lock()
+                .ok()
+                .and_then(|prefs| prefs.linux_lock_command.clone());
+            let app = app.clone();
+            std::thread::spawn(move || {
+                match crate::core::screen_lock::lock(preferred_method.as_deref()) {
+                    Ok(Some(method)) if preferred_method.as_deref() != Some(method.as_str()) => {
+                        let state = app.state::<crate::AppState>();
+                        if let Ok(mut prefs) = state.preferences.lock() {
+                            prefs.linux_lock_command = Some(method);
+                            if let Err(error) = crate::config::save_preferences_to_disk(&prefs) {
+                                log::warn!("screen_lock: failed to cache Linux backend: {error}");
+                            }
+                        };
+                    }
+                    Ok(_) => {}
+                    Err(error) => log::warn!("screen_lock: {error}"),
+                }
+            });
+        }
         ["command", "tile", layout] => {
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
             {
@@ -1921,6 +1945,13 @@ pub fn apply_profile(app: AppHandle, index: usize) -> Result<(), String> {
     Ok(())
 }
 
+/// Locks the current Windows or Linux session from the popup header action.
+#[tauri::command]
+pub fn lock_screen(app: AppHandle) -> Result<(), String> {
+    execute_command(&app, "command/system/lockScreen");
+    Ok(())
+}
+
 #[cfg(test)]
 mod refresh_on_show_tests {
     use super::*;
@@ -2058,6 +2089,25 @@ mod tests {
             || {
                 dispatch_count += 1;
             },
+        );
+
+        assert_eq!(dispatch_count, 1);
+    }
+
+    /// Lock Screen waits for key release so the OS never sees held trigger modifiers.
+    #[test]
+    fn lock_screen_shortcut_dispatches_on_release_only() {
+        let mut dispatch_count = 0;
+
+        dispatch_shortcut_event(
+            tauri_plugin_global_shortcut::ShortcutState::Pressed,
+            "command/system/lockScreen",
+            || dispatch_count += 1,
+        );
+        dispatch_shortcut_event(
+            tauri_plugin_global_shortcut::ShortcutState::Released,
+            "command/system/lockScreen",
+            || dispatch_count += 1,
         );
 
         assert_eq!(dispatch_count, 1);
@@ -2622,6 +2672,7 @@ mod tests {
     #[test]
     fn platform_shell_shortcuts_use_native_actions() {
         let source = include_str!("core/task_view.rs");
+        let lock_source = include_str!("core/screen_lock.rs");
         let function = source
             .split("fn send_windows_chord")
             .nth(1)
@@ -2655,5 +2706,7 @@ mod tests {
         assert!(source.contains("com.apple.showdesktop.awake"));
         assert!(source.contains("CoreDockSendNotification"));
         assert!(!source.contains("Mission Control.app/Contents/MacOS/Mission Control"));
+        assert!(lock_source.contains("System::Shutdown::LockWorkStation()"));
+        assert!(!lock_source.contains("rundll32"));
     }
 }

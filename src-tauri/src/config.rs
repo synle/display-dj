@@ -63,27 +63,37 @@ fn default_zorder_keybindings_for_platform(is_macos: bool) -> [KeyBinding; 2] {
     ]
 }
 
-/// Build platform-specific system shortcuts that have no cross-platform equivalent.
-fn default_system_keybindings_for_platform(is_macos: bool, is_windows: bool) -> Vec<KeyBinding> {
-    if !is_macos && !is_windows {
-        return Vec::new();
+/// Build platform-specific shell-action shortcuts.
+fn default_system_keybindings_for_platform(
+    is_macos: bool,
+    is_windows: bool,
+    is_linux: bool,
+) -> Vec<KeyBinding> {
+    let mut bindings = Vec::new();
+    if is_macos || is_windows {
+        let prefix = if is_macos {
+            "Ctrl+Super+Shift"
+        } else {
+            "Ctrl+Alt+Shift"
+        };
+        bindings.extend([
+            KeyBinding {
+                key: format!("{prefix}+Up"),
+                command: CommandValue::Single("command/system/taskView".into()),
+            },
+            KeyBinding {
+                key: format!("{prefix}+Down"),
+                command: CommandValue::Single("command/system/showDesktop".into()),
+            },
+        ]);
     }
-
-    let prefix = if is_macos {
-        "Ctrl+Super+Shift"
-    } else {
-        "Ctrl+Alt+Shift"
-    };
-    vec![
-        KeyBinding {
-            key: format!("{prefix}+Up"),
-            command: CommandValue::Single("command/system/taskView".into()),
-        },
-        KeyBinding {
-            key: format!("{prefix}+Down"),
-            command: CommandValue::Single("command/system/showDesktop".into()),
-        },
-    ]
+    if is_windows || is_linux {
+        bindings.push(KeyBinding {
+            key: "Ctrl+Alt+Q".into(),
+            command: CommandValue::Single("command/system/lockScreen".into()),
+        });
+    }
+    bindings
 }
 
 /// Default-value helper for `bool` fields that should default to `true` when
@@ -458,6 +468,8 @@ pub struct Preferences {
     pub show_individual_displays: bool,
     pub min_brightness: u32,
     pub key_bindings: Vec<KeyBinding>,
+    /// Backend-owned marker for the one-time Windows/Linux lock shortcut migration.
+    pub lock_screen_binding_initialized: bool,
     pub profiles: Vec<Profile>,
     pub night_mode_schedule: NightModeSchedule,
     pub show_contrast: bool,
@@ -475,6 +487,8 @@ pub struct Preferences {
     /// Windows only: best-effort re-enable Loudness Equalization on the active
     /// speaker at startup and each popup open. Defaults on.
     pub loudness_equalization_preferred: bool,
+    /// Linux only: last screen-lock command that exited successfully.
+    pub linux_lock_command: Option<String>,
     pub monitor_configs: Vec<MonitorMetadata>,
     /// User-defined labels for audio output devices, keyed by stable platform ID.
     pub audio_output_configs: Vec<AudioOutputMetadata>,
@@ -574,14 +588,9 @@ pub async fn record_last_known_values(
     state: tauri::State<'_, crate::AppState>,
     patch: LastKnownValuesPatch,
 ) -> Result<(), String> {
-    let snapshot = {
-        let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
-        prefs.last_known_values.merge(patch);
-        prefs.clone()
-    };
-    tauri::async_runtime::spawn_blocking(move || save_preferences_to_disk(&snapshot))
-        .await
-        .map_err(|e| format!("record_last_known_values join failed: {}", e))?
+    let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
+    prefs.last_known_values.merge(patch);
+    save_preferences_to_disk(&prefs)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -712,6 +721,7 @@ impl Default for Preferences {
         key_bindings.extend(default_system_keybindings_for_platform(
             cfg!(target_os = "macos"),
             cfg!(target_os = "windows"),
+            cfg!(target_os = "linux"),
         ));
         key_bindings.extend(default_zorder_keybindings_for_platform(cfg!(
             target_os = "macos"
@@ -721,6 +731,7 @@ impl Default for Preferences {
             show_individual_displays: false,
             min_brightness: 10,
             key_bindings,
+            lock_screen_binding_initialized: true,
             profiles: vec![
                 Profile {
                     name: "Presentation".into(),
@@ -756,6 +767,7 @@ impl Default for Preferences {
             debug_logging: false,
             launch_at_login: false,
             loudness_equalization_preferred: true,
+            linux_lock_command: None,
             monitor_configs: Vec::new(),
             audio_output_configs: Vec::new(),
             tiling: TilingPreferences::default(),
@@ -915,7 +927,7 @@ fn preferences_path() -> PathBuf {
 pub fn load_preferences() -> Preferences {
     let path = preferences_path();
     let mut prefs = match std::fs::read_to_string(&path) {
-        Ok(content) => match serde_json::from_str(&content) {
+        Ok(content) => match deserialize_preferences(&content) {
             Ok(preferences) => preferences,
             Err(error) => {
                 let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S_%3f");
@@ -954,6 +966,15 @@ pub fn load_preferences() -> Preferences {
     };
     migrate_monitor_configs_if_needed(&mut prefs);
     migrate_expose_grid_if_needed(&mut prefs);
+    if migrate_lock_screen_binding_if_needed(
+        &mut prefs,
+        cfg!(target_os = "windows"),
+        cfg!(target_os = "linux"),
+    ) {
+        if let Err(error) = save_preferences_to_disk(&prefs) {
+            log::error!("failed to persist lock screen binding migration: {error}");
+        }
+    }
     // Runs after the migrations so migrated values are bounded too (e.g. a
     // legacy `exposeMaxWindows` that squares out to an absurd grid).
     prefs.sanitize();
@@ -964,7 +985,7 @@ pub fn load_preferences() -> Preferences {
 fn load_preferences_backup() -> Option<Preferences> {
     let backup_path = config_dir().join("preferences.backup.json");
     let content = std::fs::read_to_string(&backup_path).ok()?;
-    match serde_json::from_str(&content) {
+    match deserialize_preferences(&content) {
         Ok(preferences) => {
             log::warn!(
                 "restored preferences from backup {}",
@@ -981,6 +1002,19 @@ fn load_preferences_backup() -> Option<Preferences> {
             None
         }
     }
+}
+
+/// Deserializes preferences while distinguishing legacy files from new defaults.
+fn deserialize_preferences(content: &str) -> Result<Preferences, serde_json::Error> {
+    let value: serde_json::Value = serde_json::from_str(content)?;
+    let has_lock_binding_marker = value
+        .as_object()
+        .is_some_and(|object| object.contains_key("lockScreenBindingInitialized"));
+    let mut preferences: Preferences = serde_json::from_value(value)?;
+    if !has_lock_binding_marker {
+        preferences.lock_screen_binding_initialized = false;
+    }
+    Ok(preferences)
 }
 
 /// Atomically persists preferences and a known-good backup.
@@ -1150,6 +1184,42 @@ fn migrate_expose_grid_if_needed(prefs: &mut Preferences) {
     }
 }
 
+/// Adds the Windows/Linux lock shortcut once without replacing user bindings.
+fn migrate_lock_screen_binding_if_needed(
+    prefs: &mut Preferences,
+    is_windows: bool,
+    is_linux: bool,
+) -> bool {
+    if prefs.lock_screen_binding_initialized {
+        return false;
+    }
+    prefs.lock_screen_binding_initialized = true;
+    if !is_windows && !is_linux {
+        return true;
+    }
+
+    let key_in_use = prefs
+        .key_bindings
+        .iter()
+        .any(|binding| binding.key == "Ctrl+Alt+Q");
+    let command_exists = prefs
+        .key_bindings
+        .iter()
+        .any(|binding| match &binding.command {
+            CommandValue::Single(command) => command == "command/system/lockScreen",
+            CommandValue::Multiple(commands) => commands
+                .iter()
+                .any(|command| command == "command/system/lockScreen"),
+        });
+    if !key_in_use && !command_exists {
+        prefs.key_bindings.push(KeyBinding {
+            key: "Ctrl+Alt+Q".into(),
+            command: CommandValue::Single("command/system/lockScreen".into()),
+        });
+    }
+    true
+}
+
 /// Backs up the current preferences file and resets to defaults.
 pub fn reset_to_defaults() -> Result<(), String> {
     let now = chrono::Local::now().format("%Y%m%d_%H%M%S");
@@ -1217,15 +1287,6 @@ pub async fn save_preferences(
     // everything before it reaches memory or disk.
     let mut preferences = preferences;
     preferences.sanitize();
-    // Last-known slider values are backend-owned; never let a stale Settings
-    // snapshot overwrite them.
-    if let Ok(current) = state.preferences.lock() {
-        preferences.last_known_values = current.last_known_values.clone();
-        // Backend-owned: written by the slideshow change hook.
-        preferences.wallpaper.slideshow_last_path =
-            current.wallpaper.slideshow_last_path.clone();
-    }
-
     write_debug_log(
         &state,
         &format!(
@@ -1245,23 +1306,19 @@ pub async fn save_preferences(
     // `log::info!` calls in `core/*` (which can't see `AppState`).
     // Save to disk and update in-memory state first so the UI isn't blocked
     // even if autostart hangs
-    let old_launch_at_login = state
-        .preferences
-        .lock()
-        .map(|p| p.launch_at_login)
-        .unwrap_or(false);
-    let old_slideshow = state
-        .preferences
-        .lock()
-        .map(|p| slideshow_signature(&p.wallpaper))
-        .ok();
+    let mut current = state.preferences.lock().map_err(|e| e.to_string())?;
+    let old_launch_at_login = current.launch_at_login;
+    let old_slideshow = Some(slideshow_signature(&current.wallpaper));
+    preferences.last_known_values = current.last_known_values.clone();
+    preferences.linux_lock_command = current.linux_lock_command.clone();
+    preferences.lock_screen_binding_initialized = current.lock_screen_binding_initialized;
+    preferences.wallpaper.slideshow_last_path = current.wallpaper.slideshow_last_path.clone();
 
     save_preferences_to_disk(&preferences)?;
     log::info!("save_preferences: written to disk");
 
-    let mut prefs = state.preferences.lock().map_err(|e| e.to_string())?;
-    *prefs = preferences.clone();
-    drop(prefs); // release lock before autostart call
+    *current = preferences.clone();
+    drop(current); // release lock before autostart call
     log::info!("save_preferences: in-memory state updated");
     DEBUG_LOG_ENABLED.store(
         preferences.debug_logging,
@@ -1587,8 +1644,12 @@ mod tests {
         assert_eq!(prefs.min_brightness, 10);
         assert_eq!(
             prefs.key_bindings.len(),
-            if cfg!(any(target_os = "macos", target_os = "windows")) {
+            if cfg!(target_os = "windows") {
+                25
+            } else if cfg!(target_os = "macos") {
                 24
+            } else if cfg!(target_os = "linux") {
+                23
             } else {
                 22
             }
@@ -1775,8 +1836,8 @@ mod tests {
     /// macOS and Windows map matching platform chords to overview and desktop actions.
     #[test]
     fn test_default_system_keybindings_match_platform() {
-        let windows = default_system_keybindings_for_platform(false, true);
-        assert_eq!(windows.len(), 2);
+        let windows = default_system_keybindings_for_platform(false, true, false);
+        assert_eq!(windows.len(), 3);
         assert_eq!(windows[0].key, "Ctrl+Alt+Shift+Up");
         match &windows[0].command {
             CommandValue::Single(command) => assert_eq!(command, "command/system/taskView"),
@@ -1787,11 +1848,71 @@ mod tests {
             CommandValue::Single(command) => assert_eq!(command, "command/system/showDesktop"),
             CommandValue::Multiple(_) => panic!("show desktop binding should contain one command"),
         }
-        let macos = default_system_keybindings_for_platform(true, false);
+        assert_eq!(windows[2].key, "Ctrl+Alt+Q");
+        match &windows[2].command {
+            CommandValue::Single(command) => assert_eq!(command, "command/system/lockScreen"),
+            CommandValue::Multiple(_) => panic!("lock screen binding should contain one command"),
+        }
+        let macos = default_system_keybindings_for_platform(true, false, false);
         assert_eq!(macos.len(), 2);
         assert_eq!(macos[0].key, "Ctrl+Super+Shift+Up");
         assert_eq!(macos[1].key, "Ctrl+Super+Shift+Down");
-        assert!(default_system_keybindings_for_platform(false, false).is_empty());
+        let linux = default_system_keybindings_for_platform(false, false, true);
+        assert_eq!(linux.len(), 1);
+        assert_eq!(linux[0].key, "Ctrl+Alt+Q");
+        assert!(default_system_keybindings_for_platform(false, false, false).is_empty());
+    }
+
+    /// Existing Windows/Linux preferences gain the lock shortcut exactly once.
+    #[test]
+    fn migrates_lock_screen_binding_once() {
+        let mut prefs = Preferences::default();
+        prefs.lock_screen_binding_initialized = false;
+        prefs.key_bindings.retain(|binding| binding.key != "Ctrl+Alt+Q");
+
+        assert!(migrate_lock_screen_binding_if_needed(&mut prefs, true, false));
+        assert_eq!(
+            prefs.key_bindings.iter().filter(|binding| binding.key == "Ctrl+Alt+Q").count(),
+            1
+        );
+        assert!(!migrate_lock_screen_binding_if_needed(&mut prefs, true, false));
+    }
+
+    /// Migration preserves an existing user command on the default lock chord.
+    #[test]
+    fn lock_screen_binding_migration_preserves_key_conflict() {
+        let mut prefs = Preferences::default();
+        prefs.lock_screen_binding_initialized = false;
+        prefs.key_bindings.retain(|binding| binding.key != "Ctrl+Alt+Q");
+        prefs.key_bindings.push(KeyBinding {
+            key: "Ctrl+Alt+Q".into(),
+            command: CommandValue::Single("command/changeVolume/0".into()),
+        });
+
+        assert!(migrate_lock_screen_binding_if_needed(&mut prefs, false, true));
+        assert_eq!(
+            prefs.key_bindings.iter().filter(|binding| binding.key == "Ctrl+Alt+Q").count(),
+            1
+        );
+    }
+
+    /// Marker-less legacy JSON remains eligible for lock shortcut migration.
+    #[test]
+    fn legacy_preferences_default_lock_binding_marker_to_false() {
+        let prefs = deserialize_preferences(r#"{"keyBindings":[]}"#).unwrap();
+
+        assert!(!prefs.lock_screen_binding_initialized);
+    }
+
+    /// Marker text inside a user value cannot suppress the top-level migration.
+    #[test]
+    fn legacy_preferences_ignore_lock_binding_marker_in_string_value() {
+        let prefs = deserialize_preferences(
+            r#"{"keyBindings":[],"profiles":[{"name":"lockScreenBindingInitialized"}]}"#,
+        )
+        .unwrap();
+
+        assert!(!prefs.lock_screen_binding_initialized);
     }
 
     /// Z-order defaults use Cmd on macOS and Alt on Windows/Linux.

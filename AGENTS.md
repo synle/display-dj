@@ -305,6 +305,10 @@ Tiling defaults come from one shared key/action table in `config.rs`. macOS pref
 
 macOS defaults `Ctrl+Super+Shift+Up` to `command/system/taskView` (Mission Control) and `Ctrl+Super+Shift+Down` to `command/system/showDesktop`; both dispatch after key release and notify the Dock through `CoreDockSendNotification`. Windows uses matching `Ctrl+Alt+Shift` defaults. Task View releases the triggering modifiers before synthesizing `Win+Tab`; Show Desktop calls `IShellDispatch4::ToggleDesktop` directly. Linux does not register these platform-specific defaults.
 
+Windows and Linux default `Ctrl+Alt+Q` to `command/system/lockScreen`; macOS does not register or support this action. Windows calls `LockWorkStation`. Linux tries a fixed allowlist of session/desktop lock commands and caches the last successful command in backend-owned `linuxLockCommand`, while an absent or invalid value restores full fallback probing.
+
+The popup header shows a logout-style **Lock screen** icon left of Settings on Windows/Linux only. Header actions use 32px targets with a 14px gap to reduce accidental activation; the icon invokes the same `command/system/lockScreen` dispatcher as the shortcut.
+
 ### Architecture
 
 - `tiling/mod.rs` — shared types, layout math, `TilingLayout`, AND orchestration (`plan_expose`, `plan_expose_app`, `plan_layout_preset`) that compute placements without OS calls.
@@ -435,6 +439,7 @@ Commands are strings dispatched by `execute_command()` in `tray.rs`. Bindable to
 | `command/layout/{name_or_index}`                          | `tiling::execute_layout_preset(...)`                        | Apply a layout preset by name or 0-based index |
 | `command/system/taskView`                                 | macOS Dock notification / Windows `SendInput(Win+Tab)`      | Open Mission Control or Windows Task View      |
 | `command/system/showDesktop`                              | macOS Dock notification / Windows `Shell.ToggleDesktop()`   | Show or restore the desktop                    |
+| `command/system/lockScreen`                               | Windows `LockWorkStation` / Linux command fallback          | Lock the current Windows or Linux session      |
 | `command/window/moveToFront`                              | `tiling::execute_zorder(WindowToFront)`                     | Raise the focused window above all others      |
 | `command/app/moveToFront`                                 | `tiling::execute_zorder(AppToFront)`                        | Raise all windows of the focused app           |
 | `command/window/moveToBack`                               | `tiling::execute_zorder(WindowToBack)`                      | Lower the focused window below all others      |

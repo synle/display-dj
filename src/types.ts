@@ -163,6 +163,8 @@ export interface Preferences {
   showIndividualDisplays: boolean;
   minBrightness: number;
   keyBindings: KeyBinding[];
+  /** Backend-owned marker for the one-time lock shortcut migration. */
+  lockScreenBindingInitialized: boolean;
   profiles: Profile[];
   nightModeSchedule: NightModeSchedule;
   showContrast: boolean;
@@ -178,6 +180,8 @@ export interface Preferences {
   launchAtLogin: boolean;
   /** Windows only: re-enable Loudness Equalization on the active speaker. */
   loudnessEqualizationPreferred: boolean;
+  /** Linux only: backend-owned cache of the last successful screen-lock command. */
+  linuxLockCommand: string | null;
   monitorConfigs: MonitorMetadata[];
   /** User-defined labels for audio output devices. */
   audioOutputConfigs: AudioOutputMetadata[];

@@ -17,6 +17,7 @@ pub(crate) mod linux_desktop;
 pub mod win_cmd;
 
 pub mod task_view;
+pub mod screen_lock;
 
 pub mod theme;
 pub mod volume;

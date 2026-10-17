@@ -40,6 +40,7 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 - **Night mode schedule** -- automatically set brightness and dark/light mode on a time-based schedule (e.g., dim at 9 PM, bright at 7 AM). Each phase runs once when its boundary is crossed rather than repeating every minute. Supports custom commands (`nightCommands`/`dayCommands`) to run arbitrary actions on schedule (volume changes, profile activation, per-monitor brightness)
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
 - **Global keyboard shortcuts** -- work even when the app isn't focused; fully configurable
+- **Lock screen action** -- a spaced logout-style button left of Settings and `Ctrl+Alt+Q` lock the current Windows or Linux session without stopping background work; also bindable as `command/system/lockScreen`
 - **Monitor renaming** -- click any display name to give it a custom label
 - **Window tiling** (macOS + Windows + Linux/X11) -- tile windows to halves, thirds, two-thirds, quarters, or maximize via keyboard shortcuts or tray menu
 - **Tile Snap** (macOS + Windows + Linux/X11) -- drag a normal or maximized window to a screen edge to draw DPI-correct drop zones, preview the target on only that display, and snap it into a tiled layout. Enable/disable via the Tile Snap toggle in Settings; Windows defaults it off to avoid conflicting with Windows Snap. Linux support requires X11 and has been tested primarily with XFCE/xfwm4

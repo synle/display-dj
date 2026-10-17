@@ -146,6 +146,10 @@ KWin gamma control.
 
 `command/system/taskView` and `command/system/showDesktop` map to platform shell actions. Their global-shortcut callbacks dispatch when the arrow key is released. macOS sends `com.apple.expose.awake` or `com.apple.showdesktop.awake` directly to the Dock through `CoreDockSendNotification`, with defaults `Ctrl+Super+Shift+Up` and `Ctrl+Super+Shift+Down`. Windows Task View releases the triggering `Ctrl+Alt+Shift` modifiers before sending balanced `Win+Tab` events. Windows Show Desktop instead creates `IShellDispatch4` on a background COM thread and calls the documented `ToggleDesktop()` method, so trigger modifiers cannot alter that action.
 
+`command/system/lockScreen` locks the current session on Windows and Linux and defaults to `Ctrl+Alt+Q` on those platforms only. Windows calls `LockWorkStation` directly. Linux tries `loginctl`, GNOME screensaver, GNOME D-Bus, KDE D-Bus, `i3lock`, `xsecurelock`, then `swaylock`; the first command with a successful exit is stored in backend-owned `linuxLockCommand` and tried first next time. Unknown hand-edited values are ignored rather than executed.
+
+`Header.tsx` exposes the same action as a logout-style icon left of Settings after `get_about_info` confirms Windows or Linux. The two 32px actions have a 14px gap to reduce accidental locking.
+
 Task View must inject key-up events for the triggering Windows modifiers immediately before `Win+Tab`. Waiting for `GetAsyncKeyState` to clear after the global-shortcut release callback timed out and suppressed Task View. Show Desktop avoids input injection entirely through `ToggleDesktop()`. No documented public Windows API opens Task View: public `IVirtualDesktopManager` only queries desktop membership and moves windows. Keep `Win+Tab` rather than adopting undocumented immersive-shell COM interfaces.
 
 Default app z-order shortcuts follow the same platform modifier split: `Shift+Ctrl+Super+Left` / `Right` on macOS and `Shift+Ctrl+Alt+Left` / `Right` on Windows/Linux. `config.rs::default_zorder_keybindings_for_platform` owns this mapping so non-macOS builds never register the operating-system Super key for these actions.

@@ -48,6 +48,7 @@ function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [version, setVersion] = useState('');
   const [isMac, setIsMac] = useState(false);
+  const [lockScreenAvailable, setLockScreenAvailable] = useState(false);
   const [accessibilityTrusted, setAccessibilityTrusted] = useState(true);
   const [audioOutputState, setAudioOutputState] = useState<AudioOutputState | null>(null);
   const [updatingAudioOutputId, setUpdatingAudioOutputId] = useState<string | null>(null);
@@ -152,7 +153,10 @@ function App() {
     // can render a blocking gate when it's missing (tiling/Tile-Snap/exposé
     // silently no-op without it — see AGENTS.md "macOS Tray Icon Pitfall").
     invoke<Record<string, string>>('get_about_info')
-      .then((info) => setIsMac(info.os === 'macOS'))
+      .then((info) => {
+        setIsMac(info.os === 'macOS');
+        setLockScreenAvailable(info.os === 'Windows' || info.os === 'Linux');
+      })
       .catch(() => {});
     invoke<boolean>('get_accessibility_trusted')
       .then((v) => setAccessibilityTrusted(v ?? true))
@@ -548,6 +552,8 @@ function App() {
     <div className='app' ref={appRef} data-theme={darkMode ? 'dark' : 'light'}>
       <Header
         version={version}
+        lockScreenAvailable={lockScreenAvailable}
+        onLockScreen={() => invoke('lock_screen').catch(() => {})}
         onSettingsToggle={() => setSettingsOpen(!settingsOpen)}
         settingsOpen={settingsOpen}
       />

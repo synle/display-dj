@@ -78,9 +78,9 @@ Events (`monitors-changed`, `dark-mode-changed`, `volume-changed`, `audio-output
 
 Config lives in the platform config dir (`config_dir()` in `config.rs`): `~/Library/Application Support/display-dj` (macOS), `%APPDATA%/display-dj` (Windows), `~/.config/display-dj` (Linux). Main file: `preferences.json` — deserialized into `Preferences` with `#[serde(default)]`, so missing fields fall back to defaults.
 
-Top-level fields: `showIndividualDisplays`, `minBrightness` (default 10, absolute floor 5), `keyBindings`, `profiles`, `nightModeSchedule` (21:00–07:00 default, disabled), `showContrast`, `debugLogging`, `launchAtLogin`, `monitorConfigs`, `audioOutputConfigs`, `tiling`, `layoutPresets`, `wallpaper`.
+Top-level fields: `showIndividualDisplays`, `minBrightness` (default 10, absolute floor 5), `keyBindings`, `lockScreenBindingInitialized` (backend-owned migration marker), `profiles`, `nightModeSchedule` (21:00–07:00 default, disabled), `showContrast`, `debugLogging`, `launchAtLogin`, `linuxLockCommand` (backend-owned Linux cache), `monitorConfigs`, `audioOutputConfigs`, `tiling`, `layoutPresets`, `wallpaper`.
 
-Key bindings pair a `key` (e.g. `"Shift+F1"`) with a `command` string or array of strings: `command/changeBrightness/{v}`, `command/changeContrast/{v}`, `command/changeDarkMode/{toggle,dark,light}`, `command/changeVolume/{v}`, `command/changeProfile/{index_or_name}` — plus the tile/wallpaper/layout/z-order commands documented in AGENTS.md. Default z-order chords use `Super` on macOS and `Alt` on Windows/Linux.
+Key bindings pair a `key` (e.g. `"Shift+F1"`) with a `command` string or array of strings: `command/changeBrightness/{v}`, `command/changeContrast/{v}`, `command/changeDarkMode/{toggle,dark,light}`, `command/changeVolume/{v}`, `command/changeProfile/{index_or_name}`, `command/system/lockScreen` — plus the tile/wallpaper/layout/z-order commands documented in AGENTS.md. Lock Screen defaults to `Ctrl+Alt+Q` on Windows/Linux only. Default z-order chords use `Super` on macOS and `Alt` on Windows/Linux.
 
 `monitorConfigs[]` stores per-monitor metadata keyed by a stable composite UID (`{api_id}::{api_model_name}`): `label`, `sortOrder`, `hidden`. Unplugged monitors keep their entry.
 

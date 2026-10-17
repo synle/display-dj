@@ -113,13 +113,16 @@ body,
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 4px 6px;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
   border-radius: 6px;
   font-size: var(--font-size-lg);
   line-height: 1;
   transition: all 0.2s;
   display: flex;
   align-items: center;
+  justify-content: center;
 }
 
 .header-toggle:hover {
@@ -769,7 +772,7 @@ select:focus-visible {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 14px;
 }
 
 .header-toggle.active {

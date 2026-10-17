@@ -1,12 +1,20 @@
 import { Icon } from './Icons';
 interface HeaderProps {
   version: string;
+  lockScreenAvailable: boolean;
+  onLockScreen: () => void;
   onSettingsToggle: () => void;
   settingsOpen: boolean;
 }
 
-/** App header with version display and settings gear button. */
-export default function Header({ version, onSettingsToggle, settingsOpen }: HeaderProps) {
+/** App header with version display and platform actions. */
+export default function Header({
+  version,
+  lockScreenAvailable,
+  onLockScreen,
+  onSettingsToggle,
+  settingsOpen,
+}: HeaderProps) {
   // Split version to find dev/beta tag (e.g. "[DEV - 04/23/2026 08:30]")
   // Version format: "6.3.19 [DEV - ...] (arm64)" or "6.3.19 (arm64)"
   const tagMatch = version.match(/(\[.+?\])/);
@@ -25,6 +33,15 @@ export default function Header({ version, onSettingsToggle, settingsOpen }: Head
         )}
       </div>
       <div className='header-actions'>
+        {lockScreenAvailable && (
+          <button
+            className='header-toggle header-lock'
+            onClick={onLockScreen}
+            title='Lock screen'
+            aria-label='Lock screen'>
+            <Icon name='logout' size={18} strokeWidth={1.7} />
+          </button>
+        )}
         <button
           className={`header-toggle ${settingsOpen ? 'active' : ''}`}
           onClick={onSettingsToggle}

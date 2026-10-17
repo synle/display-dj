@@ -989,6 +989,7 @@ pub fn run() {
             crash_log::open_crash_log,
             crash_log::get_crash_log,
             tray::apply_profile,
+            tray::lock_screen,
             keep_awake::get_keep_awake,
             keep_awake::set_keep_awake,
             #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]

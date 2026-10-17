@@ -5,6 +5,8 @@ import Header from './Header';
 
 const defaultProps = {
   version: '2.0.0',
+  lockScreenAvailable: false,
+  onLockScreen: () => {},
   onSettingsToggle: () => {},
   settingsOpen: false,
 };
@@ -28,6 +30,29 @@ describe('Header', () => {
   it('renders the settings button', () => {
     render(<Header {...defaultProps} />);
     expect(screen.getByTitle('Settings')).toBeInTheDocument();
+  });
+
+  it('renders lock screen before settings when available', () => {
+    render(<Header {...defaultProps} lockScreenAvailable={true} />);
+    const buttons = screen.getAllByRole('button');
+
+    expect(buttons[0]).toHaveAccessibleName('Lock screen');
+    expect(buttons[1]).toHaveAccessibleName('Settings');
+    expect(document.querySelector('[data-icon="logout"]')).not.toBeNull();
+  });
+
+  it('hides lock screen when unsupported', () => {
+    render(<Header {...defaultProps} />);
+    expect(screen.queryByRole('button', { name: 'Lock screen' })).not.toBeInTheDocument();
+  });
+
+  it('calls onLockScreen when lock screen is clicked', async () => {
+    const onLockScreen = vi.fn();
+    const user = userEvent.setup();
+    render(<Header {...defaultProps} lockScreenAvailable={true} onLockScreen={onLockScreen} />);
+
+    await user.click(screen.getByRole('button', { name: 'Lock screen' }));
+    expect(onLockScreen).toHaveBeenCalledOnce();
   });
 
   it('calls onSettingsToggle when the settings button is clicked', async () => {
