@@ -352,8 +352,7 @@ describe('SettingsPanel', () => {
     setupInvoke({});
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
-    await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: 'System' }));
+    await user.click(await screen.findByRole('button', { name: 'System' }));
 
     await user.click(await screen.findByLabelText('Launch at Login'));
     await waitForSave();
@@ -369,8 +368,7 @@ describe('SettingsPanel', () => {
     setupInvoke({});
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
-    await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: 'System' }));
+    await user.click(await screen.findByRole('button', { name: 'System' }));
 
     expect(screen.queryByText('Night')).not.toBeInTheDocument();
     await user.click(screen.getByLabelText('Night Mode Schedule'));
@@ -406,8 +404,7 @@ describe('SettingsPanel', () => {
     setupInvoke({});
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
-    await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: 'System' }));
+    await user.click(await screen.findByRole('button', { name: 'System' }));
 
     await user.click(await screen.findByLabelText('Enable Wallpaper Slideshow'));
     expect(screen.getByText('Slideshow Folder')).toBeInTheDocument();
@@ -420,8 +417,7 @@ describe('SettingsPanel', () => {
     setupInvoke({});
     const user = userEvent.setup();
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
-    await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: 'System' }));
+    await user.click(await screen.findByRole('button', { name: 'System' }));
 
     await user.click(await screen.findByLabelText('Enable Wallpaper Slideshow'));
     await user.selectOptions(screen.getByDisplayValue('30m'), '0');
@@ -1038,7 +1034,7 @@ describe('SettingsPanel', () => {
   it('falls back to defaults when get_tiling_supported / get_accessibility_trusted reject', async () => {
     setupInvoke({ tilingRejects: true, accessRejects: true });
     render(<SettingsPanel onClose={() => {}} onPreferencesSaved={() => {}} />);
-    await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
+    await screen.findByRole('button', { name: 'Monitors & Speakers' });
     expect(screen.queryByRole('button', { name: 'Tiling' })).not.toBeInTheDocument();
   });
 

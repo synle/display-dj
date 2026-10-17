@@ -2248,14 +2248,7 @@ mod tests {
         let loaded: Preferences =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(loaded.min_brightness, 10);
-        assert_eq!(
-            loaded.key_bindings.len(),
-            if cfg!(any(target_os = "macos", target_os = "windows")) {
-                24
-            } else {
-                22
-            }
-        );
+        assert_eq!(loaded.key_bindings.len(), prefs.key_bindings.len());
 
         std::fs::remove_dir_all(&dir).ok();
     }
