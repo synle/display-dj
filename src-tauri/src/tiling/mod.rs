@@ -1815,7 +1815,8 @@ pub fn run_zorder_selftest(app: &AppHandle) {
 
 /// Check if a window should be excluded from tiling and exposé enumeration.
 /// Filters system/shell windows that appear as visible top-level windows
-/// but are not user application windows. Used on Windows; no-op on other platforms.
+/// but are not user application windows. Compiled for Windows and shared tests.
+#[cfg(any(target_os = "windows", test))]
 pub(crate) fn should_skip_system_window(process_name: &str, title: &str) -> bool {
     // Program Manager = the Windows desktop background (explorer.exe)
     if title == "Program Manager" {

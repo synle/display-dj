@@ -100,6 +100,14 @@ Focused-window tiling normalizes OS-managed window states before reading the ori
 
 Code: `src-tauri/src/tiling/{windows,macos,linux}.rs`. Exposé keeps its broader behavior and may also unminimize windows because every visible window must join the grid.
 
+### Native FFI declarations and platform-only compilation
+
+Core Foundation typedefs must retain their C ABI widths across every Rust declaration. `CFIndex` and `CFNumberType` are pointer-sized, so `tiling/macos.rs` defines both through `isize`; declaring the same symbol with `i64` in one module and `isize` in another triggers `clashing_extern_declarations` and risks an ABI mismatch. Regression test `macos_core_foundation_array_signatures_use_cfindex` pins the array signatures.
+
+The NSEvent callback uses exact-pinned `block2` and an `RcBlock` retained for process lifetime. Do not restore `block` v0.1: Rust reports its `_NSConcreteStackBlock` declaration as future-incompatible. The callback accepts `*mut c_void` at the block boundary and casts to the legacy `objc` object type inside, keeping `block2` encoding separate from `objc` v0.2.
+
+Host compilation cannot validate code hidden behind another platform's `cfg`. Before changing Win32 bindings, read the installed `windows` crate source for the exact module and generated integer types, then require `cargo test --target <windows-target> --no-run` in Windows CI. Treat `clashing_extern_declarations` and Cargo future-incompatibility notices as release defects rather than harmless warning noise.
+
 ### Linux — running locally & first-build notes (verified on Mint 22.2 / XFCE / X11)
 
 **Running the binary from a terminal or agent shell:** the app is a tray daemon with no window. A plain `./target/release/display-dj &` dies when the parent shell/session closes (no crash in the log — it just vanishes). Run fully detached:

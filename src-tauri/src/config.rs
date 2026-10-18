@@ -503,9 +503,6 @@ pub struct Preferences {
     pub last_known_values: LastKnownValues,
 }
 
-/// Default slider position rendered when no last-known value exists.
-pub const DEFAULT_SLIDER_VALUE: u32 = 50;
-
 /// Last-known slider values set from Display DJ, rendered instead of live
 /// hardware reads and re-applied once at startup.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]

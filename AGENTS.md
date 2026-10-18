@@ -168,7 +168,14 @@ Tile Snap uses `NSEvent.addGlobalMonitorForEvents(matching:handler:)` to observe
 3. Wrap with `catch_unwind` — Rust panics cannot unwind through ObjC blocks (would abort). **REQUIRES `panic = "unwind"` in `[profile.release]`**; `catch_unwind` is inert under `panic = "abort"`. v7.0.26 crashed 3× in field from this — see DEV.md "Crash Logging" for the post-mortem and `crash.log` shape.
 4. Use raw `objc_msgSend` with `Sel::register("type")` for `[event type]` — `type` is a Rust keyword; `msg_send![event, r#type]` raises an ObjC exception.
 5. Convert `[NSEvent mouseLocation]` (Cocoa: Y up from bottom-left) → CG coords (Y down from top-left): `primary_h - cocoa_y`.
-6. Use the `block` crate (v0.1) for ObjC blocks. The block must stay alive (`.copy()` to heap) for the monitor's lifetime.
+6. Use exact-pinned `block2` for ObjC blocks. `RcBlock::new` is already heap-owned; leak the handler only when AppKit retains its callback for process lifetime. Do not reintroduce `block` v0.1: current Rust reports its uninhabited static as future-incompatible.
+
+**Native binding rules:**
+
+- Match Apple typedef widths, not convenient Rust primitives. `CFIndex` and `CFNumberType` are pointer-sized (`isize`); every declaration of the same Core Foundation symbol across modules must use an identical signature.
+- Before adding a Windows API import, read the installed `windows` crate binding and use its actual module, parameter type, and constant type. Training-memory paths are not sufficient.
+- Platform-only changes must compile on that platform before release. Windows CI uses `cargo test --target <windows-target> --no-run`; macOS FFI changes require local `cargo check` plus the full Rust suite.
+- Treat `clashing_extern_declarations` and Cargo future-incompatibility notices as defects. Fix the ABI or dependency; do not silence them globally.
 
 ### Windows (WinEvent move monitor)
 
@@ -186,7 +193,7 @@ Windows runs at the invoking user's normal integrity (`asInvoker`, `uiAccess="fa
 
 Linux Tile Snap runs a dedicated X11 thread that polls `QueryPointer` and `_NET_ACTIVE_WINDOW` geometry. A drag activates only after the left button moves at least 10px and the window position changes across two stable-size samples; any normal-window size change rejects the gesture as a border resize. xfwm4 maximize-to-normal transitions update the restore baseline before move confirmation.
 
-- The monitor starts only when `$DISPLAY` is available and remains dormant while Tile Snap is disabled.
+- The monitor starts with the app, remains dormant while Tile Snap is disabled, and retries X11 connection when `$DISPLAY` appears or the connection drops.
 - Windows and Linux share `tiling/snap_overlay.rs`, so both draw the same zones and apply the exact preview rectangle on release.
 - On XFCE, disable **Window Manager Tweaks → Accessibility → Automatically tile windows when moving toward the screen edge** if native tiling competes with Display DJ.
 

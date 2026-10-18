@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs)] // objc 0.2 macros emit the legacy `cargo-clippy` cfg.
+
 //! macOS window tiling via the Accessibility API.
 //!
 //! Provides the macOS-specific implementation for window tiling commands
@@ -92,6 +94,8 @@ use super::{
 type CFTypeRef = *const c_void;
 type CFStringRef = *const c_void;
 type CFAllocatorRef = *const c_void;
+type CFIndex = isize;
+type CFNumberType = CFIndex;
 
 const K_CF_ALLOCATOR_DEFAULT: CFAllocatorRef = std::ptr::null();
 const K_CF_STRING_ENCODING_UTF8: u32 = 0x08000100;
@@ -106,13 +110,13 @@ extern "C" {
     ) -> CFStringRef;
     fn CFNumberCreate(
         allocator: CFAllocatorRef,
-        the_type: i64,
+        the_type: CFNumberType,
         value_ptr: *const c_void,
     ) -> CFTypeRef;
     fn CFArrayCreate(
         allocator: CFAllocatorRef,
         values: *const CFTypeRef,
-        num_values: i64,
+        num_values: CFIndex,
         callbacks: *const c_void,
     ) -> CFArrayRef;
 }
@@ -133,15 +137,6 @@ impl CfRef {
     /// Return the raw pointer.
     fn as_ptr(&self) -> CFTypeRef {
         self.0
-    }
-
-    /// Consume the CfRef and return the raw pointer WITHOUT calling CFRelease.
-    /// The caller is responsible for releasing the pointer (or wrapping it in
-    /// a new CfRef on another thread).
-    fn into_raw(self) -> CFTypeRef {
-        let ptr = self.0;
-        std::mem::forget(self); // skip Drop
-        ptr
     }
 }
 
@@ -1058,10 +1053,10 @@ extern "C" {
 
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
-    fn CFArrayGetCount(array: CFArrayRef) -> i64;
-    fn CFArrayGetValueAtIndex(array: CFArrayRef, idx: i64) -> *const c_void;
+    fn CFArrayGetCount(array: CFArrayRef) -> CFIndex;
+    fn CFArrayGetValueAtIndex(array: CFArrayRef, idx: CFIndex) -> *const c_void;
     fn CFDictionaryGetValue(dict: CFDictionaryRef, key: *const c_void) -> *const c_void;
-    fn CFNumberGetValue(number: *const c_void, typ: i64, out: *mut c_void) -> bool;
+    fn CFNumberGetValue(number: *const c_void, typ: CFNumberType, out: *mut c_void) -> bool;
     fn CFStringGetCStringPtr(string: *const c_void, encoding: u32) -> *const c_char;
     fn CFStringGetCString(
         string: *const c_void,
@@ -1071,7 +1066,7 @@ extern "C" {
     ) -> bool;
 }
 
-const K_CF_NUMBER_SINT32_TYPE: i64 = 3;
+const K_CF_NUMBER_SINT32_TYPE: CFNumberType = 3;
 
 /// Read a CFString value from a CFDictionary.
 unsafe fn dict_get_string(dict: CFDictionaryRef, key_str: &str) -> Option<String> {
@@ -1573,16 +1568,6 @@ fn find_window_at_cursor(cx: f64, cy: f64) -> Option<(i32, u32)> {
     }
     // Fallback: return the frontmost window regardless of cursor position
     windows.first().map(|w| (w.owner_pid, w.window_id as u32))
-}
-
-/// Callback for layout_grid_on_display: set window rect and raise to front.
-fn set_window_rect_via_ax(win_info: &WindowInfo, rect: &Rect) {
-    unsafe {
-        if let Some(ax_win) = get_ax_window_by_id(win_info.owner_pid, win_info.window_id as u32) {
-            set_window_rect(&ax_win, rect);
-            raise_window(&ax_win);
-        }
-    }
 }
 
 /// Spread all windows into grids using the shared plan_expose logic.
@@ -3206,7 +3191,8 @@ pub fn start_tile_snap(app: AppHandle) {
 
             // Create an Objective-C block that calls our Rust handler.
             let ctx_for_block = ctx.clone();
-            let handler = block::ConcreteBlock::new(move |event: *mut Object| {
+            let handler = block2::RcBlock::new(move |event: *mut c_void| {
+                let event = event.cast::<Object>();
                 // Wrap in catch_unwind: panics cannot unwind through the
                 // Objective-C block boundary (abort would crash the app).
                 let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -3223,7 +3209,6 @@ pub fn start_tile_snap(app: AppHandle) {
                     handle_snap_event(&ctx_for_block, event_type, cursor);
                 }));
             });
-            let handler = handler.copy(); // heap-allocate so it outlives this scope
 
             let cls = objc::runtime::Class::get("NSEvent").unwrap();
             let monitor: *mut Object = msg_send![
@@ -3257,10 +3242,11 @@ pub fn start_tile_snap(app: AppHandle) {
                 }
             }
 
-            // Leak the handler and monitor — they live for the app's lifetime.
-            // The handler RcBlock must stay alive as long as the monitor is active.
+            // The handler RcBlock must stay alive as long as AppKit keeps the
+            // monitor registration active. The monitor token is Copy; AppKit
+            // owns the registration until explicitly removed.
             std::mem::forget(handler);
-            std::mem::forget(monitor);
+            let _ = monitor;
         }
 
         // Leak the Arc so the SnapContext lives for the app's lifetime.

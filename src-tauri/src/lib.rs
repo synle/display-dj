@@ -587,6 +587,19 @@ mod tests {
         }
     }
 
+    /// Core Foundation array APIs use pointer-sized CFIndex values consistently.
+    #[test]
+    fn macos_core_foundation_array_signatures_use_cfindex() {
+        let source = include_str!("tiling/macos.rs");
+        assert!(source.contains("type CFIndex = isize;"));
+        assert!(source.contains("fn CFArrayGetCount(array: CFArrayRef) -> CFIndex;"));
+        assert!(source.contains(
+            "fn CFArrayGetValueAtIndex(array: CFArrayRef, idx: CFIndex) -> *const c_void;"
+        ));
+        assert!(!source.contains("fn CFArrayGetCount(array: CFArrayRef) -> i64;"));
+        assert!(!source.contains("fn CFArrayGetValueAtIndex(array: CFArrayRef, idx: i64)"));
+    }
+
     /// Windows title-bar double-click handling must consume the native click
     /// and dispatch Display DJ's maximize action on the monitor thread.
     #[test]
