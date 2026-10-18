@@ -69,13 +69,16 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
 use windows::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, DispatchMessageW, EnumWindows, GetCursorPos, GetForegroundWindow,
-    GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible,
-    IsZoomed, PeekMessageW, SendMessageTimeoutW, SetForegroundWindow, SetWindowPos, ShowWindow,
-    TranslateMessage, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART, HTBOTTOM, HTBOTTOMLEFT,
-    HTBOTTOMRIGHT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HWND_BOTTOM, HWND_TOP, MSG,
-    OBJID_WINDOW, PM_REMOVE, SMTO_ABORTIFHUNG, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_NOZORDER, SW_RESTORE, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_NCHITTEST,
+    BringWindowToTop, CallNextHookEx, DispatchMessageW, EnumWindows, GetAncestor, GetCursorPos,
+    GetDoubleClickTime, GetForegroundWindow, GetSystemMetrics, GetWindowRect, GetWindowTextW,
+    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, PeekMessageW,
+    SendMessageTimeoutW, SetForegroundWindow, SetWindowPos, SetWindowsHookExW, ShowWindow,
+    TranslateMessage, WindowFromPoint, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART,
+    GA_ROOT, HC_ACTION, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTLEFT, HTRIGHT, HTTOP,
+    HTTOPLEFT, HTTOPRIGHT, HWND_BOTTOM, HWND_TOP, LRESULT, MSG, MSLLHOOKSTRUCT, OBJID_WINDOW,
+    PM_REMOVE, SMTO_ABORTIFHUNG, SM_CXDOUBLECLK, SM_CYDOUBLECLK, SWP_NOACTIVATE, SWP_NOMOVE,
+    SWP_NOSIZE, SWP_NOZORDER, SW_MAXIMIZE, SW_RESTORE, WH_MOUSE_LL, WINEVENT_OUTOFCONTEXT,
+    WINEVENT_SKIPOWNPROCESS, WM_LBUTTONDOWN, WM_NCHITTEST,
 };
 
 // ---------------------------------------------------------------------------
@@ -784,12 +787,15 @@ const TILE_SNAP_IDLE_INTERVAL: std::time::Duration = std::time::Duration::from_m
 static TILE_SNAP_STARTED: AtomicBool = AtomicBool::new(false);
 static WIN_EVENT_SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<WindowMoveEvent>> =
     std::sync::OnceLock::new();
+static LAST_TITLE_BAR_CLICK: std::sync::Mutex<Option<(HWND, POINT, u32)>> =
+    std::sync::Mutex::new(None);
 
 /// Move/size lifecycle event copied out of the Win32 callback.
 #[derive(Clone, Copy, Debug)]
 enum WindowMoveEvent {
     Start(isize),
     End(isize),
+    DoubleClick(isize),
 }
 
 /// State captured for one system window-move gesture.
@@ -797,6 +803,7 @@ struct TileSnapDrag {
     hwnd: HWND,
     original_rect: Rect,
     displays: Vec<Rect>,
+    scale_factors: Vec<f64>,
     half_ratio: u32,
     third_ratio: u32,
     gap: u32,
@@ -837,6 +844,60 @@ unsafe extern "system" fn tile_snap_win_event_callback(
             let _ = sender.send(move_event);
         }
     });
+}
+
+/// Consume a Windows title-bar double-click and send Display DJ's maximize action.
+unsafe extern "system" fn title_bar_mouse_hook(
+    code: i32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if code != HC_ACTION || wparam.0 as u32 != WM_LBUTTONDOWN {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+
+    let mouse = unsafe { &*(lparam.0 as *const MSLLHOOKSTRUCT) };
+    let point = mouse.pt;
+    let child = unsafe { WindowFromPoint(point) };
+    let hwnd = unsafe { GetAncestor(child, GA_ROOT) };
+    let is_title_bar = !hwnd.is_invalid()
+        && unsafe {
+            let mut hit_test = 0usize;
+            SendMessageTimeoutW(
+                hwnd,
+                WM_NCHITTEST,
+                WPARAM(0),
+                point_to_lparam(point),
+                SMTO_ABORTIFHUNG,
+                50,
+                Some(&mut hit_test),
+            )
+            .0 != 0
+                && hit_test as u32 == HTCAPTION
+        };
+
+    if is_title_bar {
+        if let Ok(mut previous) = LAST_TITLE_BAR_CLICK.lock() {
+            let is_double_click = previous.is_some_and(|(old_hwnd, old_point, old_time)| {
+                let max_delta = unsafe { GetDoubleClickTime() };
+                let max_x = unsafe { GetSystemMetrics(SM_CXDOUBLECLK) };
+                let max_y = unsafe { GetSystemMetrics(SM_CYDOUBLECLK) };
+                old_hwnd == hwnd
+                    && mouse.time.saturating_sub(old_time) <= max_delta
+                    && (point.x - old_point.x).abs() <= max_x
+                    && (point.y - old_point.y).abs() <= max_y
+            });
+            *previous = Some((hwnd, point, mouse.time));
+            if is_double_click {
+                if let Some(sender) = WIN_EVENT_SENDER.get() {
+                    let _ = sender.send(WindowMoveEvent::DoubleClick(hwnd.0 as isize));
+                }
+                return LRESULT(1);
+            }
+        }
+    }
+
+    unsafe { CallNextHookEx(None, code, wparam, lparam) }
 }
 
 /// Start the Windows Tile Snap monitor once for the process lifetime.
@@ -888,6 +949,10 @@ fn run_tile_snap_monitor(app: AppHandle, receiver: std::sync::mpsc::Receiver<Win
         dbg_log(&app, "tile_snap_win: SetWinEventHook failed");
         return;
     }
+    let mouse_hook = unsafe { SetWindowsHookExW(WH_MOUSE_LL, Some(title_bar_mouse_hook), None, 0) };
+    if mouse_hook.is_err() {
+        dbg_log(&app, "tile_snap_win: title-bar mouse hook failed");
+    }
 
     let mut overlay = TileSnapOverlay::new(app.clone());
     let mut drag: Option<TileSnapDrag> = None;
@@ -898,6 +963,14 @@ fn run_tile_snap_monitor(app: AppHandle, receiver: std::sync::mpsc::Receiver<Win
 
         while let Ok(event) = receiver.try_recv() {
             match event {
+                WindowMoveEvent::DoubleClick(raw_hwnd) => {
+                    let hwnd = HWND(raw_hwnd as *mut _);
+                    if unsafe { IsWindow(hwnd).as_bool() } {
+                        unsafe {
+                            let _ = ShowWindow(hwnd, SW_MAXIMIZE);
+                        }
+                    }
+                }
                 WindowMoveEvent::Start(raw_hwnd) => {
                     overlay.hide();
                     drag = begin_tile_snap_drag(&app, &mut overlay, HWND(raw_hwnd as *mut _));
@@ -917,7 +990,7 @@ fn run_tile_snap_monitor(app: AppHandle, receiver: std::sync::mpsc::Receiver<Win
         }
 
         if let Some(active) = drag.as_mut() {
-            if !update_tile_snap_drag(&app, &overlay, active) {
+            if !update_tile_snap_drag(&app, &mut overlay, active) {
                 overlay.hide();
                 drag = None;
             }
@@ -1002,6 +1075,7 @@ fn begin_tile_snap_drag(
         hwnd,
         original_rect,
         displays,
+        scale_factors,
         half_ratio: prefs.half_ratio,
         third_ratio: prefs.third_ratio,
         gap: prefs.gap,
@@ -1020,11 +1094,41 @@ fn begin_tile_snap_drag(
 /// Returns `false` when the drag should be cancelled.
 fn update_tile_snap_drag(
     app: &AppHandle,
-    overlay: &TileSnapOverlay,
+    overlay: &mut TileSnapOverlay,
     drag: &mut TileSnapDrag,
 ) -> bool {
     if !tile_snap_enabled(app) || !unsafe { IsWindow(drag.hwnd).as_bool() } {
         return false;
+    }
+
+    let current_toggles = app.try_state::<crate::AppState>().and_then(|state| {
+        state.preferences.try_lock().ok().map(|prefs| {
+            (
+                SnapZoneToggles::from_prefs(&prefs.tiling),
+                prefs.tiling.side_edge_trigger as f64,
+                prefs.tiling.top_edge_trigger as f64,
+                prefs.tiling.corner_trigger as f64,
+            )
+        })
+    });
+    if let Some((toggles, side_edge, top_edge, corner)) = current_toggles {
+        let changed = drag.toggles != toggles
+            || drag.side_edge_trigger != side_edge
+            || drag.top_edge_trigger != top_edge
+            || drag.corner_trigger != corner;
+        if changed {
+            drag.toggles = toggles;
+            drag.side_edge_trigger = side_edge;
+            drag.top_edge_trigger = top_edge;
+            drag.corner_trigger = corner;
+            drag.current_layout = None;
+            drag.current_target = None;
+            let zones = build_snap_zones(&drag.displays, side_edge, top_edge, corner, &toggles);
+            if let Err(error) = overlay.show_zones(&drag.displays, &zones, &drag.scale_factors) {
+                dbg_log(app, &error);
+                return false;
+            }
+        }
     }
 
     let cursor = match get_cursor_position() {

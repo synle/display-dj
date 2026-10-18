@@ -750,7 +750,7 @@ pub(crate) fn detect_snap_zone(
 ///
 /// One value gates both drawing and hit-testing, so a hidden zone can never
 /// remain active as an invisible drop target.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct SnapZoneToggles {
     pub(crate) top_edge: bool,
     pub(crate) left_edge: bool,

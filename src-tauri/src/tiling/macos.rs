@@ -2668,6 +2668,7 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
         })
         .unwrap_or(false); // default to disabled if lock is contended
     if !snap_enabled {
+        dispatch_overlay(OverlayCmd::Hide);
         return;
     }
 
@@ -2693,6 +2694,37 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
         NS_EVENT_TYPE_LEFT_MOUSE_DRAGGED => {
             if !state.dragging {
                 return;
+            }
+
+            // Refresh live snap settings so Settings changes redraw and retarget
+            // an in-flight preview without requiring an app restart.
+            if let Some(tp) = ctx
+                .app
+                .try_state::<crate::AppState>()
+                .and_then(|s| s.preferences.try_lock().ok().map(|p| p.tiling.clone()))
+            {
+                let toggles = SnapZoneToggles::from_prefs(&tp);
+                let settings_changed = state.snap_zone_toggles != toggles
+                    || state.side_edge_trigger != tp.side_edge_trigger as f64
+                    || state.top_edge_trigger != tp.top_edge_trigger as f64
+                    || state.corner_trigger != tp.corner_trigger as f64;
+                if settings_changed {
+                    state.side_edge_trigger = tp.side_edge_trigger as f64;
+                    state.top_edge_trigger = tp.top_edge_trigger as f64;
+                    state.corner_trigger = tp.corner_trigger as f64;
+                    state.snap_zone_toggles = toggles;
+                    state.current_layout = None;
+                    state.current_target_rect = None;
+                    if state.window_is_moving {
+                        dispatch_overlay(OverlayCmd::ShowZones {
+                            displays: state.displays.clone(),
+                            side_edge: state.side_edge_trigger,
+                            top_edge: state.top_edge_trigger,
+                            corner: state.corner_trigger,
+                            toggles: state.snap_zone_toggles,
+                        });
+                    }
+                }
             }
 
             // 10px movement threshold before confirming this is a real drag.

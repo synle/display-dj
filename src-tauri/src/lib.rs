@@ -1101,20 +1101,13 @@ pub fn run() {
                 }
             }
 
-            // Start Tile Snap on macOS only when already enabled. Accessibility
-            // recheck can start it later after the user grants permission.
+            // Start the monitor whenever Accessibility is available. The event
+            // handler checks live preferences, so enabling Tile Snap later takes
+            // effect without an app restart.
             #[cfg(target_os = "macos")]
             {
-                if preferences.tiling.enabled && preferences.tiling.tile_snap_enabled {
-                    let snap_handle = app.handle().clone();
-                    tiling::start_tile_snap(snap_handle);
-                } else {
-                    log::info!(
-                        "tile_snap: skipped (tiling.enabled={}, tile_snap_enabled={})",
-                        preferences.tiling.enabled,
-                        preferences.tiling.tile_snap_enabled,
-                    );
-                }
+                let snap_handle = app.handle().clone();
+                tiling::start_tile_snap(snap_handle);
             }
 
             // Windows keeps the lightweight WinEvent monitor alive even while
