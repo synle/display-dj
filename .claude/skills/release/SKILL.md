@@ -10,7 +10,7 @@ Release without asking routing or confirmation questions when the requested acti
 ## Release mode
 
 - Default to **official** for every release request.
-- Use **beta** only when the user explicitly says `beta`, `prerelease`, `pre-release`, `test release`, `test build`, or names `release-beta.yml` or `/release-beta`.
+- Use **beta** only when the user explicitly says `beta`, `prerelease`, `pre-release`, `test release`, `test build`, or names `release-beta.yml`.
 - Words such as `release`, `publish`, `ship`, `latest`, `current`, `new version`, or a version number do not imply beta. They always route to official unless accompanied by an explicit beta/test marker.
 - Never infer beta from the current branch, commit SHA, dirty state, failed CI, or uncertainty. If beta/test was not explicit, official remains true.
 

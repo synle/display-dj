@@ -4,7 +4,6 @@
 .DS_Store
 .cache
 .claude/*
-!.claude/commands/
 !.claude/skills/
 !.claude/skills/**
 .env
