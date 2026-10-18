@@ -853,7 +853,7 @@ unsafe extern "system" fn title_bar_mouse_hook(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    if code != HC_ACTION || wparam.0 as u32 != WM_LBUTTONDOWN as u32 {
+    if code != HC_ACTION as i32 || wparam.0 as u32 != WM_LBUTTONDOWN as u32 {
         return unsafe { CallNextHookEx(None, code, wparam, lparam) };
     }
 

@@ -593,6 +593,8 @@ mod tests {
     fn windows_title_bar_double_click_is_intercepted_and_maximized() {
         let source = include_str!("tiling/windows.rs");
         assert!(source.contains("SetWindowsHookExW(WH_MOUSE_LL"));
+        assert!(source.contains("code != HC_ACTION as i32"));
+        assert!(source.contains("wparam.0 as u32 != WM_LBUTTONDOWN as u32"));
         assert!(source.contains("return LRESULT(1)"));
         assert!(source.contains("WindowMoveEvent::DoubleClick"));
         assert!(source.contains("ShowWindow(hwnd, SW_MAXIMIZE)"));
