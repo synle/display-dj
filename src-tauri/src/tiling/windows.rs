@@ -63,21 +63,22 @@ pub(super) fn is_process_elevated() -> Result<bool, String> {
     Ok(elevation.TokenIsElevated != 0)
 }
 
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, RECT, TRUE, WPARAM};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, POINT, RECT, TRUE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
 };
 use windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
+use windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime;
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, CallNextHookEx, DispatchMessageW, EnumWindows, GetAncestor, GetCursorPos,
-    GetDoubleClickTime, GetForegroundWindow, GetSystemMetrics, GetWindowRect, GetWindowTextW,
-    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, PeekMessageW,
-    SendMessageTimeoutW, SetForegroundWindow, SetWindowPos, SetWindowsHookExW, ShowWindow,
-    TranslateMessage, WindowFromPoint, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART,
-    GA_ROOT, HC_ACTION, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTLEFT, HTRIGHT, HTTOP,
-    HTTOPLEFT, HTTOPRIGHT, HWND_BOTTOM, HWND_TOP, LRESULT, MSG, MSLLHOOKSTRUCT, OBJID_WINDOW,
-    PM_REMOVE, SMTO_ABORTIFHUNG, SM_CXDOUBLECLK, SM_CYDOUBLECLK, SWP_NOACTIVATE, SWP_NOMOVE,
-    SWP_NOSIZE, SWP_NOZORDER, SW_MAXIMIZE, SW_RESTORE, WH_MOUSE_LL, WINEVENT_OUTOFCONTEXT,
+    GetForegroundWindow, GetSystemMetrics, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
+    IsIconic, IsWindow, IsWindowVisible, IsZoomed, PeekMessageW, SendMessageTimeoutW,
+    SetForegroundWindow, SetWindowPos, SetWindowsHookExW, ShowWindow, TranslateMessage,
+    WindowFromPoint, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART, GA_ROOT, HC_ACTION,
+    HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT,
+    HTTOPRIGHT, HWND_BOTTOM, HWND_TOP, MSG, MSLLHOOKSTRUCT, OBJID_WINDOW, PM_REMOVE,
+    SMTO_ABORTIFHUNG, SM_CXDOUBLECLK, SM_CYDOUBLECLK, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SWP_NOZORDER, SW_MAXIMIZE, SW_RESTORE, WH_MOUSE_LL, WINEVENT_OUTOFCONTEXT,
     WINEVENT_SKIPOWNPROCESS, WM_LBUTTONDOWN, WM_NCHITTEST,
 };
 
@@ -787,7 +788,7 @@ const TILE_SNAP_IDLE_INTERVAL: std::time::Duration = std::time::Duration::from_m
 static TILE_SNAP_STARTED: AtomicBool = AtomicBool::new(false);
 static WIN_EVENT_SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<WindowMoveEvent>> =
     std::sync::OnceLock::new();
-static LAST_TITLE_BAR_CLICK: std::sync::Mutex<Option<(HWND, POINT, u32)>> =
+static LAST_TITLE_BAR_CLICK: std::sync::Mutex<Option<(isize, POINT, u32)>> =
     std::sync::Mutex::new(None);
 
 /// Move/size lifecycle event copied out of the Win32 callback.
@@ -852,7 +853,7 @@ unsafe extern "system" fn title_bar_mouse_hook(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    if code != HC_ACTION || wparam.0 as u32 != WM_LBUTTONDOWN {
+    if code != HC_ACTION || wparam.0 as u32 != WM_LBUTTONDOWN as u32 {
         return unsafe { CallNextHookEx(None, code, wparam, lparam) };
     }
 
@@ -882,12 +883,12 @@ unsafe extern "system" fn title_bar_mouse_hook(
                 let max_delta = unsafe { GetDoubleClickTime() };
                 let max_x = unsafe { GetSystemMetrics(SM_CXDOUBLECLK) };
                 let max_y = unsafe { GetSystemMetrics(SM_CYDOUBLECLK) };
-                old_hwnd == hwnd
+                old_hwnd == hwnd.0 as isize
                     && mouse.time.saturating_sub(old_time) <= max_delta
                     && (point.x - old_point.x).abs() <= max_x
                     && (point.y - old_point.y).abs() <= max_y
             });
-            *previous = Some((hwnd, point, mouse.time));
+            *previous = Some((hwnd.0 as isize, point, mouse.time));
             if is_double_click {
                 if let Some(sender) = WIN_EVENT_SENDER.get() {
                     let _ = sender.send(WindowMoveEvent::DoubleClick(hwnd.0 as isize));
