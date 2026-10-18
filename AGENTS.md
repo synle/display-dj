@@ -528,8 +528,10 @@ repos), not cross-compiles. Two gotchas when editing these workflows:
   `aarch64`. The upload globs are extension-based (`*.deb`, `*.AppImage`, `*.exe`) so they match either.
 
 - **`build.yml`** — tests + builds on all platforms for every push/PR. PR comment with artifact download links. Rolled-up `Main Build` check (job `main_build`, `needs: [build, coverage]`, `if: always()`) collapses the 6-platform matrix + coverage into one green/red status — use this name in branch protection. Rust tests run with `--no-run` on both Windows runners (Dxva2/WebView2 can't load in CI); they execute on macOS ARM/Intel and Linux x64/arm64.
+- **Release routing** — every release request defaults to official. Use beta only when the user explicitly says beta, prerelease, test release/build, or directly invokes `/release-beta`; never infer beta from branch, SHA, CI state, or uncertainty. Release commands proceed without confirmation prompts.
+- **Release notes** — always summarize commits since the last non-draft, non-prerelease release for the user. Do not create or set a changeset, changelog, generated notes file, or custom `release_notes` / `notes` input; leave those inputs unset so the shared release workflow generates the changelog.
 - **`release-official.yml`** — `v*` tag or manual dispatch. Uses `synle/workflows/actions/release/` shared actions (`begin-release` → Tauri matrix build → `end-release`). Generates changelog from commits since last tag + `.github/release-body-static.md`. Sets `TAURI_RELEASE=true` (clean version). Trigger via `/release-official`.
-- **`release-beta.yml`** — manual dispatch only. Same flow with `mode: beta`. Draft prerelease tagged `release-beta-<date>-<sha>`. No `TAURI_RELEASE`, so builds show the `[beta - <sha>]` suffix. Trigger via `/release-beta`.
+- **`release-beta.yml`** — manual dispatch only and explicit opt-in. Same flow with `mode: beta`. Draft prerelease tagged `release-beta-<date>-<sha>`. No `TAURI_RELEASE`, so builds show the `[beta - <sha>]` suffix. Trigger via `/release-beta`.
 
 ## GitHub Raw File URLs
 

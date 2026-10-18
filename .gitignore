@@ -5,6 +5,8 @@
 .cache
 .claude/*
 !.claude/commands/
+!.claude/skills/
+!.claude/skills/**
 .env
 .npmrc
 .nyc_output
