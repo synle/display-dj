@@ -593,7 +593,7 @@ pub async fn record_last_known_values(
     save_preferences_to_disk(&prefs)
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct KeyBinding {
     pub key: String,
@@ -616,7 +616,7 @@ impl Default for Profile {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum CommandValue {
     Single(String),
@@ -1308,6 +1308,7 @@ pub async fn save_preferences(
     // even if autostart hangs
     let mut current = state.preferences.lock().map_err(|e| e.to_string())?;
     let old_launch_at_login = current.launch_at_login;
+    let old_key_bindings = current.key_bindings.clone();
     let old_slideshow = Some(slideshow_signature(&current.wallpaper));
     preferences.last_known_values = current.last_known_values.clone();
     preferences.linux_lock_command = current.linux_lock_command.clone();
@@ -1324,6 +1325,11 @@ pub async fn save_preferences(
         preferences.debug_logging,
         std::sync::atomic::Ordering::Relaxed,
     );
+
+    if preferences.key_bindings != old_key_bindings {
+        crate::tray::register_shortcuts(&app, &preferences.key_bindings);
+        log::info!("save_preferences: global shortcuts re-registered");
+    }
 
     // Sync autostart with OS only when the value actually changed
     // (autostart.enable/disable can hang on some platforms)

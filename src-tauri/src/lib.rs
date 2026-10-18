@@ -547,6 +547,57 @@ mod tests {
         assert!(restore < read_bounds);
     }
 
+    /// Live preference saves must refresh global shortcuts without restarting.
+    #[test]
+    fn saving_preferences_re_registers_changed_shortcuts() {
+        let source = include_str!("config.rs");
+        let save_body = source
+            .split("pub async fn save_preferences")
+            .nth(1)
+            .expect("save_preferences command must exist")
+            .split("fn slideshow_signature")
+            .next()
+            .expect("save_preferences body must be bounded");
+        assert!(save_body.contains("old_key_bindings"));
+        assert!(save_body.contains("crate::tray::register_shortcuts"));
+    }
+
+    /// Linux Tile Snap must reconnect after X11 is unavailable at launch and
+    /// refresh active drag geometry when preferences change.
+    #[test]
+    fn linux_tile_snap_reconnects_and_refreshes_live_preferences() {
+        let source = include_str!("tiling/linux.rs");
+        assert!(source.contains("TILE_SNAP_RECONNECT_INTERVAL"));
+        assert!(source.contains("run_tile_snap_session(&app)"));
+        let update_body = source
+            .split("fn update_active_snap")
+            .nth(1)
+            .expect("Linux active snap updater must exist")
+            .split("fn finish_pointer_gesture")
+            .next()
+            .expect("Linux active snap updater must be bounded");
+        for required in [
+            "prefs.tiling.half_ratio",
+            "prefs.tiling.third_ratio",
+            "prefs.tiling.gap",
+            "SnapZoneToggles::from_prefs",
+            "overlay.show_zones",
+        ] {
+            assert!(update_body.contains(required), "missing live refresh: {required}");
+        }
+    }
+
+    /// Windows title-bar double-click handling must consume the native click
+    /// and dispatch Display DJ's maximize action on the monitor thread.
+    #[test]
+    fn windows_title_bar_double_click_is_intercepted_and_maximized() {
+        let source = include_str!("tiling/windows.rs");
+        assert!(source.contains("SetWindowsHookExW(WH_MOUSE_LL"));
+        assert!(source.contains("return LRESULT(1)"));
+        assert!(source.contains("WindowMoveEvent::DoubleClick"));
+        assert!(source.contains("ShowWindow(hwnd, SW_MAXIMIZE)"));
+    }
+
     // -- parse_time_minutes --
 
     #[test]
@@ -1120,13 +1171,11 @@ pub fn run() {
             }
 
             // Linux/X11 uses a lightweight pointer/window-geometry poller.
-            // Keep it alive regardless of the current preference so toggling
-            // Tile Snap in Settings takes effect without an app restart.
+            // Start it even before X11 is available; the monitor reconnects
+            // later so a session change does not require an app restart.
             #[cfg(target_os = "linux")]
             {
-                if tiling::get_tiling_supported() {
-                    tiling::start_tile_snap(app.handle().clone());
-                }
+                tiling::start_tile_snap(app.handle().clone());
             }
 
             // Z-order self-test (debug aid — opt-in via env var).

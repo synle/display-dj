@@ -22,6 +22,7 @@ const WINDOW_STATE_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const WINDOW_STATE_CHANGE_TIMEOUT: Duration = Duration::from_millis(500);
 const TILE_SNAP_POLL_INTERVAL: Duration = Duration::from_millis(16);
 const TILE_SNAP_IDLE_INTERVAL: Duration = Duration::from_millis(50);
+const TILE_SNAP_RECONNECT_INTERVAL: Duration = Duration::from_secs(1);
 const TILE_SNAP_DISABLED_INTERVAL: Duration = Duration::from_millis(100);
 const TILE_SNAP_MOVE_THRESHOLD: f64 = 10.0;
 const TILE_SNAP_STABLE_MOVE_SAMPLES: u8 = 2;
@@ -1046,6 +1047,7 @@ enum GestureMotion {
 
 /// Active Tile Snap state after a title-bar move has been confirmed.
 struct LinuxTileSnapDrag {
+    scale_factors: Vec<f64>,
     displays: Vec<Rect>,
     half_ratio: u32,
     third_ratio: u32,
@@ -1092,14 +1094,23 @@ pub fn start_tile_snap(app: AppHandle) {
     }
 }
 
-/// Poll the root pointer and focused-window geometry for move gestures.
+/// Reconnect to X11 if the display server appears after app startup or drops.
 fn run_tile_snap_monitor(app: AppHandle) {
+    loop {
+        if connect().is_none() {
+            std::thread::sleep(TILE_SNAP_RECONNECT_INTERVAL);
+            continue;
+        }
+        run_tile_snap_session(&app);
+        std::thread::sleep(TILE_SNAP_RECONNECT_INTERVAL);
+    }
+}
+
+/// Poll the root pointer and focused-window geometry for one X11 connection.
+fn run_tile_snap_session(app: &AppHandle) {
     let (conn, screen_num) = match connect() {
         Some(connection) => connection,
-        None => {
-            log::warn!("tile_snap_x11: failed to connect to X11");
-            return;
-        }
+        None => return,
     };
     let root = conn.setup().roots[screen_num].root;
     let mut overlay = TileSnapOverlay::new(app.clone());
@@ -1150,7 +1161,7 @@ fn run_tile_snap_monitor(app: AppHandle) {
         } else if left_was_down {
             if let Some(mut active) = gesture.take() {
                 if let Some(drag) = active.drag.as_mut() {
-                    if !update_active_snap(&app, &overlay, drag, sample.x, sample.y) {
+                    if !update_active_snap(&app, &mut overlay, drag, sample.x, sample.y) {
                         active.drag = None;
                     }
                 }
@@ -1311,6 +1322,7 @@ fn begin_active_snap(app: &AppHandle, overlay: &mut TileSnapOverlay) -> Option<L
         zones.len()
     );
     Some(LinuxTileSnapDrag {
+        scale_factors,
         displays,
         half_ratio: prefs.half_ratio,
         third_ratio: prefs.third_ratio,
@@ -1328,7 +1340,7 @@ fn begin_active_snap(app: &AppHandle, overlay: &mut TileSnapOverlay) -> Option<L
 /// Update the active layout preview from one root cursor position.
 fn update_active_snap(
     app: &AppHandle,
-    overlay: &TileSnapOverlay,
+    overlay: &mut TileSnapOverlay,
     drag: &mut LinuxTileSnapDrag,
     cursor_x: i16,
     cursor_y: i16,
@@ -1336,6 +1348,50 @@ fn update_active_snap(
     if tile_snap_enabled(app) == Some(false) {
         return false;
     }
+
+    // Refresh all drag geometry from live preferences. This keeps both the
+    // overlay and drop target synchronized when Settings changes mid-drag.
+    let live_settings = app.try_state::<crate::AppState>().and_then(|state| {
+        state.preferences.try_lock().ok().map(|prefs| {
+            (
+                prefs.tiling.half_ratio,
+                prefs.tiling.third_ratio,
+                prefs.tiling.gap,
+                prefs.tiling.side_edge_trigger as f64,
+                prefs.tiling.top_edge_trigger as f64,
+                prefs.tiling.corner_trigger as f64,
+                SnapZoneToggles::from_prefs(&prefs.tiling),
+            )
+        })
+    });
+    if let Some((half_ratio, third_ratio, gap, side_edge, top_edge, corner, toggles)) =
+        live_settings
+    {
+        let changed = drag.half_ratio != half_ratio
+            || drag.third_ratio != third_ratio
+            || drag.gap != gap
+            || drag.side_edge_trigger != side_edge
+            || drag.top_edge_trigger != top_edge
+            || drag.corner_trigger != corner
+            || drag.toggles != toggles;
+        if changed {
+            drag.half_ratio = half_ratio;
+            drag.third_ratio = third_ratio;
+            drag.gap = gap;
+            drag.side_edge_trigger = side_edge;
+            drag.top_edge_trigger = top_edge;
+            drag.corner_trigger = corner;
+            drag.toggles = toggles;
+            drag.current_layout = None;
+            drag.current_target = None;
+            let zones = build_snap_zones(&drag.displays, side_edge, top_edge, corner, &toggles);
+            if let Err(error) = overlay.show_zones(&drag.displays, &zones, &drag.scale_factors) {
+                log::warn!("{}", error);
+                return false;
+            }
+        }
+    }
+
     let zone = detect_snap_zone_with_toggles(
         cursor_x as f64,
         cursor_y as f64,
