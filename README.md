@@ -32,6 +32,8 @@ A cross-platform desktop system tray app for controlling monitor brightness, con
 
 ## Features
 
+On Windows, title-bar double-clicks use native maximize/restore behavior. Display DJ does not intercept global mouse clicks.
+
 - **Brightness control** -- a single slider to adjust all monitors at once, or expand to control each monitor individually
 - **Contrast control** -- DDC/CI contrast adjustment for external monitors (enable in Settings)
 - **Dark mode toggle** -- system-wide dark/light mode switch

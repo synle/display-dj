@@ -40,6 +40,7 @@ core/ (vendored platform code)
 - `src-tauri/src/core/` — platform implementations (`macos`/`windows`/`linux`, `theme`, `volume`, `audio_output`, `wallpaper`, `display`). Most are vendored; `audio_output` is display-dj-local. See [VENDORING.md](VENDORING.md).
 - Other backend modules: `config.rs` (preferences), `tray.rs` (tray menu + shortcut dispatch), `tray_icon.rs`, `keep_awake.rs`, `sidecar_cache.rs` (5-min TTL cache), `overlay.rs` (soft-overlay brightness fallback), `crash_log.rs`, `tiling/`.
 - Windows builds embed `windows-app-manifest.xml` through `build.rs` at `asInvoker` integrity. Preserve the Common Controls v6 dependency, and keep `tile-snap-overlay-*` plus `overlay-*` covered by Tauri capabilities so their event listeners can receive render state.
+- Windows mouse regression check: with Tile Snap both off and on, verify ordinary pointer movement and clicks stay responsive, and title-bar double-clicks toggle native maximize/restore. The polling monitor must not install a global low-level mouse hook; its source-level regression guard runs on every host, but interactive verification requires Windows.
 
 ### Frontend ↔ Backend
 

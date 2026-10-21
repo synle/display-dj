@@ -600,17 +600,19 @@ mod tests {
         assert!(!source.contains("fn CFArrayGetValueAtIndex(array: CFArrayRef, idx: i64)"));
     }
 
-    /// Windows title-bar double-click handling must consume the native click
-    /// and dispatch Display DJ's maximize action on the monitor thread.
+    /// Windows Tile Snap must observe move events without intercepting global
+    /// mouse input; title-bar clicks remain owned by Windows.
     #[test]
-    fn windows_title_bar_double_click_is_intercepted_and_maximized() {
+    fn windows_tile_snap_does_not_install_a_global_mouse_hook() {
         let source = include_str!("tiling/windows.rs");
-        assert!(source.contains("SetWindowsHookExW(WH_MOUSE_LL"));
-        assert!(source.contains("code != HC_ACTION as i32"));
-        assert!(source.contains("wparam.0 as u32 != WM_LBUTTONDOWN as u32"));
-        assert!(source.contains("return LRESULT(1)"));
-        assert!(source.contains("WindowMoveEvent::DoubleClick"));
-        assert!(source.contains("ShowWindow(hwnd, SW_MAXIMIZE)"));
+        assert!(!source.contains("SetWindowsHookExW"));
+        assert!(!source.contains("WH_MOUSE_LL"));
+        assert!(!source.contains("title_bar_mouse_hook"));
+        assert!(!source.contains("LAST_TITLE_BAR_CLICK"));
+        assert!(!source.contains("DoubleClick"));
+        assert!(source.contains("SetWinEventHook("));
+        assert!(source.contains("EVENT_SYSTEM_MOVESIZESTART"));
+        assert!(source.contains("EVENT_SYSTEM_MOVESIZEEND"));
     }
 
     // -- parse_time_minutes --
