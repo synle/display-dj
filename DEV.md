@@ -1,10 +1,12 @@
-# display-dj
+# Display DJ — Developer Reference
 
-Cross-platform desktop app for monitor brightness, contrast, dark mode, volume and audio-output selection, and window tiling control. Built with Tauri v2 (Rust backend) + React 19 + TypeScript + Vite 6 (WebView frontend). Platform code (DDC/CI, gamma, WMI, DisplayServices, audio, wallpaper) runs in-process under `src-tauri/src/core/`.
+Cross-platform desktop app for monitor brightness, contrast, dark mode, volume and audio-output selection, and window tiling control. Built with Tauri v2 (Rust backend) + React 19 + TypeScript + Vite 8 (WebView frontend). Platform code (DDC/CI, gamma, WMI, DisplayServices, audio, wallpaper) runs in-process under `src-tauri/src/core/`.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the structural map and edit locations, and [AGENTS.md](AGENTS.md) for project-specific rules.
 
 ## Quick Start
 
-Prerequisites: Node.js 20+, [Rust toolchain](https://rustup.rs/) (stable), and platform deps (Linux: see CONTRIBUTING).
+See [CONTRIBUTING.md](CONTRIBUTING.md#quick-start) for Node/Rust requirements and platform setup. Dependency manifests and lockfiles own exact versions.
 
 ```bash
 npm install
@@ -46,39 +48,57 @@ Raising: measure current %, set floor ~10pp below, update both files. Never lowe
 
 ## State, persistence, and scheduling
 
-Platform reads and writes return errors when the OS backend cannot confirm the operation. `fetch_all_state` does not replace failures with empty monitors, light mode, or zero volume; frontend optimistic updates roll back and report the failure through an ARIA live status region. Aggregate brightness and contrast show an exact value only when applicable monitors agree, otherwise they show `Mixed`.
+`fetch_all_state` propagates errors returned by its monitor/theme/volume wrappers; it does not independently substitute light mode or zero volume. This does not guarantee truthful errors from every lower layer: display detection can still return an empty list.
 
-`save_preferences_to_disk` serializes writers, syncs temporary primary and backup files, and atomically replaces each destination. Malformed `preferences.json` files are quarantined as timestamped `.invalid.json` files; a valid `preferences.backup.json` is then recovered before defaults are used. `SettingsPanel` serializes and coalesces debounced snapshots, including a final close/unmount flush. Main-popup slider values are backend-owned `lastKnownValues`: `App.tsx` coalesces changes and calls `record_last_known_values` once after 200ms of quiet (flush on blur/unmount), and `save_preferences` keeps the in-memory copy. `restore_last_known_values()` in `lib.rs` re-applies them after the startup pre-warm.
+Main sliders deliberately show `lastKnownValues`, defaulting to 50%, rather than live hardware readings. Slider failures keep the requested value without rollback or a status bar. `App.tsx` passes `brightnessMixed={false}` and `contrastMixed={false}`; reusable component support for `Mixed` does not mean the main popup displays it.
+
+`save_preferences_to_disk` serializes writers, syncs temporary primary and backup files, and atomically replaces each destination. Both files receive the same new snapshot; the backup is not a previous-version archive. Malformed primary JSON is quarantined before backup recovery or default fallback.
+
+`SettingsPanel` coalesces full snapshots with a 100ms debounce and one in-flight save. Close/unmount requests a final flush. Failed saves retain the snapshot for a later flush; there is no save-status badge or visible persistence-error message. Initial loading failures separately show Retry.
+
+`App.tsx` coalesces last-known patches for 200ms and flushes on blur/unmount. `save_preferences` preserves backend-owned last-known values, Linux lock-command cache, lock-binding migration marker, and slideshow resume path. Startup restoration re-applies per-monitor brightness, supported contrast, the last enabled/present speaker, and its recorded volume. Tray and shortcut changes do not update these slider records.
 
 Volume path: the volume `Slider` throttles live sends to 30ms (brightness/contrast keep a 50ms trailing debounce); `volume::set_volume` serializes writes with a ticket counter so a superseded request is skipped; macOS `core::volume` writes CoreAudio's virtual main volume via `core::audio_output::set_default_volume` (measured 1.0-4.3ms vs ~250ms for `osascript`, 2026-09-28), falling back to `osascript` on error.
 
 Popup show: `tray::show_popup_window` no longer emits `monitors-changed` unconditionally. It calls `refresh_devices_on_show()`, which rescans displays and audio outputs in a background thread (one at a time) and emits change events only when the device list identity (`monitor_list_signature`: uid, name, hidden, brightness/contrast support) or audio state differs. The frontend keeps rendering its current lists until then.
 
-Brightness path: `core::display` keeps enumerated display controls in `CONTROL_CACHE` so a write is one DDC transaction (measured ~55ms external, ~0.1ms built-in, 2026-09-28) instead of enumerate + EDID + 2 DDC reads + write. `list_all()` (startup, hot-plug, Force Refresh) refreshes the cache; a failed write drops it, re-enumerates once, and retries. `set_all_brightness` writes displays in parallel on scoped threads (`SendControl` wraps each control; access is exclusive). `display::set_monitor_brightness` / `set_all_monitors_brightness` serialize writes latest-wins per target and skip an identical value within 2s (`BrightnessTracker`).
+Brightness path: `core::display::CONTROL_CACHE` reuses enumerated handles, avoiding discovery before every write. Platform writes can still retry and verify DDC values; Windows force mode applies gamma even when DDC succeeds. `list_all()` refreshes handles on startup/rescan; a failed cached write triggers re-enumeration and retry. All-display brightness uses scoped parallel workers. Application-level writes serialize latest-wins per target and deduplicate identical values for 2 seconds. Historical timing figures do not establish current cross-platform latency.
 
-Night mode stores the last successfully applied day/night phase in `AppState`. The 60-second poll executes actions only on startup or a phase transition; failed default brightness/theme writes leave the phase pending for the next tick. Schedule times require strict `HH:MM` and brightness values are sanitized to the configured safe range.
+Night mode stores the last applied day/night phase in `AppState`. Its worker sleeps 60 seconds before the first check, then acts on the first enabled check or a phase transition. Nonempty custom phase commands override the selected profile; a missing profile falls back to legacy brightness/theme values. Only that legacy fallback checks write success before recording the phase; custom commands and profiles record dispatch, not confirmed hardware completion. Failed legacy writes remain pending for the next tick. Schedule times require strict `HH:MM`; numeric values pass through `Preferences::sanitize()`.
+
+### Live settings
+
+`save_preferences` re-registers global shortcuts only when key bindings change, syncs autostart only when its value changes, and starts/stops/restarts changed slideshow settings. Tiling and Exposé commands read current preferences at invocation.
+
+Tile Snap monitors start independently of the saved toggle, so enabling an existing monitor needs no restart. macOS can start its monitor after Accessibility recheck; Linux reconnects when X11 appears or drops. Active macOS/Windows drags refresh zone toggles and trigger sizes; Linux also refreshes ratios and gap mid-drag. macOS/Windows capture ratios and gap at drag confirmation/start, so those changes apply on the next drag. Settings refreshes optional Windows status queries on mount.
 
 ## Audio output selection
 
 `src-tauri/src/core/audio_output/` owns the platform layer:
 
 - macOS uses CoreAudio device UIDs, output-stream/alive/default-output capability checks, built-in transport metadata, and the default output/system-output properties. Devices listed in `UNSUPPORTED_OUTPUT_DEVICE_UIDS` (Microsoft Teams Audio and ZoomAudioDevice loopback endpoints) are always hidden and rejected. Shared preference application also forces native endpoint names containing `Steam Streaming` into the hidden group on every platform.
-- Windows uses MMDevice for active render endpoints, `IPolicyConfig` for console/multimedia/communications defaults, and `IAudioEndpointVolume` for native volume and mute.
+- Windows uses MMDevice for active render endpoints, private `IPolicyConfig` for console/multimedia/communications defaults, and `IAudioEndpointVolume` for native volume and mute. Keep the unsupported default-switching interface isolated; no AudioDeviceCmdlets installation is required.
 - Linux uses `pactl` sink names, `set-default-sink`, and best-effort migration of active sink inputs.
 
-`src-tauri/src/volume.rs` exposes `get_audio_output_devices`, `set_audio_output_device`, `set_audio_output_device_state`, `save_audio_output_order`, and `rename_audio_output_device`. Enumeration and switching run in `spawn_blocking`; saved labels, `enabled` / `disabled` / `hidden` states, and optional sort positions are overlaid after the OS result. Settings persist in `Preferences.audio_output_configs`, keyed by stable platform ID, while the selected device remains OS-owned. Missing state values from older preference files default to `enabled`; missing sort positions retain the default state/built-in/name order.
+`src-tauri/src/volume.rs` exposes `get_audio_output_devices`, `set_audio_output_device`, `set_audio_output_device_state`, `save_audio_output_order`, and `rename_audio_output_device`. Enumeration and switching run in `spawn_blocking`; saved labels, `enabled` / `disabled` / `hidden` states, and optional sort positions are overlaid after the OS result. Settings persist in `Preferences.audio_output_configs`, keyed by stable platform ID, while live selection remains OS-owned. `lastKnownValues.selectedSpeakerId` separately records the popup's last selection for startup restoration. Missing state values from older preference files default to `enabled`; missing sort positions retain the default state/built-in/name order.
 
 `AppState.audio_output_state` caches the effective output snapshot. A backend refresh thread probes every 5 seconds, emits `audio-output-changed`, and rebuilds the tray menu only when that snapshot changes. `App.tsx` keeps output state separate from `fetch_all_state`; its visible-main-panel poll reads the shared cache as a fallback, prevents overlapping requests, and keeps the last successful state on errors.
 
 When debug logging is enabled, `volume.rs` logs the initial snapshot and later changes with every device ID/name/state plus the selected ID. Explicit selection logs include the requested ID, cached before-state, refreshed after-state, active-ID confirmation or mismatch, and post-switch volume. On Windows, `core/audio_output/windows.rs` also logs the console, multimedia, and communications default endpoint IDs before and after `IPolicyConfig::SetDefaultEndpoint`, plus each role's HRESULT outcome. The unchanged 5-second refresh path emits nothing, preventing diagnostic polling from flooding `debug.log`.
 
-`VolumeControl.tsx` owns a speaker expand/collapse chevron independent from the monitor section. Its readonly `All Speakers (<enabled non-hidden count>)` label always appends `- <selected name>` (collapsed and expanded); expanded mode lists visible endpoints with the selected radio checked, padded radio targets, inline alias editing, and reorder arrows. `SettingsPanel.tsx` lists monitors first, then every endpoint on the Monitors & Speakers tab (Night Mode Schedule is on the System tab) with the same arrows and a tri-state selector. Output names share the monitor-name font size. Enabled built-in outputs lead the initial order; `sortOrder` preserves later user ordering, and selection never affects row order. The tray's **Speakers** submenu lists enabled outputs with the selected endpoint marked `●`, then exposes Mute, 50%, and 100% presets through the normal volume command dispatcher.
+`VolumeControl.tsx` owns a speaker expand/collapse chevron independent from the monitor section. Its readonly `All Speakers (<enabled non-hidden count>)` label appends `- <selected name>` when known, in collapsed and expanded modes; expanded mode lists visible endpoints with the selected radio checked, padded radio targets, inline alias editing, and reorder arrows. `SettingsPanel.tsx` lists monitors first, then every endpoint on the Monitors & Speakers tab with a tri-state selector. Settings has no rename or reorder controls; the main popup owns both. Hidden endpoints are recoverable only in Settings. Night Mode and the single selected-profile editor live on the System tab. Output names share the monitor-name font size. Enabled built-in outputs lead the initial order; `sortOrder` preserves later user ordering, and selection never affects row order. The tray's **Speakers** submenu lists enabled outputs with the selected endpoint marked `●`, then exposes Mute, 50%, and 100% presets through the normal volume command dispatcher.
 
 `src/components/Dropdown.tsx` is the single frontend select primitive. Audio-output state, monitor brightness mode, wallpaper, slideshow, and Exposé strategy controls all use it; `.dropdown` in `App.css` owns their common 32px height, horizontal padding, typography, focus, hover, and disabled states.
 
 Tray popup placement uses the physical mouse position from `TrayIconEvent::Click` to select the target monitor. Tauri can report mixed-DPI monitor origins and sizes in coordinate spaces that overlap (observed: Retina `(0,0) 3456x2234 @2x`, lower display `(-63,1117) 1920x1200 @1x`, click `(1303,1132)`). When one point falls inside multiple reported bounds, the display whose nearest edge is closest to the tray click wins; this works for top, bottom, left, and right tray edges. Exact coincident bounds have no geometric discriminator and retain stable monitor enumeration order. Every click state stores the latest anchor before action filtering because macOS opens its synchronous context menu on right-button down; left-click opening and context-menu **Show Window** then reuse that anchor. The popup starts below the tray, flips fully above when its lower edge would overflow, and clamps every corner inside that same monitor. `AppState` retains the click point and tray rectangle so content-driven resize events repeat the same placement. With Debug Logging enabled, left/right tray button-up events record button, mouse point, selected screen, all screen origins/resolutions with explicit `@Nx` DPI scaling, tray bounds, placement mode, popup rectangle, and final position.
 
 ## Platform pitfalls
+
+### Monitor identity and Settings rows
+
+Monitor UIDs combine runtime API ID and model name, not a physical serial. `display::dedupe_moved_configs` transfers stale same-name metadata to the live UID unless its label is already customized, then removes stale duplicates. Disconnected metadata with no live name match remains saved. Identical-model monitors can still be ambiguous; do not treat this heuristic as stable physical identity.
+
+Settings loads monitors before preferences and filters metadata by live UIDs after a successful nonempty result. An empty or failed probe leaves the filter unset, so saved rows can still appear. DPI pairing claims all hardware-ID matches first, then name/built-in fallbacks, and never assigns one DPI display twice.
 
 ### macOS — Chromium apps & `AXFocusedApplication` (Brave / Chrome / Edge / Arc)
 
@@ -148,6 +168,8 @@ KWin gamma control.
 
 Title-bar clicks and double-click maximize/restore remain native Windows behavior. The former global low-level mouse hook was removed: it ran on the polling thread, whose sleeps and synchronous cross-process hit tests could hold up input delivery even while Tile Snap was disabled. Keep move/size observation separate from the global mouse input path.
 
+Hook removal proves that input dependency is gone, not that every Windows latency cause is fixed. Native pointer latency, first-overlay creation, driver effects, and held-shortcut CPU behavior need Windows measurements. Compare app closed/running, Tile Snap off/on, first/subsequent drags, and the actual running version before selecting another fix.
+
 `tiling/windows.rs` installs a `SetWinEventHook` listener for system move/size start and end events. Resize-border gestures are rejected with `WM_NCHITTEST`; title-bar moves poll the physical cursor, use shared zone geometry from `tiling/mod.rs`, and render through one transparent `tiling/snap_overlay.rs` WebView per display. Each WebView subscribes to a display-scoped event name supplied in its page URL, preventing one monitor's zone or preview payload from overwriting another's. Windows passes each monitor's effective DPI scale to the overlay, which converts physical Win32 rectangles into CSS pixels; this keeps bottom zones inside the work-area viewport above the taskbar. Maximized windows receive `SW_RESTORE` before their original drag bounds are captured, matching native Windows unsnap behavior. Lazy WebView creation dispatches to Tauri's main thread while Win32 polling stays on its monitor thread. Releasing inside a zone applies the exact preview rectangle to the original HWND.
 
 `windows-app-manifest.xml` declares `asInvoker` with `uiAccess="false"`, embedded by `build.rs` through `tauri_build::WindowsAttributes`. Keeping the app at normal user integrity lets the global WinEvent monitor observe ordinary application drag events without a UAC prompt. Windows blocks normal-integrity processes from moving elevated windows, so users must explicitly run Display DJ as administrator when that behavior is required. Do not use `uiAccess="true"`: unsigned/current-user bundles do not meet Windows UIAccess signing and secure-install-location requirements. The manifest must retain Tauri's Common Controls v6 dependency.
@@ -176,15 +198,19 @@ Dynamic overlay labels must stay covered by `src-tauri/capabilities/default.json
 
 `tiling/linux.rs` polls `QueryPointer` and `_NET_ACTIVE_WINDOW` geometry on a dedicated thread. Left-button gestures become Tile Snap drags only after 10px of cursor movement and two stable-size position samples; normal-window size changes reject border resizes. Maximized xfwm4 windows may resize once while restoring to normal bounds, so those pre-confirmation changes update the saved restore rectangle instead of cancelling the drag.
 
-The monitor reuses `tiling/snap_overlay.rs` and shared geometry from `tiling/mod.rs`; release applies the exact preview via `_NET_MOVERESIZE_WINDOW`. It starts only with `$DISPLAY` and stays dormant when preferences disable Tile Snap. Wayland-only sessions remain unsupported.
+The monitor reuses `tiling/snap_overlay.rs` and shared geometry from `tiling/mod.rs`; release applies the exact preview via `_NET_MOVERESIZE_WINDOW`. The worker starts even without `$DISPLAY`, retries X11 connections, and stays dormant when preferences disable Tile Snap. Wayland-only tiling remains unsupported.
 
 ## Crash Logging
 
-Every Rust panic plus every macOS native crash (`.ips` from `~/Library/Logs/DiagnosticReports/`) lands in `{config_dir}/display-dj/crash.log` (same folder as `preferences.json`; "Open App Folder" reveals it). Panics are captured by an in-process `std::panic::set_hook`; native macOS crashes are summarized into the same file by `crash_log.rs::import_macos_native_crashes` at each launch, so both crash modes appear chronologically without Console.app. Native Linux crashes are not intercepted in-process; use the host's system-coredump tooling for those stacks.
+Crash logging attempts to persist Rust panics and import matching macOS native reports (`.ips` from `~/Library/Logs/DiagnosticReports/`) into `crash.log` beside `preferences.json`. File-write failures can still prevent a record; this is not guaranteed crash capture. Panics are captured by an in-process `std::panic::set_hook`; native macOS crashes are summarized into the same file by `crash_log.rs::import_macos_native_crashes` at each launch, so both crash modes appear chronologically without Console.app. Native Linux crashes are not intercepted in-process; use the host's system-coredump tooling for those stacks.
 
 Each record carries timestamp, app version, OS/arch, thread, location, payload, backtrace, the last 80 lines of `debug.log`, and a full preferences snapshot (native crashes add incident id, exception type/signal, top 40 frames). `crash_log.rs::rotate_if_needed` trims at the next `==========` boundary past ~2 MB, newest preserved. Never gated on `debug_logging`.
 
-Tauri commands: `get_crash_log` (contents as string), `open_crash_log` (opens in default editor, creates empty file if missing). Used by the About panel.
+Tauri commands `get_crash_log` and `open_crash_log` are registered, but the current About panel does not invoke them. Open App Folder exposes the file. Crash snapshots contain raw preferences, paths, aliases, commands, and device identifiers; inspect and redact before sharing.
+
+`config::debug_log_path()` selects `debug.log` for official builds and `debug-dev.log` otherwise. Error-level records persist regardless of the Debug Logging toggle, subject to logger filtering; lower levels honor the toggle. The same build-mode flag affects beta artifacts: without `TAURI_RELEASE=true`, `build.rs` emits a DEV timestamp suffix, not a beta-SHA suffix.
+
+About's update check can display “Up to date” when release lookup fails or returns an unknown tag. That badge alone is not proof of a successful check.
 
 ### Post-mortem: v7.0.26 SIGABRT in `GlobalObserverHandler`
 
@@ -196,7 +222,7 @@ Three field crashes: abort inside the NSEvent global-monitor ObjC block. `catch_
 
 Settings chips: `.beta-chip` (orange, beta) and `.beta-chip.platform-chip` (accent, e.g. `Windows`). `Tooltip` takes `ReactNode` text and follows the theme. Settings → Monitors is one section with `.settings-subheader` groups: **Min Brightness** slider, **Options** (Show Contrast Slider, Show DPI Settings), then **Displays** rows.
 
-`core::dpi` changes per-display UI scale. Settings → Monitors holds **Show DPI Settings** with an orange `beta` chip (`showDpiSettings`, default off); the beta warning lives in its tooltip. When on, each monitor row shows name → DPI scale → brightness mode → Hide; DPI displays matching no monitor config render as DPI-only rows (`matchDpiDisplay` in `DpiSettings.tsx`). Settings has no reorder arrows for monitors or speakers. Not shown in the main popup.
+`core::dpi` changes per-display UI scale. Settings → Monitors holds **Show DPI Settings** with an orange `beta` chip (`showDpiSettings`, default off); the beta warning lives in its tooltip. When on, each monitor row shows name → DPI scale → brightness mode → Hide; DPI displays matching no monitor config render as DPI-only rows (`pairDpiDisplays` / `matchDpiDisplay` in `DpiSettings.tsx`). Settings has no reorder arrows for monitors or speakers. Not shown in the main popup.
 
 - macOS and Windows show exactly the OS-offered scales (`DpiDisplay.continuous = false`); the user band is ignored.
 - Linux reports `continuous = true`; `dpiOptionsFor` builds `dpiMinPercent..=dpiMaxPercent` at `dpiStepPercent` (defaults 60/250/5; caps 50–500, step 1–100 via `Preferences::sanitize()`). `set_display_dpi` enforces the band on Linux only. The band inputs render `display: none` — edit `preferences.json`.

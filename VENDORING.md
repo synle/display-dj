@@ -17,28 +17,37 @@ The CLI source layout is monolithic: shared types, theme, volume,
 wallpaper, slideshow, and the high-level display helpers all live in
 `src/main.rs`. When vendoring, those concerns were split into
 focused modules under `src-tauri/src/core/`. The three platform
-files (`macos.rs`, `linux.rs`, `windows.rs`) were copied 1:1 with
-only the `crate::` → `super::` namespace adjustment.
+files (`macos.rs`, `linux.rs`, `windows.rs`) began as copies with
+`crate::` → `super::` namespace adjustment. They now contain local
+behavior and diagnostic changes; they are not byte-identical upstream copies.
+
+Tauri itself is no longer vendored. `src-tauri/Cargo.toml` pins the published
+crate; the former `src-tauri/vendor/tauri` tray workaround was removed.
 
 ## Per-file provenance
 
 The "Last-synced SHA" column records the upstream `synle/display-dj-cli`
-commit on `main` that each vendored snapshot corresponds to. Run
-`./scripts/check-vendor-drift.sh` to verify these are still accurate.
+baseline for each vendored source. `./scripts/check-vendor-drift.sh`
+checks upstream file history since that baseline, not local byte equality.
+Its final success message does not prove local adaptations match upstream.
 
-| Vendored path                       | Upstream path    | Last-synced SHA | Notes                                                                                                                                                                                                                                                                                                     |
-| ----------------------------------- | ---------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src-tauri/src/core/mod.rs`         | `src/main.rs`    | `3b9306d`       | Extracted shared types (`DisplayInfo`, `DisplayControl`, `Platform`, VCP consts, `matches_display`) + added `PlatformImpl` cfg-alias.                                                                                                                                                                     |
-| `src-tauri/src/core/macos.rs`       | `src/macos.rs`   | `3b9306d`       | Copied 1:1; only adjustment is `crate::` → `super::`.                                                                                                                                                                                                                                                     |
-| `src-tauri/src/core/windows.rs`     | `src/windows.rs` | `3b9306d`       | Copied 1:1; only adjustment is `crate::` → `super::`.                                                                                                                                                                                                                                                     |
-| `src-tauri/src/core/linux.rs`       | `src/linux.rs`   | `3b9306d`       | Copied 1:1; only adjustment is `crate::` → `super::`.                                                                                                                                                                                                                                                     |
-| `src-tauri/src/core/theme.rs`       | `src/main.rs`    | `3b9306d`       | Extracted `get_dark_mode` / `set_dark_mode` per-OS impls (macOS AppleScript, Windows registry, Linux gsettings/dconf).                                                                                                                                                                                    |
-| `src-tauri/src/core/volume.rs`      | `src/main.rs`    | `3b9306d`       | Extracted `get_volume` / `set_volume` / `set_mute` per-OS impls + `VolumeInfo`; Windows volume is locally replaced with native `IAudioEndpointVolume`; macOS volume is locally replaced with CoreAudio `AudioHardwareService` virtual main volume (`osascript` kept as fallback).                         |
-| `src-tauri/src/core/audio_output/`  | _(local)_        | _n/a_           | Display DJ-local playback-device enumeration, default selection, and stable endpoint IDs (CoreAudio, MMDevice/PolicyConfig, `pactl`).                                                                                                                                                                     |
-| `src-tauri/src/core/screen_lock.rs` | _(local)_        | _n/a_           | Display DJ-local Windows `LockWorkStation` and allowlisted Linux screen-lock command fallback with backend caching.                                                                                                                                                                                       |
-| `src-tauri/src/core/wallpaper.rs`   | `src/main.rs`    | `3b9306d`       | Extracted `set_wallpaper` / `set_wallpaper_one` per-OS impls + `SlideshowState` and `slideshow_*` helpers.                                                                                                                                                                                                |
-| `src-tauri/src/core/display.rs`     | `src/main.rs`    | `3b9306d`       | Distilled high-level fan-out helpers (`list_all`, `set_all_brightness`, `set_one_brightness`, contrast variants) from CLI's `cmd_get` / `cmd_set_all` / `cmd_set_one`; locally adds a cached-control write path (`CONTROL_CACHE`) and parallel `set_all_brightness`.                                      |
-| `src-tauri/src/core/win_cmd.rs`     | _(local)_        | _n/a_           | display-dj-only helper. Wraps `Command::new(...)` with the Win32 `CREATE_NO_WINDOW` (`0x08000000`) creation flag so `powershell` / `reg` spawns don't flash a console window on brightness/theme/wallpaper changes. Has no upstream counterpart — the CLI is itself a console app, so it never needed it. |
+| Vendored path                         | Upstream path    | Last-synced SHA | Notes                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------- | ---------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src-tauri/src/core/mod.rs`           | `src/main.rs`    | `3b9306d`       | Extracted shared types (`DisplayInfo`, `DisplayControl`, `Platform`, VCP consts, `matches_display`) + added `PlatformImpl` cfg-alias.                                                                                                                                                                     |
+| `src-tauri/src/core/macos.rs`         | `src/macos.rs`   | `3b9306d`       | Vendored baseline with namespace and subsequent local adaptations.                                                                                                                                                                                                                                        |
+| `src-tauri/src/core/windows.rs`       | `src/windows.rs` | `3b9306d`       | Local HMONITOR/DDC pairing, monitor geometry, and hidden child-process adaptations.                                                                                                                                                                                                                       |
+| `src-tauri/src/core/linux.rs`         | `src/linux.rs`   | `3b9306d`       | Vendored baseline plus local distro/session/helper/display diagnostics.                                                                                                                                                                                                                                   |
+| `src-tauri/src/core/theme.rs`         | `src/main.rs`    | `3b9306d`       | Extracted `get_dark_mode` / `set_dark_mode` per-OS impls (macOS AppleScript, Windows registry, Linux desktop-specific backends).                                                                                                                                                                          |
+| `src-tauri/src/core/volume.rs`        | `src/main.rs`    | `3b9306d`       | Extracted `get_volume` / `set_volume` / `set_mute` per-OS impls + `VolumeInfo`; Windows volume is locally replaced with native `IAudioEndpointVolume`; macOS volume is locally replaced with CoreAudio `AudioHardwareService` virtual main volume (`osascript` kept as fallback).                         |
+| `src-tauri/src/core/audio_output/`    | _(local)_        | _n/a_           | Display DJ-local playback-device enumeration, default selection, and stable endpoint IDs (CoreAudio, MMDevice/PolicyConfig, `pactl`).                                                                                                                                                                     |
+| `src-tauri/src/core/screen_lock.rs`   | _(local)_        | _n/a_           | Display DJ-local Windows `LockWorkStation` and allowlisted Linux screen-lock command fallback with backend caching.                                                                                                                                                                                       |
+| `src-tauri/src/core/wallpaper.rs`     | `src/main.rs`    | `3b9306d`       | Extracted wallpaper/slideshow helpers; local desktop routing and resume/change-hook support must survive refreshes.                                                                                                                                                                                       |
+| `src-tauri/src/core/display.rs`       | `src/main.rs`    | `3b9306d`       | Distilled high-level fan-out helpers (`list_all`, `set_all_brightness`, `set_one_brightness`, contrast variants) from CLI's `cmd_get` / `cmd_set_all` / `cmd_set_one`; locally adds a cached-control write path (`CONTROL_CACHE`) and parallel `set_all_brightness`.                                      |
+| `src-tauri/src/core/dpi.rs`           | _(local)_        | _n/a_           | Beta per-display scaling: macOS modes, Windows scaling packets, Linux XRandR.                                                                                                                                                                                                                             |
+| `src-tauri/src/core/loudness.rs`      | _(local)_        | _n/a_           | Best-effort Windows enhancement user-store and registry handling.                                                                                                                                                                                                                                         |
+| `src-tauri/src/core/task_view.rs`     | _(local)_        | _n/a_           | macOS Dock notifications and Windows Task View/Show Desktop actions.                                                                                                                                                                                                                                      |
+| `src-tauri/src/core/linux_desktop.rs` | _(local)_        | _n/a_           | Desktop detection and shared Linux theme/wallpaper/diagnostic helpers.                                                                                                                                                                                                                                    |
+| `src-tauri/src/core/win_cmd.rs`       | _(local)_        | _n/a_           | display-dj-only helper. Wraps `Command::new(...)` with the Win32 `CREATE_NO_WINDOW` (`0x08000000`) creation flag so `powershell` / `reg` spawns don't flash a console window on brightness/theme/wallpaper changes. Has no upstream counterpart — the CLI is itself a console app, so it never needed it. |
 
 In addition to the table above, the following vendored files carry a
 display-dj-local Windows patch on top of their upstream snapshot:
@@ -62,10 +71,9 @@ emits `hmonitor_index` on each DDC entry so the diagnostic dump
 anchors DDC results to specific physical displays. On the next vendor
 refresh, re-apply this change (or push it upstream).
 
-The recorded SHAs above reflect the latest upstream commit at which
-the vendored snapshots are byte-identical (modulo the
-`crate::` → `super::` namespace tweak on the platform files). The
-original vendor pass at display-dj `7b1bc23` (2026-05-03) corresponds
+The recorded SHAs are historical upstream baselines, not a claim of
+current local byte equality. No upstream refresh is implied by a documentation edit.
+The original vendor pass at display-dj `7b1bc23` (2026-05-03) corresponds
 to upstream `a4fc5c4`; through display-dj-cli `v2.2.4` (`3b9306d`,
 2026-05-12) the upstream `src/` tree has not changed — that release
 added only `tests/cli.rs` (CLI-only integration tests, not in the
@@ -77,18 +85,21 @@ via `./scripts/check-vendor-drift.sh --update`.
 
 1. Decide which upstream commit you want to sync to:
    ```bash
-   git -C /Users/syle/git/display-dj-cli log main --oneline -n 20
+   git -C /path/to/display-dj-cli log main --oneline -n 20
    ```
-2. For each row above, copy the upstream file into the vendored
-   path. Re-apply local adaptations:
+2. Copy only reviewed upstream-backed rows; preserve every `_(local)_` module.
+   Diff the local file first and retain local changes, including Linux desktop
+   routing, native audio delegation, display control caching, and slideshow resume hooks.
+   Re-apply local adaptations:
    - In platform files: `s|crate::|super::|` for the imports row.
    - In extracted-from-`main.rs` files (`mod.rs`, `theme.rs`,
      `volume.rs`, `wallpaper.rs`, `display.rs`): carry over only the
      relevant section from `main.rs`; do not pull in CLI-only code
      paths (`cmd_*`, `serve_*`, HTTP server, slideshow CLI plumbing).
 3. Run `cd src-tauri && cargo check && cargo test` and `npm test`.
-4. Run `./scripts/check-vendor-drift.sh --update` to record the new
-   upstream SHAs into this file.
+4. After reviewing and applying the upstream changes, run
+   `./scripts/check-vendor-drift.sh --update` to record the new baseline.
+   This option rewrites SHAs; it does not copy, merge, or validate source.
 5. Commit the vendored changes and the updated `VENDORING.md` in the
    same commit.
 

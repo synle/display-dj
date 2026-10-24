@@ -1,8 +1,8 @@
-# ESLint / Oxlint Migration — Rule Ledger
+# ESLint / Oxlint Migration — Historical Rule Ledger
 
-**Repo**: [synle/display-dj](https://github.com/synle/display-dj) · **Path**: `/Users/syle/git/display-dj`
+**Scope**: this repository; checkout paths are not part of the lint contract.
 **Purpose**: Record of every lint rule added, excluded, or disabled to keep `npm run lint` green, plus what a future agent should tighten next.
-**Status**: ✅ **DONE** — all tracked items resolved as of 2026-08-23 (`vite@8` migration era).
+**Status**: historical adoption record from 2026-08-23, not a current lint/test/build result. Future tightening candidates below remain proposals.
 
 ## TLDR
 
@@ -14,27 +14,15 @@ Old ESLint setup was replaced by oxlint (no config file, defaults only). This le
 | --------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Removed `.eslintrc` / `.eslintignore`, added oxlint | `7f9aa1c`             | Old config extended `eslint:recommended` + `plugin:@typescript-eslint/recommended`; ignored `*.spec.*`, `build`, `dist`. eslint itself was never in devDependencies (stale config). |
 | Bare oxlint, no config                              | `7f9aa1c` – `dc45133` | Default = correctness category only, plugins `typescript`/`unicorn`/`oxc` on.                                                                                                       |
-| Added `.oxlintrc.json` (this change)                | current               | correctness + suspicious + perf as errors, react plugin on, one rule disabled.                                                                                                      |
+| Added `.oxlintrc.json` during adoption              | historical            | correctness + suspicious + perf as errors, react plugin on, one rule disabled.                                                                                                      |
 
-## Current configuration (`.oxlintrc.json`)
+## Current source of truth
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": ["src/binaries", "dist", "coverage", "src-tauri/target"],
-  "plugins": ["typescript", "unicorn", "oxc", "react"],
-  "categories": {
-    "correctness": "error",
-    "suspicious": "error",
-    "perf": "error"
-  },
-  "rules": {
-    "react/react-in-jsx-scope": "off"
-  }
-}
-```
+Read [`.oxlintrc.json`](.oxlintrc.json) for enabled rules, plugins, and ignored paths; do not maintain a second configuration snapshot here.
 
-Run via `npm run lint` → `npx oxlint .` (ignore patterns moved into the config; `--ignore-pattern=src/binaries` flag removed from the script).
+`npm run lint` currently runs `oxlint . --ignore-pattern=src/binaries`, as defined in `package.json`. The script still includes that flag.
+
+The tables below preserve adoption findings and historical line references. Reproduce them before treating any old count, API limitation, or candidate as current.
 
 ## Rules added
 
@@ -63,7 +51,7 @@ Run via `npm run lint` → `npx oxlint .` (ignore patterns moved into the config
 | `react(no-deriving-state-in-effects)` + `react(set-state-in-effect)`     | `Slider.tsx`            | Replaced setState-in-effect prop sync with React's adjust-state-during-render pattern (`prevPropValue` guard).                                                                                                                                                                              |
 | `react(exhaustive-effect-dependencies)` + `react-hooks(exhaustive-deps)` | `App.tsx`               | Added stable `fetchAllState` callback to mount-effect deps.                                                                                                                                                                                                                                 |
 | `react(set-state-in-effect)`                                             | `App.tsx:126`           | Suppressed with block-scoped `// oxlint-disable react/set-state-in-effect` + justification comment. **False positive**: the fetch fns are async; every setState runs after `await invoke`. `disable-next-line` did not cover diagnostics reported at inner callee columns; block form does. |
-| `react(no-array-index-key)`                                              | `ProfileButtons.tsx`    | Key is now data-dependent: `profile.name                                                                                                                                                                                                                                                    |     | 'unnamed-${i}'` (fallback keeps uniqueness for unnamed profiles; activation stays index-based by design). |
+| `react(no-array-index-key)`                                              | `ProfileButtons.tsx`    | Uses the profile name with an unnamed-index fallback; activation remains index-based.                                                                                                                                                                                                       |
 
 ## Left off deliberately — future tightening candidates (status: ☐ open)
 
@@ -76,7 +64,9 @@ Rules/categories NOT enabled, with known findings if switched on. For a future a
 | `eslint(radix)`                                                        | ☐ open, off | `SettingsPanel.tsx` has two `parseInt` calls without radix (~lines 426, 448 pre-fix numbering).        |
 | `import`, `promise`, `node`, `jsdoc`, `jsx-a11y`, `react-perf` plugins | ☐ open, off | Not trialed.                                                                                           |
 
-## Verification
+## Historical verification
+
+These results belong to the original migration, not the current checkout.
 
 - `npm run lint` → 0 errors, 0 warnings, exit 0
 - `npm test` → 21 files / 200 tests passing

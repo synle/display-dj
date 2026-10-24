@@ -37,9 +37,9 @@ On Windows, title-bar double-clicks use native maximize/restore behavior. Displa
 - **Brightness control** -- a single slider to adjust all monitors at once, or expand to control each monitor individually
 - **Contrast control** -- DDC/CI contrast adjustment for external monitors (enable in Settings)
 - **Dark mode toggle** -- system-wide dark/light mode switch
-- **Volume and output control** -- system volume slider with mute indicator, click-to-rename speaker names, reorder arrows in the expanded speaker list, and a **Speakers** tray submenu for fast output switching plus Mute, 50%, and 100% presets. Settings lists monitors before every speaker, with the same ordering controls plus Enabled/Disabled/Hidden state management. Enabled built-in speakers lead the initial order; saved custom order persists afterward, and known Steam Streaming endpoints are hidden automatically. On Windows, **Prefer Loudness Equalization** (default on) re-enables Loudness Equalization on the active speaker at launch and each popup open — best effort, since Windows only allows the change with admin rights and only on speakers using the Microsoft enhancement.
+- **Volume and output control** -- system volume slider with mute indicator, click-to-rename speaker names, reorder arrows in the expanded speaker list, and a **Speakers** tray submenu for fast output switching plus Mute, 50%, and 100% presets. Settings lists monitors before every speaker and owns Enabled/Disabled/Hidden controls; rename and reorder controls stay in the main popup. Enabled built-in speakers lead the initial order; saved custom order persists afterward, and known Steam Streaming endpoints are hidden automatically. On Windows, **Prefer Loudness Equalization** (default on) attempts Loudness Equalization on every enabled output at launch and each popup open. This is best effort: driver support and permissions vary, and registry fallback may require administrator rights.
 - **Keep Awake** -- prevent your system from sleeping with a single toggle (macOS, Windows, Linux)
-- **Night mode schedule** -- automatically set brightness and dark/light mode on a time-based schedule (e.g., dim at 9 PM, bright at 7 AM). Each phase runs once when its boundary is crossed rather than repeating every minute. Supports custom commands (`nightCommands`/`dayCommands`) to run arbitrary actions on schedule (volume changes, profile activation, per-monitor brightness)
+- **Night mode schedule** -- run a selected night/day profile on a time-based schedule (default Focus at 9 PM, Daylight at 7 AM). A 60-second worker applies the initial phase and later transitions rather than repeating every tick. Custom `nightCommands`/`dayCommands` override the selected profiles; missing profiles fall back to legacy brightness/theme settings.
 - **Profiles** -- save and restore preset combinations of brightness, contrast, dark mode, and volume
 - **Global keyboard shortcuts** -- work even when the app isn't focused; fully configurable
 - **Lock screen action** -- a spaced logout-style button left of Settings and `Ctrl+Alt+Q` lock the current Windows or Linux session without stopping background work; also bindable as `command/system/lockScreen`
@@ -51,9 +51,9 @@ On Windows, title-bar double-clicks use native maximize/restore behavior. Displa
 - **Layout Presets** -- named presets that automatically tile specific apps to specific layouts. Triggered via keyboard shortcuts, profiles, or the tray menu
 - **Dynamic tray icon** -- the system tray icon updates to reflect app state: dark/light mode (border color), keep-awake active (blue fill), and muted (red X overlay)
 - **Multi-monitor popup placement** -- left-click opens on the clicked tray icon's display, including vertically stacked mixed-DPI layouts with overlapping reported bounds; bottom-edge trays place the popup above so it remains fully visible
-- **Settings panel** -- tabbed UI (General + Tiling) with lossless, ordered auto-save and visible save status. Configure brightness, contrast, monitors, night mode, snap zones, exposé grid size, layout strategy, and launch at login. The popup stays screen-bounded with internal scrolling, and controls expose keyboard focus and screen-reader state
+- **Settings panel** -- Monitors & Speakers, System, and supported-platform Tiling tabs with grouped cards and ordered auto-save. Configure monitors, speakers, startup, wallpaper, night/day profiles, and tiling. Closing requests a final save; there is no save-status badge. The popup stays screen-bounded with internal scrolling and keyboard-accessible controls.
 - **DPI scaling (Beta)** -- opt-in checkbox in Settings → Monitors (off by default) adds a per-display UI scale dropdown on macOS, Windows, and Linux/X11. macOS and Windows list the scales the OS offers; Linux uses `dpiMinPercent`/`dpiMaxPercent`/`dpiStepPercent` from `preferences.json` (default 60-250% in 5% steps, hard caps 50-500%). The popup re-anchors to the tray after a scale change
-- **Last-known slider values** -- brightness, contrast, and volume sliders show the last value set from Display DJ (50% when unknown), persisted in preferences and re-applied on launch; no noisy status bar
+- **Last-known slider values** -- brightness, contrast, and volume show the last requested popup value (50% when unknown), not hardware readback. Launch restores available monitor values, the last enabled/present speaker, and its volume. Hardware failures keep the requested value without a status bar.
 - **Instant volume** -- macOS volume uses CoreAudio directly (~1-4ms per change) and follows the slider live while dragging
 - **About / Update check** -- "About Display DJ" in the tray menu shows current version, latest GitHub release, engine, platform, build date, and homepage. Green "Up to date" or orange "Update available" badge with download link. macOS section includes quarantine fix and Accessibility settings commands
 - **System tray app** -- lives in your menu bar / system tray with no dock or taskbar clutter
@@ -161,12 +161,12 @@ forced backtrace and recent debug-log tail, even when debug logging was off.
 
 ### Default Keyboard Shortcuts
 
-| Keys                    | Action                                                 |
-| ----------------------- | ------------------------------------------------------ |
-| Shift + Escape          | Toggle Dark Mode                                       |
-| Shift + F1 / F2         | Volume 50% / 100% + Brightness 65% / 100% + Light Mode |
-| Shift + F3 / F4 / F5    | Brightness 0% / 50% / 100%                             |
-| Shift + F10 / F11 / F12 | Volume 0% / 10% / 100%                                 |
+| Keys                    | Action                            |
+| ----------------------- | --------------------------------- |
+| Shift + Escape          | Toggle Dark Mode                  |
+| Shift + F1 / F2         | Activate Focus / Daylight profile |
+| Shift + F3 / F4 / F5    | Brightness 0% / 50% / 100%        |
+| Shift + F10 / F11 / F12 | Volume 0% / 10% / 100%            |
 
 macOS maps `Ctrl + Super + Shift + Up` to Mission Control and `Ctrl + Super + Shift + Down` to Show Desktop. Windows maps the matching `Ctrl + Alt + Shift` chords to Task View and Show Desktop. Task View releases the trigger modifiers before sending `Win + Tab`; Show Desktop calls the native Shell toggle directly and does not synthesize keys.
 
@@ -204,18 +204,18 @@ Window tiling lets you snap windows to halves, thirds, two-thirds, quarters, or 
 
 Before a focused window is tiled, Windows restores it from maximized state, macOS exits native or browser/video fullscreen, and Linux/X11 removes EWMH maximize/fullscreen state. Display DJ then reads the normal window bounds and applies the requested layout; minimized windows remain minimized outside Exposé.
 
-On Windows, Display DJ normally runs without administrator privileges so Tile Snap can monitor ordinary application drags without a UAC prompt. Windows does not allow a normal-integrity process to move or resize a window opened with **Run as administrator**; Tiling settings show a compact status under Window Tiling and a green check while Display DJ is elevated. Explicitly launch Display DJ as administrator only when tiling elevated windows is required. If the optional elevation check fails, the app keeps running normally and omits the status.
+On Windows, Display DJ normally runs without administrator privileges so Tile Snap can monitor ordinary application drags without a UAC prompt. Windows does not allow a normal-integrity process to move or resize a window opened with **Run as administrator**; Tiling settings show an advisory warning under Window Tiling at standard integrity and no success marker when elevated. Explicitly launch Display DJ as administrator only when tiling elevated windows is required. If the optional elevation check fails, the app keeps running normally and omits the status.
 
 ### Windows Tile Snap setup
 
-Tile Snap defaults **off on Windows** because Windows 11 Snap uses the same screen edges and can draw a second, competing preview. Tiling settings detect the current `WindowArrangementActive` value: a green check means native Snap is off, while a warning opens **System → Multitasking** so it can be disabled.
+Tile Snap defaults **off on Windows** because Windows 11 Snap uses the same screen edges and can draw a second, competing preview. Tiling settings detect the current `WindowArrangementActive` value: a warning opens **System → Multitasking** while native Snap is on. No success marker appears when it is off.
 
 Recommended Windows 11 steps:
 
 1. Press **Win + I** to open Settings.
 2. Open **System → Multitasking**.
 3. Turn **Snap windows** off.
-4. Enable Tile Snap in Display DJ.
+4. Enable Tile Snap in Display DJ; no app restart is required.
 
 Advanced command-line alternative (current user only):
 
@@ -315,8 +315,8 @@ The Settings panel (System tab) has controls for:
 - **Enable Slideshow** -- checkbox to start/stop
 - **Wallpaper Fit** -- dropdown for fill/fit/stretch/center/tile
 - **Folder** -- path to the image folder
-- **Interval** -- hours + minutes dropdowns (minimum 5 minutes)
-- **Order** -- Forward, Backward, or Random
+- **Interval** -- hours, minutes, and seconds dropdowns (minimum total 5 seconds)
+- **Order** -- Forward, Backward, Oldest, Newest, or Random
 
 Slideshow can also be configured in `preferences.json` under the `wallpaper` key:
 
@@ -378,6 +378,9 @@ Tiling settings are stored in `preferences.json` under the `tiling` key. They ca
 
 ## Known Issues
 
+- About can show “Up to date” when release lookup fails; that badge alone does not confirm a successful check.
+- Soft-overlay brightness currently works only with Windows monitor geometry; macOS/Linux lack the required mapping.
+- Inspect and redact logs before sharing: crash records can contain preference paths, aliases, commands, and device identifiers.
 - Not every external monitor supports DDC/CI (some budget models and certain HDMI connections)
 - Built-in HDMI on base M1/M2 Macs doesn't support DDC/CI -- use USB-C or DisplayPort instead
 - Linux global shortcuts may not work under Wayland (X11 works fine)
@@ -396,13 +399,13 @@ This recursively clears the quarantine flag so macOS allows the app to run. You 
 
 ## Tech Stack
 
-[Tauri v2](https://v2.tauri.app/) (Rust) + React 19 + TypeScript + Vite 6.
+[Tauri v2](https://v2.tauri.app/) (Rust) + React 19 + TypeScript + Vite 8.
 
 All platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, audio-output selection, wallpaper) lives in-process inside the Rust backend under `src-tauri/src/core/`. There is no external sidecar or helper binary -- macOS and Windows need no extra tools installed; Linux needs the system packages listed in the install section above.
 
 ## Contributing
 
-See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup, project structure, testing, and platform guides. See **[DEV.md](DEV.md)** for the architecture deep-dive.
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup, project structure, testing, and platform guides. See **[ARCHITECTURE.md](ARCHITECTURE.md)** for layers and state ownership, and **[DEV.md](DEV.md)** for development and platform details.
 
 ## Bug Reports & Suggestions
 

@@ -2,7 +2,7 @@
 
 ## Quick Start
 
-Prerequisites: [Node.js](https://nodejs.org) 20+, [Rust](https://www.rust-lang.org/tools/install) 1.92+ (stable). No external binaries — platform code is compiled in.
+Prerequisites: [Node.js](https://nodejs.org) matching `^20.19.0 || ^22.13.0 || >=24.0.0` for the current Vite/jsdom toolchain, and [Rust](https://www.rust-lang.org/tools/install) 1.92+ (stable). Recheck package engines when upgrading frontend tools. Platform code is compiled in; Linux still needs system helpers.
 
 ```bash
 git clone https://github.com/synle/display-dj
@@ -26,18 +26,18 @@ First Rust compile takes 2-10 min; later runs ~5-15s. The app is a **system tray
 
 ## Architecture
 
-[Tauri v2](https://v2.tauri.app/): React 19 frontend in a WebView, Rust backend. Platform code runs in-process under `src-tauri/src/core/`; most modules are vendored and `audio_output` is display-dj-local. No sidecar or HTTP server runs.
+[Tauri v2](https://v2.tauri.app/): React 19 frontend in a WebView, Rust backend. Platform code runs in-process under `src-tauri/src/core/`; most modules are vendored and `audio_output` is display-dj-local. No sidecar or HTTP server runs. Read [ARCHITECTURE.md](ARCHITECTURE.md) for layers, state ownership, startup, and edit locations.
 
 ```
-Frontend (React 19 + TypeScript + Vite 6)
+Frontend (React 19 + TypeScript + Vite 8)
     │  invoke() / listen()  — Tauri IPC
 Backend (Rust): #[tauri::command] wrappers
     │  spawn_blocking → direct calls
 core/ (vendored platform code)
 ```
 
-- `src-tauri/src/{display,dark_mode,volume,wallpaper}.rs` — thin async Tauri-command wrappers around `core::*`. Every command taking `State<'_, AppState>` must be `async fn`, and CPU-bound work runs in `spawn_blocking` (macOS tray starvation pitfall — see AGENTS.md).
-- `src-tauri/src/core/` — platform implementations (`macos`/`windows`/`linux`, `theme`, `volume`, `audio_output`, `wallpaper`, `display`). Most are vendored; `audio_output` is display-dj-local. See [VENDORING.md](VENDORING.md).
+- `src-tauri/src/{display,dark_mode,volume,wallpaper}.rs` — thin async Tauri-command wrappers around `core::*`. Commands taking `State<'_, AppState>` must be async; offload blocking work with `spawn_blocking` (macOS tray starvation pitfall — see AGENTS.md). The existing synchronous `get_preferences` reader is a legacy exception.
+- `src-tauri/src/core/` — platform mechanisms and shared display types, with vendored sources plus local audio, DPI, loudness, shell-action, Linux desktop, and Windows child-process extensions. See [VENDORING.md](VENDORING.md); current Tauri comes from crates.io, not a vendored crate patch.
 - Other backend modules: `config.rs` (preferences), `tray.rs` (tray menu + shortcut dispatch), `tray_icon.rs`, `keep_awake.rs`, `sidecar_cache.rs` (5-min TTL cache), `overlay.rs` (soft-overlay brightness fallback), `crash_log.rs`, `tiling/`.
 - Windows builds embed `windows-app-manifest.xml` through `build.rs` at `asInvoker` integrity. Preserve the Common Controls v6 dependency, and keep `tile-snap-overlay-*` plus `overlay-*` covered by Tauri capabilities so their event listeners can receive render state.
 - Windows mouse regression check: with Tile Snap both off and on, verify ordinary pointer movement and clicks stay responsive, and title-bar double-clicks toggle native maximize/restore. The polling monitor must not install a global low-level mouse hook; its source-level regression guard runs on every host, but interactive verification requires Windows.
@@ -55,37 +55,37 @@ Command names are snake_case; parameters are camelCase objects (Serde converts).
 listen('monitors-changed', () => refetch());
 ```
 
-Events (`monitors-changed`, `dark-mode-changed`, `volume-changed`, `audio-output-changed`) keep the popup synchronized with backend and tray actions.
+Monitor/theme events refresh live metadata and theme; `audio-output-changed` supplies endpoint snapshots. Volume commands also emit `volume-changed`, but the main popup renders saved slider values rather than subscribing to live volume updates.
 
 **Registered commands** (`lib.rs` `invoke_handler`):
 
-| Module       | Commands                                                                                                                                                                    |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lib`        | `fetch_all_state`                                                                                                                                                           |
-| `display`    | `get_monitors`, `set_brightness`, `set_all_brightness`, `set_contrast`, `set_all_contrast`, `rename_monitor`, `save_monitor_order`, `set_monitor_visibility`                |
-| `dark_mode`  | `get_dark_mode`, `set_dark_mode`                                                                                                                                            |
-| `volume`     | `get_volume`, `set_volume`, `get_audio_output_devices`, `set_audio_output_device`, `set_audio_output_device_state`, `rename_audio_output_device`, `save_audio_output_order` |
-| `config`     | `get_preferences`, `save_preferences`, `open_preferences_file`, `open_debug_log`, `open_app_folder`, `get_app_version`, `get_about_info`                                    |
-| `crash_log`  | `get_crash_log`, `open_crash_log`                                                                                                                                           |
-| `keep_awake` | `get_keep_awake`, `set_keep_awake`                                                                                                                                          |
-| `tray`       | `apply_profile`                                                                                                                                                             |
-| `tiling`     | `get_tiling_supported`, `get_accessibility_trusted`, `recheck_accessibility_trusted`, `open_accessibility_settings`                                                         |
+| Module       | Commands                                                                                                                                                                                                              |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib`        | `fetch_all_state`                                                                                                                                                                                                     |
+| `display`    | `get_monitors`, `set_brightness`, `set_all_brightness`, `set_contrast`, `set_all_contrast`, `get_dpi_displays`, `set_display_dpi`, `rename_monitor`, `save_monitor_order`, `set_monitor_visibility`                   |
+| `dark_mode`  | `get_dark_mode`, `set_dark_mode`                                                                                                                                                                                      |
+| `volume`     | `get_volume`, `set_volume`, `get_audio_output_devices`, `set_audio_output_device`, `set_audio_output_device_state`, `rename_audio_output_device`, `save_audio_output_order`                                           |
+| `config`     | `get_preferences`, `save_preferences`, `record_last_known_values`, `open_preferences_file`, `open_debug_log`, `open_app_folder`, `get_app_version`, `get_about_info`                                                  |
+| `crash_log`  | `get_crash_log`, `open_crash_log`                                                                                                                                                                                     |
+| `keep_awake` | `get_keep_awake`, `set_keep_awake`                                                                                                                                                                                    |
+| `tray`       | `apply_profile`, `lock_screen`, `refresh_devices`, `reanchor_popup_window`                                                                                                                                            |
+| `tiling`     | `get_tiling_supported`, `get_accessibility_trusted`, `recheck_accessibility_trusted`, `open_accessibility_settings`, `get_windows_elevation_status`, `get_windows_snap_enabled`, `open_windows_multitasking_settings` |
 
 ### Frontend state
 
-`App.tsx` holds all UI state (monitors, darkMode, volume, audio outputs, profiles, independent monitor/speaker expansion); no state library. On mount it fetches via `fetch_all_state` + `get_preferences`; event listeners and a `visibilitychange` listener trigger refetches. A backend 5-second audio refresh owns OS enumeration and updates the tray submenu; the main-view poll reads that shared cache as a fallback. The speaker section has its own chevron; expanded mode lists visible endpoints, including the checked selected output, with padded output radio targets, per-row aliases, and arrows that persist custom order. `SettingsPanel.tsx` loads all endpoints, shows matching reorder arrows plus enabled/disabled/hidden selectors on the Monitors & Speakers tab (Night Mode Schedule lives on the System tab), and auto-saves preference fields with a 100ms debounce. All frontend selects use `components/Dropdown.tsx`; context classes may set width or minimum width, while shared sizing, padding, typography, focus, and disabled states stay in `.dropdown`.
+`App.tsx` holds all UI state (monitors, darkMode, volume, audio outputs, profiles, independent monitor/speaker expansion); no state library. On mount it fetches via `fetch_all_state` + `get_preferences`; event listeners and a `visibilitychange` listener trigger refetches. A backend 5-second audio refresh owns OS enumeration and updates the tray submenu; the main-view poll reads that shared cache as a fallback. The speaker section has its own chevron; expanded mode lists visible endpoints, including the checked selected output, with padded output radio targets, per-row aliases, and arrows that persist custom order. `SettingsPanel.tsx` loads all endpoints and owns enabled/disabled/hidden selectors on Monitors & Speakers. Settings names are read-only and have no reorder arrows. System contains Startup, Wallpaper, Night Mode, and one selected-profile editor. Its 100ms save queue requests a close/unmount flush but has no save-status badge. All frontend selects use `components/Dropdown.tsx`; context classes may set width or minimum width, while shared sizing, padding, typography, focus, and disabled states stay in `.dropdown`.
 
 ## Configuration
 
 Config lives in the platform config dir (`config_dir()` in `config.rs`): `~/Library/Application Support/display-dj` (macOS), `%APPDATA%/display-dj` (Windows), `~/.config/display-dj` (Linux). Main file: `preferences.json` — deserialized into `Preferences` with `#[serde(default)]`, so missing fields fall back to defaults.
 
-Top-level fields: `showIndividualDisplays`, `minBrightness` (default 10, absolute floor 5), `keyBindings`, `lockScreenBindingInitialized` (backend-owned migration marker), `profiles`, `nightModeSchedule` (21:00–07:00 default, disabled), `showContrast`, `debugLogging`, `launchAtLogin`, `linuxLockCommand` (backend-owned Linux cache), `monitorConfigs`, `audioOutputConfigs`, `tiling`, `layoutPresets`, `wallpaper`.
+Selected top-level fields (see `Preferences` in `config.rs` and `src/types.ts` for the full schema): `showIndividualDisplays`, `minBrightness` (default 10, absolute floor 5), `keyBindings`, `lockScreenBindingInitialized` (backend-owned migration marker), `profiles`, `nightModeSchedule` (21:00–07:00 default, disabled), `showContrast`, `debugLogging`, `launchAtLogin`, `linuxLockCommand` (backend-owned Linux cache), `monitorConfigs`, `audioOutputConfigs`, `tiling`, `layoutPresets`, `wallpaper`.
 
 Key bindings pair a `key` (e.g. `"Shift+F1"`) with a `command` string or array of strings: `command/changeBrightness/{v}`, `command/changeContrast/{v}`, `command/changeDarkMode/{toggle,dark,light}`, `command/changeVolume/{v}`, `command/changeProfile/{index_or_name}`, `command/system/lockScreen` — plus the tile/wallpaper/layout/z-order commands documented in AGENTS.md. Lock Screen defaults to `Ctrl+Alt+Q` on Windows/Linux only. Default z-order chords use `Super` on macOS and `Alt` on Windows/Linux.
 
-`monitorConfigs[]` stores per-monitor metadata keyed by a stable composite UID (`{api_id}::{api_model_name}`): `label`, `sortOrder`, `hidden`. Unplugged monitors keep their entry.
+`monitorConfigs[]` stores `label`, `sortOrder`, `hidden`, and `brightnessMode` by composite UID (`{api_id}::{api_model_name}`). This is not guaranteed physical identity: runtime IDs can change, and same-name reconciliation is heuristic. Unmatched disconnected metadata remains saved; Settings filters it only after a successful nonempty live load.
 
-`audioOutputConfigs[]` stores Display DJ settings as `{ id, label, state, sortOrder }`, keyed by the platform's stable endpoint ID. `state` is `enabled`, `disabled`, or `hidden` and defaults to `enabled` for older files; missing sort positions retain default ordering. Empty labels clear only the alias; entries disappear only when label, state, and sort order all return to defaults. Native endpoint names containing `Steam Streaming` are always treated as hidden. Never persist the selected output; macOS, Windows, and Linux remain the source of truth.
+`audioOutputConfigs[]` stores Display DJ settings as `{ id, label, state, sortOrder }`, keyed by the platform's stable endpoint ID. `state` is `enabled`, `disabled`, or `hidden` and defaults to `enabled` for older files; missing sort positions retain default ordering. Empty labels clear only the alias; entries disappear only when label, state, and sort order all return to defaults. Native endpoint names containing `Steam Streaming` are always treated as hidden. The OS remains authoritative for live selection. `lastKnownValues.selectedSpeakerId` separately persists the last popup selection for startup restoration when that endpoint remains available and enabled.
 
 ## Conventions
 
@@ -94,7 +94,9 @@ Key bindings pair a `key` (e.g. `"Shift+F1"`) with a `command` string or array o
 - `CommandValue` is `#[serde(untagged)]`: `"string"` or `["array"]`.
 - Backend returns `Result<T, String>`; frontend wraps `invoke()` in try/catch and keeps last-known state on error.
 - Brightness clamps to `[effective_min_brightness(), 100]`; contrast to `[0, 100]`.
-- Full conventions, pitfalls, and command reference live in **[AGENTS.md](AGENTS.md)**; architecture deep-dive in **[DEV.md](DEV.md)**.
+- Full conventions, pitfalls, and command reference live in **[AGENTS.md](AGENTS.md)**; layer/state maps in **[ARCHITECTURE.md](ARCHITECTURE.md)**; operational details in **[DEV.md](DEV.md)**.
+- Use the three `--font-size-*` tokens, shared `Icons.tsx`, and `Dropdown.tsx` for new UI presentation.
+- `package.json` owns the app version. Run `npm run format` before every commit to synchronize Tauri metadata, then `npm run format:check`.
 
 ## Adding a New Tauri Command
 
@@ -124,20 +126,21 @@ Tauri APIs are mocked globally in `src/test/setup.ts`, so tests run without a ba
 
 ## CI/CD
 
-- **build.yml** — every push/PR: tests + builds across a 6-entry matrix (macOS ARM64/x64, Windows x64/arm64, Linux x64/arm64) plus coverage. Rolled-up check: **`Main Build`** (job `main_build`) — require this one in branch protection.
+- **build.yml** — pushes/PRs to `main` and `v2`, plus manual dispatch: tests/builds across six macOS/Windows/Linux architecture combinations plus coverage. Windows Rust tests compile with `--no-run`; macOS/Linux execute them. Rolled-up check: **`Main Build`** (job `main_build`) — require this one in branch protection.
 - **release-official.yml** — `v*` tag or manual dispatch: official release.
-- **release-beta.yml** — manual dispatch: draft prerelease tagged `release-beta-<date>-<sha>`.
+- **release-beta.yml** — manual dispatch for explicit beta/test requests only; prerelease flow. Current builds use the DEV timestamp suffix because this workflow does not set `TAURI_RELEASE`.
+- Use `.agents/skills/release/SKILL.md` for releases and `.agents/skills/install-app/SKILL.md` for installation. Ordinary release requests default to official; do not supply custom changelog/notes inputs.
 
 ## Platform Setup (dev)
 
-All platforms: Git, Node.js 20+, Rust stable.
+All platforms: Git and the Node/Rust versions listed in Quick Start.
 
 - **macOS**: `xcode-select --install`; Node/Rust via Homebrew or rustup.
-- **Windows**: Node LTS (+ C++ build tools), Rustup, WebView2 (preinstalled on Win11). Tile Snap defaults off; verify Settings detects native Snap, links to **System → Multitasking** while it is on, and shows a green check after it is disabled. With multiple monitors, verify the blue preview appears only on the display containing the active snap zone. At non-100% display scaling, verify the three bottom-third zones remain visible directly above the taskbar. Also maximize a window, drag its title bar, and verify it restores to normal bounds before following the cursor. Test both standard launch (normal windows work and Settings shows advisory elevation guidance) and **Run as administrator** launch (normal and elevated windows work). Optional status-query failures must not block the app or Settings.
+- **Windows**: Node LTS (+ C++ build tools), Rustup, WebView2 (preinstalled on Win11). Tile Snap defaults off; verify Settings detects native Snap, links to **System → Multitasking** while it is on, and removes the warning after it is disabled; no success marker renders. With multiple monitors, verify the blue preview appears only on the display containing the active snap zone. At non-100% display scaling, verify the three bottom-third zones remain visible directly above the taskbar. Also maximize a window, drag its title bar, and verify it restores to normal bounds before following the cursor. Test both standard launch (normal windows work and Settings shows advisory elevation guidance) and **Run as administrator** launch (normal and elevated windows work). Optional status-query failures must not block the app or Settings.
 - **Tray popup placement**: test horizontal and vertical multi-monitor layouts with mixed scaling. Left-click each display's tray icon; the popup must stay fully inside that same display, below top-edge trays and above bottom-edge trays. Right-click, choose **Show Window**, and verify it uses that same display-local placement. Enable Debug Logging and verify click records include mouse position, selected screen, and every screen's origin/resolution plus explicit `@Nx` DPI scale; choosing **Show Window** should then log final popup placement. Include a Retina-over-1x vertical stack because Tauri may report overlapping bounds.
 - **DPI scaling (beta)**: enable Show DPI Settings, change a display's scale while the popup is open, and verify the popup refits and stays anchored under the tray icon.
 - **Popup and settings reliability**: constrain the desktop work area or use a short display and verify the popup scrolls without losing the sticky header. Test every slider and expander by keyboard. Change a setting and immediately close Settings; the final value must persist. Force a backend command failure and verify the slider keeps its last-known value with no status bar; relaunch and confirm last-known brightness, contrast, speaker, and volume are re-applied.
-- **Night mode scheduling**: use a fake clock in automated tests. One phase must execute once on startup/transition, duplicate 60-second ticks must do nothing, invalid `HH:MM` values must be rejected, and a failed default phase must retry without recording success.
+- **Night mode scheduling**: use a fake clock in automated tests. One phase must execute once on the first enabled 60-second check or a transition, duplicate 60-second ticks must do nothing, invalid `HH:MM` values must be rejected, and a failed default phase must retry without recording success.
 - **Linux (Ubuntu/Debian)** -- Tauri v2 GUI build dependencies:
 
   ```bash
