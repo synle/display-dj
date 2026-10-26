@@ -14,6 +14,8 @@ npm run tauri dev       # Full app (Vite + Rust backend)
 npm run dev             # Frontend only (localhost:1420)
 npm test                # Frontend tests
 npm run test:coverage   # Frontend coverage gate
+npm run format          # Format frontend + Rust; sync Tauri version
+npm run format:check    # Verify both formatters without writing
 cd src-tauri && cargo test                            # Backend tests
 cd src-tauri && cargo llvm-cov --lib --summary-only   # Backend coverage
 npm run tauri build     # Production build (.dmg / .exe / .deb / .AppImage)
@@ -66,7 +68,7 @@ Formatter release notes: https://github.com/oxc-project/oxc/releases/tag/oxfmt_v
 
 ### Frontend validation outcome
 
-`npm run build`, `npm run test:coverage` (218 passed; lines 88.88%, branches 84.53%), formatting, isolated `npm ci --ignore-scripts --prefer-offline`, and `npm ls` pass.
+`npm run build`, `npm run test:coverage` (218 passed; lines 88.88%, branches 84.53%), `npm run format` / `npm run format:check` (oxfmt plus `cargo fmt`), isolated `npm ci --ignore-scripts --prefer-offline`, and `npm ls` pass.
 `npm audit` reports zero vulnerabilities after the transitive transport refresh. `npm run lint` still reports the original 18 errors; no new findings remain.
 A built-page browser smoke attempt fails before rendering because the standalone browser lacks Tauri's `metadata` and `transformCallback` bridge.
 This is not native-app startup verification. Native startup and hardware interactions remain unverified; startup can restore real display/audio/wallpaper state.

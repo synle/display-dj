@@ -13,16 +13,18 @@ npx tauri dev
 
 First Rust compile takes 2-10 min; later runs ~5-15s. The app is a **system tray app** — no window. Look for the icon: menu bar (macOS), system tray (Windows), top panel (Linux).
 
-| Command                           | What it does                                         |
-| --------------------------------- | ---------------------------------------------------- |
-| `npx tauri dev`                   | Full app in dev mode (frontend hot-reloads)          |
-| `npx tauri build`                 | Production build + installer                         |
-| `npm run build`                   | Frontend only (tsc + Vite)                           |
-| `npm run dev`                     | Vite only; Tauri calls fail                          |
-| `npm test`                        | Frontend tests                                       |
-| `cd src-tauri && cargo test`      | Backend tests                                        |
-| `cd src-tauri && cargo check`     | Fast Rust compile check                              |
-| `npm run format` / `format:check` | Format / verify formatting ([oxfmt](https://oxc.rs)) |
+| Command                       | What it does                                                       |
+| ----------------------------- | ------------------------------------------------------------------ |
+| `npx tauri dev`               | Full app in dev mode (frontend hot-reloads)                        |
+| `npx tauri build`             | Production build + installer                                       |
+| `npm run build`               | Frontend only (tsc + Vite)                                         |
+| `npm run dev`                 | Vite only; Tauri calls fail                                        |
+| `npm test`                    | Frontend tests                                                     |
+| `cd src-tauri && cargo test`  | Backend tests                                                      |
+| `cd src-tauri && cargo check` | Fast Rust compile check                                            |
+| `npm run format`              | Format frontend and Rust; sync app version (`oxfmt` + `cargo fmt`) |
+| `npm run format:rust`         | Format Rust only (`cargo fmt`)                                     |
+| `npm run format:check`        | Check frontend and Rust formatting without writing                 |
 
 ## Architecture
 

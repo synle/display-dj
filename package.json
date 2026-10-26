@@ -12,8 +12,9 @@
     "test:coverage": "vitest run --coverage",
     "tauri": "tauri",
     "format": "oxfmt --write .",
-    "postformat": "node scripts/sync-version.mjs",
-    "format:check": "oxfmt --check .",
+    "postformat": "node scripts/sync-version.mjs && npm run format:rust",
+    "format:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml",
+    "format:check": "oxfmt --check . && cargo fmt --manifest-path src-tauri/Cargo.toml --check",
     "lint": "oxlint . --ignore-pattern=src/binaries"
   },
   "dependencies": {

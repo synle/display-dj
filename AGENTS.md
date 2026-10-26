@@ -131,10 +131,7 @@ When raising thresholds: measure current %, set floor ~10pp below, update both f
 
 ## Formatting
 
-After any repository change, always run `npm run format` (oxfmt) before committing. Its
-`postformat` hook also synchronizes `package.json` into `src-tauri/tauri.conf.json`, making this
-both the formatting gate and version-consistency gate. Run `npm run format:check` afterward to
-verify formatting. Config lives in `.oxfmtrc.json`; generated files (`src-tauri/gen/`) are ignored.
+After any repository change, always run `npm run format` before committing. It formats frontend files with oxfmt, then runs the npm `postformat` hook: sync the package version into `src-tauri/tauri.conf.json`, then format Rust with `cargo fmt --manifest-path src-tauri/Cargo.toml`. The `&&` sequence stops on failure. Run `npm run format:check` afterward to verify both formatters without modifying files. Use `npm run format:rust` for Rust-only formatting. Config lives in `.oxfmtrc.json`; generated files (`src-tauri/gen/`) are ignored.
 
 ## Required Steps for Every Feature Change
 
