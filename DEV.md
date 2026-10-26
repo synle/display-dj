@@ -21,7 +21,7 @@ npm run tauri build     # Production build (.dmg / .exe / .deb / .AppImage)
 
 ## Library upgrade log
 
-This log records the 2026-10-26 dependency migration. Frontend libraries precede Tauri and Rust; each independent library has its own commit.
+This log records the 2026-10-26 dependency migration. Frontend libraries precede Tauri and Rust. Final unpushed history is consolidated into one frontend commit and one Tauri/Rust commit.
 Versions are registry stable releases, not prereleases. Exact pins and lockfiles make accepted versions reproducible.
 
 Baseline: Node v24.22.0, npm 11.19.1, Rust 1.99.1; build passed, 218 frontend tests passed, and 504 macOS Rust tests passed.
@@ -35,18 +35,42 @@ No preferences or persisted-data migration is intended. Native startup smoke che
 
 ### Frontend
 
-| Library                       | Before → accepted | Breakage, fixes, and backtracking                                                                                                                                                                     |
-| ----------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `oxfmt`                       | 0.61.0 → 0.74.0   | Latest accepted; removes critical `tinypool` advisories. Existing configuration works; only one Tooltip test callback is reflowed. Build and all 218 tests pass; no behavior changes or backtracking. |
-| `@testing-library/react`      | 16.3.2 → 16.3.3   | Latest patch; no API or test changes required. No backtracking.                                                                                                                                       |
-| `@testing-library/user-event` | 14.6.1 → 14.6.8   | Latest stable; no application API or test changes required. No backtracking.                                                                                                                          |
-| `@vitejs/plugin-react`        | 6.1.0 → 6.1.2     | Latest stable; no application API or test changes required. No backtracking.                                                                                                                          |
-| `oxlint`                      | 1.79.0 → 1.83.0   | Latest 1.89 and each version down to 1.84 add one `consistent-function-scoping` finding. 1.83 exactly matches the 18 pre-existing lint errors. No source or rule changes. Build and 218 tests pass.   |
-| `@types/react`                | 19.2.14 → 19.3.0  | Latest stable; no application API or test changes required. No backtracking.                                                                                                                          |
-| `@types/react-dom`            | 19.2.3 → 19.3.0   | Latest stable; no application API or test changes required. No backtracking.                                                                                                                          |
-| `vite`                        | 8.2.2 → 8.3.5     | Latest stable; existing React plugin and build configuration work unchanged. No backtracking.                                                                                                         |
+| Library                       | Before → accepted             | Breakage, fixes, and backtracking                                                                                                                                                                                                                                                                                           |
+| ----------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oxfmt`                       | 0.61.0 → 0.74.0               | Latest accepted; removes critical `tinypool` advisories. Existing configuration works; only one Tooltip test callback is reflowed. Build and all 218 tests pass; no behavior changes or backtracking.                                                                                                                       |
+| `@testing-library/react`      | 16.3.2 → 16.3.3               | Latest patch; no API or test changes required. No backtracking.                                                                                                                                                                                                                                                             |
+| `@testing-library/user-event` | 14.6.1 → 14.6.8               | Latest stable; no application API or test changes required. No backtracking.                                                                                                                                                                                                                                                |
+| `@vitejs/plugin-react`        | 6.1.0 → 6.1.2                 | Latest stable; no application API or test changes required. No backtracking.                                                                                                                                                                                                                                                |
+| `oxlint`                      | 1.79.0 → 1.83.0               | Latest 1.89 and each version down to 1.84 add one `consistent-function-scoping` finding. 1.83 exactly matches the 18 pre-existing lint errors. No source or rule changes. Build and 218 tests pass.                                                                                                                         |
+| `@types/react`                | 19.2.14 → 19.3.0              | Latest stable; no application API or test changes required. No backtracking.                                                                                                                                                                                                                                                |
+| `@types/react-dom`            | 19.2.3 → 19.3.0               | Latest stable; no application API or test changes required. No backtracking.                                                                                                                                                                                                                                                |
+| `vite`                        | 8.2.2 → 8.3.5                 | Latest stable; existing React plugin and build configuration work unchanged. No backtracking.                                                                                                                                                                                                                               |
+| `@testing-library/jest-dom`   | 6.9.1 → 6.9.1 (pinned)        | Tried 7.0.1 and 6.10.0; both pass locally but require Node ≥22, conflicting with Node-20 CI. 6.10.0 is also explicitly deprecated as an incorrect breaking minor. Retain 6.9.1; no test changes.                                                                                                                            |
+| `jsdom`                       | 29.0.2 → 29.1.1               | Latest 30.1.3 requires Node `^22.22.2 \|\| ^24.15.0 \|\| >=26.0.0`; reject against Node-20 CI. Latest 29.x preserves the existing engine range and DOM tests.                                                                                                                                                               |
+| `typescript`                  | 5.9.3 → 6.0.3                 | Tried 7.0.2: strict side-effect import checks report TS2882 for App.css, and native compiler removes `tsserver.js` required by the workspace VS Code SDK setting. Backtrack to latest 6.x to preserve editor tooling. Add existing `vite/client` asset declarations to `types`; no assertions weakened.                     |
+| `vitest`                      | 4.1.5 → 4.1.12                | Latest 5.0.5 drops Node 20; accept latest compatible 4.x security backport. npm resolves matching coverage 4.1.12 in the lockfile, preserving separate declaration commits. Initial install warns `ERESOLVE overriding peer dependency`; final peer tree and clean install pass. All 218 tests and coverage pass unchanged. |
+| `@vitest/coverage-v8`         | 4.1.5 → 4.1.12 (explicit pin) | Matching lockfile version already moved with Vitest. Pin its declaration separately; latest 5.0.5 requires the Node-22-only runner. Existing thresholds and include/exclude globs stay unchanged.                                                                                                                           |
+| `react`                       | 19.2.5 → 19.3.1               | Latest stable; update runtime and renderer together to avoid exact-version runtime mismatch. No new transition, fragment-ref, server-component, or Trusted Types APIs adopted. Existing component tests cover the unchanged popup flows.                                                                                    |
+| `react-dom`                   | 19.2.5 → 19.3.1               | Match React runtime; existing `createRoot` entry point remains valid. No application or assertion changes.                                                                                                                                                                                                                  |
+| `undici` (transitive)         | 7.25.0 → 7.30.1               | Refresh within jsdom's existing 7.x range to clear remaining high advisory. No new direct dependency or override.                                                                                                                                                                                                           |
+
+| `@tauri-apps/api` | 2.12.1 → 2.12.4 | Latest stable 2.x patch; existing invoke, event, and window APIs compile unchanged. |
+| `@tauri-apps/cli` | 2.12.1 → 2.12.4 | Latest stable 2.x tooling patch; no bundling configuration changes. |
+| `@tauri-apps/plugin-global-shortcut` | 2.3.1 → 2.4.1 | Latest stable 2.x minor; app registers shortcuts through Rust, with no JS call sites to migrate. Backend plugin upgrade follows separately. |
+| `@tauri-apps/plugin-shell` | 2.3.5 → 2.5.0 | Latest stable 2.x minor adds optional process groups; no JS shell call sites or new process behavior enabled. |
+
+React migration notes: https://github.com/react/react/releases/tag/v19.3.0 and https://github.com/react/react/releases/tag/v19.3.1.
+TypeScript migration notes: https://devblogs.microsoft.com/typescript/announcing-typescript-6-0/ and https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/.
+Vitest security backport: https://github.com/vitest-dev/vitest/releases/tag/v4.1.12.
 
 Formatter release notes: https://github.com/oxc-project/oxc/releases/tag/oxfmt_v0.74.0.
+
+### Frontend validation outcome
+
+`npm run build`, `npm run test:coverage` (218 passed; lines 88.88%, branches 84.53%), formatting, isolated `npm ci --ignore-scripts --prefer-offline`, and `npm ls` pass.
+`npm audit` reports zero vulnerabilities after the transitive transport refresh. `npm run lint` still reports the original 18 errors; no new findings remain.
+A built-page browser smoke attempt fails before rendering because the standalone browser lacks Tauri's `metadata` and `transformCallback` bridge.
+This is not native-app startup verification. Native startup and hardware interactions remain unverified; startup can restore real display/audio/wallpaper state.
 
 ## Development TODO
 
