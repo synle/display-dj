@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use crate::core::audio_output::{AudioOutputDeviceState, AudioOutputState};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{Emitter, Manager};
 
 /// Endpoint ids whose loudness attempt already failed this session; skipped on
@@ -760,7 +760,10 @@ pub(crate) fn speaker_debug_lines<R: tauri::Runtime>(app: &tauri::AppHandle<R>) 
     match run_audio_output_operation(|| load_audio_output_state_unlocked(app)) {
         Ok(output_state) => lines.push(audio_output_state_summary("debug dump", &output_state)),
         Err(error) => {
-            log::error!("speaker debug dump: enumerate audio outputs failed: {}", error);
+            log::error!(
+                "speaker debug dump: enumerate audio outputs failed: {}",
+                error
+            );
             lines.push(format!("(enumerate audio outputs failed: {})", error));
         }
     }
@@ -782,20 +785,30 @@ pub(crate) fn ensure_loudness_for_enabled_outputs(app: &tauri::AppHandle) {
     }
     let preferred = app
         .try_state::<crate::AppState>()
-        .and_then(|state| state.preferences.lock().ok().map(|p| p.loudness_equalization_preferred))
+        .and_then(|state| {
+            state
+                .preferences
+                .lock()
+                .ok()
+                .map(|p| p.loudness_equalization_preferred)
+        })
         .unwrap_or(false);
     if !preferred {
         return;
     }
     let app = app.clone();
     std::thread::spawn(move || {
-        let output_state = match run_audio_output_operation(|| load_audio_output_state_unlocked(&app)) {
-            Ok(output_state) => output_state,
-            Err(error) => {
-                log::error!("loudness equalization: enumerate audio outputs failed: {}", error);
-                return;
-            }
-        };
+        let output_state =
+            match run_audio_output_operation(|| load_audio_output_state_unlocked(&app)) {
+                Ok(output_state) => output_state,
+                Err(error) => {
+                    log::error!(
+                        "loudness equalization: enumerate audio outputs failed: {}",
+                        error
+                    );
+                    return;
+                }
+            };
         for device in output_state
             .devices
             .iter()

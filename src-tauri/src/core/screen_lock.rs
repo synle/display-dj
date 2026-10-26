@@ -89,7 +89,10 @@ mod tests {
 
         assert_eq!(methods[0], "qdbus");
         assert_eq!(methods.len(), LINUX_LOCK_METHODS.len());
-        assert_eq!(methods.iter().filter(|method| **method == "qdbus").count(), 1);
+        assert_eq!(
+            methods.iter().filter(|method| **method == "qdbus").count(),
+            1
+        );
     }
 
     /// Unknown preference values cannot become executable names.

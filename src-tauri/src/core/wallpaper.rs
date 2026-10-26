@@ -4,7 +4,10 @@
 // =========================================================================
 
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::thread;
 use std::time::Duration;
 
@@ -44,7 +47,10 @@ pub fn set_wallpaper_one(index: usize, path: &str, _fit: &str) -> Result<(), Str
         Ok(())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        Err(format!("failed to set wallpaper on monitor {}: {}", index, stderr))
+        Err(format!(
+            "failed to set wallpaper on monitor {}: {}",
+            index, stderr
+        ))
     }
 }
 
@@ -71,7 +77,9 @@ $id = $wp.GetMonitorDevicePathAt({idx})
 $wp.SetWallpaper($id, '{path}')
 $wp.SetPosition({pos})
 "#,
-        idx = index, path = escaped_path, pos = position
+        idx = index,
+        path = escaped_path,
+        pos = position
     );
     let output = hidden_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &cmd])
@@ -81,7 +89,10 @@ $wp.SetPosition({pos})
         Ok(())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        Err(format!("failed to set wallpaper on monitor {}: {}", index, stderr))
+        Err(format!(
+            "failed to set wallpaper on monitor {}: {}",
+            index, stderr
+        ))
     }
 }
 
@@ -115,17 +126,30 @@ pub fn set_wallpaper(path: &str, _fit: &str) -> bool {
 #[cfg(target_os = "macos")]
 pub fn get_wallpaper() -> Option<WallpaperInfo> {
     let output = std::process::Command::new("osascript")
-        .args(["-e", "tell application \"System Events\" to get picture of desktop 1"])
-        .output().ok()?;
-    if !output.status.success() { return None; }
+        .args([
+            "-e",
+            "tell application \"System Events\" to get picture of desktop 1",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
     let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if path.is_empty() { return None; }
-    Some(WallpaperInfo { path: Some(path), fit: Some("fill".into()) })
+    if path.is_empty() {
+        return None;
+    }
+    Some(WallpaperInfo {
+        path: Some(path),
+        fit: Some("fill".into()),
+    })
 }
 
 /// macOS always supports wallpaper operations.
 #[cfg(target_os = "macos")]
-pub fn is_wallpaper_supported() -> bool { true }
+pub fn is_wallpaper_supported() -> bool {
+    true
+}
 
 // --- Windows: registry + SystemParametersInfoW via PowerShell ---
 
@@ -143,10 +167,30 @@ pub fn set_wallpaper(path: &str, fit: &str) -> bool {
         _ => ("10", "0"), // default to fill
     };
     let _ = hidden_command("reg")
-        .args(["add", r"HKCU\Control Panel\Desktop", "/v", "WallpaperStyle", "/t", "REG_SZ", "/d", style, "/f"])
+        .args([
+            "add",
+            r"HKCU\Control Panel\Desktop",
+            "/v",
+            "WallpaperStyle",
+            "/t",
+            "REG_SZ",
+            "/d",
+            style,
+            "/f",
+        ])
         .output();
     let _ = hidden_command("reg")
-        .args(["add", r"HKCU\Control Panel\Desktop", "/v", "TileWallpaper", "/t", "REG_SZ", "/d", tile, "/f"])
+        .args([
+            "add",
+            r"HKCU\Control Panel\Desktop",
+            "/v",
+            "TileWallpaper",
+            "/t",
+            "REG_SZ",
+            "/d",
+            tile,
+            "/f",
+        ])
         .output();
 
     // Set wallpaper via SystemParametersInfoW (SPI_SETDESKWALLPAPER = 0x0014)
@@ -175,33 +219,53 @@ public class Wallpaper {{
 pub fn get_wallpaper() -> Option<WallpaperInfo> {
     let output = hidden_command("reg")
         .args(["query", r"HKCU\Control Panel\Desktop", "/v", "Wallpaper"])
-        .output().ok()?;
-    if !output.status.success() { return None; }
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let path = stdout.lines()
+    let path = stdout
+        .lines()
         .find(|l| l.contains("Wallpaper"))
         .and_then(|l| l.split("REG_SZ").nth(1))
         .map(|s| s.trim().to_string())?;
-    if path.is_empty() { return None; }
+    if path.is_empty() {
+        return None;
+    }
 
     // Read fit mode from WallpaperStyle + TileWallpaper
     let style_val = hidden_command("reg")
-        .args(["query", r"HKCU\Control Panel\Desktop", "/v", "WallpaperStyle"])
-        .output().ok()
+        .args([
+            "query",
+            r"HKCU\Control Panel\Desktop",
+            "/v",
+            "WallpaperStyle",
+        ])
+        .output()
+        .ok()
         .filter(|o| o.status.success())
         .and_then(|o| {
-            String::from_utf8_lossy(&o.stdout).lines()
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
                 .find(|l| l.contains("WallpaperStyle"))
                 .and_then(|l| l.split("REG_SZ").nth(1))
                 .map(|s| s.trim().to_string())
         })
         .unwrap_or_default();
     let tile_val = hidden_command("reg")
-        .args(["query", r"HKCU\Control Panel\Desktop", "/v", "TileWallpaper"])
-        .output().ok()
+        .args([
+            "query",
+            r"HKCU\Control Panel\Desktop",
+            "/v",
+            "TileWallpaper",
+        ])
+        .output()
+        .ok()
         .filter(|o| o.status.success())
         .and_then(|o| {
-            String::from_utf8_lossy(&o.stdout).lines()
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
                 .find(|l| l.contains("TileWallpaper"))
                 .and_then(|l| l.split("REG_SZ").nth(1))
                 .map(|s| s.trim().to_string())
@@ -216,12 +280,17 @@ pub fn get_wallpaper() -> Option<WallpaperInfo> {
         ("0", "0") => "center",
         _ => "fill",
     };
-    Some(WallpaperInfo { path: Some(path), fit: Some(fit.into()) })
+    Some(WallpaperInfo {
+        path: Some(path),
+        fit: Some(fit.into()),
+    })
 }
 
 /// Windows always supports wallpaper operations.
 #[cfg(target_os = "windows")]
-pub fn is_wallpaper_supported() -> bool { true }
+pub fn is_wallpaper_supported() -> bool {
+    true
+}
 
 // --- Linux: desktop-aware KDE / GNOME / XFCE routing with feh fallback ---
 
@@ -339,17 +408,26 @@ pub fn get_wallpaper() -> Option<WallpaperInfo> {
     // Try GNOME
     let uri_output = std::process::Command::new("gsettings")
         .args(["get", "org.gnome.desktop.background", "picture-uri"])
-        .output().ok()?;
+        .output()
+        .ok()?;
     if uri_output.status.success() {
-        let uri = String::from_utf8_lossy(&uri_output.stdout).trim()
-            .trim_matches('\'').to_string();
+        let uri = String::from_utf8_lossy(&uri_output.stdout)
+            .trim()
+            .trim_matches('\'')
+            .to_string();
         let path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
         if !path.is_empty() {
             let gnome_mode = std::process::Command::new("gsettings")
                 .args(["get", "org.gnome.desktop.background", "picture-options"])
-                .output().ok()
+                .output()
+                .ok()
                 .filter(|o| o.status.success())
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().trim_matches('\'').to_string())
+                .map(|o| {
+                    String::from_utf8_lossy(&o.stdout)
+                        .trim()
+                        .trim_matches('\'')
+                        .to_string()
+                })
                 .unwrap_or_default();
             let fit = match gnome_mode.as_str() {
                 "zoom" => "fill",
@@ -359,7 +437,10 @@ pub fn get_wallpaper() -> Option<WallpaperInfo> {
                 "wallpaper" => "tile",
                 _ => "fill",
             };
-            return Some(WallpaperInfo { path: Some(path), fit: Some(fit.into()) });
+            return Some(WallpaperInfo {
+                path: Some(path),
+                fit: Some(fit.into()),
+            });
         }
     }
     None
@@ -433,7 +514,8 @@ pub fn scan_images(folder: &str) -> Vec<String> {
     let mut images: Vec<String> = dir
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.path().extension()
+            e.path()
+                .extension()
                 .and_then(|ext| ext.to_str())
                 .map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
                 .unwrap_or(false)
@@ -448,7 +530,10 @@ pub fn scan_images(folder: &str) -> Vec<String> {
 pub fn slideshow_cancel() {
     let mut guard = SLIDESHOW.lock().unwrap();
     if let Some(state) = guard.as_ref() {
-        log::info!("slideshow: cancelling running slideshow folder={}", state.folder);
+        log::info!(
+            "slideshow: cancelling running slideshow folder={}",
+            state.folder
+        );
         state.cancel.store(true, Ordering::SeqCst);
     }
     *guard = None;
@@ -543,10 +628,17 @@ pub fn slideshow_start_at(
         return r#"{"error":"interval must be at least 5 seconds"}"#.to_string();
     }
     if !validate_fit(fit) {
-        return format!(r#"{{"error":"invalid fit mode: '{}'. Valid: fill, fit, stretch, center, tile"}}"#, fit);
+        return format!(
+            r#"{{"error":"invalid fit mode: '{}'. Valid: fill, fit, stretch, center, tile"}}"#,
+            fit
+        );
     }
     if !SLIDESHOW_ORDERS.contains(&order) {
-        return format!(r#"{{"error":"invalid order: '{}'. Valid: {}"}}"#, order, SLIDESHOW_ORDERS.join(", "));
+        return format!(
+            r#"{{"error":"invalid order: '{}'. Valid: {}"}}"#,
+            order,
+            SLIDESHOW_ORDERS.join(", ")
+        );
     }
     if !std::path::Path::new(folder).is_dir() {
         return format!(r#"{{"error":"folder not found: {}"}}"#, folder);
@@ -581,7 +673,12 @@ pub fn slideshow_start_at(
     let images_count = images.len();
     log::info!(
         "slideshow: started folder={} images={} interval={}s order={} first={} resumed={}",
-        folder, images_count, interval_secs, order, first_image, start_idx > 0 || resume_path == Some(first_image.as_str())
+        folder,
+        images_count,
+        interval_secs,
+        order,
+        first_image,
+        start_idx > 0 || resume_path == Some(first_image.as_str())
     );
 
     // Store state
@@ -606,10 +703,14 @@ pub fn slideshow_start_at(
         loop {
             // Sleep in 1-second increments so we can check cancel flag frequently
             for _ in 0..interval_secs {
-                if cancel_clone.load(Ordering::SeqCst) { return; }
+                if cancel_clone.load(Ordering::SeqCst) {
+                    return;
+                }
                 thread::sleep(Duration::from_secs(1));
             }
-            if cancel_clone.load(Ordering::SeqCst) { return; }
+            if cancel_clone.load(Ordering::SeqCst) {
+                return;
+            }
 
             // Re-scan folder for forward/backward (picks up new/deleted files)
             let mut current_images = if order_owned == "random" {
@@ -618,7 +719,10 @@ pub fn slideshow_start_at(
                 let mut fresh = scan_images(&folder_owned);
                 if fresh.is_empty() {
                     // Folder empty/gone — auto-stop
-                    log::warn!("slideshow: folder empty or missing, stopping: {}", folder_owned);
+                    log::warn!(
+                        "slideshow: folder empty or missing, stopping: {}",
+                        folder_owned
+                    );
                     let mut guard = SLIDESHOW.lock().unwrap();
                     *guard = None;
                     return;
@@ -634,7 +738,10 @@ pub fn slideshow_start_at(
                     // Reshuffle and rescan for new images
                     current_images = scan_images(&folder_owned);
                     if current_images.is_empty() {
-                        log::warn!("slideshow: folder empty after reshuffle, stopping: {}", folder_owned);
+                        log::warn!(
+                            "slideshow: folder empty after reshuffle, stopping: {}",
+                            folder_owned
+                        );
                         let mut guard = SLIDESHOW.lock().unwrap();
                         *guard = None;
                         return;
@@ -645,7 +752,9 @@ pub fn slideshow_start_at(
                 idx = 0;
             }
 
-            if idx >= current_images.len() { continue; }
+            if idx >= current_images.len() {
+                continue;
+            }
 
             let img = &current_images[idx];
 
@@ -683,7 +792,8 @@ pub fn slideshow_start_at(
         "ok": true,
         "total_images": images_count,
         "current_image": first_image
-    })).unwrap()
+    }))
+    .unwrap()
 }
 
 /// Stop the active slideshow. Returns JSON with whether it was running.
@@ -701,8 +811,11 @@ pub fn slideshow_status() -> String {
     let guard = SLIDESHOW.lock().unwrap();
     match guard.as_ref() {
         Some(state) if state.running => {
-            let current_image = state.images.get(state.current_index)
-                .cloned().unwrap_or_default();
+            let current_image = state
+                .images
+                .get(state.current_index)
+                .cloned()
+                .unwrap_or_default();
             serde_json::to_string(&serde_json::json!({
                 "running": true,
                 "folder": state.folder,
@@ -712,7 +825,8 @@ pub fn slideshow_status() -> String {
                 "current_image": current_image,
                 "current_index": state.current_index,
                 "total_images": state.images.len()
-            })).unwrap()
+            }))
+            .unwrap()
         }
         _ => r#"{"running":false}"#.to_string(),
     }
@@ -721,7 +835,9 @@ pub fn slideshow_status() -> String {
 /// Simple Fisher-Yates shuffle using a basic LCG PRNG seeded from system time.
 pub fn shuffle(items: &mut Vec<String>) {
     let len = items.len();
-    if len <= 1 { return; }
+    if len <= 1 {
+        return;
+    }
     // Seed from system time nanoseconds
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -730,7 +846,9 @@ pub fn shuffle(items: &mut Vec<String>) {
     let mut rng = seed;
     for i in (1..len).rev() {
         // LCG: rng = (rng * 6364136223846793005 + 1442695040888963407) mod 2^64
-        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        rng = rng
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let j = (rng >> 33) as usize % (i + 1);
         items.swap(i, j);
     }
@@ -825,8 +943,11 @@ mod tests {
     #[test]
     fn test_shuffle_preserves_elements() {
         let original = vec![
-            "a".to_string(), "b".to_string(), "c".to_string(),
-            "d".to_string(), "e".to_string()
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "d".to_string(),
+            "e".to_string(),
         ];
         let mut items = original.clone();
         shuffle(&mut items);
@@ -847,8 +968,18 @@ mod tests {
         std::fs::write(&new, "x").unwrap();
         let t0 = std::time::UNIX_EPOCH + Duration::from_secs(1_000_000);
         let t1 = std::time::UNIX_EPOCH + Duration::from_secs(2_000_000);
-        std::fs::File::options().write(true).open(&old).unwrap().set_modified(t0).unwrap();
-        std::fs::File::options().write(true).open(&new).unwrap().set_modified(t1).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&old)
+            .unwrap()
+            .set_modified(t0)
+            .unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&new)
+            .unwrap()
+            .set_modified(t1)
+            .unwrap();
         let old_s = old.to_str().unwrap().to_string();
         let new_s = new.to_str().unwrap().to_string();
 
@@ -888,7 +1019,9 @@ mod tests {
     /// slideshow_start rejects intervals < 5 seconds.
     #[test]
     fn test_slideshow_start_rejects_short_interval() {
-        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = SLIDESHOW_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         let result = slideshow_start(1, "forward", "fill", tmp.path().to_str().unwrap());
         assert!(result.contains("at least 5 seconds"));
@@ -897,7 +1030,9 @@ mod tests {
     /// slideshow_start rejects invalid fit modes.
     #[test]
     fn test_slideshow_start_rejects_invalid_fit() {
-        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = SLIDESHOW_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         let result = slideshow_start(300, "forward", "zoom", tmp.path().to_str().unwrap());
         assert!(result.contains("invalid fit mode"));
@@ -906,7 +1041,9 @@ mod tests {
     /// slideshow_start rejects invalid order values.
     #[test]
     fn test_slideshow_start_rejects_invalid_order() {
-        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = SLIDESHOW_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         let result = slideshow_start(300, "sideways", "fill", tmp.path().to_str().unwrap());
         assert!(result.contains("invalid order"));
@@ -915,7 +1052,9 @@ mod tests {
     /// slideshow_start rejects nonexistent folders.
     #[test]
     fn test_slideshow_start_rejects_missing_folder() {
-        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = SLIDESHOW_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let result = slideshow_start(300, "forward", "fill", "/no/such/path/abc123");
         assert!(result.contains("folder not found"));
     }
@@ -923,7 +1062,9 @@ mod tests {
     /// slideshow_start rejects empty folders.
     #[test]
     fn test_slideshow_start_rejects_empty_folder() {
-        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = SLIDESHOW_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         let result = slideshow_start(300, "forward", "fill", tmp.path().to_str().unwrap());
         assert!(result.contains("no valid images"));
@@ -932,7 +1073,9 @@ mod tests {
     /// slideshow_stop reports was_running=false when nothing is running.
     #[test]
     fn test_slideshow_stop_when_not_running() {
-        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = SLIDESHOW_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         slideshow_cancel();
         let result = slideshow_stop();
         assert!(result.contains("was_running"));
@@ -941,7 +1084,9 @@ mod tests {
     /// slideshow_status returns running=false when no slideshow active.
     #[test]
     fn test_slideshow_status_not_running() {
-        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = SLIDESHOW_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         slideshow_cancel();
         let result = slideshow_status();
         assert!(result.contains("\"running\":false"));
@@ -950,7 +1095,9 @@ mod tests {
     /// slideshow_cancel must not panic when no slideshow exists.
     #[test]
     fn test_slideshow_cancel_no_state() {
-        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = SLIDESHOW_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         slideshow_cancel();
         slideshow_cancel(); // idempotent
     }
@@ -982,7 +1129,10 @@ mod tests {
     /// WallpaperInfo with None fields round-trips cleanly.
     #[test]
     fn test_wallpaper_info_none_fields() {
-        let info = WallpaperInfo { path: None, fit: None };
+        let info = WallpaperInfo {
+            path: None,
+            fit: None,
+        };
         let json = serde_json::to_string(&info).unwrap();
         let parsed: WallpaperInfo = serde_json::from_str(&json).unwrap();
         assert!(parsed.path.is_none());
@@ -1019,7 +1169,9 @@ mod tests {
     /// image scan succeeded, state stored) without waiting for the timer to fire.
     #[test]
     fn test_slideshow_start_and_cancel() {
-        let _lock = SLIDESHOW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = SLIDESHOW_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("a.png"), "x").unwrap();
         std::fs::write(tmp.path().join("b.png"), "x").unwrap();

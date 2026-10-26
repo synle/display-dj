@@ -583,7 +583,10 @@ mod tests {
             "SnapZoneToggles::from_prefs",
             "overlay.show_zones",
         ] {
-            assert!(update_body.contains(required), "missing live refresh: {required}");
+            assert!(
+                update_body.contains(required),
+                "missing live refresh: {required}"
+            );
         }
     }
 
@@ -919,11 +922,11 @@ fn restore_last_known_values(app: &tauri::AppHandle) {
     let Some(speaker_id) = lkv.selected_speaker_id.clone() else {
         return;
     };
-    let output_state = tauri::async_runtime::block_on(volume::get_audio_output_devices(app.clone()));
+    let output_state =
+        tauri::async_runtime::block_on(volume::get_audio_output_devices(app.clone()));
     let available = output_state.as_ref().is_ok_and(|s| {
         s.devices.iter().any(|d| {
-            d.id == speaker_id
-                && d.state == core::audio_output::AudioOutputDeviceState::Enabled
+            d.id == speaker_id && d.state == core::audio_output::AudioOutputDeviceState::Enabled
         })
     });
     if !available {

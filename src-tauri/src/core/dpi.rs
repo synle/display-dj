@@ -269,7 +269,8 @@ mod platform {
     unsafe fn hidpi_options() -> CFTypeRef {
         use objc::runtime::{Class, Object};
         use objc::{msg_send, sel, sel_impl};
-        let (Some(dict_cls), Some(num_cls)) = (Class::get("NSDictionary"), Class::get("NSNumber")) else {
+        let (Some(dict_cls), Some(num_cls)) = (Class::get("NSDictionary"), Class::get("NSNumber"))
+        else {
             return std::ptr::null();
         };
         let yes: *mut Object = msg_send![num_cls, numberWithBool: true];

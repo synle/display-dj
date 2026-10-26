@@ -1,7 +1,4 @@
-#![cfg_attr(
-    not(any(target_os = "windows", target_os = "linux")),
-    allow(dead_code)
-)]
+#![cfg_attr(not(any(target_os = "windows", target_os = "linux")), allow(dead_code))]
 
 //! Tauri WebView overlays used by Windows and X11 Tile Snap.
 //!

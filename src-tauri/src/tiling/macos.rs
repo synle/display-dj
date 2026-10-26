@@ -1987,14 +1987,12 @@ fn normalize_all_windows() -> (usize, usize) {
         for &pid in &pids {
             let ax_windows = get_all_ax_windows_for_pid(pid);
             for (ax_win, _wid) in &ax_windows {
-                if is_window_minimized(ax_win)
-                    && set_window_minimized(ax_win, false) {
-                        unminimized += 1;
-                    }
-                if is_window_fullscreen(ax_win)
-                    && set_window_fullscreen(ax_win, false) {
-                        unfullscreened += 1;
-                    }
+                if is_window_minimized(ax_win) && set_window_minimized(ax_win, false) {
+                    unminimized += 1;
+                }
+                if is_window_fullscreen(ax_win) && set_window_fullscreen(ax_win, false) {
+                    unfullscreened += 1;
+                }
             }
         }
     }

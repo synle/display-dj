@@ -73,8 +73,7 @@ mod tests {
     #[test]
     fn test_keep_awake_guard_in_mutex() {
         // Simulate the AppState pattern: Mutex<Option<KeepAwake>>
-        let guard: std::sync::Mutex<Option<keepawake::KeepAwake>> =
-            std::sync::Mutex::new(None);
+        let guard: std::sync::Mutex<Option<keepawake::KeepAwake>> = std::sync::Mutex::new(None);
 
         // Initially None
         assert!(guard.lock().unwrap().is_none());

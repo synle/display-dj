@@ -2,30 +2,30 @@
 // volume/wallpaper engine that previously ran as an HTTP sidecar.
 //
 // Platform modules — only one is compiled per OS (like build-time if/else).
-#[cfg(target_os = "macos")]
-pub mod macos;
-#[cfg(target_os = "windows")]
-pub mod windows;
 #[cfg(target_os = "linux")]
 pub mod linux;
 #[cfg(target_os = "linux")]
 pub(crate) mod linux_desktop;
+#[cfg(target_os = "macos")]
+pub mod macos;
+#[cfg(target_os = "windows")]
+pub mod windows;
 
 // Windows-only helper for spawning powershell/reg without flashing a console
 // window. Local to display-dj — not present in the display-dj-cli upstream.
 #[cfg(target_os = "windows")]
 pub mod win_cmd;
 
-pub mod task_view;
 pub mod screen_lock;
+pub mod task_view;
 
+pub mod audio_output;
+pub mod display;
+pub mod dpi;
+pub mod loudness;
 pub mod theme;
 pub mod volume;
 pub mod wallpaper;
-pub mod display;
-pub mod audio_output;
-pub mod loudness;
-pub mod dpi;
 
 use serde::{Deserialize, Serialize};
 
@@ -42,9 +42,9 @@ pub const BUILTIN_ID: &str = "builtin"; // &str = borrowed string literal baked 
 /// Per-display info exposed to UI code and the platform modules.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DisplayInfo {
-    pub id: String,             // "builtin", "1", "2", ...
-    pub name: String,           // human-readable name from the monitor's EDID
-    pub display_type: String,   // "builtin" or "external"
+    pub id: String,              // "builtin", "1", "2", ...
+    pub name: String,            // human-readable name from the monitor's EDID
+    pub display_type: String,    // "builtin" or "external"
     pub brightness: Option<u32>, // Option = nullable — Some(75) or None
     pub contrast: Option<u32>,
     pub ddc_supported: bool,

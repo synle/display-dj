@@ -244,7 +244,10 @@ pub fn import_macos_native_crashes() {
         let _ = std::fs::write(&marker_path, newest.to_string());
     }
     if imported > 0 {
-        log::info!("crash_log: imported {} macOS native crash report(s)", imported);
+        log::info!(
+            "crash_log: imported {} macOS native crash report(s)",
+            imported
+        );
     }
 }
 
@@ -268,7 +271,6 @@ fn summarize_ips(path: &std::path::Path) -> Option<String> {
     // the full crash body. Anything past line 2 is ignored by Apple's tooling.
     let (header_line, body_line) = content.split_once('\n')?;
 
-
     let header: serde_json::Value = serde_json::from_str(header_line).ok()?;
     let body: serde_json::Value = serde_json::from_str(body_line).ok()?;
 
@@ -288,7 +290,10 @@ fn summarize_ips(path: &std::path::Path) -> Option<String> {
         .get("incident_id")
         .and_then(|v| v.as_str())
         .unwrap_or("?");
-    let bug_type = header.get("bug_type").and_then(|v| v.as_str()).unwrap_or("?");
+    let bug_type = header
+        .get("bug_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("?");
 
     let os_train = body
         .get("osVersion")
@@ -335,7 +340,10 @@ fn summarize_ips(path: &std::path::Path) -> Option<String> {
     let threads = body.get("threads").and_then(|v| v.as_array());
     let (thread_name, frames_str) = match threads.and_then(|ts| ts.get(faulting_idx)) {
         Some(t) => {
-            let name = t.get("name").and_then(|v| v.as_str()).unwrap_or("<unnamed>");
+            let name = t
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("<unnamed>");
             let mut out = String::new();
             if let Some(frames) = t.get("frames").and_then(|f| f.as_array()) {
                 for (i, frame) in frames.iter().enumerate().take(40) {
@@ -365,10 +373,7 @@ fn summarize_ips(path: &std::path::Path) -> Option<String> {
         None => ("<missing>".to_string(), String::new()),
     };
 
-    let filename = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("?");
+    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
 
     Some(format!(
         "\n========== MACOS NATIVE CRASH ==========\n\
@@ -419,10 +424,8 @@ mod tests {
     /// of the test. Returns the temp PathBuf so the test can clean it up.
     fn with_temp_config_dir<F: FnOnce(&PathBuf)>(f: F) {
         let _guard = crate::config::TEST_CONFIG_DIR_LOCK.lock().unwrap();
-        let dir = std::env::temp_dir().join(format!(
-            "display-dj-crashlog-test-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("display-dj-crashlog-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::env::set_var("DISPLAY_DJ_CONFIG_DIR", &dir);
@@ -463,10 +466,7 @@ mod tests {
         with_temp_config_dir(|_| {
             // Build a file ~3 MB with three sections so the trim happens
             // strictly inside the file.
-            let chunk = format!(
-                "{}\n",
-                "x".repeat((MAX_CRASH_LOG_SIZE / 3) as usize)
-            );
+            let chunk = format!("{}\n", "x".repeat((MAX_CRASH_LOG_SIZE / 3) as usize));
             let content = format!(
                 "========== RUST PANIC ==========\n{chunk}\n\
                  ========== RUST PANIC ==========\n{chunk}\n\
@@ -566,7 +566,11 @@ mod tests {
             let _ = std::panic::catch_unwind(|| panic!("test-payload-marker"));
             std::panic::set_hook(prev);
 
-            let entry = CAPTURED.lock().unwrap().take().expect("hook should have fired");
+            let entry = CAPTURED
+                .lock()
+                .unwrap()
+                .take()
+                .expect("hook should have fired");
             assert!(entry.contains("========== RUST PANIC =========="));
             assert!(entry.contains("========== END RUST PANIC =========="));
             assert!(entry.contains("test-payload-marker"));

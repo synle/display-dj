@@ -89,7 +89,9 @@ impl std::fmt::Display for LoudnessError {
     /// Renders the inner diagnostic message.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unsupported(message) | Self::Denied(message) | Self::Failed(message) => f.write_str(message),
+            Self::Unsupported(message) | Self::Denied(message) | Self::Failed(message) => {
+                f.write_str(message)
+            }
         }
     }
 }
@@ -150,7 +152,10 @@ const DEFAULT_FX_CONTEXT: &str = "{b13412ee-07af-4c57-b08b-e327f8db085b}";
 /// and dashes (never panics, unlike `GUID::from(&str)`).
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub(crate) fn parse_guid_u128(text: &str) -> Option<u128> {
-    let hex: String = text.chars().filter(|c| !matches!(c, '{' | '}' | '-')).collect();
+    let hex: String = text
+        .chars()
+        .filter(|c| !matches!(c, '{' | '}' | '-'))
+        .collect();
     if hex.len() != 32 {
         return None;
     }
@@ -233,12 +238,16 @@ pub fn ensure_loudness_equalization(device_id: &str) -> LoudnessReport {
             String::new()
         }
         Err(e) => {
-            attempts.push(format!("option 0 (inspect FxProperties): spawn failed: {e}"));
+            attempts.push(format!(
+                "option 0 (inspect FxProperties): spawn failed: {e}"
+            ));
             String::new()
         }
     };
     let contexts = loudness_contexts(&listing);
-    attempts.push(format!("option 0 (inspect FxProperties): live contexts={contexts:?}"));
+    attempts.push(format!(
+        "option 0 (inspect FxProperties): live contexts={contexts:?}"
+    ));
 
     // Option 1: public system-effects user store (what Sound settings writes).
     let mut errors: Vec<String> = Vec::new();
@@ -246,7 +255,8 @@ pub fn ensure_loudness_equalization(device_id: &str) -> LoudnessReport {
     for context in &contexts {
         let Some(context_guid) = parse_guid_u128(context).map(windows::core::GUID::from_u128)
         else {
-            let msg = format!("option 1 (IAudioSystemEffectsPropertyStore {context}): bad context guid");
+            let msg =
+                format!("option 1 (IAudioSystemEffectsPropertyStore {context}): bad context guid");
             attempts.push(msg.clone());
             errors.push(msg);
             continue;
@@ -275,14 +285,18 @@ pub fn ensure_loudness_equalization(device_id: &str) -> LoudnessReport {
                 errors.push(msg);
             }
             Err(e) => {
-                let msg = format!("option 1 (IAudioSystemEffectsPropertyStore {context}): failed {e}");
+                let msg =
+                    format!("option 1 (IAudioSystemEffectsPropertyStore {context}): failed {e}");
                 attempts.push(msg.clone());
                 errors.push(msg);
             }
         }
     }
     if errors.is_empty() {
-        return LoudnessReport { result: Ok(written), attempts };
+        return LoudnessReport {
+            result: Ok(written),
+            attempts,
+        };
     }
 
     // Option 2: registry fallback into each {context}\User; create key first.
@@ -297,7 +311,11 @@ pub fn ensure_loudness_equalization(device_id: &str) -> LoudnessReport {
         if out.status.success() {
             Ok(())
         } else {
-            Err(format!("reg_exit={:?} stderr={:?}", out.status.code(), clip(&out.stderr)))
+            Err(format!(
+                "reg_exit={:?} stderr={:?}",
+                out.status.code(),
+                clip(&out.stderr)
+            ))
         }
     }
     let mut registry_wrote = false;
@@ -326,9 +344,17 @@ pub fn ensure_loudness_equalization(device_id: &str) -> LoudnessReport {
                     }
                     None => LOUDNESS_ON_BLOB_HEX.to_string(),
                 };
-                reg_add(&[user_key.as_str(), "/v", LOUDNESS_VALUE_NAME, "/t", "REG_BINARY", "/d", &hex])
-                    .map(|()| true)
-                    .map_err(|e| format!("set value {e}"))
+                reg_add(&[
+                    user_key.as_str(),
+                    "/v",
+                    LOUDNESS_VALUE_NAME,
+                    "/t",
+                    "REG_BINARY",
+                    "/d",
+                    &hex,
+                ])
+                .map(|()| true)
+                .map_err(|e| format!("set value {e}"))
             });
         match result {
             Ok(false) => attempts.push(format!("option 2 (registry {context}\\User): already on")),
@@ -359,7 +385,12 @@ pub fn ensure_loudness_equalization(device_id: &str) -> LoudnessReport {
     }
     // Option 3: the audio engine reloads registry FX settings only on restart.
     match hidden_command("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", "Restart-Service audiosrv -Force"])
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Restart-Service audiosrv -Force",
+        ])
         .output()
     {
         Ok(out) if out.status.success() => {
@@ -372,7 +403,10 @@ pub fn ensure_loudness_equalization(device_id: &str) -> LoudnessReport {
         )),
         Err(e) => attempts.push(format!("option 3 (restart audiosrv): spawn failed: {e}")),
     }
-    LoudnessReport { result: Ok(true), attempts }
+    LoudnessReport {
+        result: Ok(true),
+        attempts,
+    }
 }
 
 /// Non-Windows stub: loudness equalization is a Windows-only enhancement.
@@ -470,7 +504,10 @@ mod tests {
             Some(0xb13412ee_07af_4c57_b08b_e327f8db085b)
         );
         assert_eq!(parse_guid_u128("{b13412ee}"), None);
-        assert_eq!(parse_guid_u128("{zz3412ee-07af-4c57-b08b-e327f8db085b}"), None);
+        assert_eq!(
+            parse_guid_u128("{zz3412ee-07af-4c57-b08b-e327f8db085b}"),
+            None
+        );
     }
 
     /// No User store with the value falls back to the observed default context.
@@ -483,14 +520,19 @@ mod tests {
     #[test]
     fn access_denied_is_detected() {
         assert!(is_access_denied("stderr=\"ERROR: Access is denied.\""));
-        assert!(!is_access_denied("ERROR: The system was unable to find the specified registry key"));
+        assert!(!is_access_denied(
+            "ERROR: The system was unable to find the specified registry key"
+        ));
     }
 
     /// Log clipping joins lines and bounds length.
     #[test]
     fn clip_joins_lines_and_bounds_length() {
         assert_eq!(clip(b"  a\r\nb \n"), "a | b");
-        assert_eq!(clip(&vec![b'x'; MAX_LOG_OUTPUT_CHARS + 100]).len(), MAX_LOG_OUTPUT_CHARS);
+        assert_eq!(
+            clip(&vec![b'x'; MAX_LOG_OUTPUT_CHARS + 100]).len(),
+            MAX_LOG_OUTPUT_CHARS
+        );
     }
 
     /// Unknown type tag or short blob is never rewritten.

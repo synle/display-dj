@@ -20,7 +20,10 @@ pub struct VolumeInfo {
 /// Runs one AppleScript snippet and returns trimmed stdout on success.
 #[cfg(target_os = "macos")]
 fn osascript(script: &str) -> Option<String> {
-    let output = std::process::Command::new("osascript").args(["-e", script]).output().ok()?;
+    let output = std::process::Command::new("osascript")
+        .args(["-e", script])
+        .output()
+        .ok()?;
     output
         .status
         .success()
@@ -34,7 +37,9 @@ pub fn get_volume() -> Option<VolumeInfo> {
         Ok((volume, muted)) => return Some(VolumeInfo { volume, muted }),
         Err(error) => log::warn!("CoreAudio get volume failed, using osascript: {}", error),
     }
-    let volume: u32 = osascript("output volume of (get volume settings)")?.parse().ok()?;
+    let volume: u32 = osascript("output volume of (get volume settings)")?
+        .parse()
+        .ok()?;
     let muted = osascript("output muted of (get volume settings)")
         .is_some_and(|v| v.eq_ignore_ascii_case("true"));
     Some(VolumeInfo { volume, muted })
@@ -105,7 +110,9 @@ pub fn set_mute(mute: bool) -> bool {
 #[cfg(target_os = "linux")]
 pub fn get_volume() -> Option<VolumeInfo> {
     // Try pactl first (PulseAudio / PipeWire)
-    if let Some(info) = get_volume_pactl() { return Some(info); }
+    if let Some(info) = get_volume_pactl() {
+        return Some(info);
+    }
     // Fallback to amixer (ALSA)
     get_volume_amixer()
 }
@@ -116,19 +123,25 @@ pub fn get_volume() -> Option<VolumeInfo> {
 fn get_volume_pactl() -> Option<VolumeInfo> {
     let output = std::process::Command::new("pactl")
         .args(["get-sink-volume", "@DEFAULT_SINK@"])
-        .output().ok()?;
-    if !output.status.success() { return None; }
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Parse "Volume: front-left: 32768 /  50% / ..."
-    let volume = stdout.split('/')
+    let volume = stdout
+        .split('/')
         .find(|s| s.contains('%'))
         .and_then(|s| s.trim().trim_end_matches('%').parse::<u32>().ok())?;
 
     let mute_output = std::process::Command::new("pactl")
         .args(["get-sink-mute", "@DEFAULT_SINK@"])
-        .output().ok()?;
+        .output()
+        .ok()?;
     let muted = String::from_utf8_lossy(&mute_output.stdout)
-        .to_lowercase().contains("yes");
+        .to_lowercase()
+        .contains("yes");
 
     Some(VolumeInfo { volume, muted })
 }
@@ -138,10 +151,14 @@ fn get_volume_pactl() -> Option<VolumeInfo> {
 fn get_volume_amixer() -> Option<VolumeInfo> {
     let output = std::process::Command::new("amixer")
         .args(["get", "Master"])
-        .output().ok()?;
-    if !output.status.success() { return None; }
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let volume = stdout.split('[')
+    let volume = stdout
+        .split('[')
         .find(|s| s.contains("%]"))
         .and_then(|s| s.split('%').next())
         .and_then(|s| s.parse::<u32>().ok())?;
@@ -158,7 +175,9 @@ pub fn set_volume(level: u16) -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
-    { return true; }
+    {
+        return true;
+    }
     // Fallback to amixer
     std::process::Command::new("amixer")
         .args(["set", "Master", &format!("{}%", level)])
@@ -177,7 +196,9 @@ pub fn set_mute(mute: bool) -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
-    { return true; }
+    {
+        return true;
+    }
     // Fallback to amixer
     let toggle = if mute { "mute" } else { "unmute" };
     std::process::Command::new("amixer")
@@ -224,7 +245,10 @@ mod tests {
     /// VolumeInfo must serialize round-trip cleanly with serde.
     #[test]
     fn test_volume_info_serde_roundtrip() {
-        let v = VolumeInfo { volume: 42, muted: true };
+        let v = VolumeInfo {
+            volume: 42,
+            muted: true,
+        };
         let json = serde_json::to_string(&v).unwrap();
         assert!(json.contains("\"volume\":42"));
         assert!(json.contains("\"muted\":true"));
@@ -237,7 +261,10 @@ mod tests {
     /// (both flags independent — volume 0 ≠ muted in the data model).
     #[test]
     fn test_volume_info_zero_not_muted() {
-        let v = VolumeInfo { volume: 0, muted: false };
+        let v = VolumeInfo {
+            volume: 0,
+            muted: false,
+        };
         let json = serde_json::to_string(&v).unwrap();
         assert!(json.contains("\"volume\":0"));
         assert!(json.contains("\"muted\":false"));

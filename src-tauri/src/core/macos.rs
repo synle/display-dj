@@ -16,9 +16,15 @@ extern "C" {
     // We use this for software dimming — set max to <1.0 to reduce brightness.
     fn CGSetDisplayTransferByFormula(
         display: u32,
-        red_min: f32, red_max: f32, red_gamma: f32,
-        green_min: f32, green_max: f32, green_gamma: f32,
-        blue_min: f32, blue_max: f32, blue_gamma: f32,
+        red_min: f32,
+        red_max: f32,
+        red_gamma: f32,
+        green_min: f32,
+        green_max: f32,
+        green_gamma: f32,
+        blue_min: f32,
+        blue_max: f32,
+        blue_gamma: f32,
     ) -> i32;
     // Resets gamma to the system default (ColorSync profile).
     fn CGDisplayRestoreColorSyncSettings();
@@ -53,13 +59,24 @@ fn load_display_services() -> Option<DisplayServicesFns> {
     // and transmuting raw pointers into typed function pointers.
     unsafe {
         let path = std::ffi::CString::new(
-            "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices"
-        ).ok()?; // .ok()? converts Result to Option and returns None on error
+            "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices",
+        )
+        .ok()?; // .ok()? converts Result to Option and returns None on error
         let handle = libc::dlopen(path.as_ptr(), libc::RTLD_NOW);
-        if handle.is_null() { return None; }
-        let get_sym = libc::dlsym(handle, b"DisplayServicesGetBrightness\0".as_ptr() as *const _);
-        let set_sym = libc::dlsym(handle, b"DisplayServicesSetBrightness\0".as_ptr() as *const _);
-        if get_sym.is_null() || set_sym.is_null() { return None; }
+        if handle.is_null() {
+            return None;
+        }
+        let get_sym = libc::dlsym(
+            handle,
+            b"DisplayServicesGetBrightness\0".as_ptr() as *const _,
+        );
+        let set_sym = libc::dlsym(
+            handle,
+            b"DisplayServicesSetBrightness\0".as_ptr() as *const _,
+        );
+        if get_sym.is_null() || set_sym.is_null() {
+            return None;
+        }
         // transmute = reinterpret the raw void* pointer as a typed function pointer.
         // Dangerous but necessary for FFI with private frameworks.
         Some(DisplayServicesFns {
@@ -92,8 +109,8 @@ fn find_builtin_display_id() -> Option<u32> {
 /// Uses the private DisplayServices framework for direct hardware backlight control.
 /// The display_id is a CoreGraphics display ID (from CGGetActiveDisplayList).
 struct BuiltinControl {
-    display_id: u32,          // CoreGraphics display ID for the built-in panel
-    ds: DisplayServicesFns,   // resolved function pointers from DisplayServices.framework
+    display_id: u32,        // CoreGraphics display ID for the built-in panel
+    ds: DisplayServicesFns, // resolved function pointers from DisplayServices.framework
 }
 
 /// DisplayControl implementation for built-in displays.
@@ -105,7 +122,11 @@ impl DisplayControl for BuiltinControl {
         // Call the function pointer stored in self.ds — extra parens needed: (self.ds.get)(...)
         let res = unsafe { (self.ds.get)(self.display_id, &mut val) };
         // DisplayServices returns brightness as 0.0-1.0 float, we convert to 0-100 percentage
-        if res == 0 { Some((val * 100.0).round() as u32) } else { None }
+        if res == 0 {
+            Some((val * 100.0).round() as u32)
+        } else {
+            None
+        }
     }
 
     fn get_contrast(&mut self) -> Option<u32> {
@@ -144,7 +165,7 @@ struct ExternalControl {
 /// Some monitors (e.g., Acer XZ322QU V3) have flaky I2C buses that return
 /// checksum errors intermittently. Retrying with delays between attempts
 /// significantly improves reliability.
-const DDC_WRITE_RETRIES: u32 = 5;   // writes need more retries than reads
+const DDC_WRITE_RETRIES: u32 = 5; // writes need more retries than reads
 const DDC_READ_RETRIES: u32 = 3;
 const DDC_RETRY_DELAY_MS: u64 = 50; // ms between attempts — gives I2C bus time to settle
 
@@ -184,13 +205,21 @@ fn ddc_write_with_retry(mon: &mut ddc_macos::Monitor, vcp: u8, value: u16) -> bo
 impl DisplayControl for ExternalControl {
     fn get_brightness(&mut self) -> Option<u32> {
         ddc_read_with_retry(&mut self.ddc_monitor, VCP_BRIGHTNESS).map(|(cur, max)| {
-            if max > 0 { ((cur as f64 / max as f64) * 100.0).round() as u32 } else { 50 }
+            if max > 0 {
+                ((cur as f64 / max as f64) * 100.0).round() as u32
+            } else {
+                50
+            }
         })
     }
 
     fn get_contrast(&mut self) -> Option<u32> {
         ddc_read_with_retry(&mut self.ddc_monitor, VCP_CONTRAST).map(|(cur, max)| {
-            if max > 0 { ((cur as f64 / max as f64) * 100.0).round() as u32 } else { 50 }
+            if max > 0 {
+                ((cur as f64 / max as f64) * 100.0).round() as u32
+            } else {
+                50
+            }
         })
     }
 
@@ -198,7 +227,8 @@ impl DisplayControl for ExternalControl {
         let use_ddc = mode == "ddc" || mode == "force" || (mode == "auto" && self.ddc_supported);
         // In force mode, always try DDC (even if initial read failed — write might work with retries)
         let try_ddc = use_ddc || mode == "force";
-        let use_gamma = mode == "gamma" || mode == "force" || (mode == "auto" && !self.ddc_supported);
+        let use_gamma =
+            mode == "gamma" || mode == "force" || (mode == "auto" && !self.ddc_supported);
         let mut ok = true;
 
         if try_ddc {
@@ -230,12 +260,7 @@ fn set_cg_gamma(display_id: u32, brightness: u32) {
     let val = (brightness.min(100) as f32) / 100.0;
     unsafe {
         // min=0, max=val, gamma=1 for each channel — linear ramp from black to val
-        CGSetDisplayTransferByFormula(
-            display_id,
-            0.0, val, 1.0,
-            0.0, val, 1.0,
-            0.0, val, 1.0,
-        );
+        CGSetDisplayTransferByFormula(display_id, 0.0, val, 1.0, 0.0, val, 1.0, 0.0, val, 1.0);
     }
 }
 
@@ -264,10 +289,10 @@ impl Platform for MacPlatform {
                 let mut ctrl = BuiltinControl { display_id, ds };
                 let brightness = ctrl.get_brightness();
                 let info = DisplayInfo {
-                    id: BUILTIN_ID.into(),       // .into() converts &str to String
+                    id: BUILTIN_ID.into(), // .into() converts &str to String
                     name: "Built-in Display".into(),
                     display_type: "builtin".into(),
-                    brightness,                  // field shorthand (like JS { brightness })
+                    brightness, // field shorthand (like JS { brightness })
                     contrast: None,
                     ddc_supported: false,
                     // Built-in Apple displays dim natively via DisplayServices,
@@ -286,7 +311,8 @@ impl Platform for MacPlatform {
             for (idx, mut mon) in monitors.into_iter().enumerate() {
                 let cg_display_id = mon.handle().id;
                 // .unwrap_or_else() provides a fallback name if EDID is unreadable
-                let name = mon.product_name()
+                let name = mon
+                    .product_name()
                     .unwrap_or_else(|| format!("External Display {}", idx + 1));
 
                 // Try reading brightness/contrast to check if DDC actually works.
@@ -294,12 +320,20 @@ impl Platform for MacPlatform {
                 let brightness = mon.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|val| {
                     let max = val.maximum() as f64;
                     let cur = val.value() as f64;
-                    if max > 0.0 { (cur / max * 100.0).round() as u32 } else { 50 }
+                    if max > 0.0 {
+                        (cur / max * 100.0).round() as u32
+                    } else {
+                        50
+                    }
                 });
                 let contrast = mon.get_vcp_feature(VCP_CONTRAST).ok().map(|val| {
                     let max = val.maximum() as f64;
                     let cur = val.value() as f64;
-                    if max > 0.0 { (cur / max * 100.0).round() as u32 } else { 50 }
+                    if max > 0.0 {
+                        (cur / max * 100.0).round() as u32
+                    } else {
+                        50
+                    }
                 });
                 let ddc_supported = brightness.is_some(); // if read worked, DDC is supported
 
@@ -320,7 +354,11 @@ impl Platform for MacPlatform {
                     monitor_rect: None,
                 };
 
-                let ctrl = ExternalControl { ddc_monitor: mon, cg_display_id, ddc_supported };
+                let ctrl = ExternalControl {
+                    ddc_monitor: mon,
+                    cg_display_id,
+                    ddc_supported,
+                };
                 result.push((info, Box::new(ctrl)));
             }
         }
@@ -331,7 +369,9 @@ impl Platform for MacPlatform {
     /// Reset gamma on all displays to their ColorSync profiles.
     /// A single CoreGraphics call handles every display at once.
     fn reset_all_gamma() {
-        unsafe { CGDisplayRestoreColorSyncSettings(); }
+        unsafe {
+            CGDisplayRestoreColorSyncSettings();
+        }
     }
 
     /// Dump raw platform diagnostics for the `debug` command.
@@ -378,12 +418,14 @@ impl Platform for MacPlatform {
                 for (idx, mut mon) in monitors.into_iter().enumerate() {
                     let name = mon.product_name().unwrap_or_else(|| "unknown".into());
                     let handle_id = mon.handle().id;
-                    let brightness_raw = mon.get_vcp_feature(VCP_BRIGHTNESS).ok().map(|v| {
-                        serde_json::json!({"current": v.value(), "max": v.maximum()})
-                    });
-                    let contrast_raw = mon.get_vcp_feature(VCP_CONTRAST).ok().map(|v| {
-                        serde_json::json!({"current": v.value(), "max": v.maximum()})
-                    });
+                    let brightness_raw = mon
+                        .get_vcp_feature(VCP_BRIGHTNESS)
+                        .ok()
+                        .map(|v| serde_json::json!({"current": v.value(), "max": v.maximum()}));
+                    let contrast_raw = mon
+                        .get_vcp_feature(VCP_CONTRAST)
+                        .ok()
+                        .map(|v| serde_json::json!({"current": v.value(), "max": v.maximum()}));
                     ddc_list.push(serde_json::json!({
                         "index": idx,
                         "product_name": name,

@@ -10,7 +10,6 @@
 ///   - When keep-awake is active, a smaller accent rectangle inside
 ///
 /// No PNG assets are used — everything is drawn from code.
-
 use tauri::image::Image;
 use tauri::Manager;
 
@@ -79,7 +78,15 @@ pub fn generate_tray_icon(
 
     // Draw border by filling outer rect, then filling inner rect
     draw_filled_rect(&mut pixels, ICON_SIZE, x1, y1, x2, y2, border_color);
-    draw_filled_rect(&mut pixels, ICON_SIZE, x1 + border, y1 + border, x2 - border, y2 - border, fill_color);
+    draw_filled_rect(
+        &mut pixels,
+        ICON_SIZE,
+        x1 + border,
+        y1 + border,
+        x2 - border,
+        y2 - border,
+        fill_color,
+    );
 
     // Muted indicator: red X drawn inside the icon
     if is_muted {
@@ -90,8 +97,26 @@ pub fn generate_tray_icon(
         let y1 = inset;
         let x2 = ICON_SIZE as i32 - inset;
         let y2 = ICON_SIZE as i32 - inset;
-        draw_thick_line(&mut pixels, ICON_SIZE, x1, y1, x2, y2, thickness, mute_color);
-        draw_thick_line(&mut pixels, ICON_SIZE, x1, y2, x2, y1, thickness, mute_color);
+        draw_thick_line(
+            &mut pixels,
+            ICON_SIZE,
+            x1,
+            y1,
+            x2,
+            y2,
+            thickness,
+            mute_color,
+        );
+        draw_thick_line(
+            &mut pixels,
+            ICON_SIZE,
+            x1,
+            y2,
+            x2,
+            y1,
+            thickness,
+            mute_color,
+        );
     }
 
     Image::new_owned(pixels, ICON_SIZE, ICON_SIZE)
@@ -201,13 +226,19 @@ pub fn update_tray_icon<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 
     let is_dark = state.is_dark_mode.lock().map(|v| *v).unwrap_or(false);
     let is_muted = state.is_muted.lock().map(|v| *v).unwrap_or(false);
-    let is_keep_awake = state.keep_awake.lock().map(|v| v.is_some()).unwrap_or(false);
+    let is_keep_awake = state
+        .keep_awake
+        .lock()
+        .map(|v| v.is_some())
+        .unwrap_or(false);
 
     let icon = generate_tray_icon(is_dark, is_keep_awake, is_muted);
 
     log::info!(
         "update_tray_icon: dark={} keep_awake={} muted={}",
-        is_dark, is_keep_awake, is_muted
+        is_dark,
+        is_keep_awake,
+        is_muted
     );
 
     if let Some(tray) = app.tray_by_id("main-tray") {

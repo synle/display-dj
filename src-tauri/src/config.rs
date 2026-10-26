@@ -357,7 +357,6 @@ pub struct LayoutRule {
     pub display_index: Option<usize>,
 }
 
-
 /// Tracks the wallpaper path set on a specific monitor.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -429,7 +428,6 @@ pub struct LayoutPreset {
     /// Ordered list of rules. Each matched window is tiled once (first matching rule wins).
     pub rules: Vec<LayoutRule>,
 }
-
 
 /// User-defined settings for a stable platform audio-output device identifier.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -556,9 +554,15 @@ impl LastKnownValues {
         self.all_brightness = self.all_brightness.map(|v| v.min(100));
         self.all_volume = self.all_volume.map(|v| v.min(100));
         self.all_contrast = self.all_contrast.map(|v| v.min(100));
-        self.monitor_contrast.values_mut().for_each(|v| *v = (*v).min(100));
-        self.monitor_brightness.values_mut().for_each(|v| *v = (*v).min(100));
-        self.speaker_volume.values_mut().for_each(|v| *v = (*v).min(100));
+        self.monitor_contrast
+            .values_mut()
+            .for_each(|v| *v = (*v).min(100));
+        self.monitor_brightness
+            .values_mut()
+            .for_each(|v| *v = (*v).min(100));
+        self.speaker_volume
+            .values_mut()
+            .for_each(|v| *v = (*v).min(100));
     }
 }
 
@@ -969,10 +973,7 @@ fn load_preferences_backup() -> Option<Preferences> {
     let content = std::fs::read_to_string(&backup_path).ok()?;
     match deserialize_preferences(&content) {
         Ok(preferences) => {
-            log::warn!(
-                "restored preferences from backup {}",
-                backup_path.display()
-            );
+            log::warn!("restored preferences from backup {}", backup_path.display());
             Some(preferences)
         }
         Err(error) => {
@@ -1345,7 +1346,10 @@ pub async fn save_preferences(
         if let Ok(mut prefs) = state.preferences.lock() {
             prefs.wallpaper.slideshow_last_path = None;
             if let Err(error) = save_preferences_to_disk(&prefs) {
-                log::warn!("save_preferences: failed to clear slideshow last path: {}", error);
+                log::warn!(
+                    "save_preferences: failed to clear slideshow last path: {}",
+                    error
+                );
             }
         }
         let enabled = preferences.wallpaper.slideshow_enabled;
@@ -1856,14 +1860,24 @@ mod tests {
     fn migrates_lock_screen_binding_once() {
         let mut prefs = Preferences::default();
         prefs.lock_screen_binding_initialized = false;
-        prefs.key_bindings.retain(|binding| binding.key != "Ctrl+Alt+Q");
+        prefs
+            .key_bindings
+            .retain(|binding| binding.key != "Ctrl+Alt+Q");
 
-        assert!(migrate_lock_screen_binding_if_needed(&mut prefs, true, false));
+        assert!(migrate_lock_screen_binding_if_needed(
+            &mut prefs, true, false
+        ));
         assert_eq!(
-            prefs.key_bindings.iter().filter(|binding| binding.key == "Ctrl+Alt+Q").count(),
+            prefs
+                .key_bindings
+                .iter()
+                .filter(|binding| binding.key == "Ctrl+Alt+Q")
+                .count(),
             1
         );
-        assert!(!migrate_lock_screen_binding_if_needed(&mut prefs, true, false));
+        assert!(!migrate_lock_screen_binding_if_needed(
+            &mut prefs, true, false
+        ));
     }
 
     /// Migration preserves an existing user command on the default lock chord.
@@ -1871,15 +1885,23 @@ mod tests {
     fn lock_screen_binding_migration_preserves_key_conflict() {
         let mut prefs = Preferences::default();
         prefs.lock_screen_binding_initialized = false;
-        prefs.key_bindings.retain(|binding| binding.key != "Ctrl+Alt+Q");
+        prefs
+            .key_bindings
+            .retain(|binding| binding.key != "Ctrl+Alt+Q");
         prefs.key_bindings.push(KeyBinding {
             key: "Ctrl+Alt+Q".into(),
             command: CommandValue::Single("command/changeVolume/0".into()),
         });
 
-        assert!(migrate_lock_screen_binding_if_needed(&mut prefs, false, true));
+        assert!(migrate_lock_screen_binding_if_needed(
+            &mut prefs, false, true
+        ));
         assert_eq!(
-            prefs.key_bindings.iter().filter(|binding| binding.key == "Ctrl+Alt+Q").count(),
+            prefs
+                .key_bindings
+                .iter()
+                .filter(|binding| binding.key == "Ctrl+Alt+Q")
+                .count(),
             1
         );
     }

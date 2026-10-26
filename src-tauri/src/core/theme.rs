@@ -30,11 +30,18 @@ pub fn set_dark_mode(dark: bool) -> bool {
 #[cfg(target_os = "macos")]
 pub fn get_dark_mode() -> Option<bool> {
     let output = std::process::Command::new("osascript")
-        .args(["-e", "tell application \"System Events\" to tell appearance preferences to get dark mode"])
+        .args([
+            "-e",
+            "tell application \"System Events\" to tell appearance preferences to get dark mode",
+        ])
         .output()
         .ok()?; // .ok() converts Result->Option, ? returns None early on failure
-    if !output.status.success() { return None; }
-    let val = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+    if !output.status.success() {
+        return None;
+    }
+    let val = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .to_lowercase();
     Some(val == "true")
 }
 
@@ -49,21 +56,43 @@ pub fn set_dark_mode(dark: bool) -> bool {
     let val = if dark { "0" } else { "1" };
     // Must set both keys — AppsUseLightTheme for app chrome, SystemUsesLightTheme for taskbar
     let app = hidden_command("reg")
-        .args(["add", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-               "/v", "AppsUseLightTheme", "/t", "REG_DWORD", "/d", val, "/f"])
+        .args([
+            "add",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            "/v",
+            "AppsUseLightTheme",
+            "/t",
+            "REG_DWORD",
+            "/d",
+            val,
+            "/f",
+        ])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
     let sys = hidden_command("reg")
-        .args(["add", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-               "/v", "SystemUsesLightTheme", "/t", "REG_DWORD", "/d", val, "/f"])
+        .args([
+            "add",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            "/v",
+            "SystemUsesLightTheme",
+            "/t",
+            "REG_DWORD",
+            "/d",
+            val,
+            "/f",
+        ])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
     if app && sys {
         // Broadcast WM_SETTINGCHANGE so existing windows refresh their title bars
         let _ = hidden_command("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", r#"
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                r#"
                 Add-Type -TypeDefinition @'
                 using System;
                 using System.Runtime.InteropServices;
@@ -80,7 +109,8 @@ pub fn set_dark_mode(dark: bool) -> bool {
                 }
 '@
                 [ThemeBroadcast]::Broadcast()
-            "#])
+            "#,
+            ])
             .output();
         true
     } else {
@@ -93,14 +123,20 @@ pub fn set_dark_mode(dark: bool) -> bool {
 #[cfg(target_os = "windows")]
 pub fn get_dark_mode() -> Option<bool> {
     let output = hidden_command("reg")
-        .args(["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-               "/v", "AppsUseLightTheme"])
+        .args([
+            "query",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            "/v",
+            "AppsUseLightTheme",
+        ])
         .output()
         .ok()?;
-    if !output.status.success() { return None; }
+    if !output.status.success() {
+        return None;
+    }
     let stdout = String::from_utf8_lossy(&output.stdout);
     if stdout.contains("0x0") {
-        Some(true)  // 0 = dark mode ON
+        Some(true) // 0 = dark mode ON
     } else if stdout.contains("0x1") {
         Some(false) // 1 = light mode
     } else {
@@ -184,9 +220,15 @@ fn get_gnome_dark_mode() -> Option<bool> {
         .output()
     {
         if output.status.success() {
-            let val = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
-            if val.contains("dark") { return Some(true); }
-            if val.contains("light") || val.contains("default") { return Some(false); }
+            let val = String::from_utf8_lossy(&output.stdout)
+                .trim()
+                .to_lowercase();
+            if val.contains("dark") {
+                return Some(true);
+            }
+            if val.contains("light") || val.contains("default") {
+                return Some(false);
+            }
         }
     }
 
@@ -196,7 +238,9 @@ fn get_gnome_dark_mode() -> Option<bool> {
         .output()
     {
         if output.status.success() {
-            let val = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+            let val = String::from_utf8_lossy(&output.stdout)
+                .trim()
+                .to_lowercase();
             return Some(val.contains("dark"));
         }
     }
@@ -212,7 +256,9 @@ fn get_kde_dark_mode() -> Option<bool> {
             .output()
         {
             if output.status.success() {
-                let val = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+                let val = String::from_utf8_lossy(&output.stdout)
+                    .trim()
+                    .to_lowercase();
                 return Some(val.contains("dark"));
             }
         }

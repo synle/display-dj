@@ -160,7 +160,8 @@ fn brightness_record(key: &str, value: u32) {
     } else {
         t.last.remove(ALL_MONITORS_KEY);
     }
-    t.last.insert(key.to_string(), (value, std::time::Instant::now()));
+    t.last
+        .insert(key.to_string(), (value, std::time::Instant::now()));
 }
 
 async fn set_monitor_brightness(
@@ -182,14 +183,24 @@ async fn set_monitor_brightness(
         mode_owned,
     );
     let ok = tauri::async_runtime::spawn_blocking(move || {
-        let _guard = BRIGHTNESS_WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = BRIGHTNESS_WRITE_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         match brightness_gate(&id, ticket, clamped) {
             WriteGate::Superseded => {
-                log::info!("set_monitor_brightness: id={} value={} superseded, skipped", id, clamped);
+                log::info!(
+                    "set_monitor_brightness: id={} value={} superseded, skipped",
+                    id,
+                    clamped
+                );
                 return true;
             }
             WriteGate::Duplicate => {
-                log::info!("set_monitor_brightness: id={} value={} duplicate, skipped", id, clamped);
+                log::info!(
+                    "set_monitor_brightness: id={} value={} duplicate, skipped",
+                    id,
+                    clamped
+                );
                 return true;
             }
             WriteGate::Write => {}
@@ -234,10 +245,15 @@ async fn set_all_monitors_brightness(
     );
     let ticket = brightness_ticket(ALL_MONITORS_KEY);
     let results = tauri::async_runtime::spawn_blocking(move || {
-        let _guard = BRIGHTNESS_WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = BRIGHTNESS_WRITE_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         match brightness_gate(ALL_MONITORS_KEY, ticket, clamped) {
             WriteGate::Superseded | WriteGate::Duplicate => {
-                log::info!("set_all_monitors_brightness: value={} superseded/duplicate, skipped", clamped);
+                log::info!(
+                    "set_all_monitors_brightness: value={} superseded/duplicate, skipped",
+                    clamped
+                );
                 // Empty result: nothing written, nothing failed.
                 return Vec::new();
             }
@@ -438,9 +454,7 @@ fn dedupe_moved_configs(
         let stale: Vec<usize> = configs
             .iter()
             .enumerate()
-            .filter(|(_, c)| {
-                !live.contains(c.uid.as_str()) && c.api_name == monitor.original_name
-            })
+            .filter(|(_, c)| !live.contains(c.uid.as_str()) && c.api_name == monitor.original_name)
             .map(|(i, _)| i)
             .collect();
         let Some(&first) = stale.first() else {
@@ -1072,7 +1086,10 @@ mod brightness_gate_tests {
         let key = "gate-test-superseded";
         let old = brightness_ticket(key);
         let new = brightness_ticket(key);
-        assert!(matches!(brightness_gate(key, old, 40), WriteGate::Superseded));
+        assert!(matches!(
+            brightness_gate(key, old, 40),
+            WriteGate::Superseded
+        ));
         assert!(matches!(brightness_gate(key, new, 40), WriteGate::Write));
     }
 
@@ -1083,7 +1100,10 @@ mod brightness_gate_tests {
         let key = "gate-test-duplicate";
         brightness_record(key, 60);
         let ticket = brightness_ticket(key);
-        assert!(matches!(brightness_gate(key, ticket, 60), WriteGate::Duplicate));
+        assert!(matches!(
+            brightness_gate(key, ticket, 60),
+            WriteGate::Duplicate
+        ));
         assert!(matches!(brightness_gate(key, ticket, 61), WriteGate::Write));
     }
 
@@ -1094,7 +1114,10 @@ mod brightness_gate_tests {
         brightness_record(ALL_MONITORS_KEY, 70);
         brightness_record("gate-test-one-monitor", 30);
         let ticket = brightness_ticket(ALL_MONITORS_KEY);
-        assert!(matches!(brightness_gate(ALL_MONITORS_KEY, ticket, 70), WriteGate::Write));
+        assert!(matches!(
+            brightness_gate(ALL_MONITORS_KEY, ticket, 70),
+            WriteGate::Write
+        ));
     }
 }
 
@@ -1926,7 +1949,10 @@ pub async fn set_display_dpi(
             (p.dpi_min_percent, p.dpi_max_percent)
         };
         if !crate::core::dpi::is_within_range(percent, min, max) {
-            return Err(format!("{}% outside configured range {}-{}%", percent, min, max));
+            return Err(format!(
+                "{}% outside configured range {}-{}%",
+                percent, min, max
+            ));
         }
     }
     log::info!("set_display_dpi id={} percent={}", id, percent);

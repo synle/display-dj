@@ -6,7 +6,6 @@ use std::ops::Deref;
 use windows::core::{
     IUnknown, IUnknown_Vtbl, Interface, GUID, HRESULT, PCWSTR, PROPVARIANT, PWSTR,
 };
-use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{
@@ -18,6 +17,7 @@ use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL,
     COINIT_MULTITHREADED, STGM_READ,
 };
+use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 
 const CLSID_POLICY_CONFIG_CLIENT: GUID = GUID::from_u128(0x870af99c_171d_4f9e_af0d_e63df40c2bc9);
 const RPC_E_CHANGED_MODE: HRESULT = HRESULT(0x8001_0106_u32 as i32);
@@ -244,7 +244,11 @@ pub fn set_fx_user_bool_property(
     let read = |label: &str| -> Result<Option<bool>, String> {
         let value = unsafe { store.GetValue(&key) }
             .map_err(|error| format!("GetValue ({}) failed: {}", label, error))?;
-        Ok(if value.is_empty() { None } else { bool::try_from(&value).ok() })
+        Ok(if value.is_empty() {
+            None
+        } else {
+            bool::try_from(&value).ok()
+        })
     };
     let before = read("before")?;
     let input = PROPVARIANT::from(value);

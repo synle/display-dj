@@ -48,7 +48,8 @@ fn send_macos_dock_notification(notification: &str) -> Result<(), String> {
     }
 
     let value = CString::new(notification).map_err(|error| error.to_string())?;
-    let name = unsafe { CFStringCreateWithCString(std::ptr::null(), value.as_ptr(), UTF8_ENCODING) };
+    let name =
+        unsafe { CFStringCreateWithCString(std::ptr::null(), value.as_ptr(), UTF8_ENCODING) };
     if name.is_null() {
         return Err("failed to create Dock notification name".into());
     }
@@ -65,8 +66,8 @@ fn send_macos_dock_notification(notification: &str) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL,
-    VK_LWIN, VK_MENU, VK_SHIFT,
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY,
+    VK_CONTROL, VK_LWIN, VK_MENU, VK_SHIFT,
 };
 
 /// Toggle the Windows desktop through the documented Shell automation API.

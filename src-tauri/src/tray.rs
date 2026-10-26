@@ -253,7 +253,9 @@ fn show_popup_window(app: &AppHandle) {
 
 /// Identity of a monitor list for change detection: which displays exist and
 /// how they present, ignoring live brightness/contrast readings.
-fn monitor_list_signature(monitors: &[crate::display::Monitor]) -> Vec<(String, String, bool, bool, bool)> {
+fn monitor_list_signature(
+    monitors: &[crate::display::Monitor],
+) -> Vec<(String, String, bool, bool, bool)> {
     monitors
         .iter()
         .map(|m| {
@@ -1707,25 +1709,23 @@ pub(crate) fn execute_command(app: &AppHandle, command: &str) {
             }
         }
         ["command", "changeProfile", key] => {
-            {
-                let profiles = app
-                    .state::<crate::AppState>()
-                    .preferences
-                    .lock()
-                    .map(|p| p.profiles.clone())
-                    .unwrap_or_default();
+            let profiles = app
+                .state::<crate::AppState>()
+                .preferences
+                .lock()
+                .map(|p| p.profiles.clone())
+                .unwrap_or_default();
 
-                if let Some(profile) = find_profile(&profiles, key) {
-                    let commands: Vec<String> = match &profile.command {
-                        CommandValue::Single(cmd) => vec![cmd.clone()],
-                        CommandValue::Multiple(cmds) => cmds.clone(),
-                    };
-                    for cmd in &commands {
-                        execute_command(app, cmd);
-                    }
-                } else {
-                    log::warn!("Profile not found: {}", key);
+            if let Some(profile) = find_profile(&profiles, key) {
+                let commands: Vec<String> = match &profile.command {
+                    CommandValue::Single(cmd) => vec![cmd.clone()],
+                    CommandValue::Multiple(cmds) => cmds.clone(),
+                };
+                for cmd in &commands {
+                    execute_command(app, cmd);
                 }
+            } else {
+                log::warn!("Profile not found: {}", key);
             }
         }
         ["command", "system", "taskView"] => {
@@ -1986,7 +1986,10 @@ mod refresh_on_show_tests {
         let two = [monitor("a", 50), monitor("b", 50)];
         let three = [monitor("a", 50), monitor("b", 50), monitor("c", 50)];
         assert_ne!(monitor_list_signature(&two), monitor_list_signature(&three));
-        assert_ne!(monitor_list_signature(&three), monitor_list_signature(&two[..1]));
+        assert_ne!(
+            monitor_list_signature(&three),
+            monitor_list_signature(&two[..1])
+        );
     }
 }
 
@@ -1999,7 +2002,10 @@ mod tests {
     fn find_profile_by_index_or_name() {
         let profiles = crate::config::Preferences::default().profiles;
         assert_eq!(find_profile(&profiles, "1").unwrap().name, "Focus");
-        assert_eq!(find_profile(&profiles, "daylight").unwrap().name, "Daylight");
+        assert_eq!(
+            find_profile(&profiles, "daylight").unwrap().name,
+            "Daylight"
+        );
         assert!(find_profile(&profiles, "9").is_none());
         assert!(find_profile(&profiles, "Nope").is_none());
     }

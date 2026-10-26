@@ -239,7 +239,8 @@ fn find_backlight() -> Option<BacklightInfo> {
     // .flatten() skips any DirEntry errors.
     for entry in fs::read_dir("/sys/class/backlight").ok()?.flatten() {
         let max_path = entry.path().join("max_brightness");
-        if let Some(max) = fs::read_to_string(&max_path).ok()
+        if let Some(max) = fs::read_to_string(&max_path)
+            .ok()
             .and_then(|s| s.trim().parse::<u32>().ok())
         {
             if max > 0 {
@@ -271,7 +272,9 @@ impl DisplayControl for BuiltinControl {
         Some(((val as f64 / self.backlight.max as f64) * 100.0).round() as u32)
     }
 
-    fn get_contrast(&mut self) -> Option<u32> { None }
+    fn get_contrast(&mut self) -> Option<u32> {
+        None
+    }
 
     fn set_brightness(&mut self, value: u16, _mode: &str) -> bool {
         // Convert 0-100 percentage to the raw sysfs value
@@ -279,7 +282,9 @@ impl DisplayControl for BuiltinControl {
         let path = format!("/sys/class/backlight/{}/brightness", self.backlight.device);
         // Try direct sysfs write first (needs write permission or udev rule).
         // Fall back to brightnessctl if we don't have permission.
-        if fs::write(&path, raw.to_string()).is_ok() { return true; }
+        if fs::write(&path, raw.to_string()).is_ok() {
+            return true;
+        }
         Command::new("brightnessctl")
             .args(["set", &format!("{}%", value)])
             .output()
@@ -287,7 +292,9 @@ impl DisplayControl for BuiltinControl {
             .unwrap_or(false)
     }
 
-    fn set_contrast(&mut self, _value: u16) -> bool { false }
+    fn set_contrast(&mut self, _value: u16) -> bool {
+        false
+    }
     fn reset_gamma(&self) {}
 }
 
@@ -301,10 +308,10 @@ impl DisplayControl for BuiltinControl {
 /// gamma (software brightness). Unlike macOS/Windows which use native APIs,
 /// Linux relies on external CLI tools for both DDC and gamma.
 struct ExternalControl {
-    display_num: u32,                // ddcutil's display number (1-based)
-    output_name: Option<String>,     // xrandr/wlr-randr output name (e.g., "HDMI-1")
-    display_server: DisplayServer,   // X11 or Wayland — determines which gamma tool to use
-    ddc_supported: bool,             // true if initial ddcutil VCP read succeeded
+    display_num: u32,              // ddcutil's display number (1-based)
+    output_name: Option<String>,   // xrandr/wlr-randr output name (e.g., "HDMI-1")
+    display_server: DisplayServer, // X11 or Wayland — determines which gamma tool to use
+    ddc_supported: bool,           // true if initial ddcutil VCP read succeeded
 }
 
 /// DisplayControl implementation for external monitors on Linux.
@@ -332,7 +339,8 @@ impl DisplayControl for ExternalControl {
         // shell-out to `ddcutil setvcp` covers retries via the tool's own logic,
         // and our own retry loop would compound process-spawn latency to seconds.
         let try_ddc = use_ddc || mode == "force";
-        let use_gamma = mode == "gamma" || mode == "force" || (mode == "auto" && !self.ddc_supported);
+        let use_gamma =
+            mode == "gamma" || mode == "force" || (mode == "auto" && !self.ddc_supported);
         let mut ddc_attempted = false;
         let mut ddc_ok = true;
         let mut gamma_ok = true;
@@ -379,7 +387,9 @@ impl DisplayControl for ExternalControl {
     }
 
     fn set_contrast(&mut self, value: u16) -> bool {
-        if !self.ddc_supported { return false; }
+        if !self.ddc_supported {
+            return false;
+        }
         set_ddcutil_vcp(self.display_num, VCP_CONTRAST, value)
     }
 
@@ -398,9 +408,18 @@ impl DisplayControl for ExternalControl {
 /// Read a VCP register via ddcutil. Returns 0-100 percentage or None.
 fn read_ddcutil_vcp(display_num: u32, vcp_code: u8) -> Option<u32> {
     let output = Command::new("ddcutil")
-        .args(["getvcp", &format!("0x{:02x}", vcp_code), "--display", &display_num.to_string(), "--brief"])
-        .output().ok()?;
-    if !output.status.success() { return None; }
+        .args([
+            "getvcp",
+            &format!("0x{:02x}", vcp_code),
+            "--display",
+            &display_num.to_string(),
+            "--brief",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
     // Parse ddcutil --brief output format: "VCP code_id C current_val max_val"
     let stdout = String::from_utf8_lossy(&output.stdout);
     for line in stdout.lines() {
@@ -408,7 +427,9 @@ fn read_ddcutil_vcp(display_num: u32, vcp_code: u8) -> Option<u32> {
         if parts.len() >= 5 && parts[0] == "VCP" {
             let current = parts[3].parse::<f64>().ok()?;
             let max = parts[4].parse::<f64>().ok()?;
-            if max > 0.0 { return Some(((current / max) * 100.0).round() as u32); }
+            if max > 0.0 {
+                return Some(((current / max) * 100.0).round() as u32);
+            }
         }
     }
     None
@@ -417,7 +438,13 @@ fn read_ddcutil_vcp(display_num: u32, vcp_code: u8) -> Option<u32> {
 /// Write a VCP register via ddcutil. value is the raw DDC value (not percentage).
 fn set_ddcutil_vcp(display_num: u32, vcp_code: u8, value: u16) -> bool {
     Command::new("ddcutil")
-        .args(["setvcp", &format!("0x{:02x}", vcp_code), &value.to_string(), "--display", &display_num.to_string()])
+        .args([
+            "setvcp",
+            &format!("0x{:02x}", vcp_code),
+            &value.to_string(),
+            "--display",
+            &display_num.to_string(),
+        ])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
@@ -457,7 +484,9 @@ fn enumerate_ddcutil(display_server: DisplayServer) -> Vec<(DisplayInfo, Externa
             // .splitn(2, ':') splits into at most 2 parts at the first colon
             if let Some(name) = line.splitn(2, ':').nth(1) {
                 let name = name.trim();
-                if !name.is_empty() { current_name = name.to_string(); }
+                if !name.is_empty() {
+                    current_name = name.to_string();
+                }
             }
         }
     }
@@ -496,7 +525,12 @@ fn push_monitor(
         // even though the dropdown is selectable.
         monitor_rect: None,
     };
-    let ctrl = ExternalControl { display_num, output_name, display_server, ddc_supported };
+    let ctrl = ExternalControl {
+        display_num,
+        output_name,
+        display_server,
+        ddc_supported,
+    };
     monitors.push((info, ctrl));
 }
 
@@ -517,7 +551,9 @@ fn get_output_name(display_num: u32, server: DisplayServer) -> Option<String> {
         DisplayServer::Unknown => return None,
     };
     // .saturating_sub(1) converts 1-based ddcutil number to 0-based index (clamped to 0)
-    outputs.into_iter().nth(display_num.saturating_sub(1) as usize)
+    outputs
+        .into_iter()
+        .nth(display_num.saturating_sub(1) as usize)
 }
 
 /// Get external output names from xrandr (X11).
@@ -529,13 +565,17 @@ fn get_xrandr_external_outputs() -> Vec<String> {
     // Parse xrandr output: skip header line, extract last word (output name) from each line.
     // Filter out eDP (embedded DisplayPort) and LVDS (laptop panels).
     String::from_utf8_lossy(&output.stdout)
-        .lines().skip(1) // skip header "Monitors: N"
+        .lines()
+        .skip(1) // skip header "Monitors: N"
         .filter_map(|line| {
             // filter_map = map + filter combined — return Some(x) to keep, None to skip.
             // The ? operator returns None early if .last() is None.
             let name = line.split_whitespace().last()?;
-            if name.starts_with("eDP") || name.starts_with("LVDS") { None }
-            else { Some(name.to_string()) }
+            if name.starts_with("eDP") || name.starts_with("LVDS") {
+                None
+            } else {
+                Some(name.to_string())
+            }
         })
         .collect()
 }
@@ -551,27 +591,41 @@ fn get_wayland_external_outputs() -> Vec<String> {
                 .filter(|l| !l.starts_with(' ') && !l.is_empty())
                 .filter_map(|l| {
                     let name = l.split_whitespace().next()?;
-                    if name.starts_with("eDP") || name.starts_with("LVDS") { None }
-                    else { Some(name.to_string()) }
+                    if name.starts_with("eDP") || name.starts_with("LVDS") {
+                        None
+                    } else {
+                        Some(name.to_string())
+                    }
                 })
                 .collect();
-            if !outputs.is_empty() { return outputs; }
+            if !outputs.is_empty() {
+                return outputs;
+            }
         }
     }
     // Fallback: swaymsg (Sway only) — parse JSON-ish output for "name" fields
-    if let Ok(o) = Command::new("swaymsg").args(["-t", "get_outputs", "-r"]).output() {
+    if let Ok(o) = Command::new("swaymsg")
+        .args(["-t", "get_outputs", "-r"])
+        .output()
+    {
         if o.status.success() {
             let stdout = String::from_utf8_lossy(&o.stdout);
-            let outputs: Vec<String> = stdout.split("\"name\"")
+            let outputs: Vec<String> = stdout
+                .split("\"name\"")
                 .skip(1)
                 .filter_map(|s| {
                     let rest = s.strip_prefix(':')?.trim().trim_start_matches('"');
                     let name = rest.split('"').next()?;
-                    if name.starts_with("eDP") || name.starts_with("LVDS") || name.is_empty() { None }
-                    else { Some(name.to_string()) }
+                    if name.starts_with("eDP") || name.starts_with("LVDS") || name.is_empty() {
+                        None
+                    } else {
+                        Some(name.to_string())
+                    }
                 })
                 .collect();
-            if !outputs.is_empty() { return outputs; }
+            if !outputs.is_empty() {
+                return outputs;
+            }
         }
     }
     vec![]
@@ -584,25 +638,47 @@ fn set_gamma(output: &str, brightness: u32, server: DisplayServer) -> bool {
     match server {
         DisplayServer::X11 => {
             // xrandr --brightness sets the software brightness multiplier
-            Command::new("xrandr").args(["--output", output, "--brightness", &val])
-                .output().map(|o| o.status.success()).unwrap_or(false)
+            Command::new("xrandr")
+                .args(["--output", output, "--brightness", &val])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
         }
         DisplayServer::Wayland => {
             // Try wlr-randr first (most common Wayland compositor tool)
-            if Command::new("wlr-randr").args(["--output", output, "--brightness", &val])
-                .output().map(|o| o.status.success()).unwrap_or(false)
-            { return true; }
+            if Command::new("wlr-randr")
+                .args(["--output", output, "--brightness", &val])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                return true;
+            }
             // Try wl-gammarelay-rs via D-Bus (works on any Wayland compositor)
-            if Command::new("busctl").args([
-                "--user", "set-property", "rs.wl-gammarelay", "/",
-                "rs.wl.gammarelay", "Brightness", "d",
-                &(brightness as f64 / 100.0).to_string(),
-            ]).output().map(|o| o.status.success()).unwrap_or(false)
-            { return true; }
+            if Command::new("busctl")
+                .args([
+                    "--user",
+                    "set-property",
+                    "rs.wl-gammarelay",
+                    "/",
+                    "rs.wl.gammarelay",
+                    "Brightness",
+                    "d",
+                    &(brightness as f64 / 100.0).to_string(),
+                ])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                return true;
+            }
             // Last resort: try xrandr via XWayland (GNOME Wayland has XWayland)
             if std::env::var("DISPLAY").is_ok() {
-                return Command::new("xrandr").args(["--output", output, "--brightness", &val])
-                    .output().map(|o| o.status.success()).unwrap_or(false);
+                return Command::new("xrandr")
+                    .args(["--output", output, "--brightness", &val])
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false);
             }
             false
         }
@@ -692,9 +768,10 @@ impl Platform for LinuxPlatform {
 
         // --- Backlight (built-in) ---
         let backlight = find_backlight().map(|bl| {
-            let current_raw = fs::read_to_string(format!("/sys/class/backlight/{}/brightness", bl.device))
-                .ok()
-                .and_then(|s| s.trim().parse::<u32>().ok());
+            let current_raw =
+                fs::read_to_string(format!("/sys/class/backlight/{}/brightness", bl.device))
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u32>().ok());
             serde_json::json!({
                 "device": bl.device,
                 "max_brightness": bl.max,
