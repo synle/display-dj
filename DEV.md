@@ -19,6 +19,35 @@ cd src-tauri && cargo llvm-cov --lib --summary-only   # Backend coverage
 npm run tauri build     # Production build (.dmg / .exe / .deb / .AppImage)
 ```
 
+## Library upgrade log
+
+This log records the 2026-10-26 dependency migration. Frontend libraries precede Tauri and Rust; each independent library has its own commit.
+Versions are registry stable releases, not prereleases. Exact pins and lockfiles make accepted versions reproducible.
+
+Baseline: Node v24.22.0, npm 11.19.1, Rust 1.99.1; build passed, 218 frontend tests passed, and 504 macOS Rust tests passed.
+Frontend coverage: 88.88% lines and 84.53% branches. Initial npm audit: 8 affected packages (2 critical, 3 high, 3 moderate).
+
+For each accepted frontend bump, run `npm run build`, `npm test`, `npm run format`, and `npm run format:check`.
+For each Rust bump, additionally run `cargo check --locked` and `cargo test --locked` from `src-tauri/`.
+Reused Rust results apply only while Rust inputs remain unchanged. Native hardware behavior and Windows/Linux builds require platform verification.
+Dependency installs disable lifecycle scripts. Rollback consists of reverting the relevant library commit, then reinstalling from its lockfile.
+No preferences or persisted-data migration is intended. Native startup smoke checks are deferred because startup restores real display/audio settings.
+
+### Frontend
+
+| Library                       | Before → accepted | Breakage, fixes, and backtracking                                                                                                                                                                     |
+| ----------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oxfmt`                       | 0.61.0 → 0.74.0   | Latest accepted; removes critical `tinypool` advisories. Existing configuration works; only one Tooltip test callback is reflowed. Build and all 218 tests pass; no behavior changes or backtracking. |
+| `@testing-library/react`      | 16.3.2 → 16.3.3   | Latest patch; no API or test changes required. No backtracking.                                                                                                                                       |
+| `@testing-library/user-event` | 14.6.1 → 14.6.8   | Latest stable; no application API or test changes required. No backtracking.                                                                                                                          |
+| `@vitejs/plugin-react`        | 6.1.0 → 6.1.2     | Latest stable; no application API or test changes required. No backtracking.                                                                                                                          |
+| `oxlint`                      | 1.79.0 → 1.83.0   | Latest 1.89 and each version down to 1.84 add one `consistent-function-scoping` finding. 1.83 exactly matches the 18 pre-existing lint errors. No source or rule changes. Build and 218 tests pass.   |
+| `@types/react`                | 19.2.14 → 19.3.0  | Latest stable; no application API or test changes required. No backtracking.                                                                                                                          |
+| `@types/react-dom`            | 19.2.3 → 19.3.0   | Latest stable; no application API or test changes required. No backtracking.                                                                                                                          |
+| `vite`                        | 8.2.2 → 8.3.5     | Latest stable; existing React plugin and build configuration work unchanged. No backtracking.                                                                                                         |
+
+Formatter release notes: https://github.com/oxc-project/oxc/releases/tag/oxfmt_v0.74.0.
+
 ## Development TODO
 
 ### Investigate Windows device battery indicators

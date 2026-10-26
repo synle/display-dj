@@ -31,13 +31,13 @@ describe('Tooltip', () => {
         x: 10,
         y: top,
       }) as DOMRect;
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
-      function (this: HTMLElement) {
-        return this.getAttribute('role') === 'tooltip'
-          ? rect(0, 40)
-          : rect(window.innerHeight - 20, 20);
-      },
-    );
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.getAttribute('role') === 'tooltip'
+        ? rect(0, 40)
+        : rect(window.innerHeight - 20, 20);
+    });
     render(
       <Tooltip text='Start on sign in.'>
         <span>Launch at Login</span>
