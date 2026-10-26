@@ -253,7 +253,7 @@ fn read_u32_list(
     if data_size == 0 {
         return Ok(Vec::new());
     }
-    if data_size as usize % size_of::<u32>() != 0 {
+    if !(data_size as usize).is_multiple_of(size_of::<u32>()) {
         return Err(format!(
             "CoreAudio property size {} is not aligned to u32",
             data_size

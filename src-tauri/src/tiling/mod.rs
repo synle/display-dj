@@ -340,7 +340,7 @@ pub(crate) fn build_sorted_window_list(windows: &[WindowInfo], max: usize) -> Ve
         }
     }
     // Sort groups alphabetically by app name (case-insensitive)
-    app_groups.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    app_groups.sort_by_key(|a| a.0.to_lowercase());
     // Sort windows within each group by window_id for deterministic order
     for (_, wins) in &mut app_groups {
         wins.sort_by_key(|w| w.window_id);
@@ -372,7 +372,7 @@ pub(crate) fn layout_grid_on_display(
 
     // Initial grid dimensions (as if all windows are 1-cell)
     let cols = (n as f64).sqrt().ceil() as usize;
-    let initial_rows = (n + cols - 1) / cols;
+    let initial_rows = n.div_ceil(cols);
     let cell_w = (display.width - gap * (cols as f64 + 1.0)) / cols as f64;
     let initial_cell_h = (display.height - gap * (initial_rows as f64 + 1.0)) / initial_rows as f64;
 
@@ -424,7 +424,7 @@ pub(crate) fn layout_grid_on_display(
         }
         let total_cells: usize =
             fits.len() + oversized.iter().map(|(_, sc, sr)| sc * sr).sum::<usize>();
-        let needed_rows = (total_cells + cols - 1) / cols;
+        let needed_rows = total_cells.div_ceil(cols);
         if needed_rows <= grid_rows {
             break;
         }
@@ -600,7 +600,7 @@ pub(crate) fn layout_across_displays(
         // Spread: distribute evenly; Fill: pack to capacity
         let target = if spread {
             let displays_left = num_displays - i;
-            let even = (remaining.len() + displays_left - 1) / displays_left; // ceil division
+            let even = remaining.len().div_ceil(displays_left); // ceil division
             even.min(eff_max)
         } else {
             eff_max
@@ -615,7 +615,7 @@ pub(crate) fn layout_across_displays(
         } else {
             // Not last display: compute grid cell size, separate fits from oversized
             let cols = (batch_size as f64).sqrt().ceil() as usize;
-            let rows = (batch_size + cols - 1) / cols;
+            let rows = batch_size.div_ceil(cols);
             let cell_w = (display.width - gap * (cols as f64 + 1.0)) / cols as f64;
             let cell_h = (display.height - gap * (rows as f64 + 1.0)) / rows as f64;
 
@@ -1168,7 +1168,7 @@ pub(crate) fn plan_expose_app(
 
     // Calculate how many displays the app's windows fully occupied
     let displays_consumed = if max_per_display > 0 {
-        (placed + max_per_display - 1) / max_per_display
+        placed.div_ceil(max_per_display)
     } else {
         0
     };

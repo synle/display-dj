@@ -690,7 +690,7 @@ pub fn slideshow_start_at(
 pub fn slideshow_stop() -> String {
     let was_running = {
         let guard = SLIDESHOW.lock().unwrap();
-        guard.as_ref().map_or(false, |s| s.running)
+        guard.as_ref().is_some_and(|s| s.running)
     };
     slideshow_cancel();
     format!(r#"{{"ok":true,"was_running":{}}}"#, was_running)

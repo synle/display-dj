@@ -552,7 +552,10 @@ pub(crate) fn register_slideshow_change_hook(app: tauri::AppHandle) {
         }
         prefs.wallpaper.slideshow_last_path = Some(path.to_string());
         if let Err(error) = crate::config::save_preferences_to_disk(&prefs) {
-            log::warn!("wallpaper: failed to persist slideshow last path: {}", error);
+            log::warn!(
+                "wallpaper: failed to persist slideshow last path: {}",
+                error
+            );
         }
     }));
 }

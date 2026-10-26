@@ -681,14 +681,14 @@ fn build_tray_menu(
             .item(
                 &MenuItemBuilder::with_id(
                     "expose_strategy_fill",
-                    &format!("{}Fill (pack first)", fill_check),
+                    format!("{}Fill (pack first)", fill_check),
                 )
                 .build(app)?,
             )
             .item(
                 &MenuItemBuilder::with_id(
                     "expose_strategy_spread",
-                    &format!("{}Spread (distribute)", spread_check),
+                    format!("{}Spread (distribute)", spread_check),
                 )
                 .build(app)?,
             )
@@ -1207,7 +1207,7 @@ pub fn position_window_near_tray(
         .unwrap_or(window.scale_factor().unwrap_or(1.0));
     let window_scale = window.scale_factor().unwrap_or(1.0);
     let win_pos = window.outer_position().ok();
-    if let Some(ref t) = target {
+    if let Some(t) = target {
         dbg(&format!(
             "target: monitor[{}] pos=({},{}) size={}x{} scale={} | window_scale={} window_pos={:?}",
             target_idx.unwrap_or(0),

@@ -1987,16 +1987,14 @@ fn normalize_all_windows() -> (usize, usize) {
         for &pid in &pids {
             let ax_windows = get_all_ax_windows_for_pid(pid);
             for (ax_win, _wid) in &ax_windows {
-                if is_window_minimized(ax_win) {
-                    if set_window_minimized(ax_win, false) {
+                if is_window_minimized(ax_win)
+                    && set_window_minimized(ax_win, false) {
                         unminimized += 1;
                     }
-                }
-                if is_window_fullscreen(ax_win) {
-                    if set_window_fullscreen(ax_win, false) {
+                if is_window_fullscreen(ax_win)
+                    && set_window_fullscreen(ax_win, false) {
                         unfullscreened += 1;
                     }
-                }
             }
         }
     }
@@ -2016,7 +2014,7 @@ fn normalize_all_windows() -> (usize, usize) {
                 // guard against double-action anyway.
                 let is_native = unsafe {
                     get_ax_window_by_id(w.owner_pid, w.window_id as u32)
-                        .map_or(false, |ax| is_window_fullscreen(&ax))
+                        .is_some_and(|ax| is_window_fullscreen(&ax))
                 };
                 if !is_native && !pseudo_fs_pids.contains(&w.owner_pid) {
                     pseudo_fs_pids.push(w.owner_pid);
@@ -2906,7 +2904,7 @@ fn handle_snap_event(ctx: &SnapContext, event_type: u64, cursor: CGPoint) {
 
             // Throttled drag position logging: only log when cursor moved ≥50px
             // from last logged position. Helps debug without spamming.
-            let should_log_pos = state.last_log_cursor.map_or(true, |(lx, ly)| {
+            let should_log_pos = state.last_log_cursor.is_none_or(|(lx, ly)| {
                 (cursor.x - lx).abs() >= 50.0 || (cursor.y - ly).abs() >= 50.0
             });
             if should_log_pos {

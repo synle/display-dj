@@ -266,9 +266,9 @@ fn summarize_ips(path: &std::path::Path) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
     // `.ips` is JSON-Lines: first line is the metadata header, second line is
     // the full crash body. Anything past line 2 is ignored by Apple's tooling.
-    let mut parts = content.splitn(2, '\n');
-    let header_line = parts.next()?;
-    let body_line = parts.next()?;
+    let (header_line, body_line) = content.split_once('\n')?;
+
+
     let header: serde_json::Value = serde_json::from_str(header_line).ok()?;
     let body: serde_json::Value = serde_json::from_str(body_line).ok()?;
 

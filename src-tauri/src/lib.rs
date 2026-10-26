@@ -50,7 +50,7 @@ fn write_startup_dump<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         std::env::consts::OS,
         std::env::consts::ARCH
     ));
-    lines.push(format!("backend: in-process (display-dj-cli vendored)"));
+    lines.push("backend: in-process (display-dj-cli vendored)".to_string());
     lines.push("rust_panic_backtrace: enabled (crash.log)".into());
     #[cfg(target_os = "linux")]
     lines.push("native_linux_crash_stack: system coredump (not captured in-app)".into());
@@ -1257,8 +1257,8 @@ pub fn run() {
                             // DPI change: the stored tray anchor is stale.
                             tray::reanchor_popup(&app_handle);
                         }
-                        tauri::WindowEvent::Resized(_) => {
-                            if win_clone.is_visible().unwrap_or(false) {
+                        tauri::WindowEvent::Resized(_)
+                            if win_clone.is_visible().unwrap_or(false) => {
                                 let tray_rect = app_handle
                                     .try_state::<AppState>()
                                     .and_then(|s| s.last_tray_rect.lock().ok().and_then(|r| *r));
@@ -1279,7 +1279,6 @@ pub fn run() {
                                     );
                                 }
                             }
-                        }
                         _ => {}
                     }
                 });

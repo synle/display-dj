@@ -347,6 +347,7 @@ impl Default for NightModeSchedule {
 /// A single rule within a layout preset: match windows by app name and apply a tiling layout.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
+#[derive(Default)]
 pub struct LayoutRule {
     /// Substring to match against the window's owner/app name (case-insensitive).
     pub app_match: String,
@@ -356,15 +357,6 @@ pub struct LayoutRule {
     pub display_index: Option<usize>,
 }
 
-impl Default for LayoutRule {
-    fn default() -> Self {
-        Self {
-            app_match: String::new(),
-            layout: String::new(),
-            display_index: None,
-        }
-    }
-}
 
 /// Tracks the wallpaper path set on a specific monitor.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -430,6 +422,7 @@ impl WallpaperPreferences {
 /// A named window layout preset containing one or more layout rules.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
+#[derive(Default)]
 pub struct LayoutPreset {
     /// User-visible name for this preset.
     pub name: String,
@@ -437,14 +430,6 @@ pub struct LayoutPreset {
     pub rules: Vec<LayoutRule>,
 }
 
-impl Default for LayoutPreset {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            rules: Vec::new(),
-        }
-    }
-}
 
 /// User-defined settings for a stable platform audio-output device identifier.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
