@@ -15,7 +15,7 @@ All platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, audio
 - Read dependency versions from `package.json`, `package-lock.json`, and `src-tauri/Cargo.toml` / `Cargo.lock`; read shipped versions from `package.json`.
 - Saved plans and archived specs record design history, not necessarily current behavior. Verify their claims against source before implementation.
 
-Tauri now uses the published, exact-pinned 2.12.1 release. The former local `src-tauri/vendor/tauri` patch is gone; do not restore its historical workaround.
+Tauri uses the published, exact-pinned 2.12.5 release. The former local `src-tauri/vendor/tauri` patch is gone; do not restore its historical workaround.
 
 ## Architecture
 
@@ -494,9 +494,9 @@ The vendored `core::*` modules call OS APIs directly. Cargo deps:
 - `ddc-winapi`, `winapi` (Windows-only) — DDC/CI over Win32. The existing `windows` crate gained the `Win32_Devices_Display` feature for `IDesktopWallpaper` + display enumeration.
 - `keepawake` v0.6 — sleep prevention (macOS IOKit, Windows `SetThreadExecutionState`, Linux D-Bus).
 - `tauri-plugin-dialog` — native OS confirmation dialogs (used by Reset to Default).
-- `md5` v0.7 — wallpaper filename generation and content comparison.
-- `zip` v2 — extracts remote wallpaper packs.
-- `reqwest` (blocking) — only used to download user-supplied remote wallpaper-pack zips. Not used for any internal IPC.
+- `md5` v0.8 — wallpaper filename generation and content comparison; preserve existing cache hashes.
+- `zip` v9 — extracts remote wallpaper packs. `wallpaper::remote_pack_filename` handles fallible filename decoding and keeps supported images as flat basenames.
+- `reqwest` v0.13 (blocking) — downloads user-supplied remote wallpaper-pack zips. Explicit features preserve native TLS without ALPN; do not silently restore the new rustls default.
 - `windows` v0.58 (Windows-only) — Win32 window tiling APIs + display/wallpaper APIs.
 - `x11rb` v0.13 (Linux-only) — pure Rust X11/EWMH window tiling.
 

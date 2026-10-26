@@ -306,7 +306,7 @@ Download a `.zip` of images from a URL and start a slideshow on them:
 "command/wallpaper/slideshow_remote/https://example.com/nature-pack.zip"
 ```
 
-The zip is downloaded once (max 500 MB), extracted to the config directory, and the slideshow starts automatically. Subsequent calls with the same URL skip the download if images already exist.
+The zip is downloaded once (max 500 MB), extracted to the config directory, and the slideshow starts automatically. Subsequent calls with the same URL skip the download if images already exist. Extraction uses supported images' final filenames and skips entries whose filenames cannot be decoded.
 
 ### Slideshow Settings
 

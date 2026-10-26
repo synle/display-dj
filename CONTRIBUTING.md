@@ -124,6 +124,11 @@ cd src-tauri && cargo llvm-cov --lib --summary-only   # Backend coverage
 
 Tauri APIs are mocked globally in `src/test/setup.ts`, so tests run without a backend. Coverage thresholds live in `vite.config.ts` and `.github/workflows/build.yml` — see [DEV.md](DEV.md) before changing them.
 
+The library upgrade log in `DEV.md` records accepted versions, rejected candidates, compatibility fixes, and validation gaps.
+Wallpaper migration tests exercise a real in-memory ZIP reader, filename-decoding failures, flat image names, and a known MD5 cache identity.
+Keep reqwest's explicit native-TLS features when upgrading; newer defaults must not silently change the download trust backend.
+Windows and Linux binding upgrades require matching-platform compilation and runtime checks before release.
+
 ## CI/CD
 
 - **build.yml** — pushes/PRs to `main` and `v2`, plus manual dispatch: tests/builds across six macOS/Windows/Linux architecture combinations plus coverage. Windows Rust tests compile with `--no-run`; macOS/Linux execute them. Rolled-up check: **`Main Build`** (job `main_build`) — require this one in branch protection.

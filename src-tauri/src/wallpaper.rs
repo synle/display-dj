@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 /// Valid image file extensions for wallpapers.
@@ -624,8 +625,32 @@ pub(crate) fn resume_slideshow_if_enabled(state: &crate::AppState) {
 /// Maximum download size for remote wallpaper packs (500 MB).
 const MAX_REMOTE_PACK_SIZE: u64 = 500 * 1024 * 1024;
 
-/// Downloads a .zip file from a URL, extracts valid images to a subfolder
-/// in the wallpapers directory, then starts a slideshow on the extracted folder.
+/// Resolves `ZipFile::name()` into an accepted image basename for flat extraction.
+/// Returns `None` for decoding errors or unsupported extensions and logs decoding errors.
+/// Does not extract files or propagate ZIP errors.
+fn remote_pack_filename(name: zip::result::ZipResult<Cow<'_, str>>) -> Option<String> {
+    let name = match name {
+        Ok(name) => name,
+        Err(error) => {
+            log::warn!(
+                "wallpaper: skipping ZIP entry with undecodable filename: {}",
+                error
+            );
+            return None;
+        }
+    };
+    let path = Path::new(name.as_ref());
+    let ext = path.extension()?.to_str()?.to_lowercase();
+    if !VALID_EXTENSIONS.contains(&ext.as_str()) {
+        return None;
+    }
+    Some(path.file_name()?.to_str()?.to_owned())
+}
+
+/// Downloads `url` as a ZIP pack, caches images, and starts the configured slideshow.
+/// Reads preferences from `state`; returns `()` and logs download or archive failures.
+/// Skips undecodable filenames and unsupported images before creating destination files.
+/// Performs network/filesystem I/O and changes wallpaper through slideshow startup.
 pub(crate) fn download_and_start_remote_slideshow(state: &crate::AppState, url: &str) {
     crate::config::write_debug_log(state, &format!("wallpaper: remote slideshow — url={}", url));
 
@@ -739,22 +764,9 @@ pub(crate) fn download_and_start_remote_slideshow(state: &crate::AppState, url: 
             continue;
         }
 
-        let name = file.name().to_string();
-        let ext = std::path::Path::new(&name)
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| e.to_lowercase())
-            .unwrap_or_default();
-
-        if !VALID_EXTENSIONS.contains(&ext.as_str()) {
+        let Some(filename) = remote_pack_filename(file.name()) else {
             continue;
-        }
-
-        // Extract to flat directory (use just the filename, not nested paths)
-        let filename = std::path::Path::new(&name)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(&name);
+        };
 
         let dest_path = dest_dir.join(filename);
 
@@ -820,6 +832,75 @@ fn has_valid_images(dir: &std::path::Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Cursor, Write};
+
+    /// Verifies ZIP 9 filename decoding preserves a flat, case-insensitive image selection.
+    #[test]
+    fn test_remote_pack_filename_from_zip() {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        writer
+            .start_file(
+                "nested/Forest.PNG",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        writer.write_all(b"fixture image contents").unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+        let file = archive.by_index(0).unwrap();
+        assert_eq!(remote_pack_filename(file.name()), Some("Forest.PNG".into()));
+    }
+
+    /// Verifies owned Unicode names retain their basename without directory traversal.
+    #[test]
+    fn test_remote_pack_filename_owned_unicode() {
+        assert_eq!(
+            remote_pack_filename(Ok(Cow::Owned("../壁紙✨.jpg".into()))),
+            Some("壁紙✨.jpg".into())
+        );
+    }
+
+    /// Verifies absolute entry paths produce only their final image basename.
+    #[test]
+    fn test_remote_pack_filename_absolute_path() {
+        assert_eq!(
+            remote_pack_filename(Ok(Cow::Borrowed("/outside/scene.webp"))),
+            Some("scene.webp".into())
+        );
+    }
+
+    /// Verifies undecodable ZIP names yield no destination filename.
+    #[test]
+    fn test_remote_pack_filename_decode_error() {
+        assert_eq!(
+            remote_pack_filename(Err(zip::result::ZipError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "undecodable filename"
+            )))),
+            None
+        );
+    }
+
+    /// Verifies non-image entries yield no destination filename.
+    #[test]
+    fn test_remote_pack_filename_non_image() {
+        assert_eq!(remote_pack_filename(Ok(Cow::Borrowed("notes.txt"))), None);
+    }
+
+    /// Verifies empty entry names yield no destination filename.
+    #[test]
+    fn test_remote_pack_filename_empty() {
+        assert_eq!(remote_pack_filename(Ok(Cow::Borrowed(""))), None);
+    }
+
+    /// Pins the pre-upgrade MD5 cache identity against an independent known vector.
+    #[test]
+    fn test_destination_filename_known_md5() {
+        assert_eq!(
+            destination_filename("/path/pic.jpg"),
+            "wallpaper-006066c4dabae7d37dd72403f0603cda.jpg"
+        );
+    }
 
     /// Verifies that valid image extensions are accepted.
     #[test]
