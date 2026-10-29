@@ -14,6 +14,7 @@ npm run tauri dev       # Full app (Vite + Rust backend)
 npm run dev             # Frontend only (localhost:1420)
 npm test                # Frontend tests
 npm run test:coverage   # Frontend coverage gate
+npm run test:update-snapshots -- src/profileSettings.test.ts  # Update selected inline snapshots
 npm run format          # Format frontend + Rust; sync Tauri version
 npm run format:check    # Verify both formatters without writing
 cd src-tauri && cargo test                            # Backend tests

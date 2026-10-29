@@ -14,16 +14,25 @@ describe('parseProfileSettings', () => {
           'command/changeVolume/30',
         ],
       }),
-    ).toEqual({ theme: 'dark', brightness: 75, volume: 30 });
+    ).toMatchInlineSnapshot(`
+      {
+        "brightness": 75,
+        "theme": "dark",
+        "volume": 30,
+      }
+    `);
   });
 
   /** A single-string command with nothing recognized yields all nulls. */
   it('returns nulls when nothing matches', () => {
-    expect(parseProfileSettings({ name: 'x', command: 'command/tile/maximize' })).toEqual({
-      theme: null,
-      brightness: null,
-      volume: null,
-    });
+    expect(parseProfileSettings({ name: 'x', command: 'command/tile/maximize' }))
+      .toMatchInlineSnapshot(`
+      {
+        "brightness": null,
+        "theme": null,
+        "volume": null,
+      }
+    `);
   });
 });
 
@@ -34,11 +43,13 @@ describe('applyProfileSettings', () => {
       { name: 'Focus', command: ['command/changeVolume/10', 'command/tile/maximize'] },
       { theme: 'light', brightness: 60, volume: null },
     );
-    expect(out.command).toEqual([
-      'command/tile/maximize',
-      'command/changeBrightness/60',
-      'command/changeDarkMode/light',
-    ]);
+    expect(out.command).toMatchInlineSnapshot(`
+      [
+        "command/tile/maximize",
+        "command/changeBrightness/60",
+        "command/changeDarkMode/light",
+      ]
+    `);
   });
 });
 

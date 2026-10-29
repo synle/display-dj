@@ -117,6 +117,12 @@ cd src-tauri && cargo llvm-cov --lib --summary-only   # Backend coverage
 ```
 
 Tauri APIs are mocked globally in `src/test/setup.ts`, so tests run without a backend.
+
+For snapshot selection and exceptions, follow [AGENTS.md → Inline snapshots](AGENTS.md#inline-snapshots).
+To generate or reset expectations after an intentional behavior change, run `npm run test:update-snapshots -- src/profileSettings.test.ts`.
+Omitting the file filter updates snapshots across the frontend suite.
+Review the snapshot diff, run `npm run format`, then verify with `npm test -- src/profileSettings.test.ts` without update mode.
+
 Oxlint configuration lives in `.oxlintrc.json`; `npm run lint` is independent of test/build commands and is not invoked by current GitHub workflows. Before changing coverage thresholds, read [AGENTS.md → Coverage thresholds](AGENTS.md#coverage-thresholds-where-they-live).
 
 The dated library upgrade log in `DEV.md` records accepted versions, rejected candidates, compatibility fixes, and validation gaps.

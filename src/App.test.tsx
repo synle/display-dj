@@ -490,7 +490,12 @@ describe('App smoke test', () => {
 
     await user.click(screen.getByTitle('Show individual monitors'));
     const sliders = screen.getAllByRole('slider', { name: /^Brightness for (One|Two)$/ });
-    expect(sliders.map((el) => (el as HTMLInputElement).value)).toEqual(['30', '50']);
+    expect(sliders.map((el) => (el as HTMLInputElement).value)).toMatchInlineSnapshot(`
+      [
+        "30",
+        "50",
+      ]
+    `);
   });
 
   /** Contrast renders last-known values (default 50) and hides for non-DDC monitors. */
@@ -540,7 +545,12 @@ describe('App smoke test', () => {
     );
     await user.click(screen.getByTitle('Show individual monitors'));
     const sliders = screen.getAllByRole('slider', { name: /^Contrast for (One|Two)$/ });
-    expect(sliders.map((el) => (el as HTMLInputElement).value)).toEqual(['30', '50']);
+    expect(sliders.map((el) => (el as HTMLInputElement).value)).toMatchInlineSnapshot(`
+      [
+        "30",
+        "50",
+      ]
+    `);
   });
 
   /** Aggregate brightness changes are recorded even when hardware rejects them. */

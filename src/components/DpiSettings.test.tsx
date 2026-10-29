@@ -87,29 +87,45 @@ beforeEach(() => {
 describe('validateDpiRange', () => {
   /** Accepts integers inside 50-500 with min <= max. */
   it('accepts a valid range', () => {
-    expect(validateDpiRange('75', '200')).toEqual({ min: 75, max: 200, step: 5 });
+    expect(validateDpiRange('75', '200')).toMatchInlineSnapshot(`
+      {
+        "max": 200,
+        "min": 75,
+        "step": 5,
+      }
+    `);
   });
 
   /** Rejects non-integers. */
   it('rejects non-integer input', () => {
-    expect(validateDpiRange('7.5', '200')).toEqual({
-      error: 'Min, max, and step must be whole numbers.',
-    });
+    expect(validateDpiRange('7.5', '200')).toMatchInlineSnapshot(`
+      {
+        "error": "Min, max, and step must be whole numbers.",
+      }
+    `);
   });
 
   /** Rejects values outside the absolute caps. */
   it('rejects values outside 50-500', () => {
-    expect(validateDpiRange('49', '200')).toEqual({
-      error: 'Values must be between 50% and 500%.',
-    });
-    expect(validateDpiRange('60', '501')).toEqual({
-      error: 'Values must be between 50% and 500%.',
-    });
+    expect(validateDpiRange('49', '200')).toMatchInlineSnapshot(`
+      {
+        "error": "Values must be between 50% and 500%.",
+      }
+    `);
+    expect(validateDpiRange('60', '501')).toMatchInlineSnapshot(`
+      {
+        "error": "Values must be between 50% and 500%.",
+      }
+    `);
   });
 
   /** Rejects min above max. */
   it('rejects inverted range', () => {
-    expect(validateDpiRange('150', '100')).toEqual({ error: 'Min must not exceed max.' });
+    expect(validateDpiRange('150', '100')).toMatchInlineSnapshot(`
+      {
+        "error": "Min must not exceed max.",
+      }
+    `);
   });
 });
 
@@ -123,13 +139,27 @@ describe('dpiOptionsFor', () => {
       options: [100, 116, 200, 400],
       continuous: false,
     };
-    expect(dpiOptionsFor(d, 150, 180, 5)).toEqual([100, 116, 200, 400]);
+    expect(dpiOptionsFor(d, 150, 180, 5)).toMatchInlineSnapshot(`
+      [
+        100,
+        116,
+        200,
+        400,
+      ]
+    `);
   });
 
   /** Continuous (Linux) builds a min..max grid at step, keeping current. */
   it('builds a stepped grid for continuous displays', () => {
     const d = { id: 'HDMI-1', name: 'HDMI-1', current: 133, options: [], continuous: true };
-    expect(dpiOptionsFor(d, 60, 80, 10)).toEqual([60, 70, 80, 133]);
+    expect(dpiOptionsFor(d, 60, 80, 10)).toMatchInlineSnapshot(`
+      [
+        60,
+        70,
+        80,
+        133,
+      ]
+    `);
   });
 });
 
@@ -165,12 +195,15 @@ describe('DPI settings controls', () => {
   it('lists every OS option for discrete displays', async () => {
     setup(true, 60, 200);
     const builtIn = await screen.findByLabelText('DPI scale for Built-in Retina Display');
-    expect(Array.from((builtIn as HTMLSelectElement).options).map((o) => o.value)).toEqual([
-      '100',
-      '150',
-      '200',
-      '231',
-    ]);
+    expect(Array.from((builtIn as HTMLSelectElement).options).map((o) => o.value))
+      .toMatchInlineSnapshot(`
+      [
+        "100",
+        "150",
+        "200",
+        "231",
+      ]
+    `);
     expect((builtIn as HTMLSelectElement).value).toBe('200');
   });
 

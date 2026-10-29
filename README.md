@@ -407,6 +407,7 @@ All platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, audio
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, testing, and platform guides.
+Frontend tests keep structured expectations inline; `npm run test:update-snapshots -- <test-file>` regenerates selected snapshots for review after intentional changes.
 [ARCHITECTURE.md](ARCHITECTURE.md) maps layers and state; [DEV.md](DEV.md) covers diagnostics and dated migration history.
 [FEATURES.md](FEATURES.md) documents detailed feature contracts, platform constraints, and command strings; [AGENTS.md](AGENTS.md) owns repository-wide rules.
 

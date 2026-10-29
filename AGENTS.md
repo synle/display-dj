@@ -80,6 +80,16 @@ npm run test:watch             # Interactive watch mode, not a completion check
 cd src-tauri && cargo test
 ```
 
+### Inline snapshots
+
+Prefer `toMatchInlineSnapshot` over `toEqual` or `toMatchObject` for small, deterministic objects and ordered lists when the complete output is the contract.
+Keep scalar, boundary, DOM-semantic, and interaction assertions explicit.
+Retain partial matchers when unrelated fields are intentionally outside the contract; do not snapshot entire DOM trees or nondeterministic platform data.
+
+Generate or intentionally reset inline snapshots with `npm run test:update-snapshots -- <test-file>`; omit the filter only for an intentional suite-wide update.
+Review every generated value against the intended behavior; never accept changed snapshots merely to make failures pass.
+Run `npm run format`, then rerun the affected tests without update mode before committing.
+
 ### CI
 
 Read CI Workflows below before changing CI or interpreting its results.

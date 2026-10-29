@@ -823,7 +823,14 @@ describe('SettingsPanel', () => {
     const icons = [...container.querySelectorAll('.settings-device-icon svg')].map((el) =>
       el.getAttribute('data-icon'),
     );
-    expect(icons).toEqual(['laptop', 'monitor', 'headphones', 'speakerDevice']);
+    expect(icons).toMatchInlineSnapshot(`
+      [
+        "laptop",
+        "monitor",
+        "headphones",
+        "speakerDevice",
+      ]
+    `);
   });
 
   /** Loudness tooltip states the Windows-only scope. */
@@ -885,7 +892,14 @@ describe('SettingsPanel', () => {
     await user.click(screen.getByRole('button', { name: 'System' }));
     expect(screen.getByRole('button', { name: 'System' })).toHaveClass('settings-tab-active');
     const titles = [...container.querySelectorAll('.section-header')].map((el) => el.textContent);
-    expect(titles).toEqual(['Startup', 'Wallpaper', 'Night Mode', 'Profiles']);
+    expect(titles).toMatchInlineSnapshot(`
+      [
+        "Startup",
+        "Wallpaper",
+        "Night Mode",
+        "Profiles",
+      ]
+    `);
   });
 
   /** Monitors & Speakers and Tiling tabs use the same card grouping as System. */
@@ -898,9 +912,20 @@ describe('SettingsPanel', () => {
     await screen.findByText('Speakers');
     const titles = () =>
       [...container.querySelectorAll('.section-header')].map((el) => el.textContent);
-    expect(titles()).toEqual(['Monitors', 'Speakers']);
+    expect(titles()).toMatchInlineSnapshot(`
+      [
+        "Monitors",
+        "Speakers",
+      ]
+    `);
     await user.click(screen.getByRole('button', { name: 'Tiling' }));
-    expect(titles()).toEqual(['Window Tiling', 'Tile Snap', 'Exposé']);
+    expect(titles()).toMatchInlineSnapshot(`
+      [
+        "Window Tiling",
+        "Tile Snap",
+        "Exposé",
+      ]
+    `);
   });
 
   /** Profiles card shows one editor; the selector lists day, night, then other profiles. */
@@ -921,11 +946,14 @@ describe('SettingsPanel', () => {
     await screen.findByText('Settings');
     await user.click(screen.getByRole('button', { name: 'System' }));
     const selector = screen.getByRole('combobox', { name: 'Profile to edit' });
-    expect([...selector.querySelectorAll('option')].map((o) => o.textContent)).toEqual([
-      'Daylight',
-      'Focus',
-      'Presentation',
-    ]);
+    expect([...selector.querySelectorAll('option')].map((o) => o.textContent))
+      .toMatchInlineSnapshot(`
+      [
+        "Daylight",
+        "Focus",
+        "Presentation",
+      ]
+    `);
     expect(container.querySelectorAll('.settings-profile-editor')).toHaveLength(1);
     expect(screen.getByRole('combobox', { name: 'Daylight theme' })).toHaveValue('');
     await user.selectOptions(selector, 'Presentation');
