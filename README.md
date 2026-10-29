@@ -196,7 +196,8 @@ Use `Cmd + Ctrl` on macOS and `Ctrl + Alt` on Windows/Linux with each key below.
 | Windows/Linux | Shift + Ctrl + Alt + Left    | Send all windows of focused app to back   |
 | Windows/Linux | Shift + Ctrl + Alt + Right   | Bring all windows of focused app to front |
 
-`Super` means Cmd on macOS. More z-order commands (`command/window/*`, `command/app/*`) are bindable in `preferences.json` — see AGENTS.md.
+`Super` means Cmd on macOS. More z-order commands (`command/window/*`, `command/app/*`) are bindable in `preferences.json`.
+See [FEATURES.md → Command Reference](FEATURES.md#command-reference) for command strings.
 
 ## Window Tiling (macOS + Windows + Linux/X11)
 
@@ -405,7 +406,9 @@ All platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, audio
 
 ## Contributing
 
-See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full development setup, project structure, testing, and platform guides. See **[ARCHITECTURE.md](ARCHITECTURE.md)** for layers and state ownership, and **[DEV.md](DEV.md)** for development and platform details.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, testing, and platform guides.
+[ARCHITECTURE.md](ARCHITECTURE.md) maps layers and state; [DEV.md](DEV.md) covers diagnostics and dated migration history.
+[FEATURES.md](FEATURES.md) documents detailed feature contracts, platform constraints, and command strings; [AGENTS.md](AGENTS.md) owns repository-wide rules.
 
 ## Bug Reports & Suggestions
 

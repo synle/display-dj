@@ -8,31 +8,38 @@ All platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, audio
 
 ## Context Ownership
 
-- This file owns repository rules, platform invariants, and the command reference.
+- This file owns repository-wide rules, validation, versioning, CI/release policy, and shared conventions.
 - [ARCHITECTURE.md](ARCHITECTURE.md) maps layers, state ownership, startup, and edit locations.
-- [DEV.md](DEV.md) covers development, request lifecycles, diagnostics, and platform failure history.
+- [FEATURES.md](FEATURES.md) owns detailed feature/platform constraints, the test map, and the command-string reference.
+- [DEV.md](DEV.md) covers development, request lifecycles, diagnostics, platform failure history, and the dated library-upgrade log.
 - [README.md](README.md) describes user behavior; [CONTRIBUTING.md](CONTRIBUTING.md) covers setup and contribution workflows.
-- Read dependency versions from `package.json`, `package-lock.json`, and `src-tauri/Cargo.toml` / `Cargo.lock`; read shipped versions from `package.json`.
-- Saved plans and archived specs record design history, not necessarily current behavior. Verify their claims against source before implementation.
+- Read exact dependency versions from `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock`.
+- Read the shipped application version from `package.json`.
+- Saved plans, stashed changes, archived specs, and migration results do not prove current behavior. Verify them against source and the checked commit.
 
-Tauri uses the published, exact-pinned 2.12.5 release. The former local `src-tauri/vendor/tauri` patch is gone; do not restore its historical workaround.
+### Required task-specific reading
 
-## Architecture
+Read the matching sections of `FEATURES.md` before editing the listed area. These constraints remain mandatory after relocation.
 
-The Rust backend is split into two layers:
+| Task                                                     | Required sections in FEATURES.md                                                                 |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Native commands, event callbacks, threading, or FFI      | Architecture; Windows Console-Flash Pitfall; macOS Tray Icon Pitfall; Tile Snap Event Monitoring |
+| Brightness, contrast, display modes, or monitor metadata | Soft-Overlay Brightness Fallback; DPI Scaling; relevant platform observer sections               |
+| Tray icon, popup placement, or Dock behavior             | Dynamic Tray Icon; macOS Dock Visibility; platform pitfalls                                      |
+| Speakers, volume, loudness, or output metadata           | Audio Output Selection; Settings & About                                                         |
+| Settings, components, typography, or shared controls     | Settings & About; the affected feature section                                                   |
+| Tiling, Tile Snap, Exposé, z-order, or shell shortcuts   | Tile Snap Event Monitoring; Window Tiling; Window Z-Order Control                                |
+| Wallpaper, profiles, or schedules                        | Wallpaper; Other Features; Command Reference                                                     |
+| Commands, dependencies, tests, or vendor refreshes       | Command Reference; Dependencies; Test Map; VENDORING.md as applicable                            |
 
-- **`src-tauri/src/core/`** — pure platform implementations, no Tauri types. Modules:
-  - `core::mod` — shared types: `DisplayInfo`, `DisplayControl` trait, `Platform` trait. `core::PlatformImpl` is a `cfg`-gated type alias that resolves to the right platform impl at compile time.
-  - `core::macos`, `core::windows`, `core::linux` — per-OS display implementations (DDC/CI, gamma, DisplayServices, WMI, brightnessctl/ddcutil).
-  - `core::theme` — system dark mode read/write.
-  - `core::volume` — system volume get/set.
-  - `core::audio_output` — playback-device enumeration and default selection (CoreAudio on macOS, MMDevice/PolicyConfig on Windows, `pactl` on Linux).
-  - `core::wallpaper` — wallpaper set + slideshow timer/state/cycling (all in-process).
-  - `core::display` — high-level helpers (`set_all_brightness`, `set_one_brightness`, contrast variants) that fan out to `PlatformImpl`.
-  - Local extensions include `core::dpi`, `core::loudness`, `core::screen_lock`, `core::task_view`, `core::linux_desktop`, and `core::win_cmd`; preserve them during vendor refreshes.
-- **`src-tauri/src/{display,dark_mode,volume,wallpaper}.rs`** — command and application orchestration around `core::*`. Commands taking `State<'_, AppState>` must be async; offload blocking platform work with `tauri::async_runtime::spawn_blocking`. The legacy synchronous `get_preferences` reader is an existing exception, not a template for new handlers.
-- **`src-tauri/src/sidecar_cache.rs`** — 5-minute TTL cache wrapping `core::PlatformImpl::enumerate()`, `core::theme::get_dark_mode()`, and `core::volume::get_volume()` so rapid polls don't re-hit OS APIs. Writes and Force Refresh invalidate. Name retained from the v6.x HTTP-sidecar era; v7+ is pure in-process.
-- **`src-tauri/src/overlay.rs`** — per-monitor Tauri `WebviewWindow` for soft-overlay brightness fallback (see "Soft-Overlay Brightness Fallback" below).
+Tauri uses the published crate pinned in `src-tauri/Cargo.toml`. Do not restore the former `src-tauri/vendor/tauri` workaround.
+
+## Backend Safety
+
+Commands taking `State<'_, AppState>` must be async. Offload blocking platform work with `tauri::async_runtime::spawn_blocking`.
+The legacy synchronous `get_preferences` reader is an existing exception, not a template for new handlers.
+
+Never hold preference locks across `.await` or slow platform work. See the macOS Tray Icon Pitfall in `FEATURES.md` before changing logging or persistence on synchronous paths.
 
 ## Build Commands
 
@@ -40,6 +47,7 @@ The Rust backend is split into two layers:
 npm install          # Install frontend dependencies
 npm run dev          # Start Vite dev server (frontend only)
 npm run build        # Build frontend (tsc + vite build)
+npm run lint         # Oxlint (separate from build/test; see DEV.md)
 npx tauri dev        # Run full app in development mode
 npx tauri build      # Production build (binary + .dmg/.exe/.deb/.AppImage)
 cargo check          # Check Rust compilation (from src-tauri/)
@@ -90,31 +98,7 @@ npm run test:watch           # Frontend tests in watch mode
 cd src-tauri && cargo test   # Backend tests (Rust)
 ```
 
-### Frontend Tests (Vitest + React Testing Library)
-
-- **Setup**: `src/test/setup.ts` — jsdom, jest-dom matchers, Tauri API mocks (`invoke()` and `listen()` mocked globally).
-- **Unit tests**: `src/components/*.test.tsx` — one per component (Header, Slider, Dropdown, DarkModeToggle, VolumeControl, AllMonitorsControl, MonitorControl, KeepAwakeToggle, AboutPanel, ProfileButtons, SettingsPanel).
-- **Smoke test**: `src/App.test.tsx` — verifies App renders, fetches initial data, handles backend failures.
-
-### Backend Tests (Rust)
-
-Inline `#[cfg(test)]` modules cover:
-
-- `config.rs`: serde roundtrips, defaults, camelCase, `CommandValue` enum, `MonitorMetadata`, effective min brightness, backward-compatible deserialization, layout presets, night-mode schedules, `WallpaperPreferences`.
-- `display.rs`: `into_monitor` converts `core::DisplayInfo` into `Monitor`, including its composite UID. Related metadata helpers include `merge_with_configs`, `reconcile_migrated_configs`, `dedupe_moved_configs`, `ensure_metadata_for_monitors`, and `resolve_monitor` (id/uid/substring).
-- `keep_awake.rs`: `KeepAwake` guard creation, `Mutex<Option<KeepAwake>>` enable/disable cycle.
-- `tray_icon.rs`: %-to-px conversion, icon generation across all state combos (dark/light × keep-awake × muted), filled rect/thick line drawing.
-- `tray.rs`: `build_command_url()` always returns `None` (every command dispatches in-process to `core::*`); brightness clamping; contrast capping.
-- `tiling/mod.rs` (shared): `TilingLayout` parsing, all 19 layouts, gap/padding math, shared Tile Snap zone building/hit-testing, `layout_across_displays` overflow + min cell size + DPI scaling, layout preset resolution + rule matching, `plan_expose` / `plan_expose_app` / `plan_layout_preset`, smart-restore helpers (`is_rect_oversized`, `calculate_smart_restore_rect`, `calculate_smart_restore_rect_at_cursor`), grid-aligned oversized placement (`find_free_cell`, `find_free_block`, `mark_block`), `parse_zorder_command` (all 6 variants), `is_window_at_front` pure helper.
-- `tiling/macos.rs` (macOS only): `is_window_move`, `build_snap_zones` / `detect_snap_zone_macos`, `get_display_full_frames`, `is_pseudo_fullscreen` / `send_escape_key`, `get_all_gui_app_pids`, `move_all_windows_to_current_space`, `ax_error_description`.
-- `tiling/windows.rs` (Windows only): `should_skip_system_window`, DPI border correction, `dbg_log`, expose debounce, WinEvent Tile Snap move/resize filtering, signed cursor packing.
-- `tiling/snap_overlay.rs` (Windows + Linux): reusable per-display transparent Tauri windows that draw Tile Snap zones and the active target preview from `public/tile-snap-overlay.html`.
-- `tiling/linux.rs` (Linux only): X11 availability check, strut-to-work-area math, process name resolution, managed-state filtering for maximize/fullscreen normalization, Tile Snap move/resize classification.
-- `wallpaper.rs`: image validation, MD5 path hashing, content hash comparison, fit/slideshow arg parsing, `WallpaperPreferences` serde, remote pack URL/folder validation.
-- `overlay.rs`: brightness-to-alpha math, label generation, monitor-rect → window-position math.
-- `sidecar_cache.rs`: TTL freshness, write/refresh invalidation, per-entry race-free reads.
-
-**Smoke test**: `src-tauri/tests/smoke.rs` verifies the crate compiles, links, and exposes `AppState` and `run`.
+Read [FEATURES.md → Test Map](FEATURES.md#test-map) before selecting tests. Frontend specs sit beside components; Rust tests use inline modules and `src-tauri/tests/smoke.rs`.
 
 ### CI
 
@@ -131,128 +115,14 @@ When raising thresholds: measure current %, set floor ~10pp below, update both f
 
 ## Formatting
 
-After any repository change, always run `npm run format` before committing. It formats frontend files with oxfmt, then runs the npm `postformat` hook: sync the package version into `src-tauri/tauri.conf.json`, then format Rust with `cargo fmt --manifest-path src-tauri/Cargo.toml`. The `&&` sequence stops on failure. Run `npm run format:check` afterward to verify both formatters without modifying files. Use `npm run format:rust` for Rust-only formatting. Config lives in `.oxfmtrc.json`; generated files (`src-tauri/gen/`) are ignored.
+After any repository change, always run `npm run format` before committing. It formats frontend files with oxfmt, then runs the npm `postformat` hook: sync the package version into `src-tauri/tauri.conf.json`, then format Rust with `cargo fmt --manifest-path src-tauri/Cargo.toml`. The `&&` sequence stops on failure. Run `npm run format:check` afterward to verify both formatters without modifying files. Use `npm run format:rust` for Rust-only formatting. Config lives in `.oxfmtrc.json`; generated schemas (`src-tauri/gen/`) are excluded from oxfmt but remain tracked in Git. Regenerate them through Tauri tooling; do not hand-edit them.
 
 ## Required Steps for Every Feature Change
 
 1. **Tests**: Frontend → `*.test.tsx`, Rust → `#[cfg(test)]` modules. Mock at the API boundary if hardware/platform/external. Run `npm test` and `cd src-tauri && cargo test` before finishing.
 2. **Formatting and version sync**: Always run `npm run format` before finishing, regardless of changed file type; `postformat` must leave `package.json` and `src-tauri/tauri.conf.json` versions identical.
-3. **Documentation**: Update `AGENTS.md`, `DEV.md`, `README.md`, and `CONTRIBUTING.md` for new commands, preferences, UI components, or architecture changes. Update `ARCHITECTURE.md` when layers, state ownership, startup, or edit locations change.
+3. **Documentation**: Update `AGENTS.md`, `DEV.md`, `README.md`, and `CONTRIBUTING.md` for new commands, preferences, UI components, or architecture changes. Update `ARCHITECTURE.md` when layers, state ownership, startup, or edit locations change. Update affected `FEATURES.md` sections when feature contracts or platform constraints change.
 4. **Method comments**: `///` for Rust, `/** */` JSDoc for TS/React. Every public function, Tauri command, React component, non-trivial helper, and test must have one.
-
-## Windows Console-Flash Pitfall (Critical, Windows-only)
-
-**Every Windows child spawn from `#[cfg(target_os = "windows")]` must go through `core::win_cmd::hidden_command(...)`.** That helper pre-applies `CREATE_NO_WINDOW` (`0x08000000`) so the short-lived `powershell` / `reg` child doesn't flash a console — the GUI parent has `windows_subsystem = "windows"` and no console to share.
-
-- **Matters in**: `core/{windows,theme,wallpaper}.rs`. Regression test `no_bare_powershell_or_reg_spawns_in_core` in `lib.rs` fails the build on bare spawns. Windows volume uses `IAudioEndpointVolume` and macOS volume uses CoreAudio; neither spawns a child process on the normal path.
-- **N/A on macOS/Linux** — no Win32-PE-subsystem concept; GUI parents launched from `.desktop` / Finder inherit null stdio.
-- **The `windows_subsystem` attribute** must live on `main.rs`, never `lib.rs` (silently ignored — release `.exe` ships as console-subsystem and `CREATE_NO_WINDOW` on children can't fix it).
-- **Vendor refresh**: `core/*` is vendored from `display-dj-cli` (a CLI, doesn't need this). The `hidden_command` substitution is display-dj-local; re-apply on refresh.
-
-## macOS Tray Icon Pitfall (Critical)
-
-Blocking stateful command work has previously made both tray buttons stop responding on macOS. Preserve async mutation handlers, especially `save_preferences`, and never hold preference locks across `.await` or slow platform work.
-
-`get_preferences` remains synchronous and clones in-memory preferences. Its warning comment and logging calls disagree: current code still calls `write_debug_log`, whose preference gate now uses `try_lock`. Do not infer that every stateful handler is already async or that logging is free of filesystem I/O. Prefer `log::info!` in frequent synchronous readers; keep additional hardware probes and persistence off the main-thread path.
-
-## Tile Snap Event Monitoring
-
-### macOS (NSEvent global monitor)
-
-Tile Snap uses `NSEvent.addGlobalMonitorForEvents(matching:handler:)` to observe mouse events globally. This replaced `CGEventTap`, which silently failed in production `.app` bundles (macOS Sequoia rejects `CGEventTapEnable` for ad-hoc signed bundles).
-
-**Why NSEvent:**
-
-- Higher-level Cocoa API; macOS trusts it from `.app` bundles without special signing.
-- Listen-only, which is all Tile Snap needs.
-- Handler runs on the main thread automatically.
-
-**Handler rules (main thread):**
-
-1. Keep it fast — defer AX API calls (`get_focused_window`, `get_window_rect`) until the 10px drag threshold is crossed.
-2. Use `try_lock()`, never `lock()`.
-3. Wrap with `catch_unwind` — Rust panics cannot unwind through ObjC blocks (would abort). **REQUIRES `panic = "unwind"` in `[profile.release]`**; `catch_unwind` is inert under `panic = "abort"`. v7.0.26 crashed 3× in field from this — see DEV.md "Crash Logging" for the post-mortem and `crash.log` shape.
-4. Use raw `objc_msgSend` with `Sel::register("type")` for `[event type]` — `type` is a Rust keyword; `msg_send![event, r#type]` raises an ObjC exception.
-5. Convert `[NSEvent mouseLocation]` (Cocoa: Y up from bottom-left) → CG coords (Y down from top-left): `primary_h - cocoa_y`.
-6. Use exact-pinned `block2` for ObjC blocks. `RcBlock::new` is already heap-owned; leak the handler only when AppKit retains its callback for process lifetime. Do not reintroduce `block` v0.1: current Rust reports its uninhabited static as future-incompatible.
-
-**Native binding rules:**
-
-- Match Apple typedef widths, not convenient Rust primitives. `CFIndex` and `CFNumberType` are pointer-sized (`isize`); every declaration of the same Core Foundation symbol across modules must use an identical signature.
-- Before adding a Windows API import, read the installed `windows` crate binding and use its actual module, parameter type, and constant type. Training-memory paths are not sufficient.
-- Platform-only changes must compile on that platform before release. Windows CI uses `cargo test --target <windows-target> --no-run`; macOS FFI changes require local `cargo check` plus the full Rust suite.
-- Treat `clashing_extern_declarations` and Cargo future-incompatibility notices as defects. Fix the ABI or dependency; do not silence them globally.
-
-### Windows (WinEvent move monitor)
-
-Windows Tile Snap uses `SetWinEventHook(EVENT_SYSTEM_MOVESIZESTART..=EVENT_SYSTEM_MOVESIZEEND)` on a dedicated message-pump thread. `WM_NCHITTEST` rejects resize-border gestures; active title-bar moves poll `GetCursorPos` and render one transparent, click-through Tauri overlay per display. Each overlay listens on a display-scoped event name passed in its page URL, so multi-monitor previews cannot overwrite or duplicate each other. Windows overlay payloads must divide physical Win32 coordinates by the monitor's effective DPI scale before WebView rendering; otherwise bottom zones fall below the CSS viewport on scaled displays. Maximized windows must run through `restore_maximized_window()` before drag bounds are captured so title-bar dragging can unsnap them. Lazy WebView creation must dispatch through `run_on_main_thread`; Win32 polling remains on the monitor thread. On move end, the exact rectangle shown in the preview is applied with `SetWindowPos`.
-
-Windows runs at the invoking user's normal integrity (`asInvoker`, `uiAccess="false"`) so the global WinEvent monitor receives ordinary application drag events without forcing a UAC prompt. Windows blocks normal-integrity processes from moving **Run as administrator** windows; users who need that case must explicitly launch Display DJ as administrator. Do not switch to `uiAccess="true"`: unsigned/current-user builds fail Windows signing and secure-location requirements.
-
-- The WinEvent callback catches panics and only sends the HWND lifecycle event through a channel; no Tauri or blocking work runs across the FFI boundary.
-- Do not install a low-level global mouse hook on the polling thread. Windows owns title-bar clicks and double-click maximize/restore; Tile Snap observes only move/size lifecycle events.
-- `capabilities/default.json` must match `tile-snap-overlay-*` and `overlay-*`; otherwise the overlay pages cannot call `event.listen`, so zones and brightness dimming render nothing.
-- `get_windows_elevation_status` and `get_windows_snap_enabled` are advisory only: query errors log and return `None`; they never block startup or disable tiling. Settings shows no success marker when macOS Accessibility, Windows elevation, or native-Snap conditions are satisfied; failures get one short line below the relevant checkbox. The macOS line opens Accessibility Settings, and the native-Snap line opens Windows Multitasking Settings.
-- The monitor starts at launch but remains dormant while `tileSnapEnabled` is false, so the Windows-default-off setting can be enabled without restarting.
-- Native Windows Snap competes for the same edges. README documents **Settings → System → Multitasking → Snap windows → Off** plus the `WindowArrangementActive=0` command-line alternative.
-
-### Linux/X11 (pointer + geometry poller)
-
-Linux Tile Snap runs a dedicated X11 thread that polls `QueryPointer` and `_NET_ACTIVE_WINDOW` geometry. A drag activates only after the left button moves at least 10px and the window position changes across two stable-size samples; any normal-window size change rejects the gesture as a border resize. xfwm4 maximize-to-normal transitions update the restore baseline before move confirmation.
-
-- The monitor starts with the app, remains dormant while Tile Snap is disabled, and retries X11 connection when `$DISPLAY` appears or the connection drops.
-- Windows and Linux share `tiling/snap_overlay.rs`, so both draw the same zones and apply the exact preview rectangle on release.
-- On XFCE, disable **Window Manager Tweaks → Accessibility → Automatically tile windows when moving toward the screen edge** if native tiling competes with Display DJ.
-
-### Linux distro / desktop super-alpha diagnostics
-
-The release pipeline already ships x64 + ARM64 AppImages built on Ubuntu 22.04,
-so Arch/KDE testing uses those artifacts rather than a distro-specific binary.
-`core::linux_desktop` selects GNOME-, KDE-, or XFCE-specific theme/wallpaper
-backends before fallback probing; KDE uses `plasma-apply-colorscheme`,
-`kreadconfig6`/`kreadconfig5`, and `plasma-apply-wallpaperimage`.
-
-With Debug Logging enabled, `core::LinuxPlatform::debug_info()` records bounded
-os-release, desktop/session/package, helper-tool, selected-backend, DDC, and
-display-server diagnostics. Enabling logging from the tray triggers the dump
-immediately. Each normal log line includes thread + module/source context, and
-Rust panics always write a forced backtrace plus recent debug-log tail to
-`crash.log`. Native Linux crashes still require system-coredump tooling.
-
-## Soft-Overlay Brightness Fallback
-
-Some panels (e.g. Samsung Smart Monitor M7/M8 over USB-C on Intel Iris Xe) ignore DDC/CI and reject `SetDeviceGammaRamp`. The industry workaround (Twinkle Tray, Lunar) is a transparent, always-on-top, click-through window per monitor whose opacity rises as brightness falls — the OS compositor blends it with everything underneath, so it works on any GPU/driver.
-
-### Per-monitor `brightnessMode` preference
-
-Stored on `MonitorMetadata` in `preferences.monitor_configs`. Four values:
-
-- **`"auto"`** (default) — request the platform's `"force"` brightness path, then attempt overlay fallback if it fails. This is not universally sequential DDC-then-gamma behavior; Windows force mode can apply both.
-- **`"ddc"`** — DDC/CI only, no overlay fallback.
-- **`"gamma"`** — `SetDeviceGammaRamp` only, no overlay fallback.
-- **`"overlay"`** — skip hardware entirely; dim with the overlay window. The only mode that works on the failing-panel scenario above.
-
-The dropdown is rendered next to the existing "Hide" button in Settings (`SettingsPanel.tsx`); built-in displays don't get the dropdown (they dim natively via DisplayServices / WMI / sysfs backlight).
-
-### Overlay module (`src-tauri/src/overlay.rs`)
-
-One Tauri `WebviewWindow` per external monitor, labeled `overlay-{monitor_id}`. Created lazily on the first overlay request, positioned to the monitor's `DisplayInfo.monitor_rect`, made click-through with `set_ignore_cursor_events(true)`. The content is `public/overlay.html` — a single full-viewport black div listening for `set-overlay-alpha` events. Alpha is `1.0 - brightness/100`, clamped to `[0.0, 0.9]` so the user can never make the panel fully opaque (which would prevent recovery via the slider).
-
-Public API:
-
-- `overlay::set_overlay_brightness(app, monitor_id, monitor_rect, brightness_pct)` — ensure window, show, emit alpha. Hides instead of showing when `brightness_pct >= 100`.
-- `overlay::destroy_overlay(app, monitor_id)` — close the overlay (called on unplug or when switching back to a hardware-only mode).
-
-### Routing (`display::set_brightness` / `display::set_all_brightness`)
-
-Each Tauri brightness command snapshots `min_brightness`, the per-monitor `brightnessMode`, and the cached `monitor_rect` _before_ awaiting (mutex must not be held across `.await` — see macOS Tray Icon Pitfall). It dispatches through `display::route_for_mode(...)` to one of: `DdcOnly` / `GammaOnly` (call `core::display::set_one_brightness` with the named backend, destroy overlay first), `OverlayOnly` (overlay only, no hardware), or `AutoWithOverlayFallback` (try `"force"`; on failure fall back to overlay).
-
-`set_all_brightness` keeps a fast path for the common all-auto case (bulk `set_all_brightness("force")` + per-monitor overlay touch-up). The same routing is reused by `tray::execute_command` for `command/changeBrightness/...` via `dispatch_brightness_for_{one,all}` helpers.
-
-### Platform status
-
-- **Windows**: fully functional. `DisplayInfo.monitor_rect` is populated from `MONITORINFOEXW.rcMonitor` for external displays.
-- **macOS / Linux**: `monitor_rect` is currently `None` on both platforms (see TODOs in `core::macos` and `core::linux`). `brightnessMode = "overlay"` therefore returns an explicit error instead of reporting a successful no-op. The auto path keeps working when DDC or DisplayServices/ddcutil succeeds.
 
 ## Key Conventions
 
@@ -268,251 +138,16 @@ Each Tauri brightness command snapshots `min_brightness`, the per-monitor `brigh
 - Contrast is DDC-only (`Option<u32>` / `number | null`); a live `null` only gates visibility — the rendered value comes from `lastKnownValues`. The slider is hidden by default and toggled via `showContrast` in Settings.
 - Keep Awake uses the `keepawake` crate (v0.6) — guard stored as `Mutex<Option<KeepAwake>>` in `AppState`. Creating enables; dropping (set to `None`) releases. Works on macOS (IOKit), Windows (`SetThreadExecutionState`), Linux (D-Bus). The `set_keep_awake` command is `async` (tray pitfall).
 
-## macOS Dock Visibility
-
-Display DJ is menu-bar only. `src-tauri/Info.plist` sets `LSUIElement=true` (merged into the bundle's Info.plist by Tauri) so no Dock icon appears, even at launch. `lib.rs` setup also calls `set_activation_policy(Accessory)` for unbundled `tauri dev` runs.
-
-## Dynamic Tray Icon (`tray_icon.rs`)
-
-Drawn programmatically at 128x128 from percentage-based layout constants (no PNG assets). Reflects three states:
-
-- **Dark/light mode**: border color swaps (white on dark menu bar, black on light) with inverse default fill.
-- **Keep-awake**: fill becomes blue (deep blue on dark, sky blue on light).
-- **Muted (volume=0)**: red X drawn over the icon.
-
-States are cached on `AppState` (`is_dark_mode`, `is_muted`); `update_tray_icon()` regenerates on change. Initial state is fetched in-process from `core::theme` and `core::volume` at startup via `fetch_initial_tray_state()`.
-
-Tray popup placement selects the monitor from the physical mouse position in `TrayIconEvent::Click`, not a scaled tray-rectangle guess. Mixed-DPI monitor bounds can overlap because Tauri reports origins and sizes with inconsistent scaling; when multiple displays contain the click, the one whose nearest edge is closest wins for top, bottom, left, and right trays. Exact coincident bounds retain stable enumeration order. Every click state stores the latest anchor before action filtering because macOS opens its synchronous context menu on right-button down; left-click opening and context-menu **Show Window** then reuse that anchor. It starts below the tray, flips above only when the lower edge would overflow, then clamps every corner inside that same display. `AppState` retains both click point and tray rectangle for resize-driven repositioning. With Debug Logging enabled, left/right tray button-up events record button, mouse/tray geometry, all monitor origins/resolutions with explicit `@Nx` DPI scaling, selected screen, placement mode, popup bounds, and final position.
-
-## Audio Output Selection
-
-- `VolumeControl.tsx` has its own expand/collapse chevron independent from the monitor section. Its readonly `All Speakers (<enabled non-hidden count>)` label appends `- <selected name>` when known, in collapsed and expanded modes; expanded mode lists visible outputs, including the selected endpoint with its radio checked, using monitor-name font sizing, one padded radio target, click-to-edit name, and persisted reorder arrows. Settings lists monitors before every output, with an `enabled` / `disabled` / `hidden` selector per speaker row. Rename and reorder controls live only in the main popup.
-- A backend refresh thread probes audio outputs every 5 seconds, updates `AppState.audio_output_state`, rebuilds the tray menu only when the snapshot changes, and emits `audio-output-changed` for the popup. `App.tsx` keeps its visible-main-panel poll as a cached fallback, with an in-flight guard and last-successful-state behavior.
-- The tray menu exposes a **Speakers** submenu containing enabled outputs, then Mute, 50%, and 100% volume presets after a separator. The selected endpoint has a `●` marker; disabled outputs remain visible but unselectable in the expanded popup; Settings owns state changes and hidden-output recovery.
-- Device IDs must remain stable: CoreAudio UID on macOS, `IMMDevice::GetId` on Windows, and the `pactl` sink name on Linux. The operating system owns the live selected default. Display DJ also records `lastKnownValues.selectedSpeakerId` for startup restoration when that endpoint still exists and is enabled.
-- User output settings live in `preferences.audioOutputConfigs` as `{ id, label, state, sortOrder }`; missing `state` values default to `enabled`, and missing sort positions retain default ordering. `originalName` always retains the native OS name, and a metadata entry is removed only when label, state, and sort order all return to defaults. Native names containing `Steam Streaming` are forced hidden. Initial ordering is enabled first, then disabled, then hidden; built-in outputs lead each group, then name and stable ID decide order. Saved sort positions override that initial order. Changing selection never reorders rows.
-- macOS excludes CoreAudio devices that are dead or cannot become the default output. `UNSUPPORTED_OUTPUT_DEVICE_UIDS` also always rejects known conference-app loopback endpoints such as Microsoft Teams Audio and ZoomAudioDevice, even if a future driver reports different capability flags.
-- **Prefer Loudness Equalization** (`loudnessEqualizationPreferred`, default on, Settings checkbox shown on Windows only): fire-and-forget at startup and on every popup open, `volume::ensure_loudness_for_enabled_outputs` spawns a thread that calls `core::loudness::ensure_loudness_equalization` for every **enabled** output. It returns a `LoudnessReport` whose ordered attempts are each logged as `loudness equalization <device id> (<name>): option N (<name>): <result>`: option 0 dumps `Render\{guid}\FxProperties` with subkeys and picks every `{context}\User` subkey holding `{fc52a749-4be9-4510-896e-966ba6525980},3` (default context `{b13412ee-07af-4c57-b08b-e327f8db085b}`) — a before/after diff of the Sound settings toggle showed only that `User` copy changes, while the root `FxProperties` copy never moves; option 1 sets the VT_BOOL through the public `IAudioSystemEffectsPropertyStore::OpenUserPropertyStore` (Windows 11 22H2+, activated with the context GUID) and reads it back; option 2 is the registry fallback into `{context}\User` (create key, then create or flip the value); option 3 runs `Restart-Service audiosrv -Force` only after a registry write. Permission refusals return `LoudnessError::Denied` (warn), other failures `Failed` (error). A device that failed is skipped until the app restarts.
-- **Debug dumps** (startup dump and tray **Enable Logging**) contain a `--- Monitor Meta Data ---` section followed by `--- Speaker Meta Data ---`, which lists every known speaker with its ID, label, OS name, enabled/disabled/hidden state, and selection.
-- Windows volume get/set/mute uses `IAudioEndpointVolume`, so output switching and the volume slider share the same selected MMDevice without requiring the AudioDeviceCmdlets PowerShell module.
-- With tray **Debug → Enable Logging** active, audio diagnostics record initial and changed endpoint snapshots, every listed device, requested and confirmed active IDs, post-selection volume, and Windows console/multimedia/communications defaults before and after each `IPolicyConfig` call. Unchanged 5-second refreshes stay quiet.
-
-## Settings & About
-
-- **Tabs**: **Monitors & Speakers** (monitors, speakers, Windows loudness), **System** (bordered cards in order: Startup → Wallpaper → Night Mode schedule → Profiles (one editor; selector lists day profile, night profile, then the rest, e.g. Presentation)); the selected tab renders as a solid accent pill. Every tab groups settings into `.settings-card` blocks (grey left stripe, `.section-header` title in primary text color): Monitors, Speakers / Startup, Wallpaper, Night Mode, Profiles / Window Tiling, Tile Snap, Exposé, and **Tiling** (only when supported). Settings device rows show icons: laptop/monitor for displays; headphones when the speaker's OS name matches headphone/headset/earphone/bud (case-insensitive, space/dash/underscore tolerant), otherwise a speaker-box icon (`speakerKind()` in `src/profileSettings.ts`). Settings device names are read-only primary-color text (`.settings-device-name`); renaming lives only in the main popup.
-
-- **Settings Panel**: auto-saves preferences after a 100ms debounce through one serialized, coalescing queue. Closing or unmounting requests a final flush. There is no Saving/Saved/Error badge; failed saves retain a pending snapshot but show no save-error message. Loading failures have a separate Retry UI.
-- **Refresh on popup show**: `show_popup_window` shows in-memory monitor/speaker lists immediately, then `refresh_devices_on_show()` (`tray.rs`) rescans displays (`list_all()`, also refreshing the write-control cache) and audio outputs on a background thread. `monitors-changed` / `audio-output-changed` fire only when the device set changed (live brightness readings are ignored), so connects/disconnects appear without flicker. Tray **Debug → Refresh Displays & Speakers** and clicking the popup's `All Monitors (n)` / `All Speakers (n)` labels (green ↻, `RefreshLabel.tsx` → `refresh_devices` command) run the same rescan on demand. There is no OS display hot-plug listener.
-- **Slider send timing**: `Slider.tsx` defaults to a 50ms trailing debounce (DDC/CI brightness and contrast). Volume passes `throttleMs=30` for live leading+trailing sends. Backend `set_volume` serializes writes and skips superseded requests (latest wins). Brightness reuses cached display controls (`core::display::CONTROL_CACHE`, refreshed by `list_all()`, re-enumerated on write failure), writes All Monitors in parallel, and applies latest-wins + 2s identical-value dedupe in `display.rs`. `App.tsx` coalesces `record_last_known_values` patches and persists once after 200ms of quiet, flushing on blur/unmount.
-- **Last-known slider values**: the main popup has no status/error bar. Brightness, contrast, and volume sliders render `preferences.lastKnownValues` (`allBrightness`, `monitorBrightness[uid]`, `allContrast`, `monitorContrast[uid]`, `allVolume`, `speakerVolume[deviceId]`, `selectedSpeakerId`; missing → 50%) instead of live hardware reads. The frontend records changes via `record_last_known_values`; `save_preferences` never overwrites them. At startup, after crash import and cache pre-warm, `restore_last_known_values()` in `lib.rs` re-applies recorded monitor brightness and supported contrast, re-selects the last speaker if present and `enabled`, and restores its volume. Tray/shortcut changes are not tracked. Slider write failures retain the requested value; the main popup renders neither an error bar nor Mixed aggregate state.
-- **Icons**: popup icons are inline duotone SVGs in `src/components/Icons.tsx`, drawn with `currentColor`. Speaker shows muted at 0, medium at 1–50%, full above 50%. Accordions rotate `chevronRight`; main-popup sort buttons use up/down chevrons. Tests locate icons via `data-icon`.
-- **Typography**: use `--font-size-sm`, `--font-size-md`, and `--font-size-lg` from `src/App.css` for new font sizing instead of adding independent sizes.
-- **Chips & tooltips**: `.beta-chip` marks beta features (orange); `.beta-chip.platform-chip` marks platform-scoped settings (accent, e.g. `Windows` on Prefer Loudness Equalization). `Tooltip` accepts rich `ReactNode` text and uses theme-aware `--bg-secondary`/`--text-primary` colors.
-- **Dropdowns**: every native select renders through `Dropdown.tsx`. `.dropdown` owns common height, padding, typography, focus, and disabled states; context classes only control layout width and minimum width.
-- **About Panel** (`AboutPanel.tsx`): tray menu "About Display DJ" → emits `show-about` → frontend shows panel. Displays version (`get_about_info`), latest version (GitHub `releases/latest`), engine, platform+arch, build date (`BUILD_DATE`), homepage. Shows "Up to date" / "Update available" badge. macOS shows `xattr -cr` quarantine and Accessibility commands in selectable code blocks.
-
-## Window Tiling (macOS + Windows + Linux/X11)
-
-Module: `tiling/`. Moves/resizes the focused window into tiled layouts. **19 layouts** (halves, thirds, two-thirds incl. vertical, quarters, maximize) plus restore.
-
-### Default keyboard shortcut pairing
-
-Tiling defaults come from one shared key/action table in `config.rs`. macOS prefixes every key with `Super+Ctrl` (Cmd+Ctrl); Windows and Linux prefix the same keys with `Ctrl+Alt`. Never edit one platform's defaults independently. Paired keys: Left/Center/Right Third = `Left`/`C` or `M`/`Right`, Left/Right Two-Thirds = `Up`/`Down`, Left/Right Half = `,`/`.`, Maximize = `/`, App Exposé = `A`, and Exposé = `E`. Quarter layouts have no default keyboard shortcuts.
-
-macOS defaults `Ctrl+Super+Shift+Up` to `command/system/taskView` (Mission Control) and `Ctrl+Super+Shift+Down` to `command/system/showDesktop`; both dispatch after key release and notify the Dock through `CoreDockSendNotification`. Windows uses matching `Ctrl+Alt+Shift` defaults. Task View releases the triggering modifiers before synthesizing `Win+Tab`; Show Desktop calls `IShellDispatch4::ToggleDesktop` directly. Linux does not register these platform-specific defaults.
-
-Windows and Linux default `Ctrl+Alt+Q` to `command/system/lockScreen`; macOS does not register or support this action. Windows calls `LockWorkStation`. Linux tries a fixed allowlist of session/desktop lock commands and caches the last successful command in backend-owned `linuxLockCommand`, while an absent or invalid value restores full fallback probing.
-
-The popup header shows a logout-style **Lock screen** icon left of Settings on Windows/Linux only. Header actions use 32px targets with a 14px gap to reduce accidental activation; the icon invokes the same `command/system/lockScreen` dispatcher as the shortcut.
-
-### Architecture
-
-- `tiling/mod.rs` — shared types, layout math, `TilingLayout`, AND orchestration (`plan_expose`, `plan_expose_app`, `plan_layout_preset`) that compute placements without OS calls.
-- `tiling/{macos,windows,linux}.rs` — thin wrappers that call the shared plan functions, then apply `Placement { window_id, owner_pid, target }` via platform APIs.
-
-This means layout bugs are fixed once in `mod.rs`, not three times.
-
-### Smart Restore
-
-When a window's saved original rect is oversized (≥ 85% of display in both width and height — e.g., from maximize/fullscreen), restore uses a smart size instead: 60% of the smallest connected display, no smaller than the app's `AXMinimumSize` (macOS), centered on the window's display. Helpers `is_rect_oversized()` and `calculate_smart_restore_rect()` in `tiling/mod.rs` are shared across platforms.
-
-On macOS, Tile Snap also smart-shrinks oversized windows on drag start (≥ 85% threshold) via `calculate_smart_restore_rect_at_cursor()` so the user can see snap zones while dragging.
-
-### Exposé
-
-- **Exposé** (`command/tile/expose`): all on-screen windows into a deterministic alphabetical grid.
-- **App Exposé** (`command/tile/exposeApp`): frontmost-app windows fill the first display(s); other apps may use only wholly unconsumed displays, never leftover cells beside target-app windows.
-
-Both **normalize** first (unminimize + exit native fullscreen + Escape browser/video pseudo-fullscreen + collapse virtual desktops/Spaces). **Fill-first overflow**: fill display 1 to `exposeColumns × exposeRows`, overflow to display 2, etc. Windows with min sizes (Steam, Chrome) that exceed grid cells overflow to subsequent displays; the last display uses grid-aligned placement (oversized windows consume `ceil`'d cells, snapped to grid boundaries with no gaps). Resizable windows placed first, oversized fill remaining slots. Layout is deterministic (sorted alphabetically by app, then `window_id`); each invocation re-lays out (no toggle/restore).
-
-The shared `layout_across_displays` in `tiling/mod.rs` handles overflow for all platforms.
-
-### Platform Implementations
-
-- **macOS**: AX API (`AXUIElement`) for move/resize. Requires Accessibility. Focused tiling exits native `AXFullScreen` or browser/video pseudo-fullscreen before reading restored bounds. State per CGWindowID in `AppState.tiling_state`. Uses `_AXUIElementGetWindow` (private but stable since 10.6) to bridge AX → CGWindowID. NSScreen visible frames for display bounds — must use `screens[0]` (primary) not `mainScreen` for coord conversion. Tile Snap via `NSEvent.addGlobalMonitorForEvents` (10px move threshold; drop-zone overlays via `build_snap_zones` / `detect_snap_zone_macos`: per display, 4 corner quarters, top-edge maximize, left/right-edge halves, three 1/3 markers + two 2/3 markers on the bottom row; on mouse_up move to pre-calculated target). Crates: `objc` v0.2 + exact-pinned `block2`; AX is raw `extern "C"`. Chromium apps need a `NSWorkspace.frontmostApplication` fallback — see DEV.md.
-- **Windows**: Win32 (`GetForegroundWindow`, `SetWindowPos`, `EnumDisplayMonitors`, `EnumWindows`) via `windows` crate v0.58. Focused tiling calls `ShowWindow(SW_RESTORE)` for maximized windows before reading normal bounds or resizing; minimized windows stay minimized outside Exposé. No special permissions. All 19 layouts + restore + Exposé + App Exposé. Tile Snap uses `SetWinEventHook` plus per-display click-through Tauri overlays; it defaults off because native Windows Snap uses the same edges.
-- **Linux/X11**: `x11rb` (pure Rust X11 client) + EWMH. Focused window via `_NET_ACTIVE_WINDOW`; move/resize via `_NET_MOVERESIZE_WINDOW`; enumeration via `_NET_CLIENT_LIST`; geometry via XRandr. Focused tiling removes horizontal maximize, vertical maximize, and fullscreen states, waits for `_NET_WM_STATE` confirmation, then records restored bounds; minimized state is untouched. Panels respected via `_NET_WM_STRUT_PARTIAL` / `_NET_WM_STRUT` with `_NET_WORKAREA` fallback. Frame decoration via `_NET_FRAME_EXTENTS`. Tile Snap polls root pointer state plus focused-window geometry and renders through the shared per-display overlays. Runtime-gated: `get_tiling_supported` checks `$DISPLAY` (false on Wayland-only). Core X11 tiling tested on Linux Mint with XFCE (xfwm4).
-
-### Preferences
-
-`tiling.{enabled, halfRatio=50, thirdRatio=33, gap=0, sideEdgeTrigger=18, topEdgeTrigger=18, cornerTrigger=30, exposeEnabled=true, exposeColumns=2, exposeRows=3, exposeLayoutStrategy="fill", exposeMinWidth=400, exposeMinHeight=300}`. Nine `snap*Enabled` booleans independently control top/left/right edges, four corners, bottom thirds, and bottom two-thirds; all default true. `exposeMinWidth/Height` are logical pixels — DPI-scaled on Windows.
-
-### UI
-
-- **Tiling submenu** in tray (gated on platform).
-- **Exposé submenu** is separate, top-level — Enable/Disable, Exposé/App Exposé, grid presets (2x2, 2x3, 3x3, 3x4, 4x4, 5x5).
-- Settings: separate "Enable Exposé" checkbox; grid sliders (Cols/Rows) shown only when enabled. Accessibility warning on macOS when tiling is enabled but permission not granted.
-
-## Window Z-Order Control (macOS + Windows + Linux/X11)
-
-Lives in the `tiling/` module — shares focused-window resolution and AX/Win32/X11 plumbing. Two scopes (focused window vs. all windows of focused app) × three actions (front, back, toggle):
-
-- `command/window/moveToFront`, `command/app/moveToFront`
-- `command/window/moveToBack`, `command/app/moveToBack`
-- `command/window/toggleFrontBack`, `command/app/toggleFrontBack`
-
-**Default keybindings**: macOS uses `Shift+Ctrl+Super+Left` / `Right`; Windows and Linux use `Shift+Ctrl+Alt+Left` / `Right`. Left dispatches `command/app/moveToBack`; Right dispatches `command/app/moveToFront`. App-scope rather than window-scope keeps behavior symmetric on macOS — see "Back" below for why single-window scope can't visibly lower the active app's only window.
-
-**Self-test (debug aid)**: Set `DISPLAY_DJ_ZORDER_SELFTEST=1` before launching. Five seconds after startup, `tiling::run_zorder_selftest()` runs all 6 z-order commands on whatever window is currently focused, with state snapshots between steps. Logs everything with a `[zorder-selftest]` prefix. Off by default — running on every launch would manipulate the user's focused window.
-
-Parsing centralized in `tiling::parse_zorder_command()`; dispatch in `tiling::execute_zorder()` which forwards to platform impls. Dispatched in-process from `tray.rs::execute_command()` on a background thread, so `build_command_url()` returns `None`.
-
-### Front
-
-- **macOS**: `move_window_to_front` → `activateWithOptions: 2` (`NSApplicationActivateIgnoringOtherApps`) + `AXRaise`. `move_app_to_front` → `activateWithOptions: 3` (`...|NSApplicationActivateAllWindows`) + iterate AXWindows via `get_all_ax_windows_for_pid()` and `AXRaise` each (some macOS versions don't fully respect `NSApplicationActivateAllWindows`); originally focused window raised last so it stays topmost. PID via public `AXUIElementGetPid`.
-- **Windows**: `SetWindowPos(HWND_TOP, …, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)` + `BringWindowToTop` + `SetForegroundWindow`. App scope iterates HWNDs (`EnumWindows` filtered by `GetWindowThreadProcessId`) and re-foregrounds the focused window after the raise loop.
-- **Linux**: `_NET_ACTIVE_WINDOW` client message via existing `raise_window()`. App scope filters `_NET_CLIENT_LIST` by `_NET_WM_PID`.
-
-### Back
-
-- **macOS**: no public AX API to lower — uses private `CGSOrderWindow(cid, wid, -1, 0)` (CoreGraphics SkyLight, `kCGSOrderBelow`), the standard approach in yabai/Rectangle/AeroSpace. `move_app_to_back` iterates AXWindows front-first to preserve within-app relative order. **Critical: `CGSOrderWindow` alone is invisible when the lowered window's app is the active app** — every window of the active app sits above every inactive app's windows on macOS. After lowering, `activate_next_app_excluding_pid()` activates a different app's frontmost window, dropping the lowered app into the inactive layer. The lowered PID is stored in `LAST_BACKED_PID: Mutex<Option<i32>>` so a subsequent `move_*_to_front` can bring it back; consumed on first front call after a back (natural undo). macOS-only — Windows/Linux WMs have no active-app grouping.
-- **Windows**: `SetWindowPos(HWND_BOTTOM, …, SWP_NOACTIVATE)` (Windows transfers focus automatically). App scope iterates HWNDs front-to-back so each `HWND_BOTTOM` drops one window to the absolute bottom.
-- **Linux**: `ConfigureWindow(stack_mode = BELOW)` via `lower_window()` — honored by Mutter/KWin/xfwm4.
-
-### Toggle
-
-Stateless. Each call checks live z-order via platform `is_focused_window_at_front()`:
-
-- **macOS**: `CGWindowListCopyWindowInfo`.
-- **Windows**: `EnumWindows` filtered by `IsWindowVisible` + skip-list system windows.
-- **Linux**: `_NET_CLIENT_LIST_STACKING` reversed (front-to-back); falls back to `_NET_CLIENT_LIST` if WM doesn't expose stacking.
-
-The shared pure function `tiling::is_window_at_front(focused_id, &front_to_back_z_order)` compares against the first entry — testable on all platforms without a window server. If at front → dispatch to `move_to_back`; else → `move_to_front`. App-scope toggle uses the same check but dispatches to the app-scope variants.
-
-## DPI Scaling (Beta)
-
-`core::dpi` changes per-display UI scale. Settings → Monitors holds a **Show DPI Settings** checkbox with an orange `beta` chip (`showDpiSettings`, default off); the beta warning lives in its tooltip. When on, every monitor row gains a scale dropdown. macOS and Windows list exactly the OS-offered values and ignore the user band. The band — `dpiMinPercent`=60, `dpiMaxPercent`=250, `dpiStepPercent`=5 (absolute caps 50–500, step 1–100, enforced by `Preferences::sanitize()`) — only builds Linux options and gates `set_display_dpi` on Linux. Its inputs render `display: none`; edit `preferences.json` instead. Row order: name → DPI scale → brightness mode → Hide; DPI displays that match no monitor config render as DPI-only rows. Settings has no reorder arrows for monitors or speakers. After an apply, and on any `devicePixelRatio` change, the popup refits and calls `reanchor_popup_window`, which re-reads the live tray rect and re-places the popup (also fired on `WindowEvent::ScaleFactorChanged`).
-
-- **macOS**: display-mode switch; scale % = native pixel width / "looks like" width (`CGConfigureDisplayWithDisplayMode`, permanent). Only real display modes are offered, so values below 100% and arbitrary steps are impossible. Built-in Retina defaults read as 200%.
-- **Windows**: undocumented `DisplayConfigGetDeviceInfo`/`SetDeviceInfo` packet types -3/-4 over steps 100–500%.
-- **Linux**: X11 only, `xrandr --output <name> --scale`; `continuous: true`, so the UI builds options from min/max/step. Wayland returns an error.
-
-Commands: `get_dpi_displays`, `set_display_dpi { id, percent }`, and `reanchor_popup_window`. Only Linux builds scale options from the user band. `pairDpiDisplays` claims hardware-ID matches first, then remaining name/built-in matches, with each DPI display used at most once.
-
-## Wallpaper (`wallpaper.rs`)
-
-Sets desktop wallpaper via:
-
-- `command/wallpaper/change/{path}` — all monitors, default fit
-- `command/wallpaper/change/{fit}/{path}` — all monitors, explicit fit
-- `command/wallpaper/change_single/{monitor}/{path}` — single monitor, default fit
-- `command/wallpaper/change_single/{monitor}/{fit}/{path}` — single monitor, explicit fit
-
-Images require an existing path, allowed extension, and at least 1024 bytes. Normally they are copied to `wallpapers/wallpaper-{md5(source_path)}.{ext}` under the app config directory; unchanged content skips copying. When the cache already exceeds 200 MB, new or changed images use the source path directly. An unavailable source can reuse an existing cached copy. Calls use `core::wallpaper::set_wallpaper(path, fit)` / `set_wallpaper_one(index, path, fit)`; Linux routing also includes KDE and XFCE backends.
-
-**Fit modes**: `fill` (default), `fit`, `stretch`, `center`, `tile` — all platforms (`core::wallpaper` handles per-OS quirks; per-monitor is macOS + Windows only, Linux falls back to global).
-
-`{monitor}` is resolved via `resolve_monitor()` in `display.rs`: exact `id`, then exact `uid`, then case-insensitive substring on name/original_name.
-
-### Slideshow
-
-Managed in-process by `core::wallpaper` (timer thread, state, cycling). GUI starts/stops via `core::wallpaper::slideshow_start(interval_secs, order, fit, folder)` / `core::wallpaper::slideshow_stop()`. Startup resume uses `slideshow_start_at(..., resume_path)`. On startup, `resume_slideshow_if_enabled()` resumes if `slideshowEnabled`, starting from `slideshowLastPath` when that file is still in the folder (persisted by a core change hook on every slideshow image). Saving changed slideshow settings clears `slideshowLastPath` and restarts from the beginning. Manual `command/wallpaper/change` auto-stops the running slideshow.
-
-**Remote packs**: `command/wallpaper/slideshow_remote/{url}` downloads a `.zip` via `reqwest::blocking::get`, extracts valid images to `wallpapers/remote-{md5(url)}/`, then starts a slideshow there. Only `.zip`; max 500 MB; idempotent (skips download if folder exists with images). Uses the `zip` crate.
-
-### Preferences
-
-`wallpaper.{fit="fill", currentWallpaperPath, perMonitorWallpapers, slideshowEnabled=false, slideshowFolder, slideshowIntervalMinutes=30, slideshowIntervalSeconds=0 (total min 5s), slideshowOrder=forward|backward|oldest|newest|random, slideshowLastPath (backend-owned; resume point on startup)}`.
-
-Settings UI: Enable Slideshow checkbox, Wallpaper Fit dropdown, folder path, hours/minutes/seconds interval controls (minimum total 5 seconds), and order dropdown.
-
-## Command Reference
-
-Commands are strings dispatched by `execute_command()` in `tray.rs`. Bindable to keyboard shortcuts in `keyBindings`, usable in profiles, and selectable from the tray menu. Every command dispatches in-process to a `core::*` function or a tiling/wallpaper helper. `build_command_url()` always returns `None` (covered by unit tests; kept as a typed signal that no command currently maps to an external URL).
-
-| Command                                                   | In-process dispatch                                         | Description                                    |
-| --------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
-| `command/changeBrightness/{value}`                        | `core::display::set_all_brightness(value)`                  | Set brightness on all monitors                 |
-| `command/changeBrightness/{monitor_id}/{value}`           | `core::display::set_one_brightness(id, value)`              | Set brightness on a single monitor             |
-| `command/changeContrast/{value}`                          | `core::display::set_all_contrast(value)`                    | Set contrast on all monitors                   |
-| `command/changeContrast/{monitor_id}/{value}`             | `core::display::set_one_contrast(id, value)`                | Set contrast on a single monitor               |
-| `command/changeVolume/{value}`                            | `core::volume::set_volume(value)`                           | Set volume (0-100)                             |
-| `command/changeDarkMode/dark`                             | `core::theme::set_dark_mode(true)`                          | Switch to dark mode                            |
-| `command/changeDarkMode/light`                            | `core::theme::set_dark_mode(false)`                         | Switch to light mode                           |
-| `command/changeDarkMode/toggle`                           | `core::theme::get_dark_mode()` then `set_dark_mode(!cur)`   | Toggle dark/light mode                         |
-| `command/changeProfile/{index_or_name}`                   | (recursively dispatches profile commands)                   | Run a saved profile (index, or name ci)        |
-| `command/tile/{layoutName}`                               | `tiling::execute_tile(...)`                                 | Tile the focused window                        |
-| `command/layout/{name_or_index}`                          | `tiling::execute_layout_preset(...)`                        | Apply a layout preset by name or 0-based index |
-| `command/system/taskView`                                 | macOS Dock notification / Windows `SendInput(Win+Tab)`      | Open Mission Control or Windows Task View      |
-| `command/system/showDesktop`                              | macOS Dock notification / Windows `Shell.ToggleDesktop()`   | Show or restore the desktop                    |
-| `command/system/lockScreen`                               | Windows `LockWorkStation` / Linux command fallback          | Lock the current Windows or Linux session      |
-| `command/window/moveToFront`                              | `tiling::execute_zorder(WindowToFront)`                     | Raise the focused window above all others      |
-| `command/app/moveToFront`                                 | `tiling::execute_zorder(AppToFront)`                        | Raise all windows of the focused app           |
-| `command/window/moveToBack`                               | `tiling::execute_zorder(WindowToBack)`                      | Lower the focused window below all others      |
-| `command/app/moveToBack`                                  | `tiling::execute_zorder(AppToBack)`                         | Lower all windows of the focused app           |
-| `command/window/toggleFrontBack`                          | `tiling::execute_zorder(WindowToggle)`                      | Toggle focused window between front and back   |
-| `command/app/toggleFrontBack`                             | `tiling::execute_zorder(AppToggle)`                         | Toggle the focused app between front and back  |
-| `command/wallpaper/change/{path}`                         | `core::wallpaper::set_wallpaper(path, default_fit)`         | Set wallpaper on all monitors (default fit)    |
-| `command/wallpaper/change/{fit}/{path}`                   | `core::wallpaper::set_wallpaper(path, fit)`                 | Set wallpaper with explicit fit mode           |
-| `command/wallpaper/change_single/{monitor}/{path}`        | `core::wallpaper::set_wallpaper_one(idx, p, default_fit)`   | Set wallpaper on a single monitor              |
-| `command/wallpaper/change_single/{monitor}/{fit}/{path}`  | `core::wallpaper::set_wallpaper_one(idx, path, fit)`        | Per-monitor wallpaper with explicit fit        |
-| `command/wallpaper/slideshow/{folder_path}`               | `core::wallpaper::slideshow_start(default…, folder)`        | Start slideshow (default interval/order)       |
-| `command/wallpaper/slideshow/{interval}/{order}/{folder}` | `core::wallpaper::slideshow_start(interval, order, …)`      | Start slideshow with explicit interval/order   |
-| `command/wallpaper/slideshow_stop`                        | `core::wallpaper::slideshow_stop()`                         | Stop the active slideshow                      |
-| `command/wallpaper/slideshow_remote/{url_to_zip}`         | download via `reqwest`, then `slideshow_start` on extracted | Download zip, extract images, start slideshow  |
-
-Monitor IDs are the `id` field on `core::DisplayInfo` (e.g. `"1"`, `"2"`, `"builtin"`). Brightness clamped to `[effective_min_brightness, 100]`; contrast clamped to `[0, 100]`. Wallpaper monitor matching uses `resolve_monitor()` (id → uid → substring).
-
-## Other Features
-
-- **Night Mode Schedule** (`NightModeSchedule` in `config.rs`): at `nightStart` it runs the `nightProfile` profile (default `Focus`), at `dayStart` the `dayProfile` profile (default `Daylight`), via `command/changeProfile/{name}`. Shift+F1 / Shift+F2 default to the same Focus / Daylight profiles. Settings → System lets users pick each phase's profile and edit each scheduled profile's theme, all-display brightness, and volume (`src/profileSettings.ts` rewrites only those commands, keeping others). Precedence: non-empty `nightCommands`/`dayCommands` → named profile → legacy `nightBrightness`/`dayBrightness` + dark/light when the profile no longer exists.
-- **Window Layout Presets**: named presets in `preferences.layoutPresets`. Each `LayoutPreset` has a `name` and `rules` array; each `LayoutRule` has `appMatch` (case-insensitive substring), `layout` (camelCase TilingLayout), optional `displayIndex` (0-based). Triggered via `command/layout/{name_or_index}` from keybindings, profiles, or the "Layout Presets" tray submenu (only shown when configured). One window per rule (first match wins); duplicate rules to tile multiple windows of the same app. Configured by editing `preferences.json` (Open App Preferences) or browsing the config dir (Open App Folder).
-
-## Related Projects
-
-- **[display-dj-cli](https://github.com/synle/display-dj-cli)** — upstream of `src-tauri/src/core/`. No runtime dependency: builds and releases don't pull from it. When fixing display/wallpaper/theme bugs, consider whether the fix belongs in both repos. See [`VENDORING.md`](VENDORING.md) for per-file provenance + last-synced SHA; `./scripts/check-vendor-drift.sh` detects drift.
-
-## Dependencies
-
-The vendored `core::*` modules call OS APIs directly. Cargo deps:
-
-- `ddc` v0.2 (top-level) — DDC/CI protocol shared types.
-- `ddc-macos`, `libc` (macOS-only) — DDC/CI over IOKit.
-- `ddc-winapi`, `winapi` (Windows-only) — DDC/CI over Win32. The existing `windows` crate gained the `Win32_Devices_Display` feature for `IDesktopWallpaper` + display enumeration.
-- `keepawake` v0.6 — sleep prevention (macOS IOKit, Windows `SetThreadExecutionState`, Linux D-Bus).
-- `tauri-plugin-dialog` — native OS confirmation dialogs (used by Reset to Default).
-- `md5` v0.8 — wallpaper filename generation and content comparison; preserve existing cache hashes.
-- `zip` v9 — extracts remote wallpaper packs. `wallpaper::remote_pack_filename` handles fallible filename decoding and keeps supported images as flat basenames.
-- `reqwest` v0.13 (blocking) — downloads user-supplied remote wallpaper-pack zips. Explicit features preserve native TLS without ALPN; do not silently restore the new rustls default.
-- `windows` v0.58 (Windows-only) — Win32 window tiling APIs + display/wallpaper APIs.
-- `x11rb` v0.13 (Linux-only) — pure Rust X11/EWMH window tiling.
-
-### Linux (additional system packages)
-
-Runtime display control:
-
-```bash
-sudo apt install ddcutil brightnessctl i2c-tools
-sudo modprobe i2c-dev
-sudo usermod -aG i2c $USER
-```
-
-Dev build dependencies (GTK3 / WebKit2GTK 4.1 / libsoup 3 / OpenSSL headers, `libayatana-appindicator3-dev` for the tray on Ubuntu 24.04+/Mint 22+):
-
-```bash
-sudo apt install -y pkg-config libssl-dev libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev \
-  libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev
-```
+## Dependency Upgrade Boundaries
+
+Read the dated library-upgrade log in `DEV.md` before changing dependency pins. Manifests and lockfiles, not historical "latest" labels, define installed versions.
+
+- Keep Tauri JavaScript packages and matching Rust plugins on compatible major/minor releases. A frontend build alone does not validate Tauri bundling.
+- Check every CI workflow's Node version before accepting a new package engine range.
+- Preserve reqwest's explicit native-TLS features and disabled ALPN; do not silently adopt new TLS defaults.
+- Keep the shared `ddc` traits compatible with both native DDC backends.
+- Verify Windows and Linux binding changes on their target platforms before release.
+- Preserve wallpaper cache hashes and fallible ZIP filename handling. See `FEATURES.md` for dependency roles and `DEV.md` for migration tests and rejected candidates.
 
 ## CI Workflows
 

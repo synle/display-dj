@@ -18,4 +18,4 @@ The CLI sidecar was removed in v7.0.0; all wallpaper functionality is vendored a
 
 This table maps historical transport endpoints; it is not a complete current API or UI specification. Current startup resume also uses `slideshow_start_at(interval_secs, order, fit, folder, resume_path)`.
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md), [DEV.md](DEV.md), and the Wallpaper section of [AGENTS.md](AGENTS.md) for current behavior.
+Read [ARCHITECTURE.md](ARCHITECTURE.md), [DEV.md](DEV.md), and [FEATURES.md → Wallpaper](FEATURES.md#wallpaper-wallpaperrs) for current behavior.

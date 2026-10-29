@@ -19,6 +19,7 @@ First Rust compile takes 2-10 min; later runs ~5-15s. The app is a **system tray
 | `npx tauri build`             | Production build + installer                                       |
 | `npm run build`               | Frontend only (tsc + Vite)                                         |
 | `npm run dev`                 | Vite only; Tauri calls fail                                        |
+| `npm run lint`                | Oxlint; separate from build, tests, and formatting                 |
 | `npm test`                    | Frontend tests                                                     |
 | `cd src-tauri && cargo test`  | Backend tests                                                      |
 | `cd src-tauri && cargo check` | Fast Rust compile check                                            |
@@ -38,7 +39,7 @@ Backend (Rust): #[tauri::command] wrappers
 core/ (vendored platform code)
 ```
 
-- `src-tauri/src/{display,dark_mode,volume,wallpaper}.rs` — thin async Tauri-command wrappers around `core::*`. Commands taking `State<'_, AppState>` must be async; offload blocking work with `spawn_blocking` (macOS tray starvation pitfall — see AGENTS.md). The existing synchronous `get_preferences` reader is a legacy exception.
+- `src-tauri/src/{display,dark_mode,volume,wallpaper}.rs` — thin async Tauri-command wrappers around `core::*`. Commands taking `State<'_, AppState>` must be async; offload blocking work with `spawn_blocking` (see the macOS Tray Icon Pitfall in [FEATURES.md](FEATURES.md#macos-tray-icon-pitfall-critical)). The existing synchronous `get_preferences` reader is a legacy exception.
 - `src-tauri/src/core/` — platform mechanisms and shared display types, with vendored sources plus local audio, DPI, loudness, shell-action, Linux desktop, and Windows child-process extensions. See [VENDORING.md](VENDORING.md); current Tauri comes from crates.io, not a vendored crate patch.
 - Other backend modules: `config.rs` (preferences), `tray.rs` (tray menu + shortcut dispatch), `tray_icon.rs`, `keep_awake.rs`, `sidecar_cache.rs` (5-min TTL cache), `overlay.rs` (soft-overlay brightness fallback), `crash_log.rs`, `tiling/`.
 - Windows builds embed `windows-app-manifest.xml` through `build.rs` at `asInvoker` integrity. Preserve the Common Controls v6 dependency, and keep `tile-snap-overlay-*` plus `overlay-*` covered by Tauri capabilities so their event listeners can receive render state.
@@ -83,7 +84,7 @@ Config lives in the platform config dir (`config_dir()` in `config.rs`): `~/Libr
 
 Selected top-level fields (see `Preferences` in `config.rs` and `src/types.ts` for the full schema): `showIndividualDisplays`, `minBrightness` (default 10, absolute floor 5), `keyBindings`, `lockScreenBindingInitialized` (backend-owned migration marker), `profiles`, `nightModeSchedule` (21:00–07:00 default, disabled), `showContrast`, `debugLogging`, `launchAtLogin`, `linuxLockCommand` (backend-owned Linux cache), `monitorConfigs`, `audioOutputConfigs`, `tiling`, `layoutPresets`, `wallpaper`.
 
-Key bindings pair a `key` (e.g. `"Shift+F1"`) with a `command` string or array of strings: `command/changeBrightness/{v}`, `command/changeContrast/{v}`, `command/changeDarkMode/{toggle,dark,light}`, `command/changeVolume/{v}`, `command/changeProfile/{index_or_name}`, `command/system/lockScreen` — plus the tile/wallpaper/layout/z-order commands documented in AGENTS.md. Lock Screen defaults to `Ctrl+Alt+Q` on Windows/Linux only. Default z-order chords use `Super` on macOS and `Alt` on Windows/Linux.
+Key bindings pair a `key` (e.g. `"Shift+F1"`) with a `command` string or array of strings: `command/changeBrightness/{v}`, `command/changeContrast/{v}`, `command/changeDarkMode/{toggle,dark,light}`, `command/changeVolume/{v}`, `command/changeProfile/{index_or_name}`, `command/system/lockScreen` — plus the tile/wallpaper/layout/z-order commands in [FEATURES.md → Command Reference](FEATURES.md#command-reference). Lock Screen defaults to `Ctrl+Alt+Q` on Windows/Linux only. Default z-order chords use `Super` on macOS and `Alt` on Windows/Linux.
 
 `monitorConfigs[]` stores `label`, `sortOrder`, `hidden`, and `brightnessMode` by composite UID (`{api_id}::{api_model_name}`). This is not guaranteed physical identity: runtime IDs can change, and same-name reconciliation is heuristic. Unmatched disconnected metadata remains saved; Settings filters it only after a successful nonempty live load.
 
@@ -96,7 +97,8 @@ Key bindings pair a `key` (e.g. `"Shift+F1"`) with a `command` string or array o
 - `CommandValue` is `#[serde(untagged)]`: `"string"` or `["array"]`.
 - Backend returns `Result<T, String>`; frontend wraps `invoke()` in try/catch and keeps last-known state on error.
 - Brightness clamps to `[effective_min_brightness(), 100]`; contrast to `[0, 100]`.
-- Full conventions, pitfalls, and command reference live in **[AGENTS.md](AGENTS.md)**; layer/state maps in **[ARCHITECTURE.md](ARCHITECTURE.md)**; operational details in **[DEV.md](DEV.md)**.
+- Repository-wide rules live in [AGENTS.md](AGENTS.md). Read the task-matched [FEATURES.md](FEATURES.md) sections for platform pitfalls and command contracts.
+- Layer/state maps live in [ARCHITECTURE.md](ARCHITECTURE.md); operational details and historical migration results live in [DEV.md](DEV.md).
 - Use the three `--font-size-*` tokens, shared `Icons.tsx`, and `Dropdown.tsx` for new UI presentation.
 - `package.json` owns the app version. Run `npm run format` before every commit to synchronize Tauri metadata, then `npm run format:check`.
 
@@ -124,9 +126,11 @@ npm run test:coverage                    # Frontend coverage gate
 cd src-tauri && cargo llvm-cov --lib --summary-only   # Backend coverage
 ```
 
-Tauri APIs are mocked globally in `src/test/setup.ts`, so tests run without a backend. Coverage thresholds live in `vite.config.ts` and `.github/workflows/build.yml` — see [DEV.md](DEV.md) before changing them.
+Tauri APIs are mocked globally in `src/test/setup.ts`, so tests run without a backend.
+Oxlint configuration lives in `.oxlintrc.json`; `npm run lint` is independent of test/build commands and is not invoked by current GitHub workflows. Coverage thresholds live in `vite.config.ts` and `.github/workflows/build.yml` — see [DEV.md](DEV.md) before changing them.
 
-The library upgrade log in `DEV.md` records accepted versions, rejected candidates, compatibility fixes, and validation gaps.
+The dated library upgrade log in `DEV.md` records accepted versions, rejected candidates, compatibility fixes, and validation gaps.
+Current pins come from manifests and lockfiles. The post-migration CI snapshot distinguishes passing checks from outstanding warnings and native-runtime gaps.
 Wallpaper migration tests exercise a real in-memory ZIP reader, filename-decoding failures, flat image names, and a known MD5 cache identity.
 Keep reqwest's explicit native-TLS features when upgrading; newer defaults must not silently change the download trust backend.
 Windows and Linux binding upgrades require matching-platform compilation and runtime checks before release.

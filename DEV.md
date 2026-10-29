@@ -2,7 +2,7 @@
 
 Cross-platform desktop app for monitor brightness, contrast, dark mode, volume and audio-output selection, and window tiling control. Built with Tauri v2 (Rust backend) + React 19 + TypeScript + Vite 8 (WebView frontend). Platform code (DDC/CI, gamma, WMI, DisplayServices, audio, wallpaper) runs in-process under `src-tauri/src/core/`.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the structural map and edit locations, and [AGENTS.md](AGENTS.md) for project-specific rules.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for layers and edit locations, [AGENTS.md](AGENTS.md) for repository rules, and [FEATURES.md](FEATURES.md) for feature/platform contracts and command strings.
 
 ## Quick Start
 
@@ -21,10 +21,22 @@ cd src-tauri && cargo llvm-cov --lib --summary-only   # Backend coverage
 npm run tauri build     # Production build (.dmg / .exe / .deb / .AppImage)
 ```
 
+## Lint and formatting
+
+`npm run lint` runs Oxlint independently of builds, tests, and formatting. Read `.oxlintrc.json` for enabled plugins, error categories, and ignored paths.
+The current GitHub workflows do not invoke lint; a green `Main Build` does not establish a clean lint result.
+`DONE.eslint.md` preserves adoption history, not the current lint baseline.
+
+`npm run format` runs oxfmt, version synchronization, and Rust formatting in sequence. `npm run format:check` checks both formatters without writing.
+Generated schemas under `src-tauri/gen/` remain tracked but are excluded from oxfmt; do not hand-edit them.
+
 ## Library upgrade log
 
-This log records the 2026-10-26 dependency migration. Frontend libraries precede Tauri and Rust. Final unpushed history is consolidated into one frontend commit and one Tauri/Rust commit.
-Versions are registry stable releases, not prereleases. Exact pins and lockfiles make accepted versions reproducible.
+This dated log records the 2026-10-26 dependency migration, with frontend work preceding Tauri and Rust.
+The committed history includes dependency updates, compatibility cleanup, and later Rust-formatting integration; it is not an outstanding two-commit consolidation task.
+
+Versions were stable releases at the migration date. "Latest" below refers to that survey, not today's registry state.
+Manifests and lockfiles own current pins. Validation results below belong to the migration's checked revisions, not every later checkout.
 
 Baseline: Node v24.22.0, npm 11.19.1, Rust 1.99.1; build passed, 218 frontend tests passed, and 504 macOS Rust tests passed.
 Frontend coverage: 88.88% lines and 84.53% branches. Initial npm audit: 8 affected packages (2 critical, 3 high, 3 moderate).
@@ -76,7 +88,7 @@ This is not native-app startup verification. Native startup and hardware interac
 ### Tauri and Rust
 
 All migrated direct crates use exact pins, including repeated build/dev declarations. Stable releases only; Tauri 3 alpha is not a migration target.
-Low-risk patches preceded Tauri/plugin and breaking-crate checks. The final backend changes form one commit.
+Low-risk patches preceded Tauri/plugin and breaking-crate checks. Later Rust cleanup and formatting commits followed the dependency update.
 
 | Crate                          | Before → accepted          | Breakage, fixes, and backtracking                                                                                                                                                                                                                                                                                                                                     |
 | ------------------------------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -118,12 +130,23 @@ Final validation: `npm run build`, `npm test` (218 passed), `cargo check --locke
 `npm run format`, `npm run format:check`, and active Rust/TOML diagnostics pass. No tests failed or were ignored in the final host gate.
 Targeted wallpaper tests also pass (70 tests), including the seven new migration checks.
 Changed production-line coverage is 13/14 (92.86%) from LLVM LCOV intersected with added non-test lines; the download-loop call remains unexercised.
-`rustfmt --check` reports one pre-existing logger layout at `wallpaper.rs:552`; new code formatting is clean and unrelated formatting remains untouched.
+The initial migration recorded one pre-existing logger-layout difference in `rustfmt --check` at `wallpaper.rs:552`.
+Subsequent formatting integration added Rust to `npm run format` and `npm run format:check`; that initial exception is not the current formatting contract.
 Rust branch coverage is unavailable with the installed stable compiler: `--branch` fails because `-Z coverage-options=branch` requires nightly.
 Rust advisory audit is not measured because `cargo-audit` is not installed. No claim of zero Rust advisories is made.
 Windows/Linux target probes fail with E0463 (`can't find crate for core`); the matching standard-library targets are not installed.
 Native GUI startup, real HTTPS wallpaper downloads, and hardware behavior remain unverified locally.
 Rollback means reverting the backend commit and reinstalling its lockfile; it introduces no configuration or persisted-data migration.
+
+### Post-migration CI snapshot
+
+[Build run 40421388734](https://github.com/synle/display-dj/actions/runs/40421388734) passed on 2026-10-26 at `1e2efea` after Rust-formatting integration.
+All six platform builds, coverage, and `Main Build` succeeded. Windows compiled Rust tests with `--no-run`; macOS and Linux executed them.
+This verifies that revision's CI path, not native desktop interactions, real hardware, installed-app startup, or clean lint.
+
+The successful run still contains React `act` warnings and `get_about_info` platform-mock errors in frontend tests.
+Linux/Windows Rust logs also contain unused imports, helpers, fields, or blocks.
+Warning cleanup remains follow-up work; a separate plan or local experiment does not establish a committed fix.
 
 ## Development TODO
 
@@ -251,7 +274,9 @@ Logs go to stdout (plus `debug.log` in the config dir when enabled). A clean sta
 
 **Z-order self-test on X11:** launch with `DISPLAY_DJ_ZORDER_SELFTEST=1`; five seconds after startup it runs all 6 z-order commands on whatever window is focused and logs each step with a `[zorder-selftest]` prefix. Verified working on XFCE/xfwm4 — this exercises the same focused-window resolution and move dispatch as tiling.
 
-**Generated schemas:** the first Tauri build on each platform regenerates `src-tauri/gen/schemas/*` and creates a platform file (`linux-schema.json` — tracked). Local builds may also reformat `capabilities.json` / `acl-manifests.json` (pretty vs compact) when the local tauri CLI version differs from the last committer's — content-equivalent churn; revert rather than commit formatting-only diffs of those two.
+**Generated schemas:** Tauri builds regenerate `src-tauri/gen/schemas/*`; the committed platform schemas and capability manifests remain tracked in Git.
+They are excluded from oxfmt, not Git. Local tooling differences can reformat `capabilities.json` or `acl-manifests.json` without changing content.
+Inspect those diffs and exclude formatting-only churn from commits. Do not hand-edit generated files or overwrite unrelated local changes.
 
 **Brightness paths on Linux (`core::linux.rs`):** built-in panels write `/sys/class/backlight/<device>/brightness` directly, falling back to the `brightnessctl` CLI on permission failure (user needs the `video` group); external monitors shell out to `ddcutil` over `i2c-dev` (needs `ddcutil`, `i2c-tools`, `i2c-dev` loaded + user in `i2c` group); gamma dimming uses `xrandr` on X11. Full setup + verify commands in CONTRIBUTING "Platform Setup".
 

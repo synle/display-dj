@@ -2,7 +2,7 @@
 
 These are proposals, not shipped features or verified API contracts. Historical research below needs fresh platform/source checks before implementation.
 
-Current behavior and constraints live in [ARCHITECTURE.md](ARCHITECTURE.md), [DEV.md](DEV.md), and [AGENTS.md](AGENTS.md).
+Current behavior and constraints live in [ARCHITECTURE.md](ARCHITECTURE.md), [FEATURES.md](FEATURES.md), [DEV.md](DEV.md), and [AGENTS.md](AGENTS.md).
 
 ## Quick Wins
 
@@ -33,6 +33,7 @@ Current behavior and constraints live in [ARCHITECTURE.md](ARCHITECTURE.md), [DE
 
 ## Existing gaps worth investigating
 
+- **Clean lint and CI output** — address the migration's recorded lint findings, React async-test warnings, incomplete platform mocks, and Linux/Windows unused-code warnings. See the dated CI snapshot in `DEV.md`; successful builds are not warning-free builds. Consider a CI lint gate only after establishing an accepted clean baseline.
 - **Physical monitor identity** — replace ambiguous runtime-ID/model-name matching with verified physical identity and a compatibility migration.
 - **macOS/Linux brightness overlays** — populate monitor geometry; current missing geometry returns an error rather than dimming.
 - **Truthful feedback** — main sliders retain requested values on hardware failure, Settings has no visible save-error badge, and About can misreport failed update checks.

@@ -2,7 +2,9 @@
 
 Display DJ is a tray-first Tauri application with a React/TypeScript WebView and an in-process Rust platform layer. No HTTP sidecar runs.
 
-Read [AGENTS.md](AGENTS.md) for repository rules, [DEV.md](DEV.md) for operational details, and [VENDORING.md](VENDORING.md) before refreshing platform sources.
+Read [AGENTS.md](AGENTS.md) for repository rules and task-specific reading requirements.
+[FEATURES.md](FEATURES.md) owns detailed feature/platform contracts; [DEV.md](DEV.md) owns operational details.
+Read [VENDORING.md](VENDORING.md) before refreshing platform sources.
 
 ## Layers and entry points
 
