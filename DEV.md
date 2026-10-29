@@ -168,12 +168,8 @@ before shipping. No macOS or Linux support is implied by this investigation.
 
 ## Coverage thresholds
 
-CI enforces floors that trail main-branch measurement by ~10pp. Actual numbers are NOT mirrored here — read from source of truth:
-
-- **Frontend** → `vite.config.ts` → `test.coverage.thresholds`. Reports in `coverage/`.
-- **Backend** → `.github/workflows/build.yml`, `Rust coverage` step (`--fail-under-lines/-functions/-regions`). HTML in `src-tauri/target/llvm-cov-target/html/`.
-
-Raising: measure current %, set floor ~10pp below, update both files. Never lower without keeping the ~10pp gap.
+Before measuring or changing coverage floors, read [AGENTS.md → Coverage thresholds](AGENTS.md#coverage-thresholds-where-they-live).
+That section owns the safety gap, source locations, report directories, and measurement commands.
 
 ## State, persistence, and scheduling
 

@@ -27,6 +27,10 @@ First Rust compile takes 2-10 min; later runs ~5-15s. The app is a **system tray
 | `npm run format:rust`         | Format Rust only (`cargo fmt`)                                     |
 | `npm run format:check`        | Check frontend and Rust formatting without writing                 |
 
+VS Code launch entries in `.vscode/launch.json` cover Tauri dev/build, Vite, Vitest run/watch, Cargo test, and Cargo check.
+These are Node launch configurations, not lldb sessions.
+`.vscode/tasks.json` defines a separate `ui:dev` background task; current launch entries do not reference it.
+
 ## Architecture
 
 [Tauri v2](https://v2.tauri.app/): React 19 frontend in a WebView, Rust backend. Platform code runs in-process under `src-tauri/src/core/`; most modules are vendored and `audio_output` is display-dj-local. No sidecar or HTTP server runs. Read [ARCHITECTURE.md](ARCHITECTURE.md) for layers, state ownership, startup, and edit locations.
@@ -60,19 +64,9 @@ listen('monitors-changed', () => refetch());
 
 Monitor/theme events refresh live metadata and theme; `audio-output-changed` supplies endpoint snapshots. Volume commands also emit `volume-changed`, but the main popup renders saved slider values rather than subscribing to live volume updates.
 
-**Registered commands** (`lib.rs` `invoke_handler`):
-
-| Module       | Commands                                                                                                                                                                                                              |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lib`        | `fetch_all_state`                                                                                                                                                                                                     |
-| `display`    | `get_monitors`, `set_brightness`, `set_all_brightness`, `set_contrast`, `set_all_contrast`, `get_dpi_displays`, `set_display_dpi`, `rename_monitor`, `save_monitor_order`, `set_monitor_visibility`                   |
-| `dark_mode`  | `get_dark_mode`, `set_dark_mode`                                                                                                                                                                                      |
-| `volume`     | `get_volume`, `set_volume`, `get_audio_output_devices`, `set_audio_output_device`, `set_audio_output_device_state`, `rename_audio_output_device`, `save_audio_output_order`                                           |
-| `config`     | `get_preferences`, `save_preferences`, `record_last_known_values`, `open_preferences_file`, `open_debug_log`, `open_app_folder`, `get_app_version`, `get_about_info`                                                  |
-| `crash_log`  | `get_crash_log`, `open_crash_log`                                                                                                                                                                                     |
-| `keep_awake` | `get_keep_awake`, `set_keep_awake`                                                                                                                                                                                    |
-| `tray`       | `apply_profile`, `lock_screen`, `refresh_devices`, `reanchor_popup_window`                                                                                                                                            |
-| `tiling`     | `get_tiling_supported`, `get_accessibility_trusted`, `recheck_accessibility_trusted`, `open_accessibility_settings`, `get_windows_elevation_status`, `get_windows_snap_enabled`, `open_windows_multitasking_settings` |
+Before adding or calling a command, read the `invoke_handler` registration in `src-tauri/src/lib.rs` and its owning module.
+That registration is the command inventory; do not maintain a second list here.
+For bindable `command/...` strings, read [FEATURES.md → Command Reference](FEATURES.md#command-reference).
 
 ### Frontend state
 
@@ -92,15 +86,11 @@ Key bindings pair a `key` (e.g. `"Shift+F1"`) with a `command` string or array o
 
 ## Conventions
 
-- Structs sent to the frontend use `#[serde(rename_all = "camelCase")]`.
-- Commands are snake_case in Rust and JS.
-- `CommandValue` is `#[serde(untagged)]`: `"string"` or `["array"]`.
-- Backend returns `Result<T, String>`; frontend wraps `invoke()` in try/catch and keeps last-known state on error.
-- Brightness clamps to `[effective_min_brightness(), 100]`; contrast to `[0, 100]`.
-- Repository-wide rules live in [AGENTS.md](AGENTS.md). Read the task-matched [FEATURES.md](FEATURES.md) sections for platform pitfalls and command contracts.
-- Layer/state maps live in [ARCHITECTURE.md](ARCHITECTURE.md); operational details and historical migration results live in [DEV.md](DEV.md).
-- Use the three `--font-size-*` tokens, shared `Icons.tsx`, and `Dropdown.tsx` for new UI presentation.
-- `package.json` owns the app version. Run `npm run format` before every commit to synchronize Tauri metadata, then `npm run format:check`.
+- Before changing commands, preferences, or value bounds, read `AGENTS.md` → Key Conventions.
+- Before changing UI presentation, read `FEATURES.md` → Settings & About for font tokens, icons, dropdowns, and platform-specific controls.
+- Backend commands return `Result<T, String>`; frontend callers catch invoke failures and retain last-known state.
+- Before committing or changing versions, follow `AGENTS.md` → Formatting and Versioning.
+- Read [ARCHITECTURE.md](ARCHITECTURE.md) for layer/state maps and [DEV.md](DEV.md) for operational details and historical migration results.
 
 ## Adding a New Tauri Command
 
@@ -127,20 +117,17 @@ cd src-tauri && cargo llvm-cov --lib --summary-only   # Backend coverage
 ```
 
 Tauri APIs are mocked globally in `src/test/setup.ts`, so tests run without a backend.
-Oxlint configuration lives in `.oxlintrc.json`; `npm run lint` is independent of test/build commands and is not invoked by current GitHub workflows. Coverage thresholds live in `vite.config.ts` and `.github/workflows/build.yml` — see [DEV.md](DEV.md) before changing them.
+Oxlint configuration lives in `.oxlintrc.json`; `npm run lint` is independent of test/build commands and is not invoked by current GitHub workflows. Before changing coverage thresholds, read [AGENTS.md → Coverage thresholds](AGENTS.md#coverage-thresholds-where-they-live).
 
 The dated library upgrade log in `DEV.md` records accepted versions, rejected candidates, compatibility fixes, and validation gaps.
 Current pins come from manifests and lockfiles. The post-migration CI snapshot distinguishes passing checks from outstanding warnings and native-runtime gaps.
 Wallpaper migration tests exercise a real in-memory ZIP reader, filename-decoding failures, flat image names, and a known MD5 cache identity.
-Keep reqwest's explicit native-TLS features when upgrading; newer defaults must not silently change the download trust backend.
-Windows and Linux binding upgrades require matching-platform compilation and runtime checks before release.
+Before upgrading dependencies, follow `AGENTS.md` → Dependency Upgrade Boundaries, including TLS preservation and matching-platform verification.
 
 ## CI/CD
 
-- **build.yml** — pushes/PRs to `main` and `v2`, plus manual dispatch: tests/builds across six macOS/Windows/Linux architecture combinations plus coverage. Windows Rust tests compile with `--no-run`; macOS/Linux execute them. Rolled-up check: **`Main Build`** (job `main_build`) — require this one in branch protection.
-- **release-official.yml** — `v*` tag or manual dispatch: official release.
-- **release-beta.yml** — manual dispatch for explicit beta/test requests only; prerelease flow. Current builds use the DEV timestamp suffix because this workflow does not set `TAURI_RELEASE`.
-- Use `.agents/skills/release/SKILL.md` for releases and `.agents/skills/install-app/SKILL.md` for installation. Ordinary release requests default to official; do not supply custom changelog/notes inputs.
+Before changing workflows or interpreting checks, read `AGENTS.md` → CI Workflows for matrix, test-execution, and branch-protection requirements.
+Before releasing or installing a release, read the matching `.agents/skills/release/SKILL.md` or `.agents/skills/install-app/SKILL.md` workflow.
 
 ## Platform Setup (dev)
 

@@ -2,9 +2,11 @@
 
 ## Project Overview
 
-Cross-platform desktop system tray application for controlling monitor brightness, contrast, dark mode, volume and audio output, keep-awake (sleep prevention), and **window tiling** (macOS + Windows + Linux/X11). Built with **Tauri v2** (Rust backend) + **React 19** (TypeScript frontend) + **Vite 8**.
+Display DJ is a cross-platform Tauri v2 tray app with React 19, TypeScript, and Vite 8.
+It controls displays, theme, audio, sleep prevention, wallpaper, and window tiling on macOS, Windows, and Linux/X11.
 
-All platform code (DDC/CI, gamma, WMI, DisplayServices, dark mode, volume, audio-output selection, wallpaper, slideshow) runs **in-process** under `src-tauri/src/core/`. Most modules are vendored from display-dj-cli; audio-output selection is display-dj-local. There is no sidecar process and no runtime dependency on the display-dj-cli repo — Tauri commands call `core::*` functions directly. See [`VENDORING.md`](VENDORING.md) for the upstream→vendored file map and `./scripts/check-vendor-drift.sh` for drift detection.
+Platform work runs in-process under `src-tauri/src/core/`; no sidecar or runtime dependency on display-dj-cli remains.
+Read `VENDORING.md` before refreshing copied platform sources or local extensions.
 
 ## Context Ownership
 
@@ -43,100 +45,109 @@ Never hold preference locks across `.await` or slow platform work. See the macOS
 
 ## Build Commands
 
-```bash
-npm install          # Install frontend dependencies
-npm run dev          # Start Vite dev server (frontend only)
-npm run build        # Build frontend (tsc + vite build)
-npm run lint         # Oxlint (separate from build/test; see DEV.md)
-npx tauri dev        # Run full app in development mode
-npx tauri build      # Production build (binary + .dmg/.exe/.deb/.AppImage)
-cargo check          # Check Rust compilation (from src-tauri/)
-```
-
-**VSCode debugging:** `.vscode/launch.json` provides launch configs for Tauri dev, Vite dev, Vitest (run/watch), Cargo test, Cargo check, and Tauri build. `.vscode/tasks.json` defines the `ui:dev` background task referenced by the lldb-based Tauri Dev launch entry.
+Before setup or debugging, read `CONTRIBUTING.md` → Quick Start for commands, prerequisites, and VS Code launch configurations.
+`package.json` owns npm scripts; run Cargo commands from `src-tauri/`.
 
 ## Local Install from Release
 
-Repository skills live in `.agents/skills/<name>/SKILL.md` with portable `name` and `description` frontmatter. Keep one canonical copy per skill in this shared cross-agent directory.
+Before installing, updating, reinstalling, or testing a released app, read `.agents/skills/install-app/SKILL.md` and follow its platform-specific installation and post-install steps.
 
-Use the [install-app skill](.agents/skills/install-app/SKILL.md) (`/skill:install-app` in clients that support that syntax) to download and install the latest release for the current platform. The repo uses skills, not prompt commands, for these multi-step workflows.
-
-### macOS post-install steps (required)
-
-```bash
-xattr -cr "/Applications/Display DJ.app"                       # Strip Apple quarantine (unsigned builds)
-tccutil reset Accessibility com.synle.display-dj               # Reset Accessibility (required after each new build for tiling)
-open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-open "/Applications/Display DJ.app"
-```
-
-### Windows post-install steps
-
-Run the matching `*_x64-setup.exe` or `*_arm64-setup.exe` installer for the Windows architecture.
+Repository skills live in `.agents/skills/<name>/SKILL.md`.
+Keep one canonical copy per skill with portable `name` and `description` frontmatter.
 
 ## Versioning
 
-The **single source of truth** is root `package.json` → `"version"`. Bump it with
-`npm version <version> --no-git-tag-version`, then run `npm run format`. The `postformat` hook
-runs `scripts/sync-version.mjs`, which mirrors the number into `src-tauri/tauri.conf.json`.
-`npm run format` is mandatory before every commit, including Rust-only changes; never commit
-while the versions in `package.json` and `src-tauri/tauri.conf.json` differ.
+`package.json` owns the application version.
+Bump it with `npm version <version> --no-git-tag-version`, then follow Formatting below.
+Never commit while `package.json` and `src-tauri/tauri.conf.json` versions differ.
 
-`build.rs`, Tauri bundle metadata, and `release-official.yml` continue reading the synchronized
-`tauri.conf.json` value, so the UI header, `.dmg`, `.exe`, `.deb`, `.AppImage`, and release tag
-stay aligned without maintaining the number manually in two files.
+`build.rs`, Tauri bundle metadata, and the official release workflow read the synchronized `tauri.conf.json` version.
+The UI header, installer filenames, and release tag must stay aligned.
+The unpublished Cargo crate stays at `0.0.0`; `v*` tags trigger `release-official.yml`.
 
-`Cargo.toml` remains pinned at `0.0.0` because the crate is not published. Release versioning is driven by git tags (`v*` triggers `release-official.yml`).
-
-`build.rs` calls `tauri_build::try_build()` with `WindowsAttributes` plus the `expose_app_version()` helper that emits `APP_VERSION` and `BUILD_DATE` env vars. The custom `windows-app-manifest.xml` keeps Windows at `asInvoker` integrity and must retain the Common Controls v6 dependency.
+`build.rs` calls `tauri_build::try_build()` with `WindowsAttributes`.
+Its `expose_app_version()` helper emits `APP_VERSION` and `BUILD_DATE`.
+Preserve `asInvoker` integrity and the Common Controls v6 dependency in `src-tauri/windows-app-manifest.xml`.
 
 ## Testing
 
-```bash
-npm test                     # Frontend tests (Vitest)
-npm run test:watch           # Frontend tests in watch mode
-cd src-tauri && cargo test   # Backend tests (Rust)
-```
+Read `FEATURES.md` → Test Map before selecting tests.
+Frontend specs sit beside components; Rust uses inline modules and `src-tauri/tests/smoke.rs`.
 
-Read [FEATURES.md → Test Map](FEATURES.md#test-map) before selecting tests. Frontend specs sit beside components; Rust tests use inline modules and `src-tauri/tests/smoke.rs`.
+```bash
+npm test
+npm run test:watch             # Interactive watch mode, not a completion check
+cd src-tauri && cargo test
+```
 
 ### CI
 
-GitHub Actions (`build.yml`) targets pushes and PRs to `main` and `v2`, plus manual dispatch, across six macOS/Windows/Linux architecture combinations. Frontend tests execute on all six; Windows Rust tests compile with `--no-run`, while macOS and Linux execute them. PRs get a comment with per-platform build artifact links. A single rolled-up check named **`Main Build`** (job id `main_build`) aggregates the matrix + coverage into one green/red status on the commit — require this name in branch protection instead of every matrix permutation.
+Read CI Workflows below before changing CI or interpreting its results.
 
 ### Coverage thresholds (where they live)
 
-Coverage floors trail the current main-branch measurement by ~10pp. The actual numbers are NOT mirrored in this doc — read them from the source of truth before changing:
+Read configured thresholds before changing coverage policy; do not mirror their current values in this guide.
 
-- **Frontend (Vitest, v8 provider)** — thresholds in `vite.config.ts` under `test.coverage.thresholds` (`lines`, `statements`, `branches`, `functions`). Run locally via `npm run test:coverage`; CI step `Frontend coverage (Vitest)` fails the build when any axis dips below its floor. Reports land in `coverage/`.
-- **Backend (cargo-llvm-cov)** — thresholds inline on the `Rust coverage (cargo-llvm-cov)` step in `.github/workflows/build.yml` as `--fail-under-lines`, `--fail-under-functions`, `--fail-under-regions` flags. Run locally with `cd src-tauri && cargo llvm-cov --lib --summary-only`. HTML report lands in `src-tauri/target/llvm-cov-target/html/`.
+- Frontend: `vite.config.ts` → `test.coverage.thresholds` for lines, statements, branches, and functions.
+  Run `npm run test:coverage`; any axis below its floor fails. Reports land in `coverage/`.
+- Backend: `.github/workflows/build.yml` → Rust coverage step for `--fail-under-lines`, `--fail-under-functions`, and `--fail-under-regions`.
+  Run `cd src-tauri && cargo llvm-cov --lib --summary-only`.
+  HTML report directory: `src-tauri/target/llvm-cov-target/html/`.
 
-When raising thresholds: measure current %, set floor ~10pp below, update both files, commit. Never lower without leaving the same ~10pp safety gap (the comments above the flags track the history).
+Floors trail main-branch measurements by approximately 10 percentage points.
+When raising thresholds, measure current coverage, set floors approximately 10 points below it, update both files, and commit.
+Never lower floors without preserving that gap; workflow comments retain the history.
 
 ## Formatting
 
-After any repository change, always run `npm run format` before committing. It formats frontend files with oxfmt, then runs the npm `postformat` hook: sync the package version into `src-tauri/tauri.conf.json`, then format Rust with `cargo fmt --manifest-path src-tauri/Cargo.toml`. The `&&` sequence stops on failure. Run `npm run format:check` afterward to verify both formatters without modifying files. Use `npm run format:rust` for Rust-only formatting. Config lives in `.oxfmtrc.json`; generated schemas (`src-tauri/gen/`) are excluded from oxfmt but remain tracked in Git. Regenerate them through Tauri tooling; do not hand-edit them.
+After every repository change, run `npm run format` before finishing or committing, including Rust-only changes.
+Then run `npm run format:check` to verify both formatters without writing.
+
+The format command runs oxfmt, then `postformat` synchronizes the version through `scripts/sync-version.mjs` and invokes `npm run format:rust`.
+The `&&` sequence stops on failure.
+`format:rust` runs `cargo fmt --manifest-path src-tauri/Cargo.toml`; use it for Rust-only formatting, not instead of the required full wrapper.
+
+Read `.oxfmtrc.json` for formatter configuration.
+Schemas under `src-tauri/gen/` remain Git-tracked but excluded from oxfmt.
+Regenerate them through Tauri tooling; do not hand-edit them.
 
 ## Required Steps for Every Feature Change
 
-1. **Tests**: Frontend → `*.test.tsx`, Rust → `#[cfg(test)]` modules. Mock at the API boundary if hardware/platform/external. Run `npm test` and `cd src-tauri && cargo test` before finishing.
-2. **Formatting and version sync**: Always run `npm run format` before finishing, regardless of changed file type; `postformat` must leave `package.json` and `src-tauri/tauri.conf.json` versions identical.
-3. **Documentation**: Update `AGENTS.md`, `DEV.md`, `README.md`, and `CONTRIBUTING.md` for new commands, preferences, UI components, or architecture changes. Update `ARCHITECTURE.md` when layers, state ownership, startup, or edit locations change. Update affected `FEATURES.md` sections when feature contracts or platform constraints change.
-4. **Method comments**: `///` for Rust, `/** */` JSDoc for TS/React. Every public function, Tauri command, React component, non-trivial helper, and test must have one.
+1. **Tests**: Add frontend `*.test.tsx` tests for frontend changes and Rust `#[cfg(test)]` tests for Rust changes.
+   Mock hardware, platform, or external work at the API boundary.
+   Run `npm test` and `cd src-tauri && cargo test` before finishing.
+2. **Formatting and version sync**: Follow Formatting and Versioning above.
+3. **Documentation**: Update `AGENTS.md`, `DEV.md`, `README.md`, and `CONTRIBUTING.md` for new commands, preferences, UI components, or architecture changes.
+   Update `ARCHITECTURE.md` when layers, state ownership, startup, or edit locations change.
+   Update affected `FEATURES.md` sections when feature contracts or platform constraints change.
+4. **Method comments**: Use Rust `///` or TS/React `/** */` JSDoc.
+   Document every public function, Tauri command, React component, non-trivial helper, and test.
 
 ## Key Conventions
 
-- All Rust structs sent to frontend use `#[serde(rename_all = "camelCase")]`.
-- Tauri commands are snake_case in Rust, called with snake_case strings from the frontend.
-- Frontend parameter objects use camelCase (Serde converts).
-- `CommandValue` uses `#[serde(untagged)]` so keybindings accept both `"string"` and `["array"]`.
-- Preferences use `#[serde(default)]` for forward-compatible config loading.
-- Preferences writes are serialized: temporary primary and backup files receive the same new snapshot and are synced before atomic replacement. The backup is a valid saved snapshot, not a separate previous-version history. Malformed primary JSON is quarantined before backup recovery or default fallback.
-- Monitor UIDs are `{api_id}::{api_model_name}`, not guaranteed physical serial identities. `dedupe_moved_configs` folds stale same-name entries into live entries after ID reordering; unmatched disconnected metadata remains. Settings filters stale rows after a successful nonempty monitor load. Do not treat this name-based reconciliation as unambiguous identity for identical monitors.
-- **All user-editable numerics are bounded on both sides by `Preferences::sanitize()`** (`config.rs`), called from `load_preferences()` (disk → memory) and the `save_preferences` command (frontend → memory + disk). `preferences.json` is a documented hand-editing surface, so treat every numeric in it as untrusted input. Add new numeric preferences to `sanitize()` in the same commit that introduces them.
-- Brightness is clamped to `[effective_min_brightness(), 100]`, where `effective_min_brightness()` is itself clamped to `[5, 100]`. The **upper** bound is load-bearing: `u32::clamp` panics when `min > max`, so an unbounded `minBrightness` would panic every brightness path.
-- Contrast is DDC-only (`Option<u32>` / `number | null`); a live `null` only gates visibility — the rendered value comes from `lastKnownValues`. The slider is hidden by default and toggled via `showContrast` in Settings.
-- Keep Awake uses the `keepawake` crate (v0.6) — guard stored as `Mutex<Option<KeepAwake>>` in `AppState`. Creating enables; dropping (set to `None`) releases. Works on macOS (IOKit), Windows (`SetThreadExecutionState`), Linux (D-Bus). The `set_keep_awake` command is `async` (tray pitfall).
+- Use `#[serde(rename_all = "camelCase")]` for Rust structs sent to the frontend.
+- Tauri command names stay snake_case in Rust and frontend invoke strings; frontend parameter objects use camelCase.
+- `CommandValue` uses `#[serde(untagged)]` to accept a string or string array.
+- Preferences use `#[serde(default)]` for forward-compatible loading.
+- Serialize preference writes. Sync temporary primary and backup files with the same new snapshot before atomic replacement.
+  The backup is a valid saved snapshot, not previous-version history.
+  Quarantine malformed primary JSON before backup recovery or default fallback.
+- Monitor UIDs are `{api_id}::{api_model_name}`, not guaranteed physical serial identities.
+  `dedupe_moved_configs` folds stale same-name entries into live entries after ID reordering; unmatched disconnected metadata remains.
+  Settings filters stale rows only after a successful nonempty monitor load.
+  Do not treat name-based reconciliation as unambiguous identity for identical monitors.
+- Bound every user-editable numeric on both sides in `Preferences::sanitize()` (`config.rs`).
+  Loading preferences and `save_preferences` both call it.
+  Treat hand-edited `preferences.json` values as untrusted; add new numeric preferences to sanitization in the same commit.
+- Clamp brightness to `[effective_min_brightness(), 100]`; clamp the effective minimum to `[5, 100]`.
+  Keep the upper bound: `u32::clamp` panics when `min > max`.
+- Contrast is DDC-only (`Option<u32>` / `number | null`); clamp it to `[0, 100]`.
+  Live `null` gates visibility; rendered values come from `lastKnownValues`.
+  Contrast stays hidden by default and is enabled through `showContrast` in Settings.
+- Keep Awake stores a `keepawake` guard in `AppState` as `Mutex<Option<KeepAwake>>`.
+  Creating the guard enables sleep prevention; dropping it with `None` releases it.
+  Platform mechanisms are IOKit, `SetThreadExecutionState`, and D-Bus on macOS, Windows, and Linux respectively.
+  `set_keep_awake` remains async.
 
 ## Dependency Upgrade Boundaries
 
@@ -151,31 +162,32 @@ Read the dated library-upgrade log in `DEV.md` before changing dependency pins. 
 
 ## CI Workflows
 
-All three workflows share the same **6-entry build matrix** — keep them in sync when adding a target:
+Before changing CI, read `.github/workflows/build.yml`, `.github/workflows/release-official.yml`, and `.github/workflows/release-beta.yml`.
+Keep their build matrices synchronized when adding a target.
+Read runner labels and target triples from those workflows instead of maintaining another inventory.
 
-| Runner             | Rust target                 | Ships                             |
-| ------------------ | --------------------------- | --------------------------------- |
-| `macos-latest`     | `aarch64-apple-darwin`      | `_aarch64.dmg`                    |
-| `macos-latest`     | `x86_64-apple-darwin`       | `_x64.dmg`                        |
-| `windows-latest`   | `x86_64-pc-windows-msvc`    | `_x64-setup.exe`                  |
-| `windows-11-arm`   | `aarch64-pc-windows-msvc`   | `_arm64-setup.exe`                |
-| `ubuntu-22.04`     | `x86_64-unknown-linux-gnu`  | `_amd64.deb`, `_amd64.AppImage`   |
-| `ubuntu-22.04-arm` | `aarch64-unknown-linux-gnu` | `_arm64.deb`, `_aarch64.AppImage` |
+- Build runs on pushes and PRs to `main` and `v2`, plus manual dispatch.
+  It runs frontend tests on all six platform/architecture combinations.
+  Rust tests execute on macOS and Linux; both Windows jobs compile them with `--no-run` because CI cannot load Dxva2/WebView2 test binaries.
+  PRs receive per-platform artifact links.
+- Require the rolled-up **Main Build** check (`main_build`) in branch protection, not every matrix permutation.
+  It depends on `[build, coverage]` and uses `if: always()` to aggregate failures.
+- ARM64 matrix rows use native runners, not cross-compilation.
+  Linux conditionals must cover both architectures: use `startsWith(matrix.platform, 'ubuntu-')`, not bare-label equality.
+  Key Windows test branching on `runner.os` to cover both Windows runners.
+- ARM64 suffixes differ: Debian and NSIS use `arm64`; AppImage uses `aarch64`.
+  Keep upload globs extension-based (`*.deb`, `*.AppImage`, `*.exe`) so both architectures match.
 
-The arm64 rows are **native** builds on GitHub-hosted arm64 runners (free and unlimited on public
-repos), not cross-compiles. Two gotchas when editing these workflows:
+For every release request, read `.agents/skills/release/SKILL.md` before selecting a mode or triggering a workflow.
+That skill owns official-by-default routing, explicit beta/test opt-in, required summaries, confirmation behavior, and the prohibition on custom changesets or notes inputs.
 
-- Platform conditionals must not compare against a bare label. `if: matrix.platform == 'ubuntu-22.04'`
-  silently skips the arm64 runner — use `startsWith(matrix.platform, 'ubuntu-')`, and key the
-  Windows test branch on `runner.os` so it covers `windows-latest` and `windows-11-arm` alike.
-- The arm64 filename suffix is **not** uniform: `.deb` and NSIS use `arm64`, `.AppImage` uses
-  `aarch64`. The upload globs are extension-based (`*.deb`, `*.AppImage`, `*.exe`) so they match either.
+Official releases use `v*` tags or manual dispatch; beta releases use manual dispatch.
+Both workflows call the shared begin-release/end-release actions around Tauri matrix builds.
+Official notes include `.github/release-body-static.md`.
+Beta drafts use `release-beta-<date>-<sha>` tags.
 
-- **`build.yml`** — tests + builds on all platforms for every push/PR. PR comment with artifact download links. Rolled-up `Main Build` check (job `main_build`, `needs: [build, coverage]`, `if: always()`) collapses the 6-platform matrix + coverage into one green/red status — use this name in branch protection. Rust tests run with `--no-run` on both Windows runners (Dxva2/WebView2 can't load in CI); they execute on macOS ARM/Intel and Linux x64/arm64.
-- **Release routing** — use the [release skill](.agents/skills/release/SKILL.md) (`/skill:release` in clients that support that syntax); every release request defaults to official. Use beta only when the user explicitly says beta, prerelease, or test release/build; never infer beta from branch, SHA, CI state, or uncertainty. The release skill proceeds without confirmation prompts.
-- **Release notes** — always summarize commits since the last non-draft, non-prerelease release for the user. Do not create or set a changeset, changelog, generated notes file, or custom `release_notes` / `notes` input; leave those inputs unset so the shared release workflow generates the changelog.
-- **`release-official.yml`** — `v*` tag or manual dispatch. Uses `synle/workflows/actions/release/` shared actions (`begin-release` → Tauri matrix build → `end-release`). Generates changelog from commits since last tag + `.github/release-body-static.md`. Sets `TAURI_RELEASE=true` (clean version). Trigger through `/skill:release`.
-- **`release-beta.yml`** — manual dispatch only and explicit opt-in. Same flow with `mode: beta`. Draft prerelease tagged `release-beta-<date>-<sha>`. It does not set `TAURI_RELEASE`; current `build.rs` therefore emits a `[DEV - MM/DD/YYYY HH:MM]` suffix, not a beta-SHA suffix. Trigger through `/skill:release` with an explicit beta/test request.
+Official builds set `TAURI_RELEASE=true` for clean version strings.
+The beta workflow does not set it; `build.rs` therefore emits a `[DEV - MM/DD/YYYY HH:MM]` suffix, not a beta-SHA suffix.
 
 ## GitHub Raw File URLs
 

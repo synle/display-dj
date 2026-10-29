@@ -362,35 +362,18 @@ Monitor IDs are the `id` field on `core::DisplayInfo` (e.g. `"1"`, `"2"`, `"buil
 
 ## Dependencies
 
-The vendored `core::*` modules call OS APIs directly. Cargo deps:
+Before upgrading dependencies, read `AGENTS.md` → Dependency Upgrade Boundaries and the dated migration log in `DEV.md`.
+`src-tauri/Cargo.toml` and `src-tauri/Cargo.lock` own crate versions, target gates, and enabled features.
+Read `ARCHITECTURE.md` and `VENDORING.md` for platform-module responsibilities and provenance.
 
-- `ddc` v0.2 (top-level) — DDC/CI protocol shared types.
-- `ddc-macos`, `libc` (macOS-only) — DDC/CI over IOKit.
-- `ddc-winapi`, `winapi` (Windows-only) — DDC/CI over Win32. The existing `windows` crate gained the `Win32_Devices_Display` feature for `IDesktopWallpaper` + display enumeration.
-- `keepawake` v0.6 — sleep prevention (macOS IOKit, Windows `SetThreadExecutionState`, Linux D-Bus).
-- `tauri-plugin-dialog` — native OS confirmation dialogs (used by Reset to Default).
-- `md5` v0.8 — wallpaper filename generation and content comparison; preserve existing cache hashes.
-- `zip` v9 — extracts remote wallpaper packs. `wallpaper::remote_pack_filename` handles fallible filename decoding and keeps supported images as flat basenames.
-- `reqwest` v0.13 (blocking) — downloads user-supplied remote wallpaper-pack zips. Explicit features preserve native TLS without ALPN; do not silently restore the new rustls default.
-- `windows` v0.58 (Windows-only) — Win32 window tiling APIs + display/wallpaper APIs.
-- `x11rb` v0.13 (Linux-only) — pure Rust X11/EWMH window tiling.
+Preserve wallpaper cache hashes and `wallpaper::remote_pack_filename` handling of fallible ZIP filename decoding and flat image basenames.
+The Windows `Win32_Devices_Display` feature supports `IDesktopWallpaper` and display enumeration.
+Keep reqwest's native-TLS/no-ALPN compatibility constraints as defined in `AGENTS.md`; do not adopt defaults silently.
 
 ### Linux (additional system packages)
 
-Runtime display control:
-
-```bash
-sudo apt install ddcutil brightnessctl i2c-tools
-sudo modprobe i2c-dev
-sudo usermod -aG i2c $USER
-```
-
-Dev build dependencies (GTK3 / WebKit2GTK 4.1 / libsoup 3 / OpenSSL headers, `libayatana-appindicator3-dev` for the tray on Ubuntu 24.04+/Mint 22+):
-
-```bash
-sudo apt install -y pkg-config libssl-dev libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev \
-  libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev
-```
+Before building or controlling displays on Linux, follow [CONTRIBUTING.md → Platform Setup](CONTRIBUTING.md#platform-setup-dev).
+That section owns build packages, display helpers, kernel modules, device-group permissions, and verification commands.
 
 ## Test Map
 

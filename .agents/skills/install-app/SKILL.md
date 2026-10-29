@@ -33,9 +33,10 @@ Use `gh release download <tag> --pattern "<pattern>" --dir <temp-dir> --clobber`
 - Mount the downloaded DMG with `hdiutil attach <dmg> -nobrowse` and record the actual mount point.
 - Copy `Display DJ.app` to `/Applications/Display DJ.app`.
 - Detach the recorded mount point.
-- Run `xattr -cr "/Applications/Display DJ.app"`.
-- Run `tccutil reset Accessibility com.synle.display-dj`.
-- Open Accessibility Settings and launch the app.
+- Run `xattr -cr "/Applications/Display DJ.app"` to clear quarantine for unsigned builds.
+- After every new build, run `tccutil reset Accessibility com.synle.display-dj` to reset Accessibility.
+- Open Accessibility Settings with `open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"`.
+- Launch the app with `open "/Applications/Display DJ.app"`.
 
 ### Windows
 

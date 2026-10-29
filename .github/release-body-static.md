@@ -13,5 +13,5 @@
 ### Requirements
 
 - Display control is built in (vendored platform code) — no external tools needed on macOS or Windows
-- **macOS Window Tiling**: Requires Accessibility permission. Go to System Settings > Privacy & Security > Accessibility and add Display DJ. See [setup instructions](https://github.com/synle/display-dj#window-tiling-macos)
+- **macOS Window Tiling**: Requires Accessibility permission. Go to System Settings > Privacy & Security > Accessibility and add Display DJ. See [setup instructions](https://github.com/synle/display-dj#window-tiling-macos--windows--linuxx11)
 - **Linux**: Install `ddcutil` and `brightnessctl` for display control: `sudo apt install ddcutil brightnessctl i2c-tools`
