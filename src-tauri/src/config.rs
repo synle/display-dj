@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 static PREFERENCES_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -764,7 +764,11 @@ impl Default for Preferences {
     }
 }
 
-const MAX_DEBUG_LOG_SIZE: u64 = 1024 * 1024; // 1 MB
+/// Rotate a text log once it passes this many lines.
+pub(crate) const MAX_LOG_LINES: usize = 80_000;
+
+/// Drop this many oldest lines on rotation, keeping the newest 70,000.
+pub(crate) const LOG_LINES_TO_TRIM: usize = 10_000;
 
 /// Returns the path to the debug log file in the app's config directory.
 /// Dev builds use `debug-dev.log`, production builds use `debug.log`
@@ -776,6 +780,68 @@ pub fn debug_log_path() -> PathBuf {
         "debug.log"
     };
     config_dir().join(filename)
+}
+
+/// First line of a rotated log: a whole debug-log line or a crash-log entry.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LogBoundary {
+    Line,
+    Entry,
+}
+
+/// Drop every non-ASCII character from text before it reaches a log file.
+///
+/// UTF-8 itself is safe; the earlier crash came from slicing a `String` at a
+/// byte inside a multibyte character. Keeping log files pure ASCII removes
+/// that whole class of bug, even for legacy files written by older builds.
+pub(crate) fn ascii_log_text(text: &str) -> String {
+    text.chars()
+        .filter(|character| character.is_ascii())
+        .collect()
+}
+
+/// Newest slice of `content` after line-based rotation, or `None` when the log
+/// is still under [`MAX_LOG_LINES`].
+///
+/// Counting newlines and slicing at line starts keeps every cut on a UTF-8
+/// character boundary. Crash logs advance to the next `==========` marker so a
+/// rotation never produces a half-written panic record.
+fn rotated_log_content(content: &str, boundary: LogBoundary) -> Option<&str> {
+    let line_count = content.bytes().filter(|&byte| byte == b'\n').count();
+    if line_count <= MAX_LOG_LINES {
+        return None;
+    }
+
+    let drop_index = LOG_LINES_TO_TRIM - 1;
+    let start = content
+        .match_indices('\n')
+        .enumerate()
+        .filter(|(index, _)| *index >= drop_index)
+        .map(|(_, (newline, _))| newline + 1)
+        .find(|offset| {
+            boundary == LogBoundary::Line || content[*offset..].starts_with("==========")
+        })?;
+    Some(&content[start..])
+}
+
+/// Rotate `path` in place when it exceeds [`MAX_LOG_LINES`], dropping the
+/// oldest [`LOG_LINES_TO_TRIM`] lines. Read and write failures are ignored so
+/// logging never panics or blocks startup.
+pub(crate) fn rotate_log_if_needed(path: &Path, boundary: LogBoundary) {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return;
+    };
+    // Every line needs at least one byte, so a smaller file cannot hold 80k lines.
+    if meta.len() <= MAX_LOG_LINES as u64 {
+        return;
+    }
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let Some(rotated) = rotated_log_content(&content, boundary) else {
+        return;
+    };
+    let _ = std::fs::write(path, rotated);
 }
 
 /// Global "is debug logging on" flag for context-free callers (the `log::Log`
@@ -805,24 +871,13 @@ pub fn write_debug_log_unbound(message: &str) {
 /// Append a line to the debug log regardless of `DEBUG_LOG_ENABLED`.
 ///
 /// Used for `ERROR`-level records so real failures are always persisted even
-/// when the user has not turned on debug logging. Truncates the file to its
-/// last 80% when it exceeds `MAX_DEBUG_LOG_SIZE` so forced writes stay bounded.
+/// when the user has not turned on debug logging. Rotates the file at 80,000
+/// lines by dropping the oldest 10,000 lines. New entries are ASCII-only.
 pub fn write_debug_log_forced(message: &str) {
     let path = debug_log_path();
-    if let Ok(meta) = std::fs::metadata(&path) {
-        if meta.len() > MAX_DEBUG_LOG_SIZE {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                let trim_at = content.len() - content.len() * 80 / 100;
-                let start = content[trim_at..]
-                    .find('\n')
-                    .map(|i| trim_at + i + 1)
-                    .unwrap_or(trim_at);
-                std::fs::write(&path, &content[start..]).ok();
-            }
-        }
-    }
+    rotate_log_if_needed(&path, LogBoundary::Line);
     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-    let line = format!("[{}] {}\n", timestamp, message);
+    let line = ascii_log_text(&format!("[{}] {}\n", timestamp, message));
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -834,7 +889,8 @@ pub fn write_debug_log_forced(message: &str) {
 }
 
 /// Appends a timestamped message to the debug log (no-op if debug logging is disabled).
-/// Auto-truncates the log file when it exceeds 1 MB, keeping the last 80%.
+/// Rotates the file at 80,000 lines by dropping the oldest 10,000 lines. New
+/// entries are ASCII-only.
 /// Uses try_lock to avoid blocking callers on high-frequency paths (e.g., CGEventTap
 /// callback) — if the preferences mutex is contended, the log message is silently dropped.
 pub fn write_debug_log(state: &crate::AppState, message: &str) {
@@ -849,24 +905,10 @@ pub fn write_debug_log(state: &crate::AppState, message: &str) {
 
     let path = debug_log_path();
 
-    // When over the size limit, trim the beginning and keep the last 80%
-    if let Ok(meta) = std::fs::metadata(&path) {
-        if meta.len() > MAX_DEBUG_LOG_SIZE {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                let keep = content.len() * 80 / 100;
-                let trim_at = content.len() - keep;
-                // Find the next newline after the trim point to avoid splitting a line
-                let start = content[trim_at..]
-                    .find('\n')
-                    .map(|i| trim_at + i + 1)
-                    .unwrap_or(trim_at);
-                std::fs::write(&path, &content[start..]).ok();
-            }
-        }
-    }
+    rotate_log_if_needed(&path, LogBoundary::Line);
 
     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-    let line = format!("[{}] {}\n", timestamp, message);
+    let line = ascii_log_text(&format!("[{}] {}\n", timestamp, message));
 
     use std::io::Write;
     if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -1552,6 +1594,68 @@ mod tests {
             )
             .unwrap();
             assert!(!persisted.debug_logging);
+        });
+    }
+
+    /// Rotation leaves a log at the 80,000-line cap untouched.
+    #[test]
+    fn rotated_log_content_is_noop_at_line_cap() {
+        let content = "line\n".repeat(MAX_LOG_LINES);
+        assert_eq!(rotated_log_content(&content, LogBoundary::Line), None);
+    }
+
+    /// `ascii_log_text` removes every non-ASCII character but keeps newlines.
+    #[test]
+    fn ascii_log_text_drops_multibyte_characters() {
+        assert_eq!(ascii_log_text("café → brew\nnaïve\n"), "caf  brew\nnave\n");
+    }
+
+    /// Forced debug writes never leave a multibyte byte in the log file.
+    #[test]
+    fn write_debug_log_forced_writes_ascii_only() {
+        with_temp_config_dir(|_| {
+            write_debug_log_forced("café → brew");
+            let bytes = std::fs::read(debug_log_path()).unwrap();
+            assert!(bytes.iter().all(|byte| byte.is_ascii()));
+            let text = std::fs::read_to_string(debug_log_path()).unwrap();
+            assert!(text.ends_with("caf  brew\n"));
+        });
+    }
+
+    /// Rotation drops the oldest 10,000 lines and preserves every kept line.
+    #[test]
+    fn rotated_log_content_drops_oldest_ten_thousand_lines() {
+        let kept = MAX_LOG_LINES + 1 - LOG_LINES_TO_TRIM;
+        let content = format!(
+            "{}{}",
+            "old\n".repeat(LOG_LINES_TO_TRIM),
+            "new\n".repeat(kept)
+        );
+        let rotated = rotated_log_content(&content, LogBoundary::Line).unwrap();
+        assert_eq!(rotated.lines().count(), kept);
+        assert!(rotated.lines().all(|line| line == "new"));
+    }
+
+    /// A multibyte character at the cut boundary survives rotation. The old
+    /// byte-offset trim panicked here and aborted the app during startup.
+    #[test]
+    fn write_debug_log_forced_rotates_multibyte_log_without_panicking() {
+        with_temp_config_dir(|_| {
+            let path = debug_log_path();
+            let kept = MAX_LOG_LINES + 1 - LOG_LINES_TO_TRIM;
+            let content = format!(
+                "{}{}",
+                "old\n".repeat(LOG_LINES_TO_TRIM),
+                "→ kept\n".repeat(kept),
+            );
+            std::fs::write(&path, &content).unwrap();
+
+            write_debug_log_forced("new entry");
+
+            let after = std::fs::read_to_string(&path).unwrap();
+            assert!(after.starts_with("→ kept\n"));
+            assert!(after.ends_with("new entry\n"));
+            assert_eq!(after.lines().count(), kept + 1);
         });
     }
 

@@ -15,8 +15,9 @@
 //!    progress in `{config_dir}/.macos_crash_marker` so we don't re-import on
 //!    every launch.
 //!
-//! The file rotates at ~2 MB by trimming from the head at an entry boundary so
-//! the most recent entries are always preserved.
+//! The file rotates at 80,000 lines by dropping the oldest 10,000 lines at an
+//! entry boundary so the most recent records are always preserved intact.
+//! All records are written as ASCII.
 //!
 //! Unlike `debug.log`, crash logging is **NOT gated on `debug_logging`** —
 //! crash data is always written. Crashes are rare and the diagnostic value is
@@ -32,45 +33,26 @@ pub fn crash_log_path() -> PathBuf {
     crate::config::config_dir().join("crash.log")
 }
 
-/// Rotate the log when it crosses this size. Half is dropped from the head on
-/// rotation so callers don't have to think about it.
-const MAX_CRASH_LOG_SIZE: u64 = 2 * 1024 * 1024;
-
-/// Trim the log to ~50% from the most-recent end, splitting on the next entry
-/// boundary so we never produce a half-truncated record. No-op when under the
-/// size limit.
+/// Trim the oldest 10,000 lines when the log passes 80,000, starting the kept
+/// portion at the next entry marker so no panic record is half-truncated.
 fn rotate_if_needed() {
-    let path = crash_log_path();
-    let Ok(meta) = std::fs::metadata(&path) else {
-        return;
-    };
-    if meta.len() <= MAX_CRASH_LOG_SIZE {
-        return;
-    }
-    let Ok(content) = std::fs::read_to_string(&path) else {
-        return;
-    };
-    let half = content.len() / 2;
-    let from = content[half..]
-        .find("==========")
-        .map(|i| half + i)
-        .unwrap_or(half);
-    let _ = std::fs::write(&path, &content[from..]);
+    crate::config::rotate_log_if_needed(&crash_log_path(), crate::config::LogBoundary::Entry);
 }
 
-/// Append a chunk of text to `crash.log`, creating it if missing and rotating
+/// Append ASCII-only text to `crash.log`, creating it if missing and rotating
 /// first if oversized. All failure modes (disk full, permission denied) are
 /// silently ignored — we never want crash-logging to itself panic.
 fn append(text: &str) {
     rotate_if_needed();
     let path = crash_log_path();
+    let ascii = crate::config::ascii_log_text(text);
     use std::io::Write;
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&path)
     {
-        let _ = f.write_all(text.as_bytes());
+        let _ = f.write_all(ascii.as_bytes());
     }
 }
 
@@ -446,8 +428,22 @@ mod tests {
         });
     }
 
-    /// `rotate_if_needed` is a no-op when the file is under the size limit —
-    /// otherwise we'd churn through disk on every small write.
+    /// Crash records strip non-ASCII characters before reaching disk.
+    #[test]
+    fn append_writes_ascii_only() {
+        with_temp_config_dir(|_| {
+            append("café → brew\n");
+            let bytes = std::fs::read(crash_log_path()).unwrap();
+            assert!(bytes.iter().all(|byte| byte.is_ascii()));
+            assert_eq!(
+                std::fs::read_to_string(crash_log_path()).unwrap(),
+                "caf  brew\n"
+            );
+        });
+    }
+
+    /// `rotate_if_needed` is a no-op under the line cap, so small files never
+    /// get rewritten on every append.
     #[test]
     fn rotate_is_noop_when_small() {
         with_temp_config_dir(|_| {
@@ -457,25 +453,26 @@ mod tests {
         });
     }
 
-    /// When the file is over the limit, rotation must trim at an entry
-    /// boundary (`==========`) so we never produce a half-record at the top
-    /// of the rotated file. Verifies the post-rotation file is shorter AND
-    /// starts at a real entry marker.
+    /// Once the file passes 80,000 lines, rotation drops the oldest 10,000 and
+    /// starts at an entry marker so no panic record is half-truncated.
     #[test]
     fn rotate_trims_at_entry_boundary() {
+        use crate::config::{LOG_LINES_TO_TRIM, MAX_LOG_LINES};
+
         with_temp_config_dir(|_| {
-            // Build a file ~3 MB with three sections so the trim happens
-            // strictly inside the file.
-            let chunk = format!("{}\n", "x".repeat((MAX_CRASH_LOG_SIZE / 3) as usize));
+            let kept = MAX_LOG_LINES + 1 - LOG_LINES_TO_TRIM;
             let content = format!(
-                "========== RUST PANIC ==========\n{chunk}\n\
-                 ========== RUST PANIC ==========\n{chunk}\n\
-                 ========== RUST PANIC ==========\n{chunk}\n",
+                "{}{}{}",
+                "old record\n".repeat(LOG_LINES_TO_TRIM),
+                "========== RUST PANIC ==========\n",
+                "x\n".repeat(kept),
             );
             std::fs::write(crash_log_path(), &content).unwrap();
+
             rotate_if_needed();
+
             let after = std::fs::read_to_string(crash_log_path()).unwrap();
-            assert!(after.len() < content.len(), "file should shrink");
+            assert_eq!(after.lines().count(), kept + 1);
             assert!(
                 after.starts_with("=========="),
                 "rotated file must start at an entry marker, got: {:?}",

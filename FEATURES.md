@@ -387,7 +387,7 @@ That section owns build packages, display helpers, kernel modules, device-group 
 
 Inline `#[cfg(test)]` modules cover:
 
-- `config.rs`: serde roundtrips, defaults, camelCase, `CommandValue` enum, `MonitorMetadata`, effective min brightness, backward-compatible deserialization, layout presets, night-mode schedules, `WallpaperPreferences`.
+- `config.rs`: serde roundtrips, defaults, camelCase, `CommandValue` enum, `MonitorMetadata`, effective min brightness, backward-compatible deserialization, layout presets, night-mode schedules, `WallpaperPreferences`, line-based log rotation at 80,000 lines (including multibyte-safe cut, ASCII-only writes, and forced-write regression).
 - `display.rs`: `into_monitor` converts `core::DisplayInfo` into `Monitor`, including its composite UID. Related metadata helpers include `merge_with_configs`, `reconcile_migrated_configs`, `dedupe_moved_configs`, `ensure_metadata_for_monitors`, and `resolve_monitor` (id/uid/substring).
 - `keep_awake.rs`: `KeepAwake` guard creation, `Mutex<Option<KeepAwake>>` enable/disable cycle.
 - `tray_icon.rs`: %-to-px conversion, icon generation across all state combos (dark/light × keep-awake × muted), filled rect/thick line drawing.
