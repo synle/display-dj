@@ -192,10 +192,13 @@ describe('AboutPanel', () => {
 
     render(<AboutPanel onClose={() => {}} />);
 
-    // Both rows should render "7.0.21 (yyyy-mm-dd HH:mm)" — local time, so
-    // assert against the date portion + a HH:mm regex to stay TZ-independent.
+    // Both rows should render "7.0.21 (yyyy-mm-dd HH:mm)" in local time.
+    // Derive the date from the mocked ISO value so the test passes in any TZ.
+    const published = new Date('2026-05-15T19:23:39Z');
+    const localDate = `${published.getFullYear()}-${String(published.getMonth() + 1).padStart(2, '0')}-${String(published.getDate()).padStart(2, '0')}`;
+    const expected = new RegExp(`^7\\.0\\.21 \\(${localDate} \\d{2}:\\d{2}\\)$`);
     await waitFor(() => {
-      const matches = screen.getAllByText(/^7\.0\.21 \(2026-05-1[45] \d{2}:\d{2}\)$/);
+      const matches = screen.getAllByText(expected);
       expect(matches.length).toBeGreaterThanOrEqual(2);
     });
   });
